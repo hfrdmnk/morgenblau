@@ -1,3 +1,18 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
+
+@theme {
+	--color-bg-page: oklch(13% 0.028 261.692);
+	--color-bg-front-1: oklch(98.5% 0.002 247.839);
+	--color-bg-front-2: oklch(1 0 0);
+
+	--color-text-primary: oklch(21% 0.034 264.665);
+	--color-text-secondary: oklch(70.7% 0.022 261.325);
+	--color-text-tertiary: oklch(87.2% 0.01 258.338);
+
+	--color-border-1: oklch(96.7% 0.003 264.542);
+	--color-border-2: oklch(92.8% 0.006 264.531);
+
+	--color-brand: oklch(0.7856 0.147881 224.2696);
+}
