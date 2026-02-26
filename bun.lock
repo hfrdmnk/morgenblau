@@ -8,6 +8,7 @@
         "@base-ui-components/react": "^1.0.0-rc.0",
         "@tanstack/react-router": "^1.163.2",
         "@tanstack/react-start": "^1.163.2",
+        "dialkit": "^1.0.0",
         "motion": "^12.34.3",
         "react": "^19.2.4",
         "react-dom": "^19.2.4",
@@ -337,6 +338,8 @@
     "debug": ["debug@4.4.3", "", { "dependencies": { "ms": "^2.1.3" } }, "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA=="],
 
     "detect-libc": ["detect-libc@2.1.2", "", {}, "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="],
+
+    "dialkit": ["dialkit@1.0.0", "", { "peerDependencies": { "motion": ">=11.0.0", "react": ">=18.0.0", "react-dom": ">=18.0.0", "solid-js": ">=1.6.0" }, "optionalPeers": ["react", "react-dom", "solid-js"] }, "sha512-jCIBcdoRzO/g5O+r+LzffoRW8YBGq7kWjs3FQM54z7MHneQ8B44MGZG6OVoHhC10EgEmVLXHa2qtWpf3Mp8d4g=="],
 
     "diff": ["diff@8.0.3", "", {}, "sha512-qejHi7bcSD4hQAZE0tNAawRK1ZtafHDmMTMkrrIGgSLl7hTnQHmKCeB45xAcbfTqK2zowkM3j3bHt/4b/ARbYQ=="],
 
