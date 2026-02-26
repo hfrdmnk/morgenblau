@@ -9,12 +9,15 @@
 	},
 	"dependencies": {
 		"@base-ui-components/react": "^1.0.0-rc.0",
+		"@react-three/fiber": "^9.5.0",
+		"@shadergradient/react": "^2.4.20",
 		"@tanstack/react-router": "^1.163.2",
 		"@tanstack/react-start": "^1.163.2",
 		"dialkit": "^1.0.0",
 		"motion": "^12.34.3",
 		"react": "^19.2.4",
-		"react-dom": "^19.2.4"
+		"react-dom": "^19.2.4",
+		"three": "^0.183.1"
 	},
 	"devDependencies": {
 		"@tailwindcss/forms": "^0.5.11",
