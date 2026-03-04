@@ -17,6 +17,7 @@ const uniforms = {
 	uSpeed: { value: 0.01 },
 	uScale: { value: 0.6 },
 	uWarp: { value: 1.2 },
+	uRevealDuration: { value: 2.0 },
 }
 
 function FluidPlane() {
@@ -46,6 +47,7 @@ export function BackgroundShader() {
 			camera={{ position: [0, 0, 1], zoom: 1 }}
 			dpr={1}
 			gl={{ alpha: false, antialias: false, powerPreference: 'high-performance' }}
+			onCreated={({ gl }) => gl.setClearColor(0x020316)}
 			style={{
 				position: 'fixed',
 				inset: 0,

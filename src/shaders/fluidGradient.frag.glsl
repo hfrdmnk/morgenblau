@@ -8,6 +8,7 @@ uniform vec3  uColor4;
 uniform float uSpeed;
 uniform float uScale;
 uniform float uWarp;
+uniform float uRevealDuration;
 
 varying vec2 vUv;
 
@@ -26,6 +27,9 @@ float grain(vec2 co, float t) {
 
 void main() {
 	float t = uTime * uSpeed;
+
+	float revealT = clamp(uTime / uRevealDuration, 0.0, 1.0);
+	revealT = 1.0 - pow(1.0 - revealT, 3.0); // easeOutCubic
 
 	// Stretch coordinates for elongated flowing shapes
 	vec2 st = vUv * uScale;
@@ -62,6 +66,8 @@ void main() {
 	// Subtle film grain
 	float g = grain(gl_FragCoord.xy * 0.5, t) * 0.03;
 	color += g;
+
+	color = mix(uColor2, color, revealT);
 
 	gl_FragColor = vec4(color, 1.0);
 }
