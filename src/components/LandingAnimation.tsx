@@ -1,25 +1,24 @@
 import { useState, useEffect } from 'react'
-import { motion } from 'motion/react'
 import { BackgroundShader } from './BackgroundShader'
 
 /* ─────────────────────────────────────────────────────────
  * ANIMATION STORYBOARD (4 stages)
  *
- *    0ms   mount — shader invisible, full-bleed
- *  300ms   shader fades in (opacity 0 → 1)           1.4s expo-out
- * 1400ms   frame — clip insets + rounds in one motion  1.8s soft ease-out
- * 2600ms   text rises in with stagger                  spring + bounce
+ *    0ms   mount — shader always full opacity; overlay covers it
+ *  200ms   reveal — overlay slides up (translateY -100%)       1.6s gentle ease-out
+ * 2100ms   frame — clip insets + rounds in one motion          1.8s soft ease-out
+ * 3300ms   text fades in                                       0.6s ease-out
  * ───────────────────────────────────────────────────────── */
 
 const TIMING = {
-	fade: 300,
-	frame: 1400,
-	text: 2600,
+	reveal: 200,
+	frame: 2100,
+	text: 3300,
 }
 
-const FADE = {
-	duration: 1.4,
-	ease: [0.16, 1, 0.3, 1], // expo-out
+const REVEAL = {
+	duration: 1.6,
+	ease: [0.25, 1, 0.36, 1], // gentle ease-out — starts with intention, settles peacefully
 }
 
 const FRAME = {
@@ -31,16 +30,15 @@ const FRAME = {
 }
 
 const TEXT = {
-	spring: { type: 'spring' as const, visualDuration: 0.6, bounce: 0.12 },
-	yOffset: 20, // px rise distance
-	stagger: 0.1, // seconds between h1 and p
+	duration: 0.6,
+	ease: [0.25, 1, 0.36, 1],
 }
 
 export function LandingAnimation() {
 	const [stage, setStage] = useState(0)
 
 	useEffect(() => {
-		const t1 = setTimeout(() => setStage(1), TIMING.fade)
+		const t1 = setTimeout(() => setStage(1), TIMING.reveal)
 		const t2 = setTimeout(() => setStage(2), TIMING.frame)
 		const t3 = setTimeout(() => setStage(3), TIMING.text)
 		return () => {
@@ -55,21 +53,13 @@ export function LandingAnimation() {
 
 	const clipPath = stage < 2 ? clipFull : clipFramed
 
-	const fadeTrans = `opacity ${FADE.duration}s cubic-bezier(${FADE.ease.join(',')})`
 	const frameTrans = `clip-path ${FRAME.duration}s cubic-bezier(${FRAME.ease.join(',')})`
-
-	const transition = stage < 2 ? fadeTrans : `${fadeTrans}, ${frameTrans}`
-
-	const textVariants = {
-		hidden: { opacity: 0, y: TEXT.yOffset },
-		visible: { opacity: 1, y: 0 },
-	}
+	const transition = stage >= 2 ? frameTrans : 'none'
 
 	return (
 		<div className="fixed inset-0 overflow-hidden">
 			<div
 				style={{
-					opacity: stage >= 1 ? 1 : 0,
 					clipPath,
 					transition,
 					position: 'absolute',
@@ -79,31 +69,33 @@ export function LandingAnimation() {
 				<BackgroundShader />
 			</div>
 
-			<motion.div
-				initial="hidden"
-				animate={stage >= 3 ? 'visible' : 'hidden'}
-				variants={{
-					hidden: {},
-					visible: { transition: { staggerChildren: TEXT.stagger } },
+			<div
+				style={{
+					position: 'absolute',
+					inset: 0,
+					backgroundColor: 'var(--color-bg-page)',
+					transform: stage >= 1 ? 'translateY(-100%)' : 'translateY(0)',
+					transition: `transform ${REVEAL.duration}s cubic-bezier(${REVEAL.ease.join(',')})`,
+				}}
+			/>
+
+			<div
+				style={{
+					opacity: stage >= 3 ? 1 : 0,
+					transition: `opacity ${TEXT.duration}s cubic-bezier(${TEXT.ease.join(',')})`,
 				}}
 				className="absolute inset-0 flex flex-col items-center justify-center"
 			>
-				<motion.h1
-					variants={textVariants}
-					transition={TEXT.spring}
+				<h1
 					className="text-4xl font-semibold tracking-tight text-white"
 					style={{ textShadow: '0 1px 12px rgba(0,0,0,0.2)' }}
 				>
 					morgenblau
-				</motion.h1>
-				<motion.p
-					variants={textVariants}
-					transition={TEXT.spring}
-					className="mt-3 text-base text-white/70"
-				>
+				</h1>
+				<p className="mt-3 text-base text-white/70">
 					Login with your Atmosphere account
-				</motion.p>
-			</motion.div>
+				</p>
+			</div>
 		</div>
 	)
 }
