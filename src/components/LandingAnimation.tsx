@@ -5,19 +5,19 @@ import { BackgroundShader } from './BackgroundShader'
  * ANIMATION STORYBOARD (4 stages)
  *
  *    0ms   mount — shader always full opacity; overlay covers it
- *  200ms   reveal — overlay slides up (translateY -100%)       1.6s gentle ease-out
- * 2100ms   frame — clip insets + rounds in one motion          1.8s soft ease-out
- * 3300ms   text fades in                                       0.6s ease-out
+ *  200ms   reveal — overlay slides up (translateY -100%)       1.0s gentle ease-out
+ * 1200ms   frame — clip insets + rounds in one motion          1.8s soft ease-out
+ * 2300ms   text fades in                                       0.6s ease-out
  * ───────────────────────────────────────────────────────── */
 
 const TIMING = {
 	reveal: 200,
-	frame: 2100,
-	text: 3300,
+	frame: 1200,
+	text: 2300,
 }
 
 const REVEAL = {
-	duration: 1.6,
+	duration: 1.0,
 	ease: [0.25, 1, 0.36, 1], // gentle ease-out — starts with intention, settles peacefully
 }
 
