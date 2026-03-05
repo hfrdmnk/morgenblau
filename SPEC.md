@@ -146,7 +146,7 @@ When a user opens Morgenblau, they land on **today's digest** — a unified view
 
 ### Adding Sources
 
-Users manually add RSS/Atom feed URLs. No auto-discovery in v1.
+Users manually add RSS/Atom feed URLs. No auto-discovery in v1. Each subscription is stored as an `app.skyreader.feed.subscription` record in the user's ATProto repo.
 
 ### Organization
 
@@ -170,6 +170,7 @@ The core differentiator. For each piece of content, the app checks for ATProto b
 
 - **Read:** Show Bluesky likes, reposts, and reply threads found via backlinks
 - **Like:** Users can like content from within Morgenblau
+- **Follow:** In-app follows stored as `app.skyreader.social.follow` records (separate from Bluesky social graph follows)
 - No reposting, replying, or other interactions in v1
 
 ### UX Principle
@@ -180,14 +181,33 @@ Social context is available but not forced. The reading experience comes first. 
 
 ---
 
+<atproto-lexicons>
+
+## ATProto Lexicons
+
+Morgenblau uses [Skyreader's](https://github.com/disnet/skyreader) lexicons (`app.skyreader.*`) for all user data stored in ATProto repos. This enables interoperability — data written by Morgenblau can be read by Skyreader and vice versa.
+
+Vendored lexicon schemas live in `lexicons/app/skyreader/`.
+
+| Feature | NSID | Schema |
+|---|---|---|
+| Feed subscriptions | `app.skyreader.feed.subscription` | `lexicons/app/skyreader/feed/subscription.json` |
+| Saved articles | `app.skyreader.feed.saved` | `lexicons/app/skyreader/feed/saved.json` |
+| Shared articles | `app.skyreader.social.share` | `lexicons/app/skyreader/social/share.json` |
+| In-app follows | `app.skyreader.social.follow` | `lexicons/app/skyreader/social/follow.json` |
+
+</atproto-lexicons>
+
+---
+
 <saving-sharing>
 
 ## Saving & Sharing
 
 Simple and minimal.
 
-- Users can **save** individual articles to a separate saved-items view
-- Users can **share** articles (standard web share / copy link)
+- Users can **save** individual articles to a separate saved-items view — stored as `app.skyreader.feed.saved` records
+- Users can **share** articles with optional commentary — stored as `app.skyreader.social.share` records
 - No folders, tags, or organization for saved content — just a list
 
 </saving-sharing>
