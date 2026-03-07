@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { BackgroundShader } from './BackgroundShader'
+import { useEffect, useState } from 'react';
+import { BackgroundShader } from './BackgroundShader';
 
 /* ─────────────────────────────────────────────────────────
  * ANIMATION STORYBOARD (3 stages)
@@ -11,41 +11,41 @@ import { BackgroundShader } from './BackgroundShader'
 
 const TIMING = {
 	frame: 1200,
-	text: 2300,
-}
+	text: 2300
+};
 
 const FRAME = {
 	duration: 1.8,
 	ease: [0.22, 1, 0.36, 1], // soft ease-out
 	inset: 2, // rem
 	radiusTop: 4, // rem
-	radiusBottom: 0.5, // rem
-}
+	radiusBottom: 0.5 // rem
+};
 
 const TEXT = {
 	duration: 0.6,
-	ease: [0.25, 1, 0.36, 1],
-}
+	ease: [0.25, 1, 0.36, 1]
+};
 
 export function LandingAnimation() {
-	const [stage, setStage] = useState(0)
+	const [stage, setStage] = useState(0);
 
 	useEffect(() => {
-		const t1 = setTimeout(() => setStage(1), TIMING.frame)
-		const t2 = setTimeout(() => setStage(2), TIMING.text)
+		const t1 = setTimeout(() => setStage(1), TIMING.frame);
+		const t2 = setTimeout(() => setStage(2), TIMING.text);
 		return () => {
-			clearTimeout(t1)
-			clearTimeout(t2)
-		}
-	}, [])
+			clearTimeout(t1);
+			clearTimeout(t2);
+		};
+	}, []);
 
-	const clipFull = 'inset(0rem 0rem 0rem 0rem round 0rem 0rem 0rem 0rem)'
-	const clipFramed = `inset(${FRAME.inset}rem ${FRAME.inset}rem ${FRAME.inset}rem ${FRAME.inset}rem round ${FRAME.radiusTop}rem ${FRAME.radiusTop}rem ${FRAME.radiusBottom}rem ${FRAME.radiusBottom}rem)`
+	const clipFull = 'inset(0rem 0rem 0rem 0rem round 0rem 0rem 0rem 0rem)';
+	const clipFramed = `inset(${FRAME.inset}rem ${FRAME.inset}rem ${FRAME.inset}rem ${FRAME.inset}rem round ${FRAME.radiusTop}rem ${FRAME.radiusTop}rem ${FRAME.radiusBottom}rem ${FRAME.radiusBottom}rem)`;
 
-	const clipPath = stage < 1 ? clipFull : clipFramed
+	const clipPath = stage < 1 ? clipFull : clipFramed;
 
-	const frameTrans = `clip-path ${FRAME.duration}s cubic-bezier(${FRAME.ease.join(',')})`
-	const transition = stage >= 1 ? frameTrans : 'none'
+	const frameTrans = `clip-path ${FRAME.duration}s cubic-bezier(${FRAME.ease.join(',')})`;
+	const transition = stage >= 1 ? frameTrans : 'none';
 
 	return (
 		<div className="fixed inset-0 overflow-hidden">
@@ -54,7 +54,7 @@ export function LandingAnimation() {
 					clipPath,
 					transition,
 					position: 'absolute',
-					inset: 0,
+					inset: 0
 				}}
 			>
 				<BackgroundShader />
@@ -63,7 +63,7 @@ export function LandingAnimation() {
 			<div
 				style={{
 					opacity: stage >= 2 ? 1 : 0,
-					transition: `opacity ${TEXT.duration}s cubic-bezier(${TEXT.ease.join(',')})`,
+					transition: `opacity ${TEXT.duration}s cubic-bezier(${TEXT.ease.join(',')})`
 				}}
 				className="absolute inset-0 flex flex-col items-center justify-center"
 			>
@@ -73,10 +73,8 @@ export function LandingAnimation() {
 				>
 					morgenblau
 				</h1>
-				<p className="mt-3 text-base text-white/70">
-					Login with your Atmosphere account
-				</p>
+				<p className="mt-3 text-base text-white/70">Login with your Atmosphere account</p>
 			</div>
 		</div>
-	)
+	);
 }

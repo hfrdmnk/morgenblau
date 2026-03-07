@@ -1,6 +1,6 @@
-@import "tailwindcss";
-@plugin "@tailwindcss/forms";
-@plugin "@tailwindcss/typography";
+@import 'tailwindcss';
+@plugin '@tailwindcss/forms';
+@plugin '@tailwindcss/typography';
 
 body {
 	background-color: var(--color-bg-page);
@@ -21,4 +21,3 @@ body {
 
 	--color-brand: oklch(0.7856 0.147881 224.2696);
 }
-

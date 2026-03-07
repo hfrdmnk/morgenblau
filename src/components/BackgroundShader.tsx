@@ -1,12 +1,12 @@
-import { Canvas, useFrame } from '@react-three/fiber'
-import { useRef } from 'react'
-import * as THREE from 'three'
+import { Canvas, useFrame } from '@react-three/fiber';
+import { useRef } from 'react';
+import * as THREE from 'three';
 
-import fragmentBase from '../shaders/fluidGradient.frag.glsl?raw'
-import vertexShader from '../shaders/fluidGradient.vert.glsl?raw'
-import noiseGlsl from '../shaders/noise.glsl?raw'
+import fragmentBase from '../shaders/fluidGradient.frag.glsl?raw';
+import vertexShader from '../shaders/fluidGradient.vert.glsl?raw';
+import noiseGlsl from '../shaders/noise.glsl?raw';
 
-const fragmentShader = noiseGlsl + '\n' + fragmentBase
+const fragmentShader = noiseGlsl + '\n' + fragmentBase;
 
 const uniforms = {
 	uTime: { value: 0 },
@@ -17,15 +17,15 @@ const uniforms = {
 	uSpeed: { value: 0.01 },
 	uScale: { value: 0.6 },
 	uWarp: { value: 1.2 },
-	uRevealDuration: { value: 2.0 },
-}
+	uRevealDuration: { value: 2.0 }
+};
 
 function FluidPlane() {
-	const matRef = useRef<THREE.ShaderMaterial>(null!)
+	const matRef = useRef<THREE.ShaderMaterial>(null!);
 
 	useFrame((_, delta) => {
-		matRef.current.uniforms.uTime.value += delta
-	})
+		matRef.current.uniforms.uTime.value += delta;
+	});
 
 	return (
 		<mesh>
@@ -37,7 +37,7 @@ function FluidPlane() {
 				uniforms={uniforms}
 			/>
 		</mesh>
-	)
+	);
 }
 
 export function BackgroundShader() {
@@ -52,10 +52,10 @@ export function BackgroundShader() {
 				position: 'fixed',
 				inset: 0,
 				zIndex: -50,
-				pointerEvents: 'none',
+				pointerEvents: 'none'
 			}}
 		>
 			<FluidPlane />
 		</Canvas>
-	)
+	);
 }

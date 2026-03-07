@@ -1,9 +1,9 @@
-import { createFileRoute, Outlet } from '@tanstack/react-router'
-import { HeaderBar } from '../components/HeaderBar'
+import { createFileRoute, Outlet } from '@tanstack/react-router';
+import { HeaderBar } from '../components/HeaderBar';
 
 export const Route = createFileRoute('/_authenticated')({
-	component: AuthenticatedLayout,
-})
+	component: AuthenticatedLayout
+});
 
 function AuthenticatedLayout() {
 	return (
@@ -22,5 +22,5 @@ function AuthenticatedLayout() {
 				<Outlet />
 			</main>
 		</div>
-	)
+	);
 }

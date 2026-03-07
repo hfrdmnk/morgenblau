@@ -16,6 +16,7 @@ A calm content platform powered by RSS and ATProto. Not a classic RSS reader —
 **Target users:** People who want to consume content (blogs, microposts, videos, podcasts) without the anxiety of unread counts or the pull of endless scrolling. They value the open web and the ATProto ecosystem.
 
 **What makes it different:**
+
 - Daily digests instead of an unread inbox
 - Social layer via ATProto backlinks — RSS becomes interactive
 - Four first-class content types with dedicated UIs
@@ -29,11 +30,11 @@ A calm content platform powered by RSS and ATProto. Not a classic RSS reader —
 
 ## Three Modes (Product Roadmap)
 
-| Mode       | Status | Description                                                    |
-| ---------- | ------ | -------------------------------------------------------------- |
-| Consume    | v1     | Daily digests, four content types, social layer, custom player |
-| Discover   | Future | Find new sources via ATProto social graph, link extraction     |
-| Create     | Future | Post to Bluesky (and later long-form via standard.site)        |
+| Mode     | Status | Description                                                    |
+| -------- | ------ | -------------------------------------------------------------- |
+| Consume  | v1     | Daily digests, four content types, social layer, custom player |
+| Discover | Future | Find new sources via ATProto social graph, link extraction     |
+| Create   | Future | Post to Bluesky (and later long-form via standard.site)        |
 
 **v1 is Consume only.** Discovery and Creation are future modes.
 
@@ -79,7 +80,7 @@ Previous days show as complete daily digests (all editions merged).
 
 ### Empty Editions
 
-An empty edition is a feature, not a bug. Display a simple, calm message. No nudges, no guilt. Example: *"Nothing new this morning. Enjoy your coffee."*
+An empty edition is a feature, not a bug. Display a simple, calm message. No nudges, no guilt. Example: _"Nothing new this morning. Enjoy your coffee."_
 
 ### History
 
@@ -99,12 +100,12 @@ No read state. No progress indicators. No "you've seen 8 of 12." Each edition si
 
 All four are first-class citizens in v1, each with a UI optimized for its format.
 
-| Type      | Description                          | Playback                     |
-| --------- | ------------------------------------ | ---------------------------- |
-| Blogpost  | Articles with titles and body text   | In-app reader + link out     |
-| Micropost | Short posts without a title          | Inline in digest             |
-| Video     | YouTube, Vimeo, etc.                 | Custom player                |
-| Podcast   | Audio feeds                          | Custom player                |
+| Type      | Description                        | Playback                 |
+| --------- | ---------------------------------- | ------------------------ |
+| Blogpost  | Articles with titles and body text | In-app reader + link out |
+| Micropost | Short posts without a title        | Inline in digest         |
+| Video     | YouTube, Vimeo, etc.               | Custom player            |
+| Podcast   | Audio feeds                        | Custom player            |
 
 ### Reading Mode
 
@@ -189,12 +190,12 @@ Morgenblau uses [Skyreader's](https://github.com/disnet/skyreader) lexicons (`ap
 
 Vendored lexicon schemas live in `lexicons/app/skyreader/`.
 
-| Feature | NSID | Schema |
-|---|---|---|
+| Feature            | NSID                              | Schema                                          |
+| ------------------ | --------------------------------- | ----------------------------------------------- |
 | Feed subscriptions | `app.skyreader.feed.subscription` | `lexicons/app/skyreader/feed/subscription.json` |
-| Saved articles | `app.skyreader.feed.saved` | `lexicons/app/skyreader/feed/saved.json` |
-| Shared articles | `app.skyreader.social.share` | `lexicons/app/skyreader/social/share.json` |
-| In-app follows | `app.skyreader.social.follow` | `lexicons/app/skyreader/social/follow.json` |
+| Saved articles     | `app.skyreader.feed.saved`        | `lexicons/app/skyreader/feed/saved.json`        |
+| Shared articles    | `app.skyreader.social.share`      | `lexicons/app/skyreader/social/share.json`      |
+| In-app follows     | `app.skyreader.social.follow`     | `lexicons/app/skyreader/social/follow.json`     |
 
 </atproto-lexicons>
 
@@ -278,14 +279,14 @@ Users aren't "managing subscriptions." They're the **editor of their own daily p
 
 ## Tech Stack (Quick Reference)
 
-| Layer           | Technology                             |
-| --------------- | -------------------------------------- |
-| Framework       | React 19, TypeScript                   |
-| Router          | TanStack React Router + React Start    |
-| Styling         | Tailwind CSS v4                        |
-| Animation       | Motion, Three.js (shaders)             |
-| Components      | Base UI                                |
-| Build           | Vite                                   |
-| Package Manager | npm                                    |
+| Layer           | Technology                          |
+| --------------- | ----------------------------------- |
+| Framework       | React 19, TypeScript                |
+| Router          | TanStack React Router + React Start |
+| Styling         | Tailwind CSS v4                     |
+| Animation       | Motion, Three.js (shaders)          |
+| Components      | Base UI                             |
+| Build           | Vite                                |
+| Package Manager | npm                                 |
 
 </tech-stack>
