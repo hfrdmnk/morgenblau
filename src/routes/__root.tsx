@@ -1,6 +1,7 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from '@tanstack/react-router';
 import { DialRoot } from 'dialkit';
 import 'dialkit/styles.css';
+import { AuthProvider } from '../lib/auth-context';
 import appCss from '../styles.css?url';
 
 export const Route = createRootRoute({
@@ -21,7 +22,9 @@ function RootLayout() {
 				<HeadContent />
 			</head>
 			<body>
-				<Outlet />
+				<AuthProvider>
+					<Outlet />
+				</AuthProvider>
 				<DialRoot />
 				<Scripts />
 			</body>

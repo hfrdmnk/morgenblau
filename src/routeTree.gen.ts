@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as OauthCallbackRouteImport } from './routes/oauth/callback'
 import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated/home'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -22,6 +23,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OauthCallbackRoute = OauthCallbackRouteImport.update({
+  id: '/oauth/callback',
+  path: '/oauth/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedHomeRoute = AuthenticatedHomeRouteImport.update({
   id: '/home',
   path: '/home',
@@ -31,28 +37,37 @@ const AuthenticatedHomeRoute = AuthenticatedHomeRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/home': typeof AuthenticatedHomeRoute
+  '/oauth/callback': typeof OauthCallbackRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/home': typeof AuthenticatedHomeRoute
+  '/oauth/callback': typeof OauthCallbackRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/_authenticated/home': typeof AuthenticatedHomeRoute
+  '/oauth/callback': typeof OauthCallbackRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/home'
+  fullPaths: '/' | '/home' | '/oauth/callback'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/home'
-  id: '__root__' | '/' | '/_authenticated' | '/_authenticated/home'
+  to: '/' | '/home' | '/oauth/callback'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/_authenticated/home'
+    | '/oauth/callback'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  OauthCallbackRoute: typeof OauthCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -69,6 +84,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/callback': {
+      id: '/oauth/callback'
+      path: '/oauth/callback'
+      fullPath: '/oauth/callback'
+      preLoaderRoute: typeof OauthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/home': {
@@ -96,6 +118,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  OauthCallbackRoute: OauthCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

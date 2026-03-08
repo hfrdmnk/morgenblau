@@ -1,11 +1,24 @@
-import { createFileRoute, Outlet } from '@tanstack/react-router';
+import { createFileRoute, Outlet, useNavigate } from '@tanstack/react-router';
+import { useEffect } from 'react';
 import { HeaderBar } from '../components/HeaderBar';
+import { useAuth } from '../lib/auth-context';
 
 export const Route = createFileRoute('/_authenticated')({
 	component: AuthenticatedLayout
 });
 
 function AuthenticatedLayout() {
+	const { status } = useAuth();
+	const navigate = useNavigate();
+
+	useEffect(() => {
+		if (status === 'unauthenticated') {
+			navigate({ to: '/' });
+		}
+	}, [status, navigate]);
+
+	if (status !== 'authenticated') return null;
+
 	return (
 		<div style={{ isolation: 'isolate' }}>
 			{/* Fixed card background (just the visual shape) */}

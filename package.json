@@ -13,6 +13,8 @@
 		"format:dirty": "prettier --write --cache ."
 	},
 	"dependencies": {
+		"@atproto/api": "^0.19.3",
+		"@atproto/oauth-client-browser": "^0.3.41",
 		"@base-ui/react": "^1.2.0",
 		"@react-three/fiber": "^9.5.0",
 		"@tanstack/react-router": "^1.163.2",

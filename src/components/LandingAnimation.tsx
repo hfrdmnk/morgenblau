@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useAuth } from '../lib/auth-context';
 import { BackgroundShader } from './BackgroundShader';
 
 /* ─────────────────────────────────────────────────────────
@@ -29,6 +30,9 @@ const TEXT = {
 
 export function LandingAnimation() {
 	const [stage, setStage] = useState(0);
+	const [handle, setHandle] = useState('');
+	const [error, setError] = useState('');
+	const { signIn, status } = useAuth();
 
 	useEffect(() => {
 		const t1 = setTimeout(() => setStage(1), TIMING.frame);
@@ -46,6 +50,19 @@ export function LandingAnimation() {
 
 	const frameTrans = `clip-path ${FRAME.duration}s cubic-bezier(${FRAME.ease.join(',')})`;
 	const transition = stage >= 1 ? frameTrans : 'none';
+
+	const handleSubmit = async (e: React.FormEvent) => {
+		e.preventDefault();
+		const trimmed = handle.trim();
+		if (!trimmed) return;
+
+		setError('');
+		try {
+			await signIn(trimmed);
+		} catch {
+			setError('Could not sign in. Check your handle and try again.');
+		}
+	};
 
 	return (
 		<div className="fixed inset-0 overflow-hidden">
@@ -74,6 +91,26 @@ export function LandingAnimation() {
 					morgenblau
 				</h1>
 				<p className="mt-3 text-base text-white/70">Login with your Atmosphere account</p>
+
+				<form onSubmit={handleSubmit} className="mt-6 flex items-center gap-2">
+					<input
+						type="text"
+						placeholder="your-handle.bsky.social"
+						value={handle}
+						onChange={(e) => setHandle(e.target.value)}
+						disabled={status === 'loading'}
+						className="rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm text-white outline-none placeholder:text-white/40 focus:border-white/50"
+					/>
+					<button
+						type="submit"
+						disabled={status === 'loading' || !handle.trim()}
+						className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-gray-900 disabled:opacity-50"
+					>
+						Log in
+					</button>
+				</form>
+
+				{error && <p className="mt-3 text-sm text-red-300">{error}</p>}
 			</div>
 		</div>
 	);
