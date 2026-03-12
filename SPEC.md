@@ -56,7 +56,7 @@ A calm content platform powered by RSS and ATProto. Not a classic RSS reader —
 
 ## Authentication
 
-**ATProto OAuth only.** Users must log in with a Bluesky/AT account. There is no anonymous or email-based access. This unlocks the social layer from day one.
+**ATProto OAuth only.** Users must log in with an ATProto account. There is no anonymous or email-based access. This unlocks the social layer from day one.
 
 </authentication>
 

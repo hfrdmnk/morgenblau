@@ -1,4 +1,5 @@
 import { BrowserOAuthClient } from '@atproto/oauth-client-browser';
+import { createDefaultHandleResolver } from './handle-resolver';
 
 export type Session = NonNullable<Awaited<ReturnType<BrowserOAuthClient['init']>>>['session'];
 
@@ -9,15 +10,17 @@ let currentSession: Session | null = null;
 async function ensureClient(): Promise<BrowserOAuthClient> {
 	if (client) return client;
 
+	const handleResolver = createDefaultHandleResolver();
+
 	if (import.meta.env.DEV) {
 		client = new BrowserOAuthClient({
 			clientMetadata: undefined,
-			handleResolver: 'https://bsky.social'
+			handleResolver
 		});
 	} else {
 		client = await BrowserOAuthClient.load({
 			clientId: 'https://morgen.blue/client-metadata.json',
-			handleResolver: 'https://bsky.social'
+			handleResolver
 		});
 	}
 

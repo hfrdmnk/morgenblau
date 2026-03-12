@@ -53,14 +53,14 @@ export function LandingAnimation() {
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
-		const trimmed = handle.trim();
+		const trimmed = handle.trim().replace(/^@/, '');
 		if (!trimmed) return;
 
 		setError('');
 		try {
 			await signIn(trimmed);
 		} catch {
-			setError('Could not sign in. Check your handle and try again.');
+			setError('Could not sign in. Check your handle or DID and try again.');
 		}
 	};
 
@@ -95,7 +95,7 @@ export function LandingAnimation() {
 				<form onSubmit={handleSubmit} className="mt-6 flex items-center gap-2">
 					<input
 						type="text"
-						placeholder="your-handle.bsky.social"
+						placeholder="your ATProto handle"
 						value={handle}
 						onChange={(e) => setHandle(e.target.value)}
 						disabled={status === 'loading'}

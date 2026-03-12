@@ -13,6 +13,7 @@
 		"format:dirty": "prettier --write --cache ."
 	},
 	"dependencies": {
+		"@atproto-labs/handle-resolver": "^0.3.6",
 		"@atproto/api": "^0.19.3",
 		"@atproto/oauth-client-browser": "^0.3.41",
 		"@base-ui/react": "^1.2.0",
@@ -43,6 +44,7 @@
 		"typescript": "^5.9.3",
 		"typescript-eslint": "^8.56.1",
 		"vite": "^7.3.1",
-		"vite-tsconfig-paths": "^6.1.1"
+		"vite-tsconfig-paths": "^6.1.1",
+		"vitest": "^4.1.0"
 	}
 }
