@@ -1,4 +1,5 @@
-import { BrowserOAuthClient } from '@atproto/oauth-client-browser';
+import type { BrowserOAuthClient } from '@atproto/oauth-client-browser';
+import { buildAtprotoLoopbackClientMetadata } from '@atproto/oauth-types';
 import { createDefaultHandleResolver } from './handle-resolver';
 
 export type Session = NonNullable<Awaited<ReturnType<BrowserOAuthClient['init']>>>['session'];
@@ -10,11 +11,15 @@ let currentSession: Session | null = null;
 async function ensureClient(): Promise<BrowserOAuthClient> {
 	if (client) return client;
 
+	const { BrowserOAuthClient } = await import('@atproto/oauth-client-browser');
 	const handleResolver = createDefaultHandleResolver();
 
 	if (import.meta.env.DEV) {
 		client = new BrowserOAuthClient({
-			clientMetadata: undefined,
+			clientMetadata: buildAtprotoLoopbackClientMetadata({
+				scope: 'atproto transition:generic',
+				redirect_uris: ['http://127.0.0.1:3000/oauth/callback']
+			}),
 			handleResolver
 		});
 	} else {
@@ -32,6 +37,8 @@ async function ensureClient(): Promise<BrowserOAuthClient> {
  * Safe to call multiple times — only runs client.init() once per page load.
  */
 export async function initAuth(): Promise<Session | null> {
+	if (typeof window === 'undefined') return null;
+
 	if (!initPromise) {
 		initPromise = ensureClient()
 			.then(async (c) => {

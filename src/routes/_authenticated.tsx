@@ -1,21 +1,21 @@
-import { createFileRoute, Outlet, useNavigate } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
 import { HeaderBar } from '../components/HeaderBar';
 import { useAuth } from '../lib/auth-context';
+import { initAuth } from '../lib/auth';
 
 export const Route = createFileRoute('/_authenticated')({
+	ssr: false,
+	beforeLoad: async () => {
+		const session = await initAuth();
+		if (!session) {
+			throw redirect({ to: '/' });
+		}
+	},
 	component: AuthenticatedLayout
 });
 
 function AuthenticatedLayout() {
 	const { status } = useAuth();
-	const navigate = useNavigate();
-
-	useEffect(() => {
-		if (status === 'unauthenticated') {
-			navigate({ to: '/' });
-		}
-	}, [status, navigate]);
 
 	if (status !== 'authenticated') return null;
 
