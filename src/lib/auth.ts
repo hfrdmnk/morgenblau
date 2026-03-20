@@ -63,3 +63,13 @@ export async function signIn(handle: string): Promise<never> {
 	const c = await ensureClient();
 	return c.signInRedirect(handle);
 }
+
+export async function signOut(): Promise<void> {
+	if (!currentSession || !client) return;
+
+	const sub = currentSession.sub;
+	currentSession = null;
+	initPromise = null;
+
+	await client.revoke(sub);
+}

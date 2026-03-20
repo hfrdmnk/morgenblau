@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { initAuth, signIn as authSignIn, type Session } from './auth';
+import { initAuth, signIn as authSignIn, signOut as authSignOut, type Session } from './auth';
 
 type AuthState =
 	| { status: 'loading'; session: null }
@@ -8,6 +8,7 @@ type AuthState =
 
 type AuthContextValue = AuthState & {
 	signIn: (handle: string) => Promise<never>;
+	signOut: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -38,5 +39,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 			});
 	}, []);
 
-	return <AuthContext value={{ ...state, signIn: authSignIn }}>{children}</AuthContext>;
+	const handleSignOut = async () => {
+		await authSignOut();
+		setState({ status: 'unauthenticated', session: null });
+	};
+
+	return (
+		<AuthContext value={{ ...state, signIn: authSignIn, signOut: handleSignOut }}>
+			{children}
+		</AuthContext>
+	);
 }

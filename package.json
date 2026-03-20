@@ -10,7 +10,8 @@
 		"lint": "eslint .",
 		"types": "tsc --noEmit",
 		"format": "prettier --write .",
-		"format:dirty": "prettier --write --cache ."
+		"format:dirty": "prettier --write --cache .",
+		"test": "vitest run"
 	},
 	"dependencies": {
 		"@atproto-labs/handle-resolver": "^0.3.6",

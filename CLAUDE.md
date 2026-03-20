@@ -16,6 +16,14 @@ A calm content platform powered by RSS and ATProto — daily digests instead of 
 
 - Use **Red/Green TDD** as the standard development paradigm with **Vitest** as the test runner.
 
+## Verification
+
+After each batch of work, run all three checks:
+
+- `bun run lint` — ESLint (0 errors, 0 warnings)
+- `bun run types` — TypeScript type checking
+- `bun run test` — Vitest test suite
+
 ## Key References
 
 - [SPEC.md](./SPEC.md) — product spec

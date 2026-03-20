@@ -14,7 +14,16 @@ export default tseslint.config(
 		},
 		rules: {
 			...reactHooks.configs.recommended.rules,
-			'react-refresh/only-export-components': ['warn', { allowConstantExport: true }]
+			'react-refresh/only-export-components': [
+				'warn',
+				{ allowConstantExport: true, allowExportNames: ['useAuth'] }
+			]
+		}
+	},
+	{
+		files: ['src/routes/**/*.tsx', 'src/router.tsx'],
+		rules: {
+			'react-refresh/only-export-components': 'off'
 		}
 	}
 );
