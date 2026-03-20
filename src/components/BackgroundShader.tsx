@@ -1,5 +1,5 @@
 import { Canvas, useFrame } from '@react-three/fiber';
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 
 import fragmentBase from '../shaders/fluidGradient.frag.glsl?raw';
@@ -8,20 +8,22 @@ import noiseGlsl from '../shaders/noise.glsl?raw';
 
 const fragmentShader = noiseGlsl + '\n' + fragmentBase;
 
-const uniforms = {
-	uTime: { value: 0 },
-	uColor1: { value: new THREE.Color('#2D3EDC') },
-	uColor2: { value: new THREE.Color('#020316') },
-	uColor3: { value: new THREE.Color('#93E6FF') },
-	uColor4: { value: new THREE.Color('#B294FE') },
-	uSpeed: { value: 0.01 },
-	uScale: { value: 0.6 },
-	uWarp: { value: 1.2 },
-	uRevealDuration: { value: 2.0 }
-};
-
 function FluidPlane() {
 	const matRef = useRef<THREE.ShaderMaterial>(null!);
+	const uniforms = useMemo(
+		() => ({
+			uTime: { value: 0 },
+			uColor1: { value: new THREE.Color('#2D3EDC') },
+			uColor2: { value: new THREE.Color('#020316') },
+			uColor3: { value: new THREE.Color('#93E6FF') },
+			uColor4: { value: new THREE.Color('#B294FE') },
+			uSpeed: { value: 0.01 },
+			uScale: { value: 0.6 },
+			uWarp: { value: 1.2 },
+			uRevealDuration: { value: 2.0 }
+		}),
+		[]
+	);
 
 	useFrame((_, delta) => {
 		matRef.current.uniforms.uTime.value += delta;

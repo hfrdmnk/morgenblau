@@ -1,22 +1,19 @@
-import { ClientOnly, createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { ClientOnly, createFileRoute, redirect } from '@tanstack/react-router';
 import { LandingAnimation } from '../components/LandingAnimation';
-import { useAuth } from '../lib/auth-context';
+import { initAuth } from '../lib/auth';
 
 export const Route = createFileRoute('/')({
+	ssr: false,
+	beforeLoad: async () => {
+		const session = await initAuth();
+		if (session) {
+			throw redirect({ to: '/home' });
+		}
+	},
 	component: LandingPage
 });
 
 function LandingPage() {
-	const { status } = useAuth();
-	const navigate = useNavigate();
-
-	useEffect(() => {
-		if (status === 'authenticated') {
-			navigate({ to: '/home' });
-		}
-	}, [status, navigate]);
-
 	return (
 		<ClientOnly fallback={null}>
 			<LandingAnimation />

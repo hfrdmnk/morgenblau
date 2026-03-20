@@ -8,122 +8,127 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root';
-import { Route as AuthenticatedRouteImport } from './routes/_authenticated';
-import { Route as IndexRouteImport } from './routes/index';
-import { Route as OauthCallbackRouteImport } from './routes/oauth/callback';
-import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated/home';
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as OauthCallbackRouteImport } from './routes/oauth/callback'
+import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated/home'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
-	id: '/_authenticated',
-	getParentRoute: () => rootRouteImport
-} as any);
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
-	id: '/',
-	path: '/',
-	getParentRoute: () => rootRouteImport
-} as any);
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OauthCallbackRoute = OauthCallbackRouteImport.update({
-	id: '/oauth/callback',
-	path: '/oauth/callback',
-	getParentRoute: () => rootRouteImport
-} as any);
+  id: '/oauth/callback',
+  path: '/oauth/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedHomeRoute = AuthenticatedHomeRouteImport.update({
-	id: '/home',
-	path: '/home',
-	getParentRoute: () => AuthenticatedRoute
-} as any);
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
-	'/': typeof IndexRoute;
-	'/home': typeof AuthenticatedHomeRoute;
-	'/oauth/callback': typeof OauthCallbackRoute;
+  '/': typeof IndexRoute
+  '/home': typeof AuthenticatedHomeRoute
+  '/oauth/callback': typeof OauthCallbackRoute
 }
 export interface FileRoutesByTo {
-	'/': typeof IndexRoute;
-	'/home': typeof AuthenticatedHomeRoute;
-	'/oauth/callback': typeof OauthCallbackRoute;
+  '/': typeof IndexRoute
+  '/home': typeof AuthenticatedHomeRoute
+  '/oauth/callback': typeof OauthCallbackRoute
 }
 export interface FileRoutesById {
-	__root__: typeof rootRouteImport;
-	'/': typeof IndexRoute;
-	'/_authenticated': typeof AuthenticatedRouteWithChildren;
-	'/_authenticated/home': typeof AuthenticatedHomeRoute;
-	'/oauth/callback': typeof OauthCallbackRoute;
+  __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/_authenticated/home': typeof AuthenticatedHomeRoute
+  '/oauth/callback': typeof OauthCallbackRoute
 }
 export interface FileRouteTypes {
-	fileRoutesByFullPath: FileRoutesByFullPath;
-	fullPaths: '/' | '/home' | '/oauth/callback';
-	fileRoutesByTo: FileRoutesByTo;
-	to: '/' | '/home' | '/oauth/callback';
-	id: '__root__' | '/' | '/_authenticated' | '/_authenticated/home' | '/oauth/callback';
-	fileRoutesById: FileRoutesById;
+  fileRoutesByFullPath: FileRoutesByFullPath
+  fullPaths: '/' | '/home' | '/oauth/callback'
+  fileRoutesByTo: FileRoutesByTo
+  to: '/' | '/home' | '/oauth/callback'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/_authenticated/home'
+    | '/oauth/callback'
+  fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-	IndexRoute: typeof IndexRoute;
-	AuthenticatedRoute: typeof AuthenticatedRouteWithChildren;
-	OauthCallbackRoute: typeof OauthCallbackRoute;
+  IndexRoute: typeof IndexRoute
+  AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  OauthCallbackRoute: typeof OauthCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
-	interface FileRoutesByPath {
-		'/_authenticated': {
-			id: '/_authenticated';
-			path: '';
-			fullPath: '/';
-			preLoaderRoute: typeof AuthenticatedRouteImport;
-			parentRoute: typeof rootRouteImport;
-		};
-		'/': {
-			id: '/';
-			path: '/';
-			fullPath: '/';
-			preLoaderRoute: typeof IndexRouteImport;
-			parentRoute: typeof rootRouteImport;
-		};
-		'/oauth/callback': {
-			id: '/oauth/callback';
-			path: '/oauth/callback';
-			fullPath: '/oauth/callback';
-			preLoaderRoute: typeof OauthCallbackRouteImport;
-			parentRoute: typeof rootRouteImport;
-		};
-		'/_authenticated/home': {
-			id: '/_authenticated/home';
-			path: '/home';
-			fullPath: '/home';
-			preLoaderRoute: typeof AuthenticatedHomeRouteImport;
-			parentRoute: typeof AuthenticatedRoute;
-		};
-	}
+  interface FileRoutesByPath {
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/callback': {
+      id: '/oauth/callback'
+      path: '/oauth/callback'
+      fullPath: '/oauth/callback'
+      preLoaderRoute: typeof OauthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/home': {
+      id: '/_authenticated/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof AuthenticatedHomeRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+  }
 }
 
 interface AuthenticatedRouteChildren {
-	AuthenticatedHomeRoute: typeof AuthenticatedHomeRoute;
+  AuthenticatedHomeRoute: typeof AuthenticatedHomeRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
-	AuthenticatedHomeRoute: AuthenticatedHomeRoute
-};
+  AuthenticatedHomeRoute: AuthenticatedHomeRoute,
+}
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
-	AuthenticatedRouteChildren
-);
+  AuthenticatedRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
-	IndexRoute: IndexRoute,
-	AuthenticatedRoute: AuthenticatedRouteWithChildren,
-	OauthCallbackRoute: OauthCallbackRoute
-};
+  IndexRoute: IndexRoute,
+  AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  OauthCallbackRoute: OauthCallbackRoute,
+}
 export const routeTree = rootRouteImport
-	._addFileChildren(rootRouteChildren)
-	._addFileTypes<FileRouteTypes>();
+  ._addFileChildren(rootRouteChildren)
+  ._addFileTypes<FileRouteTypes>()
 
-import type { getRouter } from './router.tsx';
-import type { createStart } from '@tanstack/react-start';
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
 declare module '@tanstack/react-start' {
-	interface Register {
-		ssr: true;
-		router: Awaited<ReturnType<typeof getRouter>>;
-	}
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
 }

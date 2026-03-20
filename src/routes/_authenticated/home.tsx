@@ -7,7 +7,6 @@ export const Route = createFileRoute('/_authenticated/home')({
 function HomePage() {
 	return (
 		<>
-			{/* Fixed sub-header (calendar + filters) */}
 			<div className="fixed top-14 right-2 left-2 z-20 rounded-t-2xl bg-bg-front-1 px-6 py-4">
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-4">
@@ -31,7 +30,6 @@ function HomePage() {
 				</div>
 			</div>
 
-			{/* Content (normal flow, scrolls with page) */}
 			<div className="flex flex-col gap-3">
 				{Array.from({ length: 20 }, (_, i) => (
 					<div key={i} className="rounded-xl border border-border-1 bg-bg-front-2 p-4">

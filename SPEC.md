@@ -287,6 +287,6 @@ Users aren't "managing subscriptions." They're the **editor of their own daily p
 | Animation       | Motion, Three.js (shaders)          |
 | Components      | Base UI                             |
 | Build           | Vite                                |
-| Package Manager | npm                                 |
+| Package Manager | bun                                 |
 
 </tech-stack>

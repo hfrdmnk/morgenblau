@@ -34,14 +34,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 						: { status: 'unauthenticated', session: null }
 				);
 			})
-			.catch(() => {
+			.catch((err) => {
+				console.error('Auth initialization failed:', err);
 				setState({ status: 'unauthenticated', session: null });
 			});
 	}, []);
 
 	const handleSignOut = async () => {
-		await authSignOut();
-		setState({ status: 'unauthenticated', session: null });
+		try {
+			await authSignOut();
+		} finally {
+			setState({ status: 'unauthenticated', session: null });
+		}
 	};
 
 	return (

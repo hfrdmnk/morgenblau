@@ -4,11 +4,6 @@ import { AtprotoDohHandleResolver, XrpcHandleResolver } from '@atproto-labs/hand
 const DOH_ENDPOINT = 'https://cloudflare-dns.com/dns-query';
 const BLUESKY_APPVIEW = 'https://bsky.social';
 
-/**
- * Create a resolver that chains two strategies:
- * 1. Primary (e.g. DNS-over-HTTPS) — works for any ATProto handle
- * 2. Fallback (e.g. Bluesky XRPC) — catches handles Bluesky knows about
- */
 export function createMultiStrategyResolver(
 	primary: HandleResolver,
 	fallback: HandleResolver
@@ -19,7 +14,7 @@ export function createMultiStrategyResolver(
 				const did = await primary.resolve(handle);
 				if (did) return did;
 			} catch {
-				// Primary failed — try fallback
+				// fall through to fallback
 			}
 			return fallback.resolve(handle);
 		}
