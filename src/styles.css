@@ -28,16 +28,17 @@ body {
 		'Aspekta', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
 		'Segoe UI Symbol', 'Noto Color Emoji';
 	--font-script: 'Caveat', cursive;
-	--color-bg-page: oklch(96.7% 0.003 264.542);
-	--color-bg-front-1: oklch(98.5% 0.002 247.839);
+
+	--color-bg-page: var(--color-mist-100);
+	--color-bg-front-1: var(--color-mist-50);
 	--color-bg-front-2: oklch(1 0 0);
 
-	--color-text-primary: oklch(21% 0.034 264.665);
-	--color-text-secondary: oklch(70.7% 0.022 261.325);
-	--color-text-tertiary: oklch(87.2% 0.01 258.338);
+	--color-text-primary: var(--color-mist-900);
+	--color-text-secondary: var(--color-mist-400);
+	--color-text-tertiary: var(--color-mist-300);
 
-	--color-border-1: oklch(96.7% 0.003 264.542);
-	--color-border-2: oklch(92.8% 0.006 264.531);
+	--color-border-1: var(--color-mist-100);
+	--color-border-2: var(--color-mist-200);
 
 	--color-atmosphere-blue: oklch(0.7856 0.1479 224.27);
 	--color-leaf-green: oklch(0.7856 0.1479 139.64);
