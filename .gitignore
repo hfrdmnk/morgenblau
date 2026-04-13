@@ -19,4 +19,5 @@ dist/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
-.tanstacksrc/routeTree.gen.ts
+.tanstack
+src/routeTree.gen.ts
