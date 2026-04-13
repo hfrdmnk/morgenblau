@@ -2,12 +2,32 @@
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
 
+@font-face {
+	font-family: 'Aspekta';
+	font-style: normal;
+	font-weight: 50 1000;
+	font-display: swap;
+	src: url('/fonts/AspektaVF.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Caveat';
+	font-style: normal;
+	font-weight: 400 700;
+	font-display: swap;
+	src: url('/fonts/CaveatVF.woff2') format('woff2');
+}
+
 body {
 	background-color: var(--color-bg-page);
 	position: relative; /* Base UI iOS Safari fix */
 }
 
 @theme {
+	--font-sans:
+		'Aspekta', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+		'Segoe UI Symbol', 'Noto Color Emoji';
+	--font-script: 'Caveat', cursive;
 	--color-bg-page: oklch(96.7% 0.003 264.542);
 	--color-bg-front-1: oklch(98.5% 0.002 247.839);
 	--color-bg-front-2: oklch(1 0 0);
@@ -19,5 +39,11 @@ body {
 	--color-border-1: oklch(96.7% 0.003 264.542);
 	--color-border-2: oklch(92.8% 0.006 264.531);
 
-	--color-brand: oklch(0.7856 0.147881 224.2696);
+	--color-atmosphere-blue: oklch(0.7856 0.1479 224.27);
+	--color-leaf-green: oklch(0.7856 0.1479 139.64);
+	--color-sunset-orange: oklch(0.7856 0.1479 57.72);
+	--color-coral-red: oklch(0.6915 0.2121 22.14);
+	--color-aurora-purple: oklch(0.6903 0.256 314.86);
+
+	--color-brand: var(--color-atmosphere-blue);
 }
