@@ -1,5 +1,5 @@
 import { ClientOnly, createFileRoute, redirect } from '@tanstack/react-router';
-import { LandingAnimation } from '../components/LandingAnimation';
+import { LoginPage } from '../components/LoginPage';
 import { initAuth } from '../lib/auth';
 
 export const Route = createFileRoute('/')({
@@ -10,13 +10,13 @@ export const Route = createFileRoute('/')({
 			throw redirect({ to: '/home' });
 		}
 	},
-	component: LandingPage
+	component: RouteComponent
 });
 
-function LandingPage() {
+function RouteComponent() {
 	return (
 		<ClientOnly fallback={null}>
-			<LandingAnimation />
+			<LoginPage />
 		</ClientOnly>
 	);
 }

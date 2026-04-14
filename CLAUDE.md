@@ -24,6 +24,12 @@ After each batch of work, run all three checks:
 - `bun run types` — TypeScript type checking
 - `bun run test` — Vitest test suite
 
+## UI Primitives
+
+### Window
+
+`src/components/Window.tsx` is the app's core layout primitive — a fixed, inset rectangle with asymmetric radii (larger at the top, smaller at the bottom) that acts as the viewport into every screen. Both logged-out and logged-in screens render their content inside a `<Window>`. When the user says "the window", this is it. Content scrolls inside the window; the window itself is fixed.
+
 ## Key References
 
 - [SPEC.md](./SPEC.md) — product spec
