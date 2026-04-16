@@ -1,10 +1,10 @@
 {
-	"client_id": "https://morgen.blue/client-metadata.json",
+	"client_id": "https://morgen.blue/oauth-client-metadata.json",
 	"client_name": "Morgenblau",
 	"client_uri": "https://morgen.blue",
 	"logo_uri": "https://morgen.blue/logo.png",
 	"redirect_uris": ["https://morgen.blue/oauth/callback"],
-	"scope": "atproto transition:generic",
+	"scope": "atproto repo:app.skyreader.feed.subscription repo:app.skyreader.feed.saved repo:app.skyreader.social.follow repo:app.skyreader.social.share",
 	"grant_types": ["authorization_code", "refresh_token"],
 	"response_types": ["code"],
 	"token_endpoint_auth_method": "none",

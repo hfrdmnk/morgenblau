@@ -2,6 +2,10 @@ import type { BrowserOAuthClient } from '@atproto/oauth-client-browser';
 import { buildAtprotoLoopbackClientMetadata } from '@atproto/oauth-types';
 import { createDefaultHandleResolver } from './handle-resolver';
 
+// Keep in sync with public/oauth-client-metadata.json
+const OAUTH_SCOPE =
+	'atproto repo:app.skyreader.feed.subscription repo:app.skyreader.feed.saved repo:app.skyreader.social.follow repo:app.skyreader.social.share';
+
 export type Session = NonNullable<Awaited<ReturnType<BrowserOAuthClient['init']>>>['session'];
 
 let client: BrowserOAuthClient | null = null;
@@ -21,14 +25,14 @@ async function ensureClient(): Promise<BrowserOAuthClient> {
 			if (import.meta.env.DEV) {
 				c = new BrowserOAuthClient({
 					clientMetadata: buildAtprotoLoopbackClientMetadata({
-						scope: 'atproto transition:generic',
+						scope: OAUTH_SCOPE,
 						redirect_uris: ['http://127.0.0.1:3000/oauth/callback']
 					}),
 					handleResolver
 				});
 			} else {
 				c = await BrowserOAuthClient.load({
-					clientId: 'https://morgen.blue/client-metadata.json',
+					clientId: 'https://morgen.blue/oauth-client-metadata.json',
 					handleResolver
 				});
 			}
