@@ -30,8 +30,8 @@ export function LoginPage() {
 			<div className="flex h-full items-center justify-center px-6">
 				<div className="w-full max-w-sm">
 					<div className="mb-10 text-center">
-						<p className="font-sans text-sm text-text-secondary">Your calm window into the</p>
-						<h1 className="font-script text-6xl leading-none text-atmosphere-blue">Atmosphere</h1>
+						<p className="font-sans text-sm text-muted-foreground">Your calm window into the</p>
+						<h1 className="font-sans text-6xl leading-none text-atmosphere-blue">Atmosphere</h1>
 					</div>
 
 					<form onSubmit={handleSubmit} className="space-y-3">
@@ -54,7 +54,7 @@ export function LoginPage() {
 						{error && <p className="text-sm text-destructive">{error}</p>}
 					</form>
 
-					<p className="mt-6 text-center text-xs leading-relaxed text-text-secondary">
+					<p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">
 						New here? An Atmosphere account is your identity (or user name) across Bluesky, Tangled,
 						Leaflet, Grain and other AT Protocol apps.
 					</p>

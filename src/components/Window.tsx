@@ -12,7 +12,7 @@ export function Window({ children, className }: WindowProps) {
 			className={cn(
 				'fixed top-14 right-2 bottom-2 left-2 overflow-hidden',
 				'rounded-t-[4rem] rounded-b-[0.5rem]',
-				'bg-bg-front-1',
+				'bg-card',
 				className
 			)}
 		>
