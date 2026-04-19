@@ -22,6 +22,14 @@
 	src: url('/fonts/GeistVF-Italic.woff2') format('woff2');
 }
 
+@font-face {
+	font-family: 'Caveat';
+	font-style: normal;
+	font-weight: 400 700;
+	font-display: swap;
+	src: url('/fonts/Caveat-VF.ttf') format('truetype-variations');
+}
+
 body {
 	position: relative; /* Base UI iOS Safari fix */
 }
@@ -30,6 +38,7 @@ body {
 	--font-sans:
 		'Geist', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
 		'Segoe UI Symbol', 'Noto Color Emoji';
+	--font-handwritten: 'Caveat', ui-sans-serif, cursive;
 
 	--color-atmosphere-blue: oklch(0.7856 0.1479 224.27);
 	--color-leaf-green: oklch(0.7856 0.1479 139.64);
