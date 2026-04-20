@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { useSurfaceLevel, type SurfaceLevel } from '@/lib/LevelContext';
 
 const INPUT_BY_LEVEL: Record<SurfaceLevel, string> = {
+	0: 'bg-gray-50 border-gray-200 dark:bg-gray-700 dark:border-gray-600',
 	1: 'bg-gray-100 border-gray-200 dark:bg-gray-800 dark:border-gray-700',
 	2: 'bg-gray-50 border-gray-100 dark:bg-gray-700 dark:border-gray-600'
 };
@@ -16,8 +17,8 @@ function InputGroup({ className, ...props }: React.ComponentProps<'div'>) {
 			role="group"
 			data-slot="input-group"
 			className={cn(
-				'relative flex h-10 w-full min-w-0 items-center rounded-xl border px-3 transition-colors',
-				'focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50',
+				'relative flex h-10 w-full min-w-0 items-center rounded-xl border px-3 transition-colors outline-none',
+				'outline-offset-2 outline-ring focus-within:outline-1 focus-within:outline-solid',
 				'has-[[aria-invalid=true]]:border-destructive has-[[aria-invalid=true]]:ring-3 has-[[aria-invalid=true]]:ring-destructive/20',
 				'has-[[data-slot=input-group-control]:disabled]:pointer-events-none has-[[data-slot=input-group-control]:disabled]:opacity-50',
 				INPUT_BY_LEVEL[level],

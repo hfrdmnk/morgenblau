@@ -46,14 +46,18 @@ Morgenblau inverts the common "shadows signal elevation" pattern. Closeness to t
 
 Surfaces lighten as they come forward. **Controls do the opposite: they step forward by contrasting _against_ the surface brightness trend.** Two axes, opposite directions.
 
-| Role                    | Rule                               | L1 light                                                                                         | L2 light | L1 dark  | L2 dark  |
-| ----------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------ | -------- | -------- | -------- |
-| **Input bg**            | one step past surface              | gray-100                                                                                         | gray-50  | gray-800 | gray-700 |
-| **Input border**        | two steps past                     | gray-200                                                                                         | gray-100 | gray-700 | gray-600 |
-| **Secondary button bg** | two steps past                     | gray-200                                                                                         | gray-100 | gray-700 | gray-600 |
-| **Primary button**      | color-defined, not level-dependent | soft atmosphere-blue tint in both modes (filled tint, tinted border, atmosphere-blue foreground) |          |          |          |
+| Role                    | Rule                               | L0 light                                                                                         | L1 light | L2 light | L0 dark  | L1 dark  | L2 dark  |
+| ----------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------ | -------- | -------- | -------- | -------- | -------- |
+| **Input bg**            | one step past surface              | gray-50                                                                                          | gray-100 | gray-50  | gray-700 | gray-800 | gray-700 |
+| **Input border**        | two steps past                     | gray-200                                                                                         | gray-200 | gray-100 | gray-600 | gray-700 | gray-600 |
+| **Secondary button bg** | two steps past                     | gray-100                                                                                         | gray-200 | gray-100 | gray-600 | gray-700 | gray-600 |
+| **Primary button**      | color-defined, not level-dependent | soft atmosphere-blue tint in both modes (filled tint, tinted border, atmosphere-blue foreground) |          |          |          |          |          |
 
 **In light mode controls go darker; in dark mode they go lighter.** The rule holds: controls always stand _against_ the surface trend, so they visually step forward.
+
+**Exception — level 0 (base) inverts the inversion.** On the darkest surface, there is no darker step available in light mode (and no lighter step in dark mode), so the rule flips: on L0, controls go **lighter** than the surface, not darker. On L0 the input **bg** matches the L2 bg, but the **border goes a step darker than L2's** (gray-200 in light mode) so the edge still reads against the base; dark mode reuses the L2 border (gray-600) unchanged because it already stands out against gray-950.
+
+**Focus state — a 1 px outline on the perceived element.** Morgenblau draws its own outline so the indicator lands on the element the user actually perceives — not always the natively focusable one. Pattern: `outline-none` base, then `focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring` on controls, and `focus-within:…` on compound containers (e.g. `InputGroup`, where the native input sits inside a wrapper with an addon — the outline belongs on the wrapper, not the inner input). `outline-solid` is explicit — Tailwind v4 has no bare `outline` utility, so the style has to be set by name. The result looks native: thin, solid, 2 px offset, atmosphere-blue. No box-shadow ring, no border-color swap, no halo. Error/invalid states (`aria-invalid`) keep their own softer ring so focus and validation stay distinguishable.
 
 **Two button variants only: primary (soft blue) and secondary (gray).** There is no solid / dark / black variant. When a button needs to feel more critical, the answer is **copy and placement**, not a louder color. A confirmation word, a more prominent position, a Caveat hint — but never a third button variant.
 
@@ -94,21 +98,32 @@ Morgenblau's palette is almost entirely monochrome, with two exceptions: one **b
 
 Scale is **calm, not dramatic**. h1 is not 40 px. Hierarchy is built more with weight than size.
 
+**Three weights, ever.** No bold, no semibold. Hierarchy is carried by the delta between weights plus size plus tracking, not by heavy strokes.
+
+| Weight        | Role                                       |
+| ------------- | ------------------------------------------ |
+| 300 — light   | paragraphs, body text, hints, descriptions |
+| 400 — regular | labels, metadata, UI chrome text           |
+| 500 — medium  | headings (h1–h6), card titles              |
+
+These defaults are wired into base styles (`h1–h6 → font-medium`, `p → font-light`), so plain tags pick them up automatically. Only override when the semantic tag doesn't match the role (e.g. a `<span>` acting as a heading).
+
 | Token       | Size      | Weight | Tracking           | Use                         |
 | ----------- | --------- | ------ | ------------------ | --------------------------- |
-| `text-xs`   | 0.75 rem  | 400    | normal             | tiny meta (timestamps)      |
-| `text-sm`   | 0.875 rem | 400    | normal             | secondary text, hints       |
-| `text-base` | 1 rem     | 400    | normal             | body                        |
+| `text-xs`   | 0.75 rem  | 300    | normal             | tiny meta (timestamps)      |
+| `text-sm`   | 0.875 rem | 300    | normal             | secondary text, hints       |
+| `text-sm`   | 0.875 rem | 400    | normal             | labels                      |
+| `text-base` | 1 rem     | 300    | normal             | body                        |
 | `text-lg`   | 1.125 rem | 500    | `tracking-tight`   | small headings, card titles |
-| `text-xl`   | 1.25 rem  | 600    | `tracking-tight`   | section headings (h3)       |
-| `text-2xl`  | 1.5 rem   | 700    | `tracking-tighter` | page headings (h1 / h2)     |
+| `text-xl`   | 1.25 rem  | 500    | `tracking-tight`   | section headings (h3)       |
+| `text-2xl`  | 1.5 rem   | 500    | `tracking-tighter` | page headings (h1 / h2)     |
 
 **Rules:**
 
 - h1 caps at 1.5 rem (about 1.5× body). Whispered, not shouted.
 - **Tracking tightens as size grows** — body is normal, mid-size headings are `tracking-tight` (-0.025em), large headings are `tracking-tighter` (-0.05em). Tight tracking at scale is a craft signature; it reads as intentional.
-- In long-form text (article reader), titles and paragraphs differ mainly by **weight**, not size. Bolder paragraphs, not dramatically larger ones.
-- Caveat renders visually smaller than Geist at the same nominal size — bump it up one step when placed beside Geist body.
+- In long-form text (article reader), titles and paragraphs differ mainly by **weight**, not size. Titles go medium (500), paragraphs stay light (300) — the delta reads as hierarchy without size jumps.
+- Caveat renders visually smaller than Geist at the same nominal size — bump it up one step when placed beside Geist body. Caveat's usable weights are 400–700; let it pick the nearest when used inside `<p>` (it reads as regular either way).
 - **Caveat is always secondary color.** Never primary. Never atmosphere-blue. Never a category color.
 
 ---

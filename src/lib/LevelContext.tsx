@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 
-export type SurfaceLevel = 1 | 2;
+export type SurfaceLevel = 0 | 1 | 2;
 
 export const LevelContext = createContext<SurfaceLevel>(1);
 
