@@ -1,13 +1,19 @@
 import { useState } from 'react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Loading03Icon, Login03Icon } from '@hugeicons/core-free-icons';
 import { useAuth } from '../lib/auth-context';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from './ui/input-group';
 import { Label } from './ui/label';
+import { Card } from './Card';
 import { Window } from './Window';
+
+const MIN_SPINNER_MS = 150;
 
 export function LoginPage() {
 	const [handle, setHandle] = useState('');
 	const [error, setError] = useState('');
+	const [submitting, setSubmitting] = useState(false);
 	const { signIn, status } = useAuth();
 
 	const handleSubmit = async (e: React.FormEvent) => {
@@ -16,50 +22,76 @@ export function LoginPage() {
 		if (!trimmed) return;
 
 		setError('');
+		setSubmitting(true);
+		const startedAt = Date.now();
+
 		try {
 			await signIn(trimmed);
 		} catch {
 			setError('Could not sign in. Check your handle or DID and try again.');
+		} finally {
+			const elapsed = Date.now() - startedAt;
+			if (elapsed < MIN_SPINNER_MS) {
+				await new Promise((resolve) => setTimeout(resolve, MIN_SPINNER_MS - elapsed));
+			}
+			setSubmitting(false);
 		}
 	};
 
-	const isLoading = status === 'loading';
+	const isLoading = status === 'loading' || submitting;
 
 	return (
-		<Window>
-			<div className="flex h-full items-center justify-center px-6">
-				<div className="w-full max-w-sm">
-					<div className="mb-10 text-center">
-						<p className="font-sans text-sm text-muted-foreground">Your calm window into the</p>
-						<h1 className="font-sans text-6xl leading-none text-atmosphere-blue">Atmosphere</h1>
-					</div>
+		<div className="grid h-dvh grid-cols-[1.618fr_1fr] bg-background p-6">
+			<div className="flex items-center">
+				<Card level={1} className="w-full max-w-xl p-8">
+					<h1 className="text-2xl font-semibold tracking-tighter">Morgenblau</h1>
+					<p className="mt-1 text-sm text-muted-foreground">A social RSS platform</p>
 
-					<form onSubmit={handleSubmit} className="space-y-3">
-						<div className="space-y-1.5">
-							<Label htmlFor="handle">Your Atmosphere account</Label>
-							<Input
-								id="handle"
-								placeholder="your Atmosphere account"
-								value={handle}
-								onChange={(e) => setHandle(e.target.value)}
-								disabled={isLoading}
-								autoCapitalize="none"
-								autoCorrect="off"
-								spellCheck={false}
-							/>
+					<form onSubmit={handleSubmit} className="mt-10 space-y-1.5">
+						<Label htmlFor="handle">Your Atmosphere Account</Label>
+						<div className="flex items-center gap-2">
+							<InputGroup>
+								<InputGroupAddon align="inline-start">
+									<InputGroupText>@</InputGroupText>
+								</InputGroupAddon>
+								<InputGroupInput
+									id="handle"
+									value={handle}
+									onChange={(e) => setHandle(e.target.value)}
+									disabled={isLoading}
+									autoCapitalize="none"
+									autoCorrect="off"
+									spellCheck={false}
+								/>
+							</InputGroup>
+							<Button
+								type="submit"
+								size="icon"
+								disabled={isLoading || !handle.trim()}
+								aria-label={submitting ? 'Signing in' : 'Log in'}
+							>
+								<HugeiconsIcon
+									icon={submitting ? Loading03Icon : Login03Icon}
+									className={submitting ? 'motion-safe:animate-spin' : undefined}
+								/>
+							</Button>
 						</div>
-						<Button type="submit" className="w-full" disabled={isLoading || !handle.trim()}>
-							Login
-						</Button>
 						{error && <p className="text-sm text-destructive">{error}</p>}
 					</form>
 
-					<p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">
-						New here? An Atmosphere account is your identity (or user name) across Bluesky, Tangled,
-						Leaflet, Grain and other AT Protocol apps.
-					</p>
-				</div>
+					<div className="mt-4 font-handwritten text-sm leading-snug text-muted-foreground">
+						<p>New here?</p>
+						<p>
+							An Atmosphere account is your identity (or user name) across Bluesky, Tangled,
+							Leaflet, Grain and other AT Protocol apps.
+						</p>
+					</div>
+				</Card>
 			</div>
-		</Window>
+
+			<Window>
+				<div className="h-full w-full bg-linear-to-b from-atmosphere-blue to-sand-brown" />
+			</Window>
+		</div>
 	);
 }
