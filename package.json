@@ -14,10 +14,10 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@atproto-labs/handle-resolver": "^0.3.6",
-		"@atproto/api": "^0.19.3",
-		"@atproto/oauth-client-browser": "^0.3.41",
-		"@atproto/oauth-types": "^0.6.3",
+		"@atcute/bluesky": "^3.3.3",
+		"@atcute/client": "^4.2.1",
+		"@atcute/identity-resolver": "^1.2.2",
+		"@atcute/oauth-browser-client": "^3.0.0",
 		"@base-ui/react": "^1.4.0",
 		"@hugeicons/core-free-icons": "^4.1.1",
 		"@hugeicons/react": "^1.1.6",
