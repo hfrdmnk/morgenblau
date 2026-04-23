@@ -2,11 +2,16 @@
 
 namespace App\Providers;
 
+use App\Listeners\ClearRefreshTokenOnRotate;
+use App\Listeners\PersistOAuthSession;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Validation\Rules\Password;
+use Revolution\Bluesky\Events\OAuthSessionRefreshing;
+use Revolution\Bluesky\Events\OAuthSessionUpdated;
+use Revolution\Bluesky\Socialite\OAuthConfig;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -24,6 +29,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configureBluesky();
     }
 
     /**
@@ -36,15 +42,26 @@ class AppServiceProvider extends ServiceProvider
         DB::prohibitDestructiveCommands(
             app()->isProduction(),
         );
+    }
 
-        Password::defaults(fn (): ?Password => app()->isProduction()
-            ? Password::min(12)
-                ->mixedCase()
-                ->letters()
-                ->numbers()
-                ->symbols()
-                ->uncompromised()
-            : null,
-        );
+    /**
+     * Wire Bluesky OAuth: event listeners for token rotation and a custom
+     * client-metadata document served at /oauth-client-metadata.json.
+     */
+    protected function configureBluesky(): void
+    {
+        Event::listen(OAuthSessionUpdated::class, PersistOAuthSession::class);
+        Event::listen(OAuthSessionRefreshing::class, ClearRefreshTokenOnRotate::class);
+
+        OAuthConfig::clientMetadataUsing(function (): array {
+            return collect(config('bluesky.oauth.metadata'))
+                ->merge([
+                    'client_id' => url('/oauth-client-metadata.json'),
+                    'jwks_uri' => url('/oauth-jwks.json'),
+                    'redirect_uris' => [url('/oauth/callback')],
+                ])
+                ->reject(fn ($v): bool => is_null($v))
+                ->toArray();
+        });
     }
 }

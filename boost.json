@@ -1,16 +1,13 @@
 {
     "agents": [
-        "amp",
-        "claude_code",
-        "codex",
-        "gemini"
+        "claude_code"
     ],
-    "guidelines": true,
     "mcp": true,
     "nightwatch_mcp": false,
     "sail": false,
     "skills": [
         "laravel-best-practices",
+        "socialite-development",
         "wayfinder-development",
         "pest-testing",
         "inertia-react-development",
