@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
 use Laravel\Socialite\Facades\Socialite;
-use Symfony\Component\HttpFoundation\RedirectResponse as SymfonyRedirectResponse;
+use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 class AuthenticatedSessionController extends Controller
 {
@@ -18,7 +18,7 @@ class AuthenticatedSessionController extends Controller
         return Inertia::render('auth/login');
     }
 
-    public function store(Request $request): SymfonyRedirectResponse
+    public function store(Request $request): HttpResponse
     {
         $validated = $request->validate([
             'handle' => ['nullable', 'string', 'max:253'],
@@ -27,10 +27,16 @@ class AuthenticatedSessionController extends Controller
         $hint = $validated['handle'] ?? null;
         $request->session()->put('atproto.hint', $hint);
 
-        return Socialite::driver('bluesky')
+        // Inertia submits the login form via XHR. Returning a Symfony redirect
+        // would make the XHR follow the 302 cross-origin to the OAuth provider
+        // and fail CORS. Inertia::location triggers a full browser navigation
+        // instead via the X-Inertia-Location header.
+        $redirect = Socialite::driver('bluesky')
             ->setScopes(explode(' ', (string) config('bluesky.oauth.metadata.scope')))
             ->hint($hint)
             ->redirect();
+
+        return Inertia::location($redirect->getTargetUrl());
     }
 
     public function destroy(Request $request): RedirectResponse
