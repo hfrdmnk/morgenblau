@@ -46,7 +46,7 @@ return [
     |
     */
     'commands' => [
-        'About' => 'php artisan solo:about',
+        // 'About' => 'php artisan solo:about',
         // Port 8000 is required: the revolution/laravel-bluesky package hardcodes
         // http://127.0.0.1:8000/ as the OAuth loopback redirect URI in dev.
         'Serve' => 'php artisan serve --port=8000',
@@ -54,11 +54,11 @@ return [
         // For enhanced log viewing with vendor frame collapsing, see soloterm/vtail
         'Logs' => 'tail -f -n 100 '.storage_path('logs/laravel.log'),
         'Make' => new MakeCommand,
+        'Queue' => Command::from('php artisan queue:work'),
 
         // Lazy commands do not automatically start when Solo starts.
         'Dumps' => Command::from('php artisan solo:dumps')->lazy(),
         'Pint' => Command::from('./vendor/bin/pint --ansi')->lazy(),
-        'Queue' => Command::from('php artisan queue:work')->lazy(),
         'Tests' => TestCommand::artisan(),
     ],
 
