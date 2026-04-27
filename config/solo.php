@@ -47,9 +47,9 @@ return [
     */
     'commands' => [
         // 'About' => 'php artisan solo:about',
-        // Port 8000 is required: the revolution/laravel-bluesky package hardcodes
-        // http://127.0.0.1:8000/ as the OAuth loopback redirect URI in dev.
-        'Serve' => 'php artisan serve --port=8000',
+        // --no-reload is required for PHP_CLI_SERVER_WORKERS to take effect
+        'Serve' => 'php artisan serve --port=8000 --no-reload',
+        'Tunnel' => 'cloudflared tunnel run',
         'Vite' => 'bun run dev',
         // For enhanced log viewing with vendor frame collapsing, see soloterm/vtail
         'Logs' => 'tail -f -n 100 '.storage_path('logs/laravel.log'),
