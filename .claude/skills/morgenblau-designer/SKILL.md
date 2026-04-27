@@ -57,7 +57,14 @@ Surfaces lighten as they come forward. **Controls do the opposite: they step for
 
 **Exception — level 0 (base) inverts the inversion.** On the darkest surface, there is no darker step available in light mode (and no lighter step in dark mode), so the rule flips: on L0, controls go **lighter** than the surface, not darker. On L0 the input **bg** matches the L2 bg, but the **border goes a step darker than L2's** (gray-200 in light mode) so the edge still reads against the base; dark mode reuses the L2 border (gray-600) unchanged because it already stands out against gray-950.
 
-**Focus state — a 1 px outline on the perceived element.** Morgenblau draws its own outline so the indicator lands on the element the user actually perceives — not always the natively focusable one. Pattern: `outline-none` base, then `focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring` on controls, and `focus-within:…` on compound containers (e.g. `InputGroup`, where the native input sits inside a wrapper with an addon — the outline belongs on the wrapper, not the inner input). `outline-solid` is explicit — Tailwind v4 has no bare `outline` utility, so the style has to be set by name. The result looks native: thin, solid, 2 px offset, atmosphere-blue. No box-shadow ring, no border-color swap, no halo. Error/invalid states (`aria-invalid`) keep their own softer ring so focus and validation stay distinguishable.
+**Focus state — different rule for buttons and inputs.** Morgenblau draws its own focus indicator on the element the user actually perceives — not always the natively focusable one. The shape of the indicator depends on the control:
+
+- **Buttons and clickable controls — 1 px outline, offset 2 px, atmosphere-blue.** Pattern: `outline-none` base, then `focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring`. `outline-solid` is explicit — Tailwind v4 has no bare `outline` utility. The result looks native: thin, solid, sits *outside* the control. Use this on `<Button>`, links, icon buttons, anything you click.
+- **Inputs and compound input wrappers — border color swap, no outline, no ring.** Pattern: `border-input` base, then `focus-visible:border-ring` on a bare input, or `has-[[data-slot=input-group-control]:focus-visible]:border-ring` on a compound wrapper. The border itself becomes atmosphere-blue. No outer halo, no box-shadow, no offset outline — the field's edge already exists, so the focus indicator just colors it. Stays inside the field's footprint and reads as a single calm shape.
+
+Why split: an outline on a control with a visible border looks like two parallel rings (border + outline), which feels noisy. Buttons (typically borderless or border-transparent) need a separate shape; inputs already have one.
+
+Error / invalid states (`aria-invalid`) swap the border to `border-destructive` on inputs, and the existing destructive ring style on buttons — so focus and validation stay distinguishable.
 
 **Two button variants only: primary (soft blue) and secondary (gray).** There is no solid / dark / black variant. When a button needs to feel more critical, the answer is **copy and placement**, not a louder color. A confirmation word, a more prominent position, a Caveat hint — but never a third button variant.
 
@@ -98,31 +105,32 @@ Morgenblau's palette is almost entirely monochrome, with two exceptions: one **b
 
 Scale is **calm, not dramatic**. h1 is not 40 px. Hierarchy is built more with weight than size.
 
-**Three weights, ever.** No bold, no semibold. Hierarchy is carried by the delta between weights plus size plus tracking, not by heavy strokes.
+**Four weights, ever.** No bold (700+). Hierarchy is carried by the delta between weights plus size plus tracking, not by heavy strokes.
 
-| Weight        | Role                                       |
-| ------------- | ------------------------------------------ |
-| 300 — light   | paragraphs, body text, hints, descriptions |
-| 400 — regular | labels, metadata, UI chrome text           |
-| 500 — medium  | headings (h1–h6), card titles              |
+| Weight          | Role                                                                                         |
+| --------------- | -------------------------------------------------------------------------------------------- |
+| 300 — light     | secondary / muted text — hints, captions, timestamps, fine print                             |
+| 400 — regular   | body, paragraphs, labels, metadata, UI chrome text — the default voice                       |
+| 500 — medium    | small / mid-size headings (h3–h6), card titles, long-form titles                             |
+| 600 — semibold  | page-level headings (h1 / h2) on auth and entry surfaces — used sparingly to anchor a screen |
 
-These defaults are wired into base styles (`h1–h6 → font-medium`, `p → font-light`), so plain tags pick them up automatically. Only override when the semantic tag doesn't match the role (e.g. a `<span>` acting as a heading).
+**These defaults are wired into base styles in `app.css` and apply automatically by tag.** Plain `<h1>`, `<h2>`, … pick up size + weight + tracking without any className. Plain `<p>` picks up `font-normal`. Override only when the semantic tag doesn't match the role (e.g. a `<span>` acting as a heading) or when stepping a paragraph down to light for muted/secondary copy. **Don't repeat the defaults in className** — if you find yourself writing `<h1 className="text-2xl font-semibold tracking-tight">`, delete those classes.
 
-| Token       | Size      | Weight | Tracking           | Use                         |
-| ----------- | --------- | ------ | ------------------ | --------------------------- |
-| `text-xs`   | 0.75 rem  | 300    | normal             | tiny meta (timestamps)      |
-| `text-sm`   | 0.875 rem | 300    | normal             | secondary text, hints       |
-| `text-sm`   | 0.875 rem | 400    | normal             | labels                      |
-| `text-base` | 1 rem     | 300    | normal             | body                        |
-| `text-lg`   | 1.125 rem | 500    | `tracking-tight`   | small headings, card titles |
-| `text-xl`   | 1.25 rem  | 500    | `tracking-tight`   | section headings (h3)       |
-| `text-2xl`  | 1.5 rem   | 500    | `tracking-tighter` | page headings (h1 / h2)     |
+| Token       | Size      | Weight | Tracking         | Use                                       |
+| ----------- | --------- | ------ | ---------------- | ----------------------------------------- |
+| `text-xs`   | 0.75 rem  | 300    | normal           | tiny meta (timestamps, fine print)        |
+| `text-sm`   | 0.875 rem | 300    | normal           | secondary text, hints                     |
+| `text-sm`   | 0.875 rem | 400    | normal           | labels, inline UI text                    |
+| `text-base` | 1 rem     | 400    | normal           | body                                      |
+| `text-lg`   | 1.125 rem | 500    | `tracking-tight` | small headings, card titles               |
+| `text-xl`   | 1.25 rem  | 500    | `tracking-tight` | section headings (h3)                     |
+| `text-2xl`  | 1.5 rem   | 600    | `tracking-tight` | page headings (h1 / h2) — `font-semibold` |
 
 **Rules:**
 
-- h1 caps at 1.5 rem (about 1.5× body). Whispered, not shouted.
-- **Tracking tightens as size grows** — body is normal, mid-size headings are `tracking-tight` (-0.025em), large headings are `tracking-tighter` (-0.05em). Tight tracking at scale is a craft signature; it reads as intentional.
-- In long-form text (article reader), titles and paragraphs differ mainly by **weight**, not size. Titles go medium (500), paragraphs stay light (300) — the delta reads as hierarchy without size jumps.
+- h1 caps at 1.5 rem (about 1.5× body). Whispered, not shouted — but at this size, semibold (600) is what carries the page; medium would feel too soft against the calm scale.
+- **Headings always use `tracking-tight` (-0.025em)** — body stays at normal tracking. Tightening once, gently, is a craft signature; tightening more (`tracking-tighter`) reads as anxious, not calm. Don't escalate.
+- In long-form text (article reader), titles and paragraphs differ mainly by **weight**, not size. Titles go medium (500), paragraphs stay regular (400) — the delta reads as hierarchy without size jumps. Long-form titles stay at medium; only page headings step up to semibold. Drop a paragraph to light (300) only when it is genuinely *secondary* (caption under a figure, fine print under a form).
 - Caveat renders visually smaller than Geist at the same nominal size — bump it up one step when placed beside Geist body. Caveat's usable weights are 400–700; let it pick the nearest when used inside `<p>` (it reads as regular either way).
 - **Caveat is always secondary color.** Never primary. Never atmosphere-blue. Never a category color.
 

@@ -166,14 +166,73 @@
         @apply font-sans;
     }
     h1,
-    h2,
-    h3,
+    h2 {
+        @apply text-2xl font-semibold tracking-tight;
+    }
+    h3 {
+        @apply text-xl font-medium tracking-tight;
+    }
     h4,
     h5,
     h6 {
-        @apply font-medium;
+        @apply text-lg font-medium tracking-tight;
     }
     p {
-        @apply font-light;
+        @apply font-normal;
+    }
+    ::selection {
+        background-color: var(--color-atmosphere-blue);
+        color: oklch(
+            from var(--color-atmosphere-blue) calc(l * 2) calc(c * 0.25) h
+        );
+    }
+}
+
+@utility bg-sunrise {
+    background: linear-gradient(
+        to bottom,
+        var(--color-atmosphere-blue) 0%,
+        var(--color-atmosphere-blue) 25%,
+        var(--color-sand-brown) 100%
+    );
+}
+
+::view-transition-group(window),
+::view-transition-old(window),
+::view-transition-new(window),
+::view-transition-group(brand-logo),
+::view-transition-old(brand-logo),
+::view-transition-new(brand-logo) {
+    animation-duration: 420ms;
+    animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+::view-transition-new(login-form) {
+    animation: morgenblau-fade-in 200ms ease-out 220ms both;
+}
+::view-transition-old(login-form) {
+    animation: morgenblau-fade-out 140ms ease-out both;
+}
+@keyframes morgenblau-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+@keyframes morgenblau-fade-out {
+    to {
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    ::view-transition-group(*),
+    ::view-transition-old(*),
+    ::view-transition-new(*) {
+        animation: none !important;
     }
 }
