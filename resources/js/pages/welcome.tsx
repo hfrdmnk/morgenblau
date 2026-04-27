@@ -1,4 +1,4 @@
-import { Head, router, usePage } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { useEffect } from 'react';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,6 @@ export default function Welcome() {
 
     return (
         <>
-            <Head title="Morgenblau" />
             <div className="min-h-svh bg-background p-6">
                 <Window
                     variant="sunrise"
