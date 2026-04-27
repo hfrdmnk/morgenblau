@@ -1,5 +1,12 @@
+import {
+    BookOpen01Icon,
+    Folder01Icon,
+    LayoutGridIcon,
+    Menu01Icon,
+    Search01Icon,
+} from '@hugeicons/core-free-icons';
+import { HugeiconsIcon } from '@hugeicons/react';
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, Folder, LayoutGrid, Menu, Search } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { Breadcrumbs } from '@/components/breadcrumbs';
@@ -42,7 +49,7 @@ const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
         href: dashboard(),
-        icon: LayoutGrid,
+        icon: LayoutGridIcon,
     },
 ];
 
@@ -50,12 +57,12 @@ const rightNavItems: NavItem[] = [
     {
         title: 'Repository',
         href: 'https://github.com/laravel/react-starter-kit',
-        icon: Folder,
+        icon: Folder01Icon,
     },
     {
         title: 'Documentation',
         href: 'https://laravel.com/docs/starter-kits#react',
-        icon: BookOpen,
+        icon: BookOpen01Icon,
     },
 ];
 
@@ -80,14 +87,19 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                     {/* Mobile Menu */}
                     <div className="lg:hidden">
                         <Sheet>
-                            <SheetTrigger asChild>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="mr-2 h-[34px] w-[34px]"
-                                >
-                                    <Menu className="h-5 w-5" />
-                                </Button>
+                            <SheetTrigger
+                                render={
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="mr-2 h-[34px] w-[34px]"
+                                    />
+                                }
+                            >
+                                <HugeiconsIcon
+                                    icon={Menu01Icon}
+                                    className="h-5 w-5"
+                                />
                             </SheetTrigger>
                             <SheetContent
                                 side="left"
@@ -109,7 +121,10 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                                                     className="flex items-center space-x-2 font-medium"
                                                 >
                                                     {item.icon && (
-                                                        <item.icon className="h-5 w-5" />
+                                                        <HugeiconsIcon
+                                                            icon={item.icon}
+                                                            className="h-5 w-5"
+                                                        />
                                                     )}
                                                     <span>{item.title}</span>
                                                 </Link>
@@ -126,7 +141,10 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                                                     className="flex items-center space-x-2 font-medium"
                                                 >
                                                     {item.icon && (
-                                                        <item.icon className="h-5 w-5" />
+                                                        <HugeiconsIcon
+                                                            icon={item.icon}
+                                                            className="h-5 w-5"
+                                                        />
                                                     )}
                                                     <span>{item.title}</span>
                                                 </a>
@@ -167,7 +185,10 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                                             )}
                                         >
                                             {item.icon && (
-                                                <item.icon className="mr-2 h-4 w-4" />
+                                                <HugeiconsIcon
+                                                    icon={item.icon}
+                                                    className="mr-2 h-4 w-4"
+                                                />
                                             )}
                                             {item.title}
                                         </Link>
@@ -187,7 +208,10 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                                 size="icon"
                                 className="group h-9 w-9 cursor-pointer"
                             >
-                                <Search className="!size-5 opacity-80 group-hover:opacity-100" />
+                                <HugeiconsIcon
+                                    icon={Search01Icon}
+                                    className="!size-5 opacity-80 group-hover:opacity-100"
+                                />
                             </Button>
                             <div className="ml-1 hidden gap-1 lg:flex">
                                 {rightNavItems.map((item) => (
@@ -203,7 +227,10 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                                                     {item.title}
                                                 </span>
                                                 {item.icon && (
-                                                    <item.icon className="size-5 opacity-80 group-hover:opacity-100" />
+                                                    <HugeiconsIcon
+                                                        icon={item.icon}
+                                                        className="size-5 opacity-80 group-hover:opacity-100"
+                                                    />
                                                 )}
                                             </a>
                                         </TooltipTrigger>
@@ -215,17 +242,19 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                             </div>
                         </div>
                         <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button
-                                    variant="ghost"
-                                    className="size-10 rounded-full p-1"
-                                >
-                                    <Avatar className="size-8 overflow-hidden rounded-full">
-                                        <AvatarFallback className="rounded-lg bg-neutral-200 text-black dark:bg-neutral-700 dark:text-white">
-                                            {initials}
-                                        </AvatarFallback>
-                                    </Avatar>
-                                </Button>
+                            <DropdownMenuTrigger
+                                render={
+                                    <Button
+                                        variant="ghost"
+                                        className="size-10 rounded-full p-1"
+                                    />
+                                }
+                            >
+                                <Avatar className="size-8 overflow-hidden rounded-full">
+                                    <AvatarFallback className="rounded-lg bg-neutral-200 text-black dark:bg-neutral-700 dark:text-white">
+                                        {initials}
+                                    </AvatarFallback>
+                                </Avatar>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent className="w-56" align="end">
                                 {auth.user && (

@@ -1,6 +1,8 @@
-import { Link, router } from '@inertiajs/react';
-import { LogOut } from 'lucide-react';
+import { Logout03Icon } from '@hugeicons/core-free-icons';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { router } from '@inertiajs/react';
 import {
+    DropdownMenuGroup,
     DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuSeparator,
@@ -20,28 +22,25 @@ export function UserMenuContent({ handle, did }: Props) {
     const handleLogout = () => {
         cleanup();
         router.flushAll();
+        router.post(logout().url);
     };
 
     return (
-        <>
+        <DropdownMenuGroup>
             <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                     <UserInfo handle={handle} did={did} showDid />
                 </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-                <Link
-                    className="block w-full cursor-pointer"
-                    href={logout()}
-                    as="button"
-                    onClick={handleLogout}
-                    data-test="logout-button"
-                >
-                    <LogOut className="mr-2" />
-                    Log out
-                </Link>
+            <DropdownMenuItem
+                className="cursor-pointer"
+                data-test="logout-button"
+                onClick={handleLogout}
+            >
+                <HugeiconsIcon icon={Logout03Icon} />
+                Log out
             </DropdownMenuItem>
-        </>
+        </DropdownMenuGroup>
     );
 }

@@ -1,5 +1,10 @@
-import type { LucideIcon } from 'lucide-react';
-import { Monitor, Moon, Sun } from 'lucide-react';
+import {
+    ComputerIcon,
+    Moon02Icon,
+    Sun03Icon,
+} from '@hugeicons/core-free-icons';
+import { HugeiconsIcon } from '@hugeicons/react';
+import type { IconSvgElement } from '@hugeicons/react';
 import type { HTMLAttributes } from 'react';
 import type { Appearance } from '@/hooks/use-appearance';
 import { useAppearance } from '@/hooks/use-appearance';
@@ -11,10 +16,10 @@ export default function AppearanceToggleTab({
 }: HTMLAttributes<HTMLDivElement>) {
     const { appearance, updateAppearance } = useAppearance();
 
-    const tabs: { value: Appearance; icon: LucideIcon; label: string }[] = [
-        { value: 'light', icon: Sun, label: 'Light' },
-        { value: 'dark', icon: Moon, label: 'Dark' },
-        { value: 'system', icon: Monitor, label: 'System' },
+    const tabs: { value: Appearance; icon: IconSvgElement; label: string }[] = [
+        { value: 'light', icon: Sun03Icon, label: 'Light' },
+        { value: 'dark', icon: Moon02Icon, label: 'Dark' },
+        { value: 'system', icon: ComputerIcon, label: 'System' },
     ];
 
     return (
@@ -25,7 +30,7 @@ export default function AppearanceToggleTab({
             )}
             {...props}
         >
-            {tabs.map(({ value, icon: Icon, label }) => (
+            {tabs.map(({ value, icon, label }) => (
                 <button
                     key={value}
                     onClick={() => updateAppearance(value)}
@@ -36,7 +41,7 @@ export default function AppearanceToggleTab({
                             : 'text-neutral-500 hover:bg-neutral-200/60 hover:text-black dark:text-neutral-400 dark:hover:bg-neutral-700/60',
                     )}
                 >
-                    <Icon className="-ml-1 h-4 w-4" />
+                    <HugeiconsIcon icon={icon} className="-ml-1 h-4 w-4" />
                     <span className="ml-1.5 text-sm">{label}</span>
                 </button>
             ))}

@@ -1,4 +1,5 @@
-import { AlertCircleIcon } from 'lucide-react';
+import { AlertCircleIcon } from '@hugeicons/core-free-icons';
+import { HugeiconsIcon } from '@hugeicons/react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export default function AlertError({
@@ -10,7 +11,7 @@ export default function AlertError({
 }) {
     return (
         <Alert variant="destructive">
-            <AlertCircleIcon />
+            <HugeiconsIcon icon={AlertCircleIcon} />
             <AlertTitle>{title || 'Something went wrong.'}</AlertTitle>
             <AlertDescription>
                 <ul className="list-inside list-disc text-sm">

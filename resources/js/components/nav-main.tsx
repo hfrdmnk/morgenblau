@@ -1,3 +1,4 @@
+import { HugeiconsIcon } from '@hugeicons/react';
 import { Link } from '@inertiajs/react';
 import {
     SidebarGroup,
@@ -19,14 +20,12 @@ export function NavMain({ items = [] }: { items: NavItem[] }) {
                 {items.map((item) => (
                     <SidebarMenuItem key={item.title}>
                         <SidebarMenuButton
-                            asChild
+                            render={<Link href={item.href} prefetch />}
                             isActive={isCurrentUrl(item.href)}
                             tooltip={{ children: item.title }}
                         >
-                            <Link href={item.href} prefetch>
-                                {item.icon && <item.icon />}
-                                <span>{item.title}</span>
-                            </Link>
+                            {item.icon && <HugeiconsIcon icon={item.icon} />}
+                            <span>{item.title}</span>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                 ))}
