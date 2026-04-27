@@ -1,7 +1,11 @@
 <?php
 
 use App\Models\User;
+use GuzzleHttp\Psr7\Response as Psr7Response;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response as HttpResponse;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Revolution\Bluesky\Session\OAuthSession;
@@ -27,6 +31,40 @@ test('POST /login redirects to Bluesky with handle hint', function () {
         ->assertRedirect('https://bsky.social/oauth/authorize');
 
     expect(session('atproto.hint'))->toBe('alice.bsky.social');
+});
+
+test('POST /login surfaces unreachable PDS as a handle validation error', function () {
+    $provider = Mockery::mock(BlueskyProvider::class);
+    $provider->shouldReceive('setScopes')->andReturnSelf();
+    $provider->shouldReceive('hint')->andReturnSelf();
+    $provider->shouldReceive('redirect')->andThrow(
+        new ConnectionException('cURL error 6: Could not resolve host')
+    );
+
+    Socialite::shouldReceive('driver')->with('bluesky')->andReturn($provider);
+
+    $this->from(route('login'))
+        ->post(route('login'), ['handle' => 'test.com'])
+        ->assertRedirect(route('login'))
+        ->assertSessionHasErrors(['handle']);
+});
+
+test('POST /login surfaces auth-server rejection as a handle validation error', function () {
+    $provider = Mockery::mock(BlueskyProvider::class);
+    $provider->shouldReceive('setScopes')->andReturnSelf();
+    $provider->shouldReceive('hint')->andReturnSelf();
+    $provider->shouldReceive('redirect')->andThrow(
+        new RequestException(new HttpResponse(
+            new Psr7Response(400, [], '{"error":"invalid_request","error_description":"Invalid login_hint \"a\""}')
+        ))
+    );
+
+    Socialite::shouldReceive('driver')->with('bluesky')->andReturn($provider);
+
+    $this->from(route('login'))
+        ->post(route('login'), ['handle' => 'a'])
+        ->assertRedirect(route('login'))
+        ->assertSessionHasErrors(['handle']);
 });
 
 test('OAuth callback creates user, stashes handle, and logs in', function () {
