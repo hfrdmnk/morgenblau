@@ -12,10 +12,7 @@ export default function AuthLoginLayout({ children }: { children: ReactNode }) {
                 variant="sunrise"
                 className="flex flex-1 items-center justify-center text-white"
             >
-                <AppLogoIcon
-                    className="size-16"
-                    style={{ viewTransitionName: 'brand-logo' }}
-                />
+                <AppLogoIcon className="size-16" />
             </Window>
         </div>
     );

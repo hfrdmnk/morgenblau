@@ -22,7 +22,6 @@ export function Window({
     return (
         <div
             data-slot="window"
-            style={{ viewTransitionName: 'window' }}
             className={cn(
                 'overflow-hidden rounded-tl-[4rem] rounded-tr-[4rem] rounded-br-[0.5rem] rounded-bl-[0.5rem]',
                 VARIANT_STYLES[variant],

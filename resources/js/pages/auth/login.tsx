@@ -17,7 +17,7 @@ export default function Login() {
     const [pending, setPending] = useState(false);
 
     return (
-        <div style={{ viewTransitionName: 'login-form' }} className="space-y-8">
+        <div className="space-y-8 motion-safe:animate-in motion-safe:duration-200 motion-safe:fade-in">
             <Head title="Sign in" />
 
             <header className="space-y-1">

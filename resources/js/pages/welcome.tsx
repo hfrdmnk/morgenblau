@@ -1,10 +1,9 @@
+import { Head, router, usePage } from '@inertiajs/react';
+import { useEffect } from 'react';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { Button } from '@/components/ui/button';
 import { Window } from '@/components/window';
-import { visitWithTransition } from '@/lib/view-transition';
 import { dashboard, login } from '@/routes';
-import { Head, usePage } from '@inertiajs/react';
-import { useEffect } from 'react';
 
 export default function Welcome() {
     const { auth } = usePage().props;
@@ -26,7 +25,7 @@ export default function Welcome() {
             }
 
             event.preventDefault();
-            visitWithTransition(auth.user ? dashboard().url : login().url);
+            router.visit(auth.user ? dashboard().url : login().url);
         };
         window.addEventListener('keydown', handler);
 
@@ -42,10 +41,7 @@ export default function Welcome() {
                     className="flex min-h-[calc(100svh-3rem)] items-center justify-center"
                 >
                     <div className="flex flex-col items-center gap-8 px-6 text-center text-white">
-                        <AppLogoIcon
-                            className="size-16"
-                            style={{ viewTransitionName: 'brand-logo' }}
-                        />
+                        <AppLogoIcon className="size-16" />
                         <div className="space-y-3">
                             <h1>Morgenblau</h1>
                             <p className="max-w-xl text-base text-balance">
@@ -57,7 +53,7 @@ export default function Welcome() {
                         <Button
                             variant="ghost-on-gradient"
                             className="text-base"
-                            onClick={() => visitWithTransition(target)}
+                            onClick={() => router.visit(target)}
                         >
                             Begin
                         </Button>
