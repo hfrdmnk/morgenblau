@@ -1,10 +1,10 @@
-import { Head, usePage } from '@inertiajs/react';
-import { useEffect } from 'react';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { Button } from '@/components/ui/button';
 import { Window } from '@/components/window';
 import { visitWithTransition } from '@/lib/view-transition';
 import { dashboard, login } from '@/routes';
+import { Head, usePage } from '@inertiajs/react';
+import { useEffect } from 'react';
 
 export default function Welcome() {
     const { auth } = usePage().props;
@@ -48,12 +48,10 @@ export default function Welcome() {
                         />
                         <div className="space-y-3">
                             <h1>Morgenblau</h1>
-                            <p className="max-w-md text-base text-balance">
-                                A morning edition of the open web.
-                            </p>
-                            <p className="max-w-md text-sm font-light text-pretty text-white/80">
-                                Pick your sources. Read once a day. Close the
-                                tab.
+                            <p className="max-w-xl text-base text-balance">
+                                A reading room and a quiet square on the open
+                                web. Read what you follow, post what you find,
+                                see what others are reading.
                             </p>
                         </div>
                         <Button
@@ -61,7 +59,7 @@ export default function Welcome() {
                             className="text-base"
                             onClick={() => visitWithTransition(target)}
                         >
-                            Enter
+                            Begin
                         </Button>
                     </div>
                 </Window>
