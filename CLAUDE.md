@@ -13,7 +13,6 @@ Laravel 13 (PHP 8.4) + Inertia 3 + React 19 + TypeScript + Tailwind v4. Auth via
 ## Tooling
 
 - **Package manager: bun only.** Never use npm, yarn, or pnpm for dependency changes. All install/run/build commands must use `bun`. PHP deps via Composer.
-- **Never read or search inside `node_modules/` or `vendor/`.** Treat as off-limits.
 - **Never use inline eval** (`node -e`, `bun -e`, or equivalent). Don't create temporary files to work around this. To investigate JS package APIs, use [npmx.dev](https://npmx.dev) instead.
 - **Wayfinder over hardcoded URLs.** Import route helpers from `@/routes/*` and action helpers from `@/actions/*`. Re-run `php artisan wayfinder:generate` after route or controller changes.
 - **Inertia + React pages live at `resources/js/pages/`.** Kebab-case filenames, default export a component.
@@ -23,6 +22,8 @@ Laravel 13 (PHP 8.4) + Inertia 3 + React 19 + TypeScript + Tailwind v4. Auth via
 - Use **Red/Green TDD** as the standard development paradigm.
 - **Pest** for backend tests (`tests/Feature`, `tests/Unit`). Run with `php artisan test --compact` — add `--filter=<name>` to scope.
 - Prefer feature tests over unit tests unless the logic is genuinely pure.
+- **Extract shared setup into traits** (or Pest `beforeEach`/helpers) instead of repeating arrange code across individual test cases. Reach for a trait the second time you'd copy-paste setup.
+- **Test like an experienced senior dev**: focus on meaningful behavior and likely failure modes, not exhaustive edge-case enumeration. Each test should earn its place.
 - No frontend test runner is installed yet; add Vitest when the first interaction-worthy UI lands.
 
 ## Verification
@@ -48,7 +49,3 @@ Client metadata is served at `/oauth-client-metadata.json`, JWKS at `/oauth-jwks
 - [ATProto OAuth](https://atproto.com/specs/oauth), [ATProto permissions](https://atproto.com/specs/permission)
 - [revolution/laravel-bluesky docs](https://github.com/invokable/laravel-bluesky/blob/main/docs/socialite.md)
 - Skyreader lexicons — `lexicons/app/skyreader/`
-
-## Laravel Boost note
-
-`laravel/boost` is installed and its `boost:update` hook runs on every `composer install/require/update`. That hook rewrites parts of this file. If it clobbers important content, recover from git. Long-term options: uninstall Boost, or merge Boost's guideline block into this file intentionally.
