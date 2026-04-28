@@ -26,6 +26,11 @@ Laravel 13 (PHP 8.4) + Inertia 3 + React 19 + TypeScript + Tailwind v4. Auth via
 - **Test like an experienced senior dev**: focus on meaningful behavior and likely failure modes, not exhaustive edge-case enumeration. Each test should earn its place.
 - No frontend test runner is installed yet; add Vitest when the first interaction-worthy UI lands.
 
+## Skills
+
+- For any frontend/UI task (components, styling, layout, copy, polish), invoke `morgenblau-designer`.
+- For ATProto protocol work, invoke the matching skill: `atproto-oauth`, `atproto-lexicon`, `atproto-publish-lexicon`, `atproto-identity-resolution`, `atproto-repository`, `atproto-cid`, `atproto-attestation`.
+
 ## Verification
 
 After each batch of work, run:
