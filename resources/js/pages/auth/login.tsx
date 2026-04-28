@@ -21,7 +21,7 @@ export default function Login() {
             <Head title="Sign in" />
 
             <header className="space-y-1">
-                <h1>Read. Find. Share.</h1>
+                <h1>Find. Read. Share.</h1>
                 <p className="text-sm text-balance text-muted-foreground">
                     A calmer way to be on the open web. Powered by RSS and the
                     AT Protocol.
