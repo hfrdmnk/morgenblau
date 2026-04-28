@@ -2,7 +2,11 @@ import type { ReactNode } from 'react';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { Window } from '@/components/window';
 
-export default function AuthLoginLayout({ children }: { children: ReactNode }) {
+export default function AuthGoldenLayout({
+    children,
+}: {
+    children: ReactNode;
+}) {
     return (
         <div className="flex min-h-svh gap-6 bg-background p-6">
             <section className="flex flex-[1.618] items-center">
