@@ -15,7 +15,14 @@ class PersistOAuthSession
             return;
         }
 
-        User::where('did', $did)->update([
+        $user = User::find($did);
+
+        if ($user === null) {
+            return;
+        }
+
+        // Route through the model so the 'refresh_token' encrypted cast applies.
+        $user->update([
             'refresh_token' => $event->session->refresh(),
             'iss' => $event->session->issuer(),
         ]);

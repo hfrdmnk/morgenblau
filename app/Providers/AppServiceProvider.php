@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use App\Listeners\ClearRefreshTokenOnRotate;
 use App\Listeners\PersistOAuthSession;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
@@ -11,32 +10,17 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
-use Revolution\Bluesky\Events\OAuthSessionRefreshing;
 use Revolution\Bluesky\Events\OAuthSessionUpdated;
 use Revolution\Bluesky\Socialite\OAuthConfig;
 
 class AppServiceProvider extends ServiceProvider
 {
-    /**
-     * Register any application services.
-     */
-    public function register(): void
-    {
-        //
-    }
-
-    /**
-     * Bootstrap any application services.
-     */
     public function boot(): void
     {
         $this->configureDefaults();
         $this->configureBluesky();
     }
 
-    /**
-     * Configure default behaviors for production-ready applications.
-     */
     protected function configureDefaults(): void
     {
         Date::use(CarbonImmutable::class);
@@ -57,7 +41,6 @@ class AppServiceProvider extends ServiceProvider
     protected function configureBluesky(): void
     {
         Event::listen(OAuthSessionUpdated::class, PersistOAuthSession::class);
-        Event::listen(OAuthSessionRefreshing::class, ClearRefreshTokenOnRotate::class);
 
         OAuthConfig::clientMetadataUsing(function (): array {
             return collect(config('bluesky.oauth.metadata'))
