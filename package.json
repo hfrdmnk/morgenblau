@@ -12,6 +12,7 @@
         "format:dirty": "sh scripts/format-dirty.sh",
         "lint": "eslint . --fix",
         "lint:check": "eslint .",
+        "sync:tangled": "sh scripts/sync-tangled.sh",
         "types": "tsc --noEmit"
     },
     "packageManager": "bun@1.3.11",
