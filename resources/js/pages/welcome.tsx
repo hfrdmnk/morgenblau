@@ -3,11 +3,11 @@ import { useEffect } from 'react';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { Button } from '@/components/ui/button';
 import { Window } from '@/components/window';
-import { dashboard, login } from '@/routes';
+import { consume, login } from '@/routes';
 
 export default function Welcome() {
     const { auth } = usePage().props;
-    const target = auth.user ? dashboard().url : login().url;
+    const target = auth.user ? consume().url : login().url;
 
     useEffect(() => {
         const handler = (event: KeyboardEvent) => {
@@ -25,7 +25,7 @@ export default function Welcome() {
             }
 
             event.preventDefault();
-            router.visit(auth.user ? dashboard().url : login().url);
+            router.visit(auth.user ? consume().url : login().url);
         };
         window.addEventListener('keydown', handler);
 

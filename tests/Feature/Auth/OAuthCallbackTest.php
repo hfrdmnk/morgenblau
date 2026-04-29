@@ -18,7 +18,7 @@ test('callback creates user, stashes handle, and logs in', function () {
 
     $this->withSession(['atproto.hint' => 'alice.bsky.social'])
         ->get(route('bluesky.oauth.redirect'))
-        ->assertRedirect(route('dashboard'));
+        ->assertRedirect(route('consume'));
 
     $user = User::find('did:plc:testuser1234567890abcd');
 
@@ -46,7 +46,7 @@ test('callback updates the existing row when the same DID re-auths', function ()
     $this->fakeBlueskyCallback($session);
 
     $this->get(route('bluesky.oauth.redirect'))
-        ->assertRedirect(route('dashboard'));
+        ->assertRedirect(route('consume'));
 
     $existing->refresh();
     expect($existing->refresh_token)->toBe('new-refresh-token')
