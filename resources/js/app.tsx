@@ -6,6 +6,9 @@ import AppLayout from '@/layouts/app-layout';
 import AuthGoldenLayout from '@/layouts/auth/auth-golden-layout';
 import AuthLayout from '@/layouts/auth-layout';
 import SettingsLayout from '@/layouts/settings/layout';
+import WindowLayout from '@/layouts/window-layout';
+
+const WINDOW_PAGES = new Set(['discover', 'consume', 'create']);
 
 const appName = import.meta.env.VITE_APP_NAME || 'Morgenblau';
 
@@ -21,6 +24,8 @@ createInertiaApp({
                 return AuthLayout;
             case name.startsWith('settings/'):
                 return [AppLayout, SettingsLayout];
+            case WINDOW_PAGES.has(name):
+                return WindowLayout;
             default:
                 return AppLayout;
         }

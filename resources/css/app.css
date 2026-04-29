@@ -45,6 +45,9 @@
     --color-sand-brown: oklch(0.9579 0.0301 69.05);
 
     --color-brand: var(--color-atmosphere-blue);
+
+    --text-2xs: 0.625rem;
+    --text-2xs--line-height: calc(0.875 / 0.625);
 }
 
 @theme inline {

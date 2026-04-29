@@ -17,7 +17,7 @@ test('authed pages share the user model and the session-stashed handle', functio
 
     $this->actingAs($user)
         ->withSession(['atproto.handle' => 'alice.bsky.social'])
-        ->get(route('dashboard'))
+        ->get(route('consume'))
         ->assertInertia(fn ($page) => $page
             ->where('auth.user.did', $user->did)
             ->where('auth.handle', 'alice.bsky.social')

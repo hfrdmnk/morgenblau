@@ -37,7 +37,9 @@ Route::get('oauth/callback', OAuthCallbackController::class)
     ->name('bluesky.oauth.redirect');
 
 Route::middleware(['auth'])->group(function () {
-    Route::inertia('dashboard', 'dashboard')->name('dashboard');
+    Route::inertia('discover', 'discover')->name('discover');
+    Route::inertia('consume', 'consume')->name('consume');
+    Route::inertia('create', 'create')->name('create');
 });
 
 require __DIR__.'/settings.php';
