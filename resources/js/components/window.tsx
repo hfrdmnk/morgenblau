@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { LevelContext } from '@/lib/level-context';
 import { cn } from '@/lib/utils';
 
 type WindowVariant = 'plain' | 'sunrise';
@@ -20,15 +21,17 @@ export function Window({
     className,
 }: WindowProps) {
     return (
-        <div
-            data-slot="window"
-            className={cn(
-                'overflow-hidden rounded-tl-[4rem] rounded-tr-[4rem] rounded-br-[0.5rem] rounded-bl-[0.5rem]',
-                VARIANT_STYLES[variant],
-                className,
-            )}
-        >
-            {children}
-        </div>
+        <LevelContext.Provider value={1}>
+            <div
+                data-slot="window"
+                className={cn(
+                    'overflow-hidden rounded-tl-[4rem] rounded-tr-[4rem] rounded-br-[0.5rem] rounded-bl-[0.5rem]',
+                    VARIANT_STYLES[variant],
+                    className,
+                )}
+            >
+                {children}
+            </div>
+        </LevelContext.Provider>
     );
 }
