@@ -1,6 +1,6 @@
 import {
     PlusSignIcon,
-    Settings02Icon,
+    Settings03Icon,
     UserCircleIcon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
@@ -25,7 +25,7 @@ export function WindowChrome() {
     const { url } = usePage();
 
     return (
-        <header className="flex h-14 shrink-0 items-center justify-between px-4">
+        <header className="flex h-14 shrink-0 items-center justify-between px-20">
             <nav className="flex items-center gap-6">
                 {TABS.map((tab) => {
                     const isActive = url === tab.href;
@@ -53,15 +53,15 @@ export function WindowChrome() {
                 })}
             </nav>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2 text-muted-foreground">
                 <Button variant="ghost" size="icon-sm" aria-label="Add source">
-                    <HugeiconsIcon icon={PlusSignIcon} />
+                    <HugeiconsIcon icon={PlusSignIcon} className="size-5" />
                 </Button>
                 <Button variant="ghost" size="icon-sm" aria-label="Profile">
-                    <HugeiconsIcon icon={UserCircleIcon} />
+                    <HugeiconsIcon icon={UserCircleIcon} className="size-5" />
                 </Button>
                 <Button variant="ghost" size="icon-sm" aria-label="Settings">
-                    <HugeiconsIcon icon={Settings02Icon} />
+                    <HugeiconsIcon icon={Settings03Icon} className="size-5" />
                 </Button>
             </div>
         </header>
