@@ -5,18 +5,23 @@ import {
     UserCircleIcon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { Link, router, usePage } from '@inertiajs/react';
+import { Deferred, Link, router, usePage } from '@inertiajs/react';
 
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Skeleton } from '@/components/ui/skeleton';
+import { initialsFromHandle, truncateDid } from '@/lib/handle';
 import { cn } from '@/lib/utils';
 import { consume, create, discover, logout } from '@/routes';
 import { edit as editAppearance } from '@/routes/appearance';
+import type { Profile } from '@/types/auth';
 
 type Tab = {
     label: string;
@@ -30,7 +35,8 @@ const TABS: Tab[] = [
 ];
 
 export function WindowChrome() {
-    const { url } = usePage();
+    const { url, props } = usePage();
+    const auth = props.auth;
 
     const handleLogout = () => {
         router.flushAll();
@@ -85,7 +91,22 @@ export function WindowChrome() {
                             className="size-5"
                         />
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuContent align="end" className="w-56">
+                        {auth.user && (
+                            <>
+                                <Deferred
+                                    data="auth.profile"
+                                    fallback={<UserHeaderSkeleton />}
+                                >
+                                    <UserHeader
+                                        handle={auth.handle}
+                                        did={auth.user.did}
+                                        profile={auth.profile ?? null}
+                                    />
+                                </Deferred>
+                                <DropdownMenuSeparator />
+                            </>
+                        )}
                         <DropdownMenuItem
                             render={<Link href={editAppearance().url} />}
                         >
@@ -100,5 +121,49 @@ export function WindowChrome() {
                 </DropdownMenu>
             </div>
         </header>
+    );
+}
+
+function UserHeader({
+    handle,
+    did,
+    profile,
+}: {
+    handle: string | null;
+    did: string;
+    profile: Profile | null;
+}) {
+    const handleLine = handle ? `@${handle}` : truncateDid(did);
+    const displayName = profile?.displayName?.trim() || handleLine;
+
+    return (
+        <div className="flex items-center gap-2 px-2 py-1.5 transition-opacity duration-200">
+            <Avatar className="size-8 shrink-0">
+                {profile?.avatar && <AvatarImage src={profile.avatar} alt="" />}
+                <AvatarFallback className="bg-neutral-200 text-black dark:bg-neutral-700 dark:text-white">
+                    {initialsFromHandle(handle, did)}
+                </AvatarFallback>
+            </Avatar>
+            <div className="flex min-w-0 flex-col leading-tight">
+                <span className="truncate text-sm font-medium text-foreground">
+                    {displayName}
+                </span>
+                <span className="truncate text-xs font-light text-muted-foreground">
+                    {handleLine}
+                </span>
+            </div>
+        </div>
+    );
+}
+
+function UserHeaderSkeleton() {
+    return (
+        <div className="flex items-center gap-2 px-2 py-1.5">
+            <Skeleton className="size-8 shrink-0 animate-none rounded-full" />
+            <div className="flex min-w-0 flex-col gap-1.5">
+                <Skeleton className="h-3.5 w-24 animate-none" />
+                <Skeleton className="h-3 w-16 animate-none" />
+            </div>
+        </div>
     );
 }
