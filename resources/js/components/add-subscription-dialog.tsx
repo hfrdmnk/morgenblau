@@ -254,8 +254,8 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                     )}
 
                     <p className="font-handwritten text-xs text-muted-foreground">
-                        Your subscriptions are currently public. Private
-                        subscriptions are coming.
+                        Your subscriptions are currently all public. (Selective
+                        private subscriptions are coming.)
                     </p>
 
                     <DialogFooter>
