@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Subscription;
 use App\Models\User;
 use App\Services\FeedAdapters\FeedResolver;
 use App\Services\FeedAdapters\ResolvedFeed;
@@ -25,26 +24,8 @@ class SubscriptionService
         return $this->feedResolver->resolve($url);
     }
 
-    public function create(User $user, OAuthSession $session, ChosenFeed $choice, bool $isPrivate): SubscriptionResult
+    public function create(User $user, OAuthSession $session, ChosenFeed $choice): SubscriptionResult
     {
-        if ($isPrivate) {
-            $subscription = Subscription::create([
-                'user_did' => $user->did,
-                'feed_url' => $choice->feedUrl,
-                'title' => $choice->title,
-                'site_url' => $choice->siteUrl,
-                'source_type' => $choice->sourceType,
-                'is_private' => true,
-            ]);
-
-            return new SubscriptionResult(
-                title: $choice->title ?? $choice->feedUrl,
-                isPrivate: true,
-                atUri: null,
-                subscription: $subscription,
-            );
-        }
-
         $response = Bluesky::withToken($session)
             ->client(auth: true)
             ->createRecord(
@@ -59,9 +40,7 @@ class SubscriptionService
 
         return new SubscriptionResult(
             title: $choice->title ?? $choice->feedUrl,
-            isPrivate: false,
             atUri: $response->json('uri'),
-            subscription: null,
         );
     }
 

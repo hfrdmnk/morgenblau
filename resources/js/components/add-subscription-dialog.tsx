@@ -1,22 +1,21 @@
 import { Loading03Icon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { useForm } from '@inertiajs/react';
-import { useState } from 'react';
 import type { FormEvent } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
 import {
     discover,
     store,
 } from '@/actions/App/Http/Controllers/SubscriptionController';
-import { FeedCandidateList } from '@/components/feed-candidate-list';
 import type {
     FeedCandidate,
     SourceType,
 } from '@/components/feed-candidate-list';
+import { FeedCandidateList } from '@/components/feed-candidate-list';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -33,7 +32,6 @@ type FormShape = {
     title: string;
     site_url: string;
     source_type: SourceType;
-    is_private: boolean;
 };
 
 type Props = {
@@ -46,7 +44,6 @@ const EMPTY_FORM: FormShape = {
     title: '',
     site_url: '',
     source_type: 'rss',
-    is_private: false,
 };
 
 function readCsrfToken(): string {
@@ -90,7 +87,6 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
             title: candidate.title ?? '',
             site_url: candidate.site_url ?? '',
             source_type: candidate.source_type,
-            is_private: data.is_private,
         });
     };
 
@@ -100,7 +96,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         if (candidates !== null) {
             setCandidates(null);
             setDiscoverError(null);
-            setData({ ...EMPTY_FORM, is_private: data.is_private });
+            setData(EMPTY_FORM);
         }
     };
 
@@ -257,23 +253,10 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                         </>
                     )}
 
-                    <label className="flex cursor-pointer items-start gap-3">
-                        <Checkbox
-                            checked={data.is_private}
-                            onCheckedChange={(checked) =>
-                                setData('is_private', checked === true)
-                            }
-                            className="mt-0.5"
-                        />
-                        <div className="flex flex-col gap-1 leading-snug">
-                            <span className="text-sm font-medium">
-                                Keep this private
-                            </span>
-                            <span className="font-handwritten text-base text-muted-foreground">
-                                Stays in Morgenblau, not on your PDS.
-                            </span>
-                        </div>
-                    </label>
+                    <p className="font-handwritten text-xs text-muted-foreground">
+                        Your subscriptions are currently public. Private
+                        subscriptions are coming.
+                    </p>
 
                     <DialogFooter>
                         <Button

@@ -52,7 +52,6 @@ class SubscriptionController extends Controller
                 siteUrl: $data['site_url'] ?? null,
                 sourceType: $data['source_type'],
             ),
-            isPrivate: (bool) ($data['is_private'] ?? false),
         );
 
         return back()->with('flash', [

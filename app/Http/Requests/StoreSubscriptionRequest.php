@@ -25,7 +25,6 @@ class StoreSubscriptionRequest extends FormRequest
             'title' => ['nullable', 'string', 'max:512'],
             'site_url' => ['nullable', 'string', 'url:http,https', 'max:2048'],
             'source_type' => ['required', Rule::in(self::SOURCE_TYPES)],
-            'is_private' => ['sometimes', 'boolean'],
         ];
     }
 }

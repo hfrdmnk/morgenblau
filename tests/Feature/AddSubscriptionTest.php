@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Http\Client\Response as HttpResponse;
 use Illuminate\Support\Facades\Http;
@@ -104,7 +103,7 @@ test('discover rejects a malformed URL', function () {
         ->assertJsonValidationErrors('url');
 });
 
-test('storing a public subscription writes the chosen feed to the user PDS and skips the local DB', function () {
+test('storing a subscription writes the chosen feed to the user PDS', function () {
     $client = Mockery::mock(AtpClient::class);
     $client->shouldReceive('createRecord')
         ->once()
@@ -132,33 +131,7 @@ test('storing a public subscription writes the chosen feed to the user PDS and s
         'title' => 'Example Blog',
         'site_url' => 'https://example.com',
         'source_type' => 'rss',
-        'is_private' => false,
     ])->assertRedirect();
-
-    expect(Subscription::count())->toBe(0);
-});
-
-test('storing a private subscription writes a DB row with the chosen source type and skips the PDS call', function () {
-    $factory = Mockery::mock(BlueskyFactory::class);
-    $factory->shouldNotReceive('withToken');
-    app()->instance(BlueskyFactory::class, $factory);
-
-    $user = User::factory()->create();
-    $this->actingAs($user);
-
-    $this->post(route('subscriptions.store'), [
-        'feed_url' => 'https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ',
-        'title' => 'Marques Brownlee',
-        'site_url' => 'https://www.youtube.com/@mkbhd',
-        'source_type' => 'video',
-        'is_private' => true,
-    ])->assertRedirect();
-
-    $subscription = Subscription::sole();
-    expect($subscription->user_did)->toBe($user->did);
-    expect($subscription->feed_url)->toBe('https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ');
-    expect($subscription->source_type)->toBe('video');
-    expect($subscription->is_private)->toBeTrue();
 });
 
 test('storing a subscription validates the source type', function () {
