@@ -6,7 +6,9 @@ import {
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { Deferred, Link, router, usePage } from '@inertiajs/react';
+import { useState } from 'react';
 
+import { AddSubscriptionDialog } from '@/components/add-subscription-dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,6 +39,7 @@ const TABS: Tab[] = [
 export function WindowChrome() {
     const { url, props } = usePage();
     const auth = props.auth;
+    const [addSourceOpen, setAddSourceOpen] = useState(false);
 
     const handleLogout = () => {
         router.flushAll();
@@ -45,6 +48,10 @@ export function WindowChrome() {
 
     return (
         <header className="flex h-14 shrink-0 items-center justify-between px-20">
+            <AddSubscriptionDialog
+                open={addSourceOpen}
+                onOpenChange={setAddSourceOpen}
+            />
             <nav className="flex items-center gap-6">
                 {TABS.map((tab) => {
                     const isActive = url === tab.href;
@@ -73,7 +80,12 @@ export function WindowChrome() {
             </nav>
 
             <div className="flex items-center gap-2 text-muted-foreground">
-                <Button variant="ghost" size="icon-sm" aria-label="Add source">
+                <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Add source"
+                    onClick={() => setAddSourceOpen(true)}
+                >
                     <HugeiconsIcon icon={PlusSignIcon} className="size-5" />
                 </Button>
                 <DropdownMenu>

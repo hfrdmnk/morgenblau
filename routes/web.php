@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\OAuthCallbackController;
+use App\Http\Controllers\SubscriptionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -40,6 +41,9 @@ Route::middleware(['auth'])->group(function () {
     Route::inertia('discover', 'discover')->name('discover');
     Route::inertia('consume', 'consume')->name('consume');
     Route::inertia('create', 'create')->name('create');
+
+    Route::post('subscriptions', [SubscriptionController::class, 'store'])
+        ->name('subscriptions.store');
 });
 
 require __DIR__.'/settings.php';

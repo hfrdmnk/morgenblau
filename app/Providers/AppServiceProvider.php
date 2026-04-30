@@ -3,6 +3,10 @@
 namespace App\Providers;
 
 use App\Listeners\PersistOAuthSession;
+use App\Services\FeedAdapters\FeedResolver;
+use App\Services\FeedAdapters\PodcastAdapter;
+use App\Services\FeedAdapters\WebsiteAdapter;
+use App\Services\FeedAdapters\YouTubeAdapter;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +19,15 @@ use Revolution\Bluesky\Socialite\OAuthConfig;
 
 class AppServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        $this->app->singleton(FeedResolver::class, fn ($app) => new FeedResolver([
+            $app->make(YouTubeAdapter::class),
+            $app->make(PodcastAdapter::class),
+            $app->make(WebsiteAdapter::class),
+        ]));
+    }
+
     public function boot(): void
     {
         $this->configureDefaults();
