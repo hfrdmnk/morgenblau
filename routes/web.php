@@ -42,6 +42,8 @@ Route::middleware(['auth'])->group(function () {
     Route::inertia('consume', 'consume')->name('consume');
     Route::inertia('create', 'create')->name('create');
 
+    Route::post('subscriptions/discover', [SubscriptionController::class, 'discover'])
+        ->name('subscriptions.discover');
     Route::post('subscriptions', [SubscriptionController::class, 'store'])
         ->name('subscriptions.store');
 });

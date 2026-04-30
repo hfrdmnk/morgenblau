@@ -13,7 +13,7 @@ A calm content platform powered by RSS and ATProto. Not a classic RSS reader —
 
 **Core emotional promise:** Intentionality without deprivation. You still get the good stuff, but on your terms.
 
-**Target users:** People who want to consume content (blogs, microposts, videos, podcasts) without the anxiety of unread counts or the pull of endless scrolling. They value the open web and the ATProto ecosystem.
+**Target users:** People who want to consume content (blogs, microblogs, videos, podcasts) without the anxiety of unread counts or the pull of endless scrolling. They value the open web and the ATProto ecosystem.
 
 **What makes it different:**
 
@@ -103,7 +103,7 @@ All four are first-class citizens in v1, each with a UI optimized for its format
 | Type      | Description                        | Playback                 |
 | --------- | ---------------------------------- | ------------------------ |
 | Blogpost  | Articles with titles and body text | In-app reader + link out |
-| Micropost | Short posts without a title        | Inline in digest         |
+| Microblog | Short posts without a title        | Inline in digest         |
 | Video     | YouTube, Vimeo, etc.               | Custom player            |
 | Podcast   | Audio feeds                        | Custom player            |
 
@@ -127,7 +127,7 @@ Windows are filtered views onto your content — different lenses to look throug
 
 ### Default Windows (Predefined)
 
-The app provides default windows based on content type (e.g., Blogposts, Videos, Podcasts, Microposts).
+The app provides default windows based on content type (e.g., Blogposts, Videos, Podcasts, Microblogs).
 
 ### Custom Windows (User-Created)
 

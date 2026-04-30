@@ -1,10 +1,19 @@
 import { Loading03Icon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { useForm } from '@inertiajs/react';
+import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 
-import { store } from '@/actions/App/Http/Controllers/SubscriptionController';
+import {
+    discover,
+    store,
+} from '@/actions/App/Http/Controllers/SubscriptionController';
+import { FeedCandidateList } from '@/components/feed-candidate-list';
+import type {
+    FeedCandidate,
+    SourceType,
+} from '@/components/feed-candidate-list';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -20,7 +29,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 type FormShape = {
-    url: string;
+    feed_url: string;
+    title: string;
+    site_url: string;
+    source_type: SourceType;
     is_private: boolean;
 };
 
@@ -29,16 +41,36 @@ type Props = {
     onOpenChange: (open: boolean) => void;
 };
 
+const EMPTY_FORM: FormShape = {
+    feed_url: '',
+    title: '',
+    site_url: '',
+    source_type: 'rss',
+    is_private: false,
+};
+
+function readCsrfToken(): string {
+    const match = document.cookie.match(/XSRF-TOKEN=([^;]+)/);
+
+    return match ? decodeURIComponent(match[1]) : '';
+}
+
 export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
+    const [url, setUrl] = useState('');
+    const [candidates, setCandidates] = useState<FeedCandidate[] | null>(null);
+    const [discovering, setDiscovering] = useState(false);
+    const [discoverError, setDiscoverError] = useState<string | null>(null);
+
     const { data, setData, post, processing, errors, reset, clearErrors } =
-        useForm<FormShape>({
-            url: '',
-            is_private: false,
-        });
+        useForm<FormShape>(EMPTY_FORM);
 
     const close = () => {
         reset();
         clearErrors();
+        setUrl('');
+        setCandidates(null);
+        setDiscoverError(null);
+        setDiscovering(false);
         onOpenChange(false);
     };
 
@@ -52,6 +84,75 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         onOpenChange(next);
     };
 
+    const selectCandidate = (candidate: FeedCandidate) => {
+        setData({
+            feed_url: candidate.feed_url,
+            title: candidate.title ?? '',
+            site_url: candidate.site_url ?? '',
+            source_type: candidate.source_type,
+            is_private: data.is_private,
+        });
+    };
+
+    const onUrlChange = (next: string) => {
+        setUrl(next);
+
+        if (candidates !== null) {
+            setCandidates(null);
+            setDiscoverError(null);
+            setData({ ...EMPTY_FORM, is_private: data.is_private });
+        }
+    };
+
+    const findFeeds = async () => {
+        setDiscovering(true);
+        setDiscoverError(null);
+
+        try {
+            const response = await fetch(discover().url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-XSRF-TOKEN': readCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ url }),
+            });
+
+            if (response.status === 422) {
+                const body = (await response.json()) as {
+                    errors?: { url?: string[] };
+                };
+                setDiscoverError(
+                    body.errors?.url?.[0] ?? 'That URL didn’t resolve.',
+                );
+
+                return;
+            }
+
+            if (!response.ok) {
+                setDiscoverError(
+                    'Something went wrong reaching that URL. Try again?',
+                );
+
+                return;
+            }
+
+            const body = (await response.json()) as {
+                candidates: FeedCandidate[];
+            };
+            setCandidates(body.candidates);
+
+            if (body.candidates.length === 1) {
+                selectCandidate(body.candidates[0]);
+            }
+        } finally {
+            setDiscovering(false);
+        }
+    };
+
     const submit = (event: FormEvent) => {
         event.preventDefault();
 
@@ -63,6 +164,9 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
             },
         });
     };
+
+    const hasCandidates = candidates !== null && candidates.length > 0;
+    const submitDisabled = processing || !data.feed_url;
 
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -80,21 +184,78 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                         <Label htmlFor="subscription-url" className="sr-only">
                             URL
                         </Label>
-                        <Input
-                            id="subscription-url"
-                            type="url"
-                            inputMode="url"
-                            autoFocus
-                            spellCheck={false}
-                            placeholder="https://overreacted.io"
-                            value={data.url}
-                            onChange={(event) =>
-                                setData('url', event.target.value)
-                            }
-                            aria-invalid={errors.url ? true : undefined}
-                        />
-                        <InputError message={errors.url} />
+                        <div className="flex items-center gap-2">
+                            <Input
+                                id="subscription-url"
+                                type="url"
+                                inputMode="url"
+                                autoFocus
+                                spellCheck={false}
+                                placeholder="https://example.com"
+                                value={url}
+                                onChange={(event) =>
+                                    onUrlChange(event.target.value)
+                                }
+                                aria-invalid={discoverError ? true : undefined}
+                                className="flex-1"
+                            />
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={findFeeds}
+                                disabled={
+                                    discovering ||
+                                    !url.trim() ||
+                                    candidates !== null
+                                }
+                            >
+                                {discovering ? (
+                                    <>
+                                        <HugeiconsIcon
+                                            icon={Loading03Icon}
+                                            className="motion-safe:animate-spin"
+                                        />
+                                        Finding…
+                                    </>
+                                ) : (
+                                    'Find feeds'
+                                )}
+                            </Button>
+                        </div>
+                        {discoverError && (
+                            <InputError message={discoverError} />
+                        )}
                     </div>
+
+                    {hasCandidates && (
+                        <FeedCandidateList
+                            candidates={candidates}
+                            selectedFeedUrl={data.feed_url || null}
+                            onSelect={(feedUrl) => {
+                                const next = candidates.find(
+                                    (c) => c.feed_url === feedUrl,
+                                );
+
+                                if (next) {
+                                    selectCandidate(next);
+                                }
+                            }}
+                            title={data.title}
+                            onTitleChange={(title) => setData('title', title)}
+                            sourceType={data.source_type}
+                            onSourceTypeChange={(type) =>
+                                setData('source_type', type)
+                            }
+                        />
+                    )}
+
+                    {hasCandidates && (
+                        <>
+                            <InputError message={errors.feed_url} />
+                            <InputError message={errors.title} />
+                            <InputError message={errors.source_type} />
+                        </>
+                    )}
 
                     <label className="flex cursor-pointer items-start gap-3">
                         <Checkbox
@@ -123,10 +284,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                         >
                             Cancel
                         </Button>
-                        <Button
-                            type="submit"
-                            disabled={processing || !data.url.trim()}
-                        >
+                        <Button type="submit" disabled={submitDisabled}>
                             {processing ? (
                                 <>
                                     <HugeiconsIcon

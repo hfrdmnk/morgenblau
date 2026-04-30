@@ -12,29 +12,108 @@ beforeEach(function () {
     Http::preventStrayRequests();
 });
 
-test('guests cannot add a subscription', function () {
+test('guests cannot discover or store subscriptions', function () {
+    $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
+        ->assertUnauthorized();
+
     $this->post(route('subscriptions.store'), [
-        'url' => 'https://overreacted.io',
+        'feed_url' => 'https://example.com/rss.xml',
+        'source_type' => 'rss',
     ])->assertRedirect(route('login'));
 });
 
-test('public subscription writes the record to the user PDS and skips the local DB', function () {
+test('discover returns every advertised feed in document order', function () {
     Http::fake([
-        'overreacted.io' => Http::response(
-            '<html><head><link rel="alternate" type="application/rss+xml" href="/rss.xml"><title>overreacted</title></head></html>',
+        'example.com' => Http::response(
+            '<html><head>'
+            .'<title>Example</title>'
+            .'<meta property="og:site_name" content="Example Blog">'
+            .'<link rel="alternate" type="application/rss+xml" title="Main feed" href="/rss.xml">'
+            .'<link rel="alternate" type="application/atom+xml" title="Comments" href="/comments.atom">'
+            .'</head></html>',
             200,
             ['Content-Type' => 'text/html'],
         ),
     ]);
 
+    $this->actingAs(User::factory()->create());
+
+    $response = $this->postJson(route('subscriptions.discover'), [
+        'url' => 'https://example.com',
+    ])->assertOk();
+
+    $response->assertExactJson([
+        'candidates' => [
+            [
+                'feed_url' => 'https://example.com/rss.xml',
+                'title' => 'Main feed',
+                'site_url' => 'https://example.com',
+                'source_type' => 'rss',
+            ],
+            [
+                'feed_url' => 'https://example.com/comments.atom',
+                'title' => 'Comments',
+                'site_url' => 'https://example.com',
+                'source_type' => 'rss',
+            ],
+        ],
+    ]);
+});
+
+test('discover falls back to og:site_name when a link has no title', function () {
+    Http::fake([
+        'example.com' => Http::response(
+            '<html><head>'
+            .'<meta property="og:site_name" content="Example Blog">'
+            .'<link rel="alternate" type="application/rss+xml" href="/rss.xml">'
+            .'</head></html>',
+            200,
+            ['Content-Type' => 'text/html'],
+        ),
+    ]);
+
+    $this->actingAs(User::factory()->create());
+
+    $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
+        ->assertOk()
+        ->assertJsonPath('candidates.0.title', 'Example Blog')
+        ->assertJsonPath('candidates.0.feed_url', 'https://example.com/rss.xml');
+});
+
+test('discover returns a 422 with a url error when the page exposes no feed', function () {
+    Http::fake([
+        'example.com' => Http::response(
+            '<html><head><title>Plain page</title></head><body>Nothing here.</body></html>',
+            200,
+            ['Content-Type' => 'text/html'],
+        ),
+    ]);
+
+    $this->actingAs(User::factory()->create());
+
+    $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors('url');
+});
+
+test('discover rejects a malformed URL', function () {
+    $this->actingAs(User::factory()->create());
+
+    $this->postJson(route('subscriptions.discover'), ['url' => 'not-a-url'])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors('url');
+});
+
+test('storing a public subscription writes the chosen feed to the user PDS and skips the local DB', function () {
     $client = Mockery::mock(AtpClient::class);
     $client->shouldReceive('createRecord')
         ->once()
         ->withArgs(function (string $repo, string $collection, array $record) {
             expect($collection)->toBe('app.skyreader.feed.subscription');
-            expect($record['feedUrl'])->toBe('https://overreacted.io/rss.xml');
-            expect($record['category'])->toBe('source:blog');
+            expect($record['feedUrl'])->toBe('https://example.com/rss.xml');
+            expect($record['title'])->toBe('Example Blog');
             expect($record['sourceType'])->toBe('rss');
+            expect($record)->not->toHaveKey('category');
 
             return true;
         })
@@ -49,22 +128,17 @@ test('public subscription writes the record to the user PDS and skips the local 
     $this->actingAs($user);
 
     $this->post(route('subscriptions.store'), [
-        'url' => 'https://overreacted.io',
+        'feed_url' => 'https://example.com/rss.xml',
+        'title' => 'Example Blog',
+        'site_url' => 'https://example.com',
+        'source_type' => 'rss',
         'is_private' => false,
     ])->assertRedirect();
 
     expect(Subscription::count())->toBe(0);
 });
 
-test('private subscription writes a DB row and skips the PDS call', function () {
-    Http::fake([
-        'overreacted.io' => Http::response(
-            '<html><head><link rel="alternate" type="application/rss+xml" href="https://overreacted.io/rss.xml"><title>overreacted</title></head></html>',
-            200,
-            ['Content-Type' => 'text/html'],
-        ),
-    ]);
-
+test('storing a private subscription writes a DB row with the chosen source type and skips the PDS call', function () {
     $factory = Mockery::mock(BlueskyFactory::class);
     $factory->shouldNotReceive('withToken');
     app()->instance(BlueskyFactory::class, $factory);
@@ -73,51 +147,72 @@ test('private subscription writes a DB row and skips the PDS call', function () 
     $this->actingAs($user);
 
     $this->post(route('subscriptions.store'), [
-        'url' => 'https://overreacted.io',
+        'feed_url' => 'https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ',
+        'title' => 'Marques Brownlee',
+        'site_url' => 'https://www.youtube.com/@mkbhd',
+        'source_type' => 'video',
         'is_private' => true,
     ])->assertRedirect();
 
     $subscription = Subscription::sole();
     expect($subscription->user_did)->toBe($user->did);
-    expect($subscription->feed_url)->toBe('https://overreacted.io/rss.xml');
-    expect($subscription->category)->toBe('source:blog');
+    expect($subscription->feed_url)->toBe('https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ');
+    expect($subscription->source_type)->toBe('video');
     expect($subscription->is_private)->toBeTrue();
 });
 
-test('an unresolvable URL returns a validation error', function () {
+test('storing a subscription validates the source type', function () {
+    $this->actingAs(User::factory()->create());
+
+    $this->from(route('consume'))->post(route('subscriptions.store'), [
+        'feed_url' => 'https://example.com/rss.xml',
+        'source_type' => 'newsletter',
+    ])
+        ->assertRedirect(route('consume'))
+        ->assertSessionHasErrors('source_type');
+});
+
+test('discover resolves YouTube channels to their videos.xml feed', function (string $fixture, string $url) {
     Http::fake([
-        'example.com' => Http::response(
-            '<html><head><title>Plain page</title></head><body>Nothing here.</body></html>',
+        '*youtube.com*' => Http::response(
+            file_get_contents(base_path("tests/Fixtures/youtube/{$fixture}")),
             200,
             ['Content-Type' => 'text/html'],
         ),
     ]);
 
-    $factory = Mockery::mock(BlueskyFactory::class);
-    $factory->shouldNotReceive('withToken');
-    app()->instance(BlueskyFactory::class, $factory);
+    $this->actingAs(User::factory()->create());
 
-    $user = User::factory()->create();
-    $this->actingAs($user);
+    $this->postJson(route('subscriptions.discover'), ['url' => $url])
+        ->assertOk()
+        ->assertJsonCount(1, 'candidates')
+        ->assertJsonPath('candidates.0.feed_url', 'https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ')
+        ->assertJsonPath('candidates.0.source_type', 'video')
+        ->assertJsonPath('candidates.0.title', 'Marques Brownlee');
+})->with([
+    'channel URL' => ['channel.html', 'https://www.youtube.com/channel/UCBJycsmduvYEL83R_U4JriQ'],
+    '@handle URL' => ['handle.html', 'https://www.youtube.com/@mkbhd'],
+    '/c/ vanity URL' => ['vanity.html', 'https://www.youtube.com/c/MarquesBrownlee'],
+    '/user/ legacy URL' => ['legacy.html', 'https://www.youtube.com/user/marquesbrownlee'],
+    '@handle URL with sidebar channels' => ['handle_with_sidebar.html', 'https://www.youtube.com/@mkbhd'],
+]);
 
-    $this->from(route('consume'))->post(route('subscriptions.store'), [
-        'url' => 'https://example.com',
-    ])
-        ->assertRedirect(route('consume'))
-        ->assertSessionHasErrors('url');
+test('discover bypasses YouTube EU consent by sending the SOCS cookie', function () {
+    Http::fake([
+        '*youtube.com*' => Http::response(
+            file_get_contents(base_path('tests/Fixtures/youtube/handle.html')),
+            200,
+            ['Content-Type' => 'text/html'],
+        ),
+    ]);
 
-    expect(Subscription::count())->toBe(0);
-});
+    $this->actingAs(User::factory()->create());
 
-test('an invalid URL returns a validation error', function () {
-    $user = User::factory()->create();
-    $this->actingAs($user);
+    $this->postJson(route('subscriptions.discover'), [
+        'url' => 'https://www.youtube.com/@mkbhd',
+    ])->assertOk();
 
-    $this->from(route('consume'))->post(route('subscriptions.store'), [
-        'url' => 'not-a-url',
-    ])
-        ->assertRedirect(route('consume'))
-        ->assertSessionHasErrors('url');
+    Http::assertSent(fn ($request) => $request->header('Cookie') === ['SOCS=CAI']);
 });
 
 function bindBlueskyFactory(MockInterface $client): void

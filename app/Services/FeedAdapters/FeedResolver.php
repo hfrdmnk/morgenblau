@@ -11,13 +11,16 @@ class FeedResolver
      */
     public function __construct(private readonly iterable $adapters) {}
 
-    public function resolve(string $url): ResolvedFeed
+    /**
+     * @return non-empty-list<ResolvedFeed>
+     */
+    public function resolve(string $url): array
     {
         foreach ($this->adapters as $adapter) {
-            $resolved = $adapter->tryResolve($url);
+            $candidates = $adapter->tryResolve($url);
 
-            if ($resolved !== null) {
-                return $resolved;
+            if ($candidates !== []) {
+                return $candidates;
             }
         }
 

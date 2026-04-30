@@ -10,14 +10,20 @@ class YouTubeAdapter implements FeedAdapter
 {
     private const FEED_URL = 'https://www.youtube.com/feeds/videos.xml?channel_id=';
 
-    public function tryResolve(string $url): ?ResolvedFeed
+    /**
+     * @return list<ResolvedFeed>
+     */
+    public function tryResolve(string $url): array
     {
         $host = parse_url($url, PHP_URL_HOST);
         if ($host === null || ! Str::endsWith($host, ['youtube.com', 'youtu.be'])) {
-            return null;
+            return [];
         }
 
-        $response = Http::timeout(10)->get($url);
+        // SOCS=CAI bypasses YouTube's EU consent redirect, which otherwise serves a metadata-free page.
+        $response = Http::timeout(10)
+            ->withHeaders(['Cookie' => 'SOCS=CAI'])
+            ->get($url);
 
         if ($response->failed()) {
             throw new UnresolvableFeedException("Couldn't fetch {$url} (HTTP {$response->status()}).");
@@ -35,12 +41,12 @@ class YouTubeAdapter implements FeedAdapter
 
         $title = $this->extractTitle($body) ?? "YouTube channel {$channelId}";
 
-        return new ResolvedFeed(
+        return [new ResolvedFeed(
             feedUrl: self::FEED_URL.$channelId,
             title: $title,
             siteUrl: $url,
-            category: 'source:video',
-        );
+            sourceType: 'video',
+        )];
     }
 
     private function extractChannelIdFromUrl(string $url): ?string
@@ -54,11 +60,20 @@ class YouTubeAdapter implements FeedAdapter
 
     private function extractChannelIdFromBody(string $body): ?string
     {
-        if (preg_match('#"channelId":"(UC[A-Za-z0-9_-]{20,})"#', $body, $matches) === 1) {
+        // Canonical link and itemprop name the page's own channel; "channelId" literals also appear in the sidebar.
+        if (preg_match('#<link\s+rel="canonical"\s+href="https?://(?:www\.)?youtube\.com/channel/(UC[A-Za-z0-9_-]{20,})"#', $body, $matches) === 1) {
             return $matches[1];
         }
 
         if (preg_match('#<meta itemprop="(?:channelId|identifier)"\s+content="(UC[A-Za-z0-9_-]{20,})"#', $body, $matches) === 1) {
+            return $matches[1];
+        }
+
+        if (preg_match('#"externalId":"(UC[A-Za-z0-9_-]{20,})"#', $body, $matches) === 1) {
+            return $matches[1];
+        }
+
+        if (preg_match('#"channelId":"(UC[A-Za-z0-9_-]{20,})"#', $body, $matches) === 1) {
             return $matches[1];
         }
 

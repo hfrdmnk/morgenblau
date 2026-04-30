@@ -2,36 +2,39 @@
 
 Notes on lexicon changes we want to land later, kept here so we don't lose the thread.
 
-## Feed-level content type on `app.skyreader.feed.subscription`
+## Standardising `sourceType` on `app.skyreader.feed.subscription`
 
-We need a way to say "this source is a video / podcast / micropost / blog" at the source level so digest assembly and the consume UI can group and filter consistently.
+The lexicon currently describes `sourceType` as `'rss', 'atproto.shares', 'atproto.documents', 'atproto.collection'. Omitted means RSS.` That mixes the protocol axis (RSS vs ATProto stream) with the catch-all `rss` value.
 
 ### Today (interim)
 
-The type is encoded as a prefix in the existing `category` string:
+The Morgenblau client writes `sourceType` as one of:
 
-- `source:video`
-- `source:podcast`
-- `source:micropost`
-- `source:blog`
+- `rss` — default; generic blog/article RSS
+- `video` — YouTube etc.
+- `podcast` — audio feeds
+- `microblog` — Mastodon / micropost-style streams
 
-The Morgenblau adapters set this when the user adds a source. Records that don't carry the prefix (e.g. ones written by Skyreader or another client) are treated as type-unknown — we fall back to `blog` for layout and avoid type-aware grouping until the user re-saves the record from Morgenblau.
+These values are written as plain strings against the current schema (`type: "string"`, no enum), so they're already valid; the description is just stale.
 
-### Tomorrow
+### Tomorrow (proposed)
 
-Add a dedicated optional field on `app.skyreader.feed.subscription`:
+Refine the field to make the value space explicit and make the lexicon useful for any reader in the atmosphere:
 
 ```json
-"feedType": {
+"sourceType": {
   "type": "string",
-  "knownValues": ["blog", "video", "podcast", "micropost"]
+  "knownValues": ["rss", "video", "podcast", "microblog"],
+  "maxLength": 64,
+  "description": "Content source type. Omitted means 'rss'. Open union — clients should tolerate unknown values."
 }
 ```
 
-Open union — an unrecognized value should be tolerated by older clients without breaking. Reading order:
+Open question: how to express ATProto-stream subscriptions (the original `atproto.shares` / `atproto.documents` / `atproto.collection` direction):
 
-1. `feedType` if present, trust it.
-2. Else parse the `source:<type>` prefix from `category`.
-3. Else infer from `feedUrl` host (youtube.com → video, etc.) as a last resort.
+- **Option A — keep them under `sourceType`.** The open union accommodates both axes (content type + protocol). Simplest; matches what's shipping today.
+- **Option B — introduce a separate `protocol` field** (e.g. `rss` | `atproto`) and free `sourceType` purely for content classification. Cleaner separation, more fields.
 
-Migration path: when a user edits a sub that lacks `feedType`, backfill on the next write. No mass migration required — the field just fills in over time.
+Migration path: clients that read `sourceType` should fall back to `'rss'` when absent or unknown. No mass migration required — values fill in over time.
+
+Goal: a generally-useful RSS-subscription lexicon that any reader can adopt.

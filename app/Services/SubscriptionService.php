@@ -17,23 +17,28 @@ class SubscriptionService
 
     public function __construct(private readonly FeedResolver $feedResolver) {}
 
-    public function add(User $user, OAuthSession $session, string $url, bool $isPrivate): SubscriptionResult
+    /**
+     * @return non-empty-list<ResolvedFeed>
+     */
+    public function discover(string $url): array
     {
-        $resolved = $this->feedResolver->resolve($url);
+        return $this->feedResolver->resolve($url);
+    }
 
+    public function create(User $user, OAuthSession $session, ChosenFeed $choice, bool $isPrivate): SubscriptionResult
+    {
         if ($isPrivate) {
             $subscription = Subscription::create([
                 'user_did' => $user->did,
-                'feed_url' => $resolved->feedUrl,
-                'title' => $resolved->title,
-                'site_url' => $resolved->siteUrl,
-                'category' => $resolved->category,
-                'source_type' => $resolved->sourceType,
+                'feed_url' => $choice->feedUrl,
+                'title' => $choice->title,
+                'site_url' => $choice->siteUrl,
+                'source_type' => $choice->sourceType,
                 'is_private' => true,
             ]);
 
             return new SubscriptionResult(
-                title: $resolved->title ?? $resolved->feedUrl,
+                title: $choice->title ?? $choice->feedUrl,
                 isPrivate: true,
                 atUri: null,
                 subscription: $subscription,
@@ -45,7 +50,7 @@ class SubscriptionService
             ->createRecord(
                 repo: $user->did,
                 collection: self::COLLECTION,
-                record: $this->buildRecord($resolved),
+                record: $this->buildRecord($choice),
             );
 
         if ($response->failed()) {
@@ -53,7 +58,7 @@ class SubscriptionService
         }
 
         return new SubscriptionResult(
-            title: $resolved->title ?? $resolved->feedUrl,
+            title: $choice->title ?? $choice->feedUrl,
             isPrivate: false,
             atUri: $response->json('uri'),
             subscription: null,
@@ -63,14 +68,13 @@ class SubscriptionService
     /**
      * @return array<string, mixed>
      */
-    private function buildRecord(ResolvedFeed $resolved): array
+    private function buildRecord(ChosenFeed $choice): array
     {
         return array_filter([
-            'feedUrl' => $resolved->feedUrl,
-            'title' => $resolved->title,
-            'siteUrl' => $resolved->siteUrl,
-            'category' => $resolved->category,
-            'sourceType' => $resolved->sourceType,
+            'feedUrl' => $choice->feedUrl,
+            'title' => $choice->title,
+            'siteUrl' => $choice->siteUrl,
+            'sourceType' => $choice->sourceType,
             'createdAt' => Date::now()->toIso8601String(),
         ], fn ($value): bool => $value !== null);
     }

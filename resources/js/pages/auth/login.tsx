@@ -29,7 +29,8 @@ export default function Login() {
             </header>
 
             <Form
-                {...store.form()}
+                action={store.url()}
+                method="post"
                 onBefore={() => setPending(true)}
                 onError={() => setPending(false)}
                 className="space-y-3"

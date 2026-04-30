@@ -22,11 +22,14 @@ class WebsiteAdapter implements FeedAdapter
         'application/atom+xml',
     ];
 
-    public function tryResolve(string $url): ?ResolvedFeed
+    /**
+     * @return list<ResolvedFeed>
+     */
+    public function tryResolve(string $url): array
     {
         $scheme = parse_url($url, PHP_URL_SCHEME);
         if (! in_array($scheme, ['http', 'https'], true)) {
-            return null;
+            return [];
         }
 
         $response = Http::timeout(10)->get($url);
@@ -39,7 +42,7 @@ class WebsiteAdapter implements FeedAdapter
         $body = $response->body();
 
         if ($this->looksLikeFeed($contentType, $body)) {
-            return $this->resolveDirectFeed($url, $body);
+            return [$this->resolveDirectFeed($url, $body)];
         }
 
         return $this->resolveFromHtml($url, $body);
@@ -64,24 +67,30 @@ class WebsiteAdapter implements FeedAdapter
             feedUrl: $url,
             title: $this->extractFeedTitle($body),
             siteUrl: null,
-            category: 'source:blog',
         );
     }
 
-    private function resolveFromHtml(string $url, string $body): ResolvedFeed
+    /**
+     * @return non-empty-list<ResolvedFeed>
+     */
+    private function resolveFromHtml(string $url, string $body): array
     {
         $xpath = $this->buildXPath($body);
-        $feedUrl = $this->findFeedLink($xpath, $url);
+        $links = $this->collectFeedLinks($xpath, $url);
 
-        if ($feedUrl === null) {
+        if ($links === []) {
             throw new UnresolvableFeedException("No RSS or Atom feed advertised on {$url}.");
         }
 
-        return new ResolvedFeed(
-            feedUrl: $feedUrl,
-            title: $this->extractHtmlTitle($xpath),
-            siteUrl: $url,
-            category: 'source:blog',
+        $pageTitle = $this->extractHtmlTitle($xpath);
+
+        return array_map(
+            fn (array $link) => new ResolvedFeed(
+                feedUrl: $link['href'],
+                title: $link['title'] ?? $pageTitle,
+                siteUrl: $url,
+            ),
+            $links,
         );
     }
 
@@ -100,12 +109,18 @@ class WebsiteAdapter implements FeedAdapter
         return new DOMXPath($document);
     }
 
-    private function findFeedLink(DOMXPath $xpath, string $base): ?string
+    /**
+     * @return list<array{href: string, title: ?string}>
+     */
+    private function collectFeedLinks(DOMXPath $xpath, string $base): array
     {
         $nodes = $xpath->query('//link[@rel="alternate"]');
         if ($nodes === false) {
-            return null;
+            return [];
         }
+
+        $links = [];
+        $seen = [];
 
         foreach ($nodes as $node) {
             $type = strtolower((string) $node->getAttribute('type'));
@@ -115,10 +130,21 @@ class WebsiteAdapter implements FeedAdapter
                 continue;
             }
 
-            return $this->absolutize($href, $base);
+            $absolute = $this->absolutize($href, $base);
+            if (isset($seen[$absolute])) {
+                continue;
+            }
+            $seen[$absolute] = true;
+
+            $linkTitle = trim((string) $node->getAttribute('title'));
+
+            $links[] = [
+                'href' => $absolute,
+                'title' => $linkTitle !== '' ? $linkTitle : null,
+            ];
         }
 
-        return null;
+        return $links;
     }
 
     private function extractFeedTitle(string $body): ?string

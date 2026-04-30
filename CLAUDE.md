@@ -10,6 +10,12 @@ Laravel 13 (PHP 8.4) + Inertia 3 + React 19 + TypeScript + Tailwind v4. Auth via
 
 [SPEC.md](./SPEC.md) is the source of truth for product vision, content model, and guardrails. All code must follow the spec. When you notice a discrepancy between the code and the spec, flag it and either ask to update the spec or adapt the code — never silently diverge.
 
+## Lexicons
+
+The `lexicons/` directory is reference, with the goal of evolving a standardised RSS-reader lexicon for the AT atmosphere. Lexicon `.json` files are read-only from this codebase — Morgenblau adheres to whatever they say. The only file in `lexicons/` you may edit is `IDEAS.md`.
+
+When you spot an opportunity to improve the lexicon (new field, refined semantics, new `knownValues`, etc.), surface it as a question to the user. On approval, record the proposal in `lexicons/app/skyreader/IDEAS.md` under a clearly-labelled section. Don't silently change the JSON.
+
 ## Tooling
 
 - **Package manager: bun only.** Never use npm, yarn, or pnpm for dependency changes. All install/run/build commands must use `bun`. PHP deps via Composer.

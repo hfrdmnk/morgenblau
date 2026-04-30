@@ -8,15 +8,18 @@ use Illuminate\Support\Str;
 
 class PodcastAdapter implements FeedAdapter
 {
-    public function tryResolve(string $url): ?ResolvedFeed
+    /**
+     * @return list<ResolvedFeed>
+     */
+    public function tryResolve(string $url): array
     {
         $host = parse_url($url, PHP_URL_HOST);
         if ($host === null) {
-            return null;
+            return [];
         }
 
         if (Str::contains($host, 'podcasts.apple.com')) {
-            return $this->resolveApple($url);
+            return [$this->resolveApple($url)];
         }
 
         if (Str::contains($host, 'open.spotify.com')) {
@@ -25,7 +28,7 @@ class PodcastAdapter implements FeedAdapter
             );
         }
 
-        return null;
+        return [];
     }
 
     private function resolveApple(string $url): ResolvedFeed
@@ -56,7 +59,7 @@ class PodcastAdapter implements FeedAdapter
             feedUrl: $result['feedUrl'],
             title: $result['collectionName'] ?? $result['trackName'] ?? null,
             siteUrl: $result['collectionViewUrl'] ?? $url,
-            category: 'source:podcast',
+            sourceType: 'podcast',
         );
     }
 }
