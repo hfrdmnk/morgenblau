@@ -140,7 +140,7 @@
     --accent-foreground: var(--color-gray-50);
     --destructive: oklch(0.704 0.191 22.216);
     --border: var(--color-gray-800);
-    --input: var(--color-gray-600);
+    --input: var(--color-gray-700);
     --ring: var(--color-atmosphere-blue);
     --chart-1: var(--color-gray-300);
     --chart-2: var(--color-gray-500);

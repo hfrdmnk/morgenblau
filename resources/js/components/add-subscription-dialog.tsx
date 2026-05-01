@@ -149,8 +149,25 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         }
     };
 
+    const hasCandidates = candidates !== null && candidates.length > 0;
+    const submitDisabled = processing || !data.feed_url;
+
     const submit = (event: FormEvent) => {
         event.preventDefault();
+
+        if (!hasCandidates) {
+            if (!url.trim() || discovering) {
+                return;
+            }
+
+            findFeeds();
+
+            return;
+        }
+
+        if (!data.feed_url) {
+            return;
+        }
 
         post(store().url, {
             preserveScroll: true,
@@ -160,9 +177,6 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
             },
         });
     };
-
-    const hasCandidates = candidates !== null && candidates.length > 0;
-    const submitDisabled = processing || !data.feed_url;
 
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -175,7 +189,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                     </DialogDescription>
                 </DialogHeader>
 
-                <form onSubmit={submit} className="flex flex-col gap-5">
+                <form onSubmit={submit} className="flex min-w-0 flex-col gap-5">
                     <div className="space-y-2">
                         <Label htmlFor="subscription-url" className="sr-only">
                             URL
@@ -261,7 +275,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                     <DialogFooter>
                         <Button
                             type="button"
-                            variant="ghost"
+                            variant="secondary"
                             onClick={close}
                             disabled={processing}
                         >

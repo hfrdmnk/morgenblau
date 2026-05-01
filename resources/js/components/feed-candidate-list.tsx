@@ -22,7 +22,7 @@ export type FeedCandidate = {
 export type SourceType = 'rss' | 'video' | 'podcast' | 'microblog';
 
 export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
-    rss: 'RSS',
+    rss: 'Website',
     video: 'Video',
     podcast: 'Podcast',
     microblog: 'Microblog',
@@ -100,20 +100,22 @@ function FeedCandidateCard({
     return (
         <div
             data-state={isSelected ? 'selected' : 'idle'}
-            className={cn(
-                'rounded-xl ring-1 ring-foreground/10 transition-colors',
-                isSelected && 'ring-ring',
-            )}
+            className="rounded-xl border border-border bg-gray-50 dark:bg-gray-900"
         >
             <label
                 htmlFor={inputId}
-                className="flex cursor-pointer items-start gap-3 px-4 py-3"
+                className="flex min-w-0 cursor-pointer items-start gap-3 px-4 py-3"
             >
                 <input
                     id={inputId}
                     type="radio"
                     name={groupName}
-                    className="mt-1.5 size-4 cursor-pointer accent-ring"
+                    className={cn(
+                        'mt-0.5 size-4 shrink-0 cursor-pointer appearance-none rounded-full border border-foreground/30 bg-background transition-colors',
+                        'checked:border-foreground/60 checked:bg-foreground/70',
+                        'checked:shadow-[inset_0_0_0_2.5px_var(--background)]',
+                        'focus-visible:ring-2 focus-visible:ring-foreground/20 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-50 focus-visible:outline-none dark:focus-visible:ring-offset-gray-900',
+                    )}
                     checked={isSelected}
                     onChange={onSelect}
                 />
@@ -125,9 +127,6 @@ function FeedCandidateCard({
                         {candidate.feed_url}
                     </span>
                 </div>
-                <span className="rounded-full bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
-                    {SOURCE_TYPE_LABELS[candidate.source_type]}
-                </span>
             </label>
 
             <Collapsible open={isSelected}>
@@ -156,8 +155,14 @@ function FeedCandidateCard({
                                     onSourceTypeChange(value as SourceType)
                                 }
                             >
-                                <SelectTrigger id={typeId} className="w-full">
-                                    <SelectValue />
+                                <SelectTrigger id={typeId}>
+                                    <SelectValue>
+                                        {(value) =>
+                                            SOURCE_TYPE_LABELS[
+                                                value as SourceType
+                                            ] ?? SOURCE_TYPE_LABELS.rss
+                                        }
+                                    </SelectValue>
                                 </SelectTrigger>
                                 <SelectContent>
                                     {(
