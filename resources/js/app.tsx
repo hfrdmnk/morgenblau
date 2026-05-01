@@ -1,4 +1,5 @@
 import { createInertiaApp } from '@inertiajs/react';
+import { Retune } from 'retune';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { initializeTheme } from '@/hooks/use-appearance';
@@ -36,6 +37,7 @@ createInertiaApp({
             <TooltipProvider delay={0}>
                 {app}
                 <Toaster />
+                <Retune />
             </TooltipProvider>
         );
     },
