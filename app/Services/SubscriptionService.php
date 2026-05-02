@@ -24,6 +24,42 @@ class SubscriptionService
         return $this->feedResolver->resolve($url);
     }
 
+    /**
+     * @return array<int, string>
+     */
+    public function listFeedUrls(User $user, OAuthSession $session): array
+    {
+        $client = Bluesky::withToken($session)->client(auth: true);
+
+        $urls = [];
+        $cursor = null;
+
+        do {
+            $response = $client->listRecords(
+                repo: $user->did,
+                collection: self::COLLECTION,
+                limit: 100,
+                cursor: $cursor,
+            );
+
+            if ($response->failed()) {
+                throw new RuntimeException("PDS read failed: {$response->status()} {$response->body()}");
+            }
+
+            foreach ((array) $response->json('records', []) as $record) {
+                $feedUrl = data_get($record, 'value.feedUrl');
+
+                if (is_string($feedUrl) && $feedUrl !== '') {
+                    $urls[] = $feedUrl;
+                }
+            }
+
+            $cursor = $response->json('cursor');
+        } while (is_string($cursor) && $cursor !== '');
+
+        return $urls;
+    }
+
     public function create(User $user, OAuthSession $session, ChosenFeed $choice): SubscriptionResult
     {
         $response = Bluesky::withToken($session)

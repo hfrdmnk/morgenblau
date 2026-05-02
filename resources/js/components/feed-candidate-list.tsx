@@ -1,3 +1,5 @@
+import { Tick02Icon } from '@hugeicons/core-free-icons';
+import { HugeiconsIcon } from '@hugeicons/react';
 import { useId } from 'react';
 
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
@@ -21,6 +23,11 @@ export type FeedCandidate = {
 
 export type SourceType = 'rss' | 'video' | 'podcast' | 'microblog';
 
+export type SelectedMeta = {
+    title: string;
+    source_type: SourceType;
+};
+
 export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
     rss: 'Website',
     video: 'Video',
@@ -30,41 +37,42 @@ export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
 
 type Props = {
     candidates: FeedCandidate[];
-    selectedFeedUrl: string | null;
-    onSelect: (feedUrl: string) => void;
-    title: string;
-    onTitleChange: (title: string) => void;
-    sourceType: SourceType;
-    onSourceTypeChange: (type: SourceType) => void;
+    existingFeedUrls: string[];
+    selected: Record<string, SelectedMeta>;
+    onToggle: (candidate: FeedCandidate) => void;
+    onTitleChange: (feedUrl: string, title: string) => void;
+    onSourceTypeChange: (feedUrl: string, type: SourceType) => void;
 };
 
 export function FeedCandidateList({
     candidates,
-    selectedFeedUrl,
-    onSelect,
-    title,
+    existingFeedUrls,
+    selected,
+    onToggle,
     onTitleChange,
-    sourceType,
     onSourceTypeChange,
 }: Props) {
-    const groupName = useId();
+    const existing = new Set(existingFeedUrls);
 
     return (
-        <div role="radiogroup" className="flex flex-col gap-2">
+        <div role="group" className="flex flex-col gap-2">
             {candidates.map((candidate) => {
-                const isSelected = candidate.feed_url === selectedFeedUrl;
+                const isExisting = existing.has(candidate.feed_url);
+                const meta = selected[candidate.feed_url];
 
                 return (
                     <FeedCandidateCard
                         key={candidate.feed_url}
                         candidate={candidate}
-                        groupName={groupName}
-                        isSelected={isSelected}
-                        onSelect={() => onSelect(candidate.feed_url)}
-                        title={title}
-                        onTitleChange={onTitleChange}
-                        sourceType={sourceType}
-                        onSourceTypeChange={onSourceTypeChange}
+                        isExisting={isExisting}
+                        meta={meta}
+                        onToggle={() => onToggle(candidate)}
+                        onTitleChange={(title) =>
+                            onTitleChange(candidate.feed_url, title)
+                        }
+                        onSourceTypeChange={(type) =>
+                            onSourceTypeChange(candidate.feed_url, type)
+                        }
                     />
                 );
             })}
@@ -74,54 +82,73 @@ export function FeedCandidateList({
 
 type CardProps = {
     candidate: FeedCandidate;
-    groupName: string;
-    isSelected: boolean;
-    onSelect: () => void;
-    title: string;
+    isExisting: boolean;
+    meta: SelectedMeta | undefined;
+    onToggle: () => void;
     onTitleChange: (title: string) => void;
-    sourceType: SourceType;
     onSourceTypeChange: (type: SourceType) => void;
 };
 
 function FeedCandidateCard({
     candidate,
-    groupName,
-    isSelected,
-    onSelect,
-    title,
+    isExisting,
+    meta,
+    onToggle,
     onTitleChange,
-    sourceType,
     onSourceTypeChange,
 }: CardProps) {
     const inputId = useId();
     const titleId = useId();
     const typeId = useId();
 
+    const isSelected = meta !== undefined;
+
     return (
         <div
-            data-state={isSelected ? 'selected' : 'idle'}
-            className="rounded-xl border border-border bg-gray-50 dark:bg-gray-900"
+            data-state={
+                isExisting ? 'existing' : isSelected ? 'selected' : 'idle'
+            }
+            className={cn(
+                'rounded-xl border border-border bg-gray-50 dark:bg-gray-900',
+                isExisting && 'opacity-60',
+            )}
         >
             <label
                 htmlFor={inputId}
-                className="flex min-w-0 cursor-pointer items-start gap-3 px-4 py-3"
+                className={cn(
+                    'flex min-w-0 items-start gap-3 px-4 py-3',
+                    isExisting ? 'cursor-not-allowed' : 'cursor-pointer',
+                )}
             >
-                <input
-                    id={inputId}
-                    type="radio"
-                    name={groupName}
-                    className={cn(
-                        'mt-0.5 size-4 shrink-0 cursor-pointer appearance-none rounded-full border border-foreground/30 bg-background transition-colors',
-                        'checked:border-foreground/60 checked:bg-foreground/70',
-                        'checked:shadow-[inset_0_0_0_2.5px_var(--background)]',
-                        'focus-visible:ring-2 focus-visible:ring-foreground/20 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-50 focus-visible:outline-none dark:focus-visible:ring-offset-gray-900',
-                    )}
-                    checked={isSelected}
-                    onChange={onSelect}
-                />
+                <span className="relative mt-0.5 inline-flex shrink-0">
+                    <input
+                        id={inputId}
+                        type="checkbox"
+                        className={cn(
+                            'peer size-4 cursor-pointer appearance-none rounded-sm border border-foreground/30 bg-background transition-colors',
+                            'checked:border-foreground/60 checked:bg-foreground/70',
+                            'focus-visible:border-ring focus-visible:outline-none',
+                            'disabled:cursor-not-allowed',
+                        )}
+                        checked={isSelected}
+                        disabled={isExisting}
+                        onChange={onToggle}
+                    />
+                    <HugeiconsIcon
+                        icon={Tick02Icon}
+                        className="pointer-events-none absolute inset-0 m-auto size-3 text-background opacity-0 peer-checked:opacity-100"
+                    />
+                </span>
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <span className="truncate text-sm font-medium">
-                        {candidate.title ?? candidate.feed_url}
+                    <span className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-sm font-medium">
+                            {candidate.title ?? candidate.feed_url}
+                        </span>
+                        {isExisting && (
+                            <span className="font-handwritten text-xs text-muted-foreground">
+                                Already added
+                            </span>
+                        )}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">
                         {candidate.feed_url}
@@ -129,7 +156,7 @@ function FeedCandidateCard({
                 </div>
             </label>
 
-            <Collapsible open={isSelected}>
+            <Collapsible open={isSelected && !isExisting}>
                 <CollapsibleContent className="overflow-hidden data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0">
                     <div className="flex flex-col gap-3 border-t border-foreground/10 px-4 py-3">
                         <div className="flex flex-col gap-1.5">
@@ -139,7 +166,7 @@ function FeedCandidateCard({
                             <Input
                                 id={titleId}
                                 type="text"
-                                value={title}
+                                value={meta?.title ?? ''}
                                 onChange={(event) =>
                                     onTitleChange(event.target.value)
                                 }
@@ -150,7 +177,7 @@ function FeedCandidateCard({
                                 Source type
                             </Label>
                             <Select
-                                value={sourceType}
+                                value={meta?.source_type ?? 'rss'}
                                 onValueChange={(value) =>
                                     onSourceTypeChange(value as SourceType)
                                 }

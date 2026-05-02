@@ -21,10 +21,11 @@ class StoreSubscriptionRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'feed_url' => ['required', 'string', 'url:http,https', 'max:2048'],
-            'title' => ['nullable', 'string', 'max:512'],
-            'site_url' => ['nullable', 'string', 'url:http,https', 'max:2048'],
-            'source_type' => ['required', Rule::in(self::SOURCE_TYPES)],
+            'subscriptions' => ['required', 'array', 'min:1'],
+            'subscriptions.*.feed_url' => ['required', 'string', 'url:http,https', 'max:2048', 'distinct:strict'],
+            'subscriptions.*.title' => ['nullable', 'string', 'max:512'],
+            'subscriptions.*.site_url' => ['nullable', 'string', 'url:http,https', 'max:2048'],
+            'subscriptions.*.source_type' => ['required', Rule::in(self::SOURCE_TYPES)],
         ];
     }
 }

@@ -16,8 +16,10 @@ test('guests cannot discover or store subscriptions', function () {
         ->assertUnauthorized();
 
     $this->post(route('subscriptions.store'), [
-        'feed_url' => 'https://example.com/rss.xml',
-        'source_type' => 'rss',
+        'subscriptions' => [[
+            'feed_url' => 'https://example.com/rss.xml',
+            'source_type' => 'rss',
+        ]],
     ])->assertRedirect(route('login'));
 });
 
@@ -35,13 +37,13 @@ test('discover returns every advertised feed in document order', function () {
         ),
     ]);
 
+    fakeListRecords(fakeBlueskyClient(), []);
+
     $this->actingAs(User::factory()->create());
 
-    $response = $this->postJson(route('subscriptions.discover'), [
+    $this->postJson(route('subscriptions.discover'), [
         'url' => 'https://example.com',
-    ])->assertOk();
-
-    $response->assertExactJson([
+    ])->assertOk()->assertExactJson([
         'candidates' => [
             [
                 'feed_url' => 'https://example.com/rss.xml',
@@ -56,6 +58,7 @@ test('discover returns every advertised feed in document order', function () {
                 'source_type' => 'rss',
             ],
         ],
+        'existing_feed_urls' => [],
     ]);
 });
 
@@ -71,12 +74,35 @@ test('discover falls back to og:site_name when a link has no title', function ()
         ),
     ]);
 
+    fakeListRecords(fakeBlueskyClient(), []);
+
     $this->actingAs(User::factory()->create());
 
     $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
         ->assertOk()
         ->assertJsonPath('candidates.0.title', 'Example Blog')
         ->assertJsonPath('candidates.0.feed_url', 'https://example.com/rss.xml');
+});
+
+test('discover surfaces feeds the user is already subscribed to', function () {
+    Http::fake([
+        'example.com' => Http::response(
+            '<html><head>'
+            .'<link rel="alternate" type="application/rss+xml" title="Main feed" href="/rss.xml">'
+            .'<link rel="alternate" type="application/atom+xml" title="Comments" href="/comments.atom">'
+            .'</head></html>',
+            200,
+            ['Content-Type' => 'text/html'],
+        ),
+    ]);
+
+    fakeListRecords(fakeBlueskyClient(), ['https://example.com/rss.xml']);
+
+    $this->actingAs(User::factory()->create());
+
+    $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
+        ->assertOk()
+        ->assertJsonPath('existing_feed_urls', ['https://example.com/rss.xml']);
 });
 
 test('discover returns a 422 with a url error when the page exposes no feed', function () {
@@ -104,7 +130,8 @@ test('discover rejects a malformed URL', function () {
 });
 
 test('storing a subscription writes the chosen feed to the user PDS', function () {
-    $client = Mockery::mock(AtpClient::class);
+    $client = fakeBlueskyClient();
+    fakeListRecords($client, []);
     $client->shouldReceive('createRecord')
         ->once()
         ->withArgs(function (string $repo, string $collection, array $record) {
@@ -121,28 +148,111 @@ test('storing a subscription writes the chosen feed to the user PDS', function (
             'cid' => 'bafy...',
         ]));
 
-    bindBlueskyFactory($client);
-
-    $user = User::factory()->create();
-    $this->actingAs($user);
+    $this->actingAs(User::factory()->create());
 
     $this->post(route('subscriptions.store'), [
-        'feed_url' => 'https://example.com/rss.xml',
-        'title' => 'Example Blog',
-        'site_url' => 'https://example.com',
-        'source_type' => 'rss',
+        'subscriptions' => [[
+            'feed_url' => 'https://example.com/rss.xml',
+            'title' => 'Example Blog',
+            'site_url' => 'https://example.com',
+            'source_type' => 'rss',
+        ]],
     ])->assertRedirect();
+});
+
+test('storing rejects a feed_url the user is already subscribed to', function () {
+    $client = fakeBlueskyClient();
+    fakeListRecords($client, ['https://example.com/rss.xml']);
+    $client->shouldNotReceive('createRecord');
+
+    $this->actingAs(User::factory()->create());
+
+    $this->from(route('consume'))->post(route('subscriptions.store'), [
+        'subscriptions' => [[
+            'feed_url' => 'https://example.com/rss.xml',
+            'title' => 'Example Blog',
+            'site_url' => 'https://example.com',
+            'source_type' => 'rss',
+        ]],
+    ])
+        ->assertRedirect(route('consume'))
+        ->assertSessionHasErrors('subscriptions.0.feed_url');
+});
+
+test('storing creates multiple subscriptions in one request', function () {
+    $client = fakeBlueskyClient();
+    fakeListRecords($client, []);
+    $client->shouldReceive('createRecord')
+        ->twice()
+        ->andReturn(
+            fakeSuccessResponse(['uri' => 'at://did:plc:test/app.skyreader.feed.subscription/a', 'cid' => 'bafy1']),
+            fakeSuccessResponse(['uri' => 'at://did:plc:test/app.skyreader.feed.subscription/b', 'cid' => 'bafy2']),
+        );
+
+    $this->actingAs(User::factory()->create());
+
+    $this->post(route('subscriptions.store'), [
+        'subscriptions' => [
+            [
+                'feed_url' => 'https://example.com/rss.xml',
+                'title' => 'Main',
+                'site_url' => 'https://example.com',
+                'source_type' => 'rss',
+            ],
+            [
+                'feed_url' => 'https://example.com/comments.atom',
+                'title' => 'Comments',
+                'site_url' => 'https://example.com',
+                'source_type' => 'rss',
+            ],
+        ],
+    ])->assertRedirect()
+        ->assertSessionHas('flash.message', fn (string $msg) => str_contains($msg, '2 sources'));
+});
+
+test('storing succeeds the rest when one createRecord fails', function () {
+    $client = fakeBlueskyClient();
+    fakeListRecords($client, []);
+    $client->shouldReceive('createRecord')
+        ->twice()
+        ->andReturn(
+            fakeSuccessResponse(['uri' => 'at://did:plc:test/app.skyreader.feed.subscription/a', 'cid' => 'bafy1']),
+            fakeFailureResponse(500, ['error' => 'InternalServerError']),
+        );
+
+    $this->actingAs(User::factory()->create());
+
+    $this->post(route('subscriptions.store'), [
+        'subscriptions' => [
+            [
+                'feed_url' => 'https://example.com/rss.xml',
+                'title' => 'Main',
+                'site_url' => 'https://example.com',
+                'source_type' => 'rss',
+            ],
+            [
+                'feed_url' => 'https://example.com/comments.atom',
+                'title' => 'Comments',
+                'site_url' => 'https://example.com',
+                'source_type' => 'rss',
+            ],
+        ],
+    ])->assertRedirect()
+        ->assertSessionHas('flash.message', fn (string $msg) => str_contains($msg, 'Subscribed to Main')
+            && str_contains($msg, 'Failed: Comments'));
 });
 
 test('storing a subscription validates the source type', function () {
     $this->actingAs(User::factory()->create());
 
     $this->from(route('consume'))->post(route('subscriptions.store'), [
-        'feed_url' => 'https://example.com/rss.xml',
-        'source_type' => 'newsletter',
+        'subscriptions' => [[
+            'feed_url' => 'https://example.com/rss.xml',
+            'source_type' => 'newsletter',
+        ]],
     ])
         ->assertRedirect(route('consume'))
-        ->assertSessionHasErrors('source_type');
+        ->assertSessionHasErrors('subscriptions.0.source_type');
 });
 
 test('discover resolves YouTube channels to their videos.xml feed', function (string $fixture, string $url) {
@@ -153,6 +263,8 @@ test('discover resolves YouTube channels to their videos.xml feed', function (st
             ['Content-Type' => 'text/html'],
         ),
     ]);
+
+    fakeListRecords(fakeBlueskyClient(), []);
 
     $this->actingAs(User::factory()->create());
 
@@ -179,6 +291,8 @@ test('discover bypasses YouTube EU consent by sending the SOCS cookie', function
         ),
     ]);
 
+    fakeListRecords(fakeBlueskyClient(), []);
+
     $this->actingAs(User::factory()->create());
 
     $this->postJson(route('subscriptions.discover'), [
@@ -188,16 +302,39 @@ test('discover bypasses YouTube EU consent by sending the SOCS cookie', function
     Http::assertSent(fn ($request) => $request->header('Cookie') === ['SOCS=CAI']);
 });
 
-function bindBlueskyFactory(MockInterface $client): void
+function fakeBlueskyClient(): MockInterface
 {
+    $client = Mockery::mock(AtpClient::class);
+
     $factory = Mockery::mock(BlueskyFactory::class);
     $factory->shouldReceive('withToken')->andReturnSelf();
     $factory->shouldReceive('client')->with(true)->andReturn($client);
 
     app()->instance(BlueskyFactory::class, $factory);
+
+    return $client;
+}
+
+/**
+ * @param  array<int, string>  $feedUrls
+ */
+function fakeListRecords(MockInterface $client, array $feedUrls = []): void
+{
+    $client->shouldReceive('listRecords')
+        ->andReturn(fakeSuccessResponse([
+            'records' => array_map(
+                fn (string $url) => ['value' => ['feedUrl' => $url]],
+                $feedUrls,
+            ),
+        ]));
 }
 
 function fakeSuccessResponse(array $body): HttpResponse
 {
     return new HttpResponse(Http::response($body, 200)->wait());
+}
+
+function fakeFailureResponse(int $status, array $body = []): HttpResponse
+{
+    return new HttpResponse(Http::response($body, $status)->wait());
 }
