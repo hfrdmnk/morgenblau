@@ -321,7 +321,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
             onOpenChange={onOpenChange}
             onOpenChangeComplete={handleOpenChangeComplete}
         >
-            <DialogContent>
+            <DialogContent className="max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
                 <DialogHeader>
                     <DialogTitle>Add a source</DialogTitle>
                     <DialogDescription>
@@ -333,7 +333,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                 <form
                     onSubmit={submit}
                     onKeyDown={onFormKeyDown}
-                    className="flex min-w-0 flex-col gap-5"
+                    className="flex min-h-0 min-w-0 flex-col gap-5"
                 >
                     <div className="space-y-2">
                         <Label htmlFor="subscription-url" className="sr-only">
@@ -384,19 +384,21 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                     </div>
 
                     {hasCandidates && (
-                        <FeedCandidateList
-                            containerRef={candidateListRef}
-                            candidates={candidates}
-                            existingByFeedUrl={existingByFeedUrl}
-                            selected={selectedMap}
-                            onToggle={toggleCandidate}
-                            onTitleChange={(feedUrl, title) =>
-                                updateItem(feedUrl, { title })
-                            }
-                            onSourceTypeChange={(feedUrl, type) =>
-                                updateItem(feedUrl, { source_type: type })
-                            }
-                        />
+                        <div className="-mx-6 min-h-0 flex-1 overflow-y-auto px-6">
+                            <FeedCandidateList
+                                containerRef={candidateListRef}
+                                candidates={candidates}
+                                existingByFeedUrl={existingByFeedUrl}
+                                selected={selectedMap}
+                                onToggle={toggleCandidate}
+                                onTitleChange={(feedUrl, title) =>
+                                    updateItem(feedUrl, { title })
+                                }
+                                onSourceTypeChange={(feedUrl, type) =>
+                                    updateItem(feedUrl, { source_type: type })
+                                }
+                            />
+                        </div>
                     )}
 
                     {hasCandidates &&
