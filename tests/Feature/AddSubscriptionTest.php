@@ -58,7 +58,7 @@ test('discover returns every advertised feed in document order', function () {
                 'source_type' => 'rss',
             ],
         ],
-        'existing_feed_urls' => [],
+        'existing_subscriptions' => [],
     ]);
 });
 
@@ -84,12 +84,36 @@ test('discover falls back to og:site_name when a link has no title', function ()
         ->assertJsonPath('candidates.0.feed_url', 'https://example.com/rss.xml');
 });
 
-test('discover surfaces feeds the user is already subscribed to', function () {
+test('discover surfaces feeds the user is already subscribed to with their saved titles', function () {
     Http::fake([
         'example.com' => Http::response(
             '<html><head>'
             .'<link rel="alternate" type="application/rss+xml" title="Main feed" href="/rss.xml">'
             .'<link rel="alternate" type="application/atom+xml" title="Comments" href="/comments.atom">'
+            .'</head></html>',
+            200,
+            ['Content-Type' => 'text/html'],
+        ),
+    ]);
+
+    fakeListRecords(fakeBlueskyClient(), [
+        ['feed_url' => 'https://example.com/rss.xml', 'title' => 'My nickname for this feed'],
+    ]);
+
+    $this->actingAs(User::factory()->create());
+
+    $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
+        ->assertOk()
+        ->assertJsonPath('existing_subscriptions', [
+            ['feed_url' => 'https://example.com/rss.xml', 'title' => 'My nickname for this feed'],
+        ]);
+});
+
+test('discover returns null title for existing subscriptions saved without one', function () {
+    Http::fake([
+        'example.com' => Http::response(
+            '<html><head>'
+            .'<link rel="alternate" type="application/rss+xml" title="Main feed" href="/rss.xml">'
             .'</head></html>',
             200,
             ['Content-Type' => 'text/html'],
@@ -102,7 +126,9 @@ test('discover surfaces feeds the user is already subscribed to', function () {
 
     $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
         ->assertOk()
-        ->assertJsonPath('existing_feed_urls', ['https://example.com/rss.xml']);
+        ->assertJsonPath('existing_subscriptions', [
+            ['feed_url' => 'https://example.com/rss.xml', 'title' => null],
+        ]);
 });
 
 test('discover returns a 422 with a url error when the page exposes no feed', function () {
@@ -316,16 +342,22 @@ function fakeBlueskyClient(): MockInterface
 }
 
 /**
- * @param  array<int, string>  $feedUrls
+ * @param  array<int, string|array{feed_url: string, title?: ?string}>  $records
  */
-function fakeListRecords(MockInterface $client, array $feedUrls = []): void
+function fakeListRecords(MockInterface $client, array $records = []): void
 {
     $client->shouldReceive('listRecords')
         ->andReturn(fakeSuccessResponse([
-            'records' => array_map(
-                fn (string $url) => ['value' => ['feedUrl' => $url]],
-                $feedUrls,
-            ),
+            'records' => array_map(function ($record) {
+                if (is_string($record)) {
+                    return ['value' => ['feedUrl' => $record]];
+                }
+
+                return ['value' => array_filter([
+                    'feedUrl' => $record['feed_url'],
+                    'title' => $record['title'] ?? null,
+                ], fn ($value): bool => $value !== null)];
+            }, $records),
         ]));
 }
 

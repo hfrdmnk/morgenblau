@@ -1,8 +1,8 @@
 import { Loading03Icon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { useForm } from '@inertiajs/react';
-import type { FormEvent } from 'react';
-import { useState } from 'react';
+import type { FormEvent, KeyboardEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import {
@@ -35,6 +35,11 @@ type SubscriptionItem = {
     source_type: SourceType;
 };
 
+type ExistingSubscription = {
+    feed_url: string;
+    title: string | null;
+};
+
 type FormShape = {
     subscriptions: SubscriptionItem[];
 };
@@ -64,9 +69,13 @@ function toItem(candidate: FeedCandidate): SubscriptionItem {
 export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
     const [url, setUrl] = useState('');
     const [candidates, setCandidates] = useState<FeedCandidate[] | null>(null);
-    const [existingFeedUrls, setExistingFeedUrls] = useState<string[]>([]);
+    const [existingSubscriptions, setExistingSubscriptions] = useState<
+        ExistingSubscription[]
+    >([]);
     const [discovering, setDiscovering] = useState(false);
     const [discoverError, setDiscoverError] = useState<string | null>(null);
+    const candidateListRef = useRef<HTMLDivElement>(null);
+    const previousCandidatesRef = useRef<FeedCandidate[] | null>(null);
 
     const { data, setData, post, processing, errors, reset, clearErrors } =
         useForm<FormShape>(EMPTY_FORM);
@@ -76,7 +85,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         clearErrors();
         setUrl('');
         setCandidates(null);
-        setExistingFeedUrls([]);
+        setExistingSubscriptions([]);
         setDiscoverError(null);
         setDiscovering(false);
         onOpenChange(false);
@@ -97,11 +106,88 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
 
         if (candidates !== null) {
             setCandidates(null);
-            setExistingFeedUrls([]);
+            setExistingSubscriptions([]);
             setDiscoverError(null);
             setData(EMPTY_FORM);
         }
     };
+
+    const onUrlKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.key !== 'Enter' || event.nativeEvent.isComposing) {
+            return;
+        }
+
+        if (candidates !== null || !url.trim() || discovering) {
+            return;
+        }
+
+        event.preventDefault();
+        findFeeds();
+    };
+
+    const onFormKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
+        if (event.key !== 'Enter' || event.nativeEvent.isComposing) {
+            return;
+        }
+
+        if (event.defaultPrevented) {
+            return;
+        }
+
+        const target = event.target;
+        const onSubmitButton =
+            target instanceof HTMLButtonElement && target.type === 'submit';
+
+        if (onSubmitButton) {
+            return;
+        }
+
+        if (event.metaKey || event.ctrlKey) {
+            event.preventDefault();
+
+            if (hasCandidates && selectedCount > 0 && !processing) {
+                event.currentTarget.requestSubmit();
+            }
+
+            return;
+        }
+
+        if (target instanceof HTMLInputElement) {
+            event.preventDefault();
+        }
+    };
+
+    useEffect(() => {
+        const previous = previousCandidatesRef.current;
+        previousCandidatesRef.current = candidates;
+
+        if (previous !== null || candidates === null) {
+            return;
+        }
+
+        const container = candidateListRef.current;
+
+        if (!container) {
+            return;
+        }
+
+        if (data.subscriptions.length === 1) {
+            const titleInput =
+                container.querySelector<HTMLInputElement>('input[type="text"]');
+
+            if (titleInput) {
+                titleInput.focus();
+                titleInput.select();
+
+                return;
+            }
+        }
+
+        const checkbox = container.querySelector<HTMLInputElement>(
+            'input[type="checkbox"]:not(:disabled)',
+        );
+        checkbox?.focus();
+    }, [candidates, data.subscriptions.length]);
 
     const findFeeds = async () => {
         setDiscovering(true);
@@ -141,12 +227,14 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
 
             const body = (await response.json()) as {
                 candidates: FeedCandidate[];
-                existing_feed_urls: string[];
+                existing_subscriptions: ExistingSubscription[];
             };
             setCandidates(body.candidates);
-            setExistingFeedUrls(body.existing_feed_urls);
+            setExistingSubscriptions(body.existing_subscriptions);
 
-            const existing = new Set(body.existing_feed_urls);
+            const existing = new Set(
+                body.existing_subscriptions.map((s) => s.feed_url),
+            );
             const fresh = body.candidates.filter(
                 (c) => !existing.has(c.feed_url),
             );
@@ -168,6 +256,10 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
             item.feed_url,
             { title: item.title, source_type: item.source_type },
         ]),
+    );
+
+    const existingByFeedUrl: Record<string, string | null> = Object.fromEntries(
+        existingSubscriptions.map((s) => [s.feed_url, s.title]),
     );
 
     const toggleCandidate = (candidate: FeedCandidate) => {
@@ -237,7 +329,11 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                     </DialogDescription>
                 </DialogHeader>
 
-                <form onSubmit={submit} className="flex min-w-0 flex-col gap-5">
+                <form
+                    onSubmit={submit}
+                    onKeyDown={onFormKeyDown}
+                    className="flex min-w-0 flex-col gap-5"
+                >
                     <div className="space-y-2">
                         <Label htmlFor="subscription-url" className="sr-only">
                             URL
@@ -254,6 +350,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                                 onChange={(event) =>
                                     onUrlChange(event.target.value)
                                 }
+                                onKeyDown={onUrlKeyDown}
                                 aria-invalid={discoverError ? true : undefined}
                                 className="flex-1"
                             />
@@ -287,8 +384,9 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
 
                     {hasCandidates && (
                         <FeedCandidateList
+                            containerRef={candidateListRef}
                             candidates={candidates}
-                            existingFeedUrls={existingFeedUrls}
+                            existingByFeedUrl={existingByFeedUrl}
                             selected={selectedMap}
                             onToggle={toggleCandidate}
                             onTitleChange={(feedUrl, title) =>

@@ -25,13 +25,13 @@ class SubscriptionService
     }
 
     /**
-     * @return array<int, string>
+     * @return array<int, array{feed_url: string, title: ?string}>
      */
-    public function listFeedUrls(User $user, OAuthSession $session): array
+    public function listSubscriptions(User $user, OAuthSession $session): array
     {
         $client = Bluesky::withToken($session)->client(auth: true);
 
-        $urls = [];
+        $subscriptions = [];
         $cursor = null;
 
         do {
@@ -49,15 +49,21 @@ class SubscriptionService
             foreach ((array) $response->json('records', []) as $record) {
                 $feedUrl = data_get($record, 'value.feedUrl');
 
-                if (is_string($feedUrl) && $feedUrl !== '') {
-                    $urls[] = $feedUrl;
+                if (! is_string($feedUrl) || $feedUrl === '') {
+                    continue;
                 }
+
+                $title = data_get($record, 'value.title');
+                $subscriptions[] = [
+                    'feed_url' => $feedUrl,
+                    'title' => is_string($title) && $title !== '' ? $title : null,
+                ];
             }
 
             $cursor = $response->json('cursor');
         } while (is_string($cursor) && $cursor !== '');
 
-        return $urls;
+        return $subscriptions;
     }
 
     public function create(User $user, OAuthSession $session, ChosenFeed $choice): SubscriptionResult

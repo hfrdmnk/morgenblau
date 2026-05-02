@@ -1,5 +1,6 @@
 import { Tick02Icon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
+import type { Ref } from 'react';
 import { useId } from 'react';
 
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
@@ -37,27 +38,30 @@ export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
 
 type Props = {
     candidates: FeedCandidate[];
-    existingFeedUrls: string[];
+    existingByFeedUrl: Record<string, string | null>;
     selected: Record<string, SelectedMeta>;
     onToggle: (candidate: FeedCandidate) => void;
     onTitleChange: (feedUrl: string, title: string) => void;
     onSourceTypeChange: (feedUrl: string, type: SourceType) => void;
+    containerRef?: Ref<HTMLDivElement>;
 };
 
 export function FeedCandidateList({
     candidates,
-    existingFeedUrls,
+    existingByFeedUrl,
     selected,
     onToggle,
     onTitleChange,
     onSourceTypeChange,
+    containerRef,
 }: Props) {
-    const existing = new Set(existingFeedUrls);
-
     return (
-        <div role="group" className="flex flex-col gap-2">
+        <div ref={containerRef} role="group" className="flex flex-col gap-2">
             {candidates.map((candidate) => {
-                const isExisting = existing.has(candidate.feed_url);
+                const isExisting = candidate.feed_url in existingByFeedUrl;
+                const savedTitle = isExisting
+                    ? existingByFeedUrl[candidate.feed_url]
+                    : null;
                 const meta = selected[candidate.feed_url];
 
                 return (
@@ -65,6 +69,7 @@ export function FeedCandidateList({
                         key={candidate.feed_url}
                         candidate={candidate}
                         isExisting={isExisting}
+                        savedTitle={savedTitle}
                         meta={meta}
                         onToggle={() => onToggle(candidate)}
                         onTitleChange={(title) =>
@@ -83,6 +88,7 @@ export function FeedCandidateList({
 type CardProps = {
     candidate: FeedCandidate;
     isExisting: boolean;
+    savedTitle: string | null;
     meta: SelectedMeta | undefined;
     onToggle: () => void;
     onTitleChange: (title: string) => void;
@@ -92,6 +98,7 @@ type CardProps = {
 function FeedCandidateCard({
     candidate,
     isExisting,
+    savedTitle,
     meta,
     onToggle,
     onTitleChange,
@@ -130,7 +137,7 @@ function FeedCandidateCard({
                             'focus-visible:border-ring focus-visible:outline-none',
                             'disabled:cursor-not-allowed',
                         )}
-                        checked={isSelected}
+                        checked={isSelected || isExisting}
                         disabled={isExisting}
                         onChange={onToggle}
                     />
@@ -142,7 +149,8 @@ function FeedCandidateCard({
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <span className="flex min-w-0 items-center gap-2">
                         <span className="truncate text-sm font-medium">
-                            {candidate.title ?? candidate.feed_url}
+                            {(isExisting ? savedTitle : candidate.title) ??
+                                candidate.feed_url}
                         </span>
                         {isExisting && (
                             <span className="font-handwritten text-xs text-muted-foreground">

@@ -27,7 +27,7 @@ class SubscriptionController extends Controller
             throw ValidationException::withMessages(['url' => $e->getMessage()]);
         }
 
-        $existingFeedUrls = $this->subscriptions->listFeedUrls(
+        $existingSubscriptions = $this->subscriptions->listSubscriptions(
             $request->user(),
             $this->oauthSession($request),
         );
@@ -39,7 +39,7 @@ class SubscriptionController extends Controller
                 'site_url' => $c->siteUrl,
                 'source_type' => $c->sourceType,
             ], $candidates),
-            'existing_feed_urls' => $existingFeedUrls,
+            'existing_subscriptions' => $existingSubscriptions,
         ]);
     }
 
@@ -49,7 +49,10 @@ class SubscriptionController extends Controller
         $session = $this->oauthSession($request);
         $user = $request->user();
 
-        $existing = array_flip($this->subscriptions->listFeedUrls($user, $session));
+        $existing = array_flip(array_column(
+            $this->subscriptions->listSubscriptions($user, $session),
+            'feed_url',
+        ));
 
         $duplicateErrors = [];
         foreach ($items as $index => $item) {
