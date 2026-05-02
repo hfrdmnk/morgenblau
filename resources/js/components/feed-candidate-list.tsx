@@ -165,7 +165,7 @@ function FeedCandidateCard({
             </label>
 
             <Collapsible open={isSelected && !isExisting}>
-                <CollapsibleContent className="overflow-hidden data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0">
+                <CollapsibleContent className="overflow-hidden">
                     <div className="flex flex-col gap-3 border-t border-foreground/10 px-4 py-3">
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor={titleId} className="text-xs">

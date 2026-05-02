@@ -81,6 +81,14 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         useForm<FormShape>(EMPTY_FORM);
 
     const close = () => {
+        onOpenChange(false);
+    };
+
+    const handleOpenChangeComplete = (nextOpen: boolean) => {
+        if (nextOpen) {
+            return;
+        }
+
         reset();
         clearErrors();
         setUrl('');
@@ -88,17 +96,6 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         setExistingSubscriptions([]);
         setDiscoverError(null);
         setDiscovering(false);
-        onOpenChange(false);
-    };
-
-    const handleOpenChange = (next: boolean) => {
-        if (!next) {
-            close();
-
-            return;
-        }
-
-        onOpenChange(next);
     };
 
     const onUrlChange = (next: string) => {
@@ -319,7 +316,11 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         selectedCount > 1 ? `Add ${selectedCount} sources` : 'Add source';
 
     return (
-        <Dialog open={open} onOpenChange={handleOpenChange}>
+        <Dialog
+            open={open}
+            onOpenChange={onOpenChange}
+            onOpenChangeComplete={handleOpenChangeComplete}
+        >
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Add a source</DialogTitle>
