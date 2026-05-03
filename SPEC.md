@@ -109,25 +109,25 @@ Custom video and audio player UI that matches Morgenblau's design language. Not 
 
 ---
 
-<windows>
+<views>
 
-## Windows
+## Views
 
-Windows are filtered views onto your content — different lenses to look through.
+Views are filters of content, different lenses to look through.
 
-### Default Windows (Predefined)
+### Default Views (Predefined)
 
-The app provides default windows based on content type (e.g., Blogposts, Videos, Podcasts, Microblogs).
+The app provides default views based on content type (e.g., Blogposts, Videos, Podcasts, Microblogs).
 
-### Custom Windows (User-Created)
+### Custom Views (User-Created)
 
-Users can create their own windows with custom filter criteria — by tags, sources, content types, or combinations.
+Users can create their own views with custom filter criteria — by tags, sources, content types, or combinations.
 
 ### Default Landing
 
-When a user opens Morgenblau, they land on **today's digest** — a unified view of the current day's content across all sources. Windows are available for filtering from there.
+When a user opens Morgenblau, they land on **today's digest** — a unified view of the current day's content across all sources. Views are available for filtering from there.
 
-</windows>
+</views>
 
 ---
 
@@ -262,21 +262,3 @@ Things Morgenblau will never do.
 Users aren't "managing subscriptions." They're the **editor of their own daily publication** — choosing sources, deciding who gets the front page.
 
 </brand>
-
----
-
-<tech-stack>
-
-## Tech Stack (Quick Reference)
-
-| Layer           | Technology                          |
-| --------------- | ----------------------------------- |
-| Framework       | React 19, TypeScript                |
-| Router          | TanStack React Router + React Start |
-| Styling         | Tailwind CSS v4                     |
-| Animation       | Motion, Three.js (shaders)          |
-| Components      | Base UI                             |
-| Build           | Vite                                |
-| Package Manager | bun                                 |
-
-</tech-stack>
