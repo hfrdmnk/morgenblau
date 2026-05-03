@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { login } from '@/routes';
 
 type FeedCandidate = App.Data.Feeds.ResolvedFeedData;
 type ExistingSubscription = App.Data.Subscriptions.ExistingSubscriptionData;
@@ -197,6 +198,12 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                 credentials: 'same-origin',
                 body: JSON.stringify({ url }),
             });
+
+            if (response.status === 401) {
+                window.location.href = login().url;
+
+                return;
+            }
 
             if (response.status === 422) {
                 const body = (await response.json()) as {

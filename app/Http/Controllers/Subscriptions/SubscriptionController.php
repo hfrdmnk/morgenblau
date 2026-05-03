@@ -10,9 +10,7 @@ use App\Services\Feeds\Exceptions\UnresolvableFeedException;
 use App\Services\Subscriptions\SubscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
-use Revolution\Bluesky\Session\OAuthSession;
 use RuntimeException;
 
 class SubscriptionController extends Controller
@@ -27,10 +25,7 @@ class SubscriptionController extends Controller
             throw ValidationException::withMessages(['url' => $e->getMessage()]);
         }
 
-        $existingSubscriptions = $this->subscriptions->listSubscriptions(
-            $request->user(),
-            $this->oauthSession($request),
-        );
+        $existingSubscriptions = $this->subscriptions->listSubscriptions($request->user());
 
         return response()->json([
             'candidates' => $candidates,
@@ -41,11 +36,10 @@ class SubscriptionController extends Controller
     public function store(StoreRequest $request): RedirectResponse
     {
         $items = $request->validated()['subscriptions'];
-        $session = $this->oauthSession($request);
         $user = $request->user();
 
         $existing = array_flip(
-            $this->subscriptions->listSubscriptions($user, $session)
+            $this->subscriptions->listSubscriptions($user)
                 ->toCollection()
                 ->pluck('feedUrl')
                 ->all(),
@@ -69,7 +63,6 @@ class SubscriptionController extends Controller
             try {
                 $result = $this->subscriptions->create(
                     user: $user,
-                    session: $session,
                     choice: ChosenFeedData::from($item),
                 );
                 $succeeded[] = $result->title;
@@ -81,13 +74,6 @@ class SubscriptionController extends Controller
         return back()->with('flash', [
             'message' => $this->buildFlashMessage($succeeded, $failed),
         ]);
-    }
-
-    private function oauthSession(Request $request): OAuthSession
-    {
-        return OAuthSession::create(
-            $request->session()->get('bluesky_session', []),
-        );
     }
 
     /**

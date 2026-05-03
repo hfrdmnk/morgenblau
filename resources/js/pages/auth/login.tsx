@@ -1,6 +1,6 @@
 import { Loading03Icon, Login03Icon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { Form, Head } from '@inertiajs/react';
+import { Form, Head, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { store } from '@/actions/App/Http/Controllers/Auth/AuthenticatedSessionController';
 import InputError from '@/components/input-error';
@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 export default function Login() {
     const [handle, setHandle] = useState('');
     const [pending, setPending] = useState(false);
+    const flashMessage = usePage().props.flash?.message;
 
     return (
         <div className="space-y-8 motion-safe:animate-in motion-safe:duration-200 motion-safe:fade-in">
@@ -26,6 +27,11 @@ export default function Login() {
                     A calmer way to be on the open web. Powered by RSS and the
                     AT Protocol.
                 </p>
+                {flashMessage && (
+                    <p className="pt-2 font-handwritten text-base text-muted-foreground">
+                        {flashMessage}
+                    </p>
+                )}
             </header>
 
             <Form

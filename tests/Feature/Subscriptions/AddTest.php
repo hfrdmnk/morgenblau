@@ -1,7 +1,9 @@
 <?php
 
 use App\Models\User;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\Client\Response as HttpResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Mockery\MockInterface;
 use Revolution\Bluesky\Client\AtpClient;
@@ -328,17 +330,138 @@ test('discover bypasses YouTube EU consent by sending the SOCS cookie', function
     Http::assertSent(fn ($request) => $request->header('Cookie') === ['SOCS=CAI']);
 });
 
+test('discover triggers a refresh when no bluesky_session is cached', function () {
+    Http::fake([
+        'example.com' => Http::response(
+            '<html><head><link rel="alternate" type="application/rss+xml" title="Main" href="/rss.xml"></head></html>',
+            200,
+            ['Content-Type' => 'text/html'],
+        ),
+    ]);
+
+    fakeListRecords(fakeBlueskyClient(), []);
+
+    $user = User::factory()->create(['refresh_token' => 'valid-db-refresh-token']);
+
+    $this->actingAs($user);
+
+    expect(session('bluesky_session'))->toBeNull();
+
+    $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
+        ->assertOk();
+});
+
+test('a refresh failure during discover (inertia) logs the user out and redirects to login', function () {
+    Http::fake([
+        'example.com' => Http::response(
+            '<html><head><link rel="alternate" type="application/rss+xml" title="Main" href="/rss.xml"></head></html>',
+            200,
+            ['Content-Type' => 'text/html'],
+        ),
+    ]);
+
+    $client = fakeBlueskyClient();
+    $client->shouldReceive('listRecords')->andThrow(new AuthenticationException);
+
+    $this->actingAs(User::factory()->create(['refresh_token' => 'invalid']));
+
+    $this->postJson(
+        route('subscriptions.discover'),
+        ['url' => 'https://example.com'],
+        ['X-Inertia' => 'true'],
+    )
+        ->assertStatus(409)
+        ->assertHeader('X-Inertia-Location', route('login'));
+
+    expect(Auth::check())->toBeFalse();
+});
+
+test('a refresh failure during discover (raw fetch) returns 401 json', function () {
+    Http::fake([
+        'example.com' => Http::response(
+            '<html><head><link rel="alternate" type="application/rss+xml" title="Main" href="/rss.xml"></head></html>',
+            200,
+            ['Content-Type' => 'text/html'],
+        ),
+    ]);
+
+    $client = fakeBlueskyClient();
+    $client->shouldReceive('listRecords')->andThrow(new AuthenticationException);
+
+    $this->actingAs(User::factory()->create(['refresh_token' => 'invalid']));
+
+    $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
+        ->assertUnauthorized()
+        ->assertExactJson(['message' => 'Session expired']);
+
+    expect(Auth::check())->toBeFalse();
+});
+
+test('a failure thrown directly by refreshSession also logs the user out (inertia)', function () {
+    Http::fake([
+        'example.com' => Http::response(
+            '<html><head><link rel="alternate" type="application/rss+xml" title="Main" href="/rss.xml"></head></html>',
+            200,
+            ['Content-Type' => 'text/html'],
+        ),
+    ]);
+
+    fakeBlueskyRefreshFailure();
+
+    $this->actingAs(User::factory()->create(['refresh_token' => 'invalid']));
+
+    $this->postJson(
+        route('subscriptions.discover'),
+        ['url' => 'https://example.com'],
+        ['X-Inertia' => 'true'],
+    )
+        ->assertStatus(409)
+        ->assertHeader('X-Inertia-Location', route('login'));
+
+    expect(Auth::check())->toBeFalse();
+});
+
+test('a failure thrown directly by refreshSession also logs the user out (raw fetch)', function () {
+    Http::fake([
+        'example.com' => Http::response(
+            '<html><head><link rel="alternate" type="application/rss+xml" title="Main" href="/rss.xml"></head></html>',
+            200,
+            ['Content-Type' => 'text/html'],
+        ),
+    ]);
+
+    fakeBlueskyRefreshFailure();
+
+    $this->actingAs(User::factory()->create(['refresh_token' => 'invalid']));
+
+    $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
+        ->assertUnauthorized()
+        ->assertExactJson(['message' => 'Session expired']);
+
+    expect(Auth::check())->toBeFalse();
+});
+
 function fakeBlueskyClient(): MockInterface
 {
     $client = Mockery::mock(AtpClient::class);
 
     $factory = Mockery::mock(BlueskyFactory::class);
     $factory->shouldReceive('withToken')->andReturnSelf();
+    $factory->shouldReceive('refreshSession')->andReturnSelf();
     $factory->shouldReceive('client')->with(true)->andReturn($client);
 
     app()->instance(BlueskyFactory::class, $factory);
 
     return $client;
+}
+
+function fakeBlueskyRefreshFailure(): void
+{
+    $factory = Mockery::mock(BlueskyFactory::class);
+    $factory->shouldReceive('withToken')->andReturnSelf();
+    $factory->shouldReceive('refreshSession')->andThrow(new AuthenticationException);
+
+    app()->instance(BlueskyFactory::class, $factory);
 }
 
 /**

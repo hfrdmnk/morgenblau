@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Cache;
+use Revolution\Bluesky\Contracts\Factory as BlueskyFactory;
 use Revolution\Bluesky\Session\OAuthSession;
 use Revolution\Bluesky\Traits\WithBluesky;
 
@@ -16,7 +18,11 @@ use Revolution\Bluesky\Traits\WithBluesky;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable, WithBluesky;
+    use HasFactory, Notifiable;
+
+    use WithBluesky {
+        bluesky as protected baseBluesky;
+    }
 
     protected $primaryKey = 'did';
 
@@ -34,12 +40,37 @@ class User extends Authenticatable
         ];
     }
 
+    public function bluesky(): BlueskyFactory
+    {
+        if (! $this->tokenForBluesky()->tokenExpired()) {
+            return $this->baseBluesky();
+        }
+
+        return Cache::lock("bluesky:auth:{$this->did}", 10)->block(5, function (): BlueskyFactory {
+            // Another request may have just refreshed under the lock.
+            if (! $this->tokenForBluesky()->tokenExpired()) {
+                return $this->baseBluesky();
+            }
+
+            return $this->baseBluesky()->refreshSession();
+        });
+    }
+
     protected function tokenForBluesky(): OAuthSession
     {
-        return OAuthSession::create(array_filter([
+        $base = array_filter([
             'did' => $this->did,
             'refresh_token' => $this->refresh_token,
             'iss' => $this->iss,
-        ]));
+        ]);
+
+        $cached = session('bluesky_session');
+        if (is_array($cached) && data_get($cached, 'did') === $this->did) {
+            // Session has access_token, dpop nonces, didDoc, etc.
+            // DB wins on overlap so the post-rotation refresh_token is canonical.
+            return OAuthSession::create(array_merge($cached, $base));
+        }
+
+        return OAuthSession::create($base);
     }
 }

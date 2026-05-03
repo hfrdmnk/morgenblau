@@ -9,8 +9,6 @@ use App\Data\Subscriptions\SubscriptionResultData;
 use App\Models\User;
 use App\Services\Feeds\FeedResolver;
 use Illuminate\Support\Facades\Date;
-use Revolution\Bluesky\Facades\Bluesky;
-use Revolution\Bluesky\Session\OAuthSession;
 use RuntimeException;
 use Spatie\LaravelData\DataCollection;
 
@@ -31,9 +29,9 @@ class SubscriptionService
     /**
      * @return DataCollection<int, ExistingSubscriptionData>
      */
-    public function listSubscriptions(User $user, OAuthSession $session): DataCollection
+    public function listSubscriptions(User $user): DataCollection
     {
-        $client = Bluesky::withToken($session)->client(auth: true);
+        $client = $user->bluesky()->client(auth: true);
 
         $subscriptions = [];
         $cursor = null;
@@ -70,9 +68,9 @@ class SubscriptionService
         return ExistingSubscriptionData::collect($subscriptions, DataCollection::class);
     }
 
-    public function create(User $user, OAuthSession $session, ChosenFeedData $choice): SubscriptionResultData
+    public function create(User $user, ChosenFeedData $choice): SubscriptionResultData
     {
-        $response = Bluesky::withToken($session)
+        $response = $user->bluesky()
             ->client(auth: true)
             ->createRecord(
                 repo: $user->did,

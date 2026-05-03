@@ -2,10 +2,14 @@
 
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -23,5 +27,29 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->render(function (AuthenticationException $e, Request $request) {
+            // If we're inside a request that *was* authenticated (e.g. PDS refresh
+            // failed mid-call), tear the session down so the next request really is
+            // logged out and the stale remember cookie can't reauthenticate us back
+            // into a broken state.
+            if (Auth::check()) {
+                Auth::logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+            }
+
+            $request->session()->flash('flash', [
+                'message' => 'Your session expired — please sign in again.',
+            ]);
+
+            if ($request->header('X-Inertia')) {
+                return Inertia::location(route('login'));
+            }
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['message' => 'Session expired'], 401);
+            }
+
+            return redirect()->route('login');
+        });
     })->create();
