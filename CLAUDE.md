@@ -16,6 +16,11 @@ The `lexicons/` directory is reference, with the goal of evolving a standardised
 
 When you spot an opportunity to improve the lexicon (new field, refined semantics, new `knownValues`, etc.), surface it as a question to the user. On approval, record the proposal in `lexicons/app/skyreader/IDEAS.md` under a clearly-labelled section. Don't silently change the JSON.
 
+## Git & PRs
+
+- **Tangled is the source of truth, GitHub is a mirror.** `origin` points at `git@tangled.org:dominik.social/morgenblau`; `git push` auto-mirrors to GitHub via a second pushurl. Use `bun run sync:github` to repair the mirror if it drifts.
+- **Open PRs on tangled, not GitHub.** Don't run `gh pr create`.
+
 ## Tooling
 
 - **Package manager: bun only.** Never use npm, yarn, or pnpm for dependency changes. All install/run/build commands must use `bun`. PHP deps via Composer.
