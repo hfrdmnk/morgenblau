@@ -3,10 +3,10 @@
 namespace App\Providers;
 
 use App\Listeners\PersistOAuthSession;
-use App\Services\FeedAdapters\FeedResolver;
-use App\Services\FeedAdapters\PodcastAdapter;
-use App\Services\FeedAdapters\WebsiteAdapter;
-use App\Services\FeedAdapters\YouTubeAdapter;
+use App\Services\Feeds\Adapters\PodcastAdapter;
+use App\Services\Feeds\Adapters\WebsiteAdapter;
+use App\Services\Feeds\Adapters\YouTubeAdapter;
+use App\Services\Feeds\FeedResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;

@@ -1,14 +1,18 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Subscriptions;
 
+use App\Data\Feeds\ChosenFeedData;
+use App\Data\Feeds\ResolvedFeedData;
+use App\Data\Subscriptions\ExistingSubscriptionData;
+use App\Data\Subscriptions\SubscriptionResultData;
 use App\Models\User;
-use App\Services\FeedAdapters\FeedResolver;
-use App\Services\FeedAdapters\ResolvedFeed;
+use App\Services\Feeds\FeedResolver;
 use Illuminate\Support\Facades\Date;
 use Revolution\Bluesky\Facades\Bluesky;
 use Revolution\Bluesky\Session\OAuthSession;
 use RuntimeException;
+use Spatie\LaravelData\DataCollection;
 
 class SubscriptionService
 {
@@ -17,7 +21,7 @@ class SubscriptionService
     public function __construct(private readonly FeedResolver $feedResolver) {}
 
     /**
-     * @return non-empty-list<ResolvedFeed>
+     * @return non-empty-list<ResolvedFeedData>
      */
     public function discover(string $url): array
     {
@@ -25,9 +29,9 @@ class SubscriptionService
     }
 
     /**
-     * @return array<int, array{feed_url: string, title: ?string}>
+     * @return DataCollection<int, ExistingSubscriptionData>
      */
-    public function listSubscriptions(User $user, OAuthSession $session): array
+    public function listSubscriptions(User $user, OAuthSession $session): DataCollection
     {
         $client = Bluesky::withToken($session)->client(auth: true);
 
@@ -54,19 +58,19 @@ class SubscriptionService
                 }
 
                 $title = data_get($record, 'value.title');
-                $subscriptions[] = [
-                    'feed_url' => $feedUrl,
-                    'title' => is_string($title) && $title !== '' ? $title : null,
-                ];
+                $subscriptions[] = new ExistingSubscriptionData(
+                    feedUrl: $feedUrl,
+                    title: is_string($title) && $title !== '' ? $title : null,
+                );
             }
 
             $cursor = $response->json('cursor');
         } while (is_string($cursor) && $cursor !== '');
 
-        return $subscriptions;
+        return ExistingSubscriptionData::collect($subscriptions, DataCollection::class);
     }
 
-    public function create(User $user, OAuthSession $session, ChosenFeed $choice): SubscriptionResult
+    public function create(User $user, OAuthSession $session, ChosenFeedData $choice): SubscriptionResultData
     {
         $response = Bluesky::withToken($session)
             ->client(auth: true)
@@ -80,7 +84,7 @@ class SubscriptionService
             throw new RuntimeException("PDS write failed: {$response->status()} {$response->body()}");
         }
 
-        return new SubscriptionResult(
+        return new SubscriptionResultData(
             title: $choice->title ?? $choice->feedUrl,
             atUri: $response->json('uri'),
         );
@@ -89,13 +93,13 @@ class SubscriptionService
     /**
      * @return array<string, mixed>
      */
-    private function buildRecord(ChosenFeed $choice): array
+    private function buildRecord(ChosenFeedData $choice): array
     {
         return array_filter([
             'feedUrl' => $choice->feedUrl,
             'title' => $choice->title,
             'siteUrl' => $choice->siteUrl,
-            'sourceType' => $choice->sourceType,
+            'sourceType' => $choice->sourceType->value,
             'createdAt' => Date::now()->toIso8601String(),
         ], fn ($value): bool => $value !== null);
     }

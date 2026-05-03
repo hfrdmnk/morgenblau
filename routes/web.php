@@ -2,7 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\OAuthCallbackController;
-use App\Http\Controllers\SubscriptionController;
+use App\Http\Controllers\Subscriptions\SubscriptionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;

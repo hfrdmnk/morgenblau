@@ -15,14 +15,8 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
-export type FeedCandidate = {
-    feed_url: string;
-    title: string | null;
-    site_url: string | null;
-    source_type: SourceType;
-};
-
-export type SourceType = 'rss' | 'video' | 'podcast' | 'microblog';
+type FeedCandidate = App.Data.Feeds.ResolvedFeedData;
+type SourceType = App.Enums.SourceType;
 
 export type SelectedMeta = {
     title: string;

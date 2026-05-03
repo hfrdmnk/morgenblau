@@ -2,7 +2,7 @@
 
 namespace App\Http\Middleware;
 
-use App\Services\PdsProfileService;
+use App\Services\Profile\PdsProfileService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Middleware;

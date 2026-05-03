@@ -1,8 +1,11 @@
 <?php
 
-namespace App\Services\FeedAdapters;
+namespace App\Services\Feeds\Adapters;
 
-use App\Services\FeedAdapters\Exceptions\UnresolvableFeedException;
+use App\Data\Feeds\ResolvedFeedData;
+use App\Enums\SourceType;
+use App\Services\Feeds\Exceptions\UnresolvableFeedException;
+use App\Services\Feeds\FeedAdapter;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -11,7 +14,7 @@ class YouTubeAdapter implements FeedAdapter
     private const FEED_URL = 'https://www.youtube.com/feeds/videos.xml?channel_id=';
 
     /**
-     * @return list<ResolvedFeed>
+     * @return list<ResolvedFeedData>
      */
     public function tryResolve(string $url): array
     {
@@ -41,11 +44,11 @@ class YouTubeAdapter implements FeedAdapter
 
         $title = $this->extractTitle($body) ?? "YouTube channel {$channelId}";
 
-        return [new ResolvedFeed(
+        return [new ResolvedFeedData(
             feedUrl: self::FEED_URL.$channelId,
             title: $title,
             siteUrl: $url,
-            sourceType: 'video',
+            sourceType: SourceType::Video,
         )];
     }
 

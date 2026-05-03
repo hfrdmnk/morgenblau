@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Profile;
 
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;

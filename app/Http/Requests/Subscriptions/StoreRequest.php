@@ -1,15 +1,14 @@
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\Subscriptions;
 
+use App\Enums\SourceType;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class StoreSubscriptionRequest extends FormRequest
+class StoreRequest extends FormRequest
 {
-    public const SOURCE_TYPES = ['rss', 'video', 'podcast', 'microblog'];
-
     public function authorize(): bool
     {
         return $this->user() !== null;
@@ -25,7 +24,7 @@ class StoreSubscriptionRequest extends FormRequest
             'subscriptions.*.feed_url' => ['required', 'string', 'url:http,https', 'max:2048', 'distinct:strict'],
             'subscriptions.*.title' => ['nullable', 'string', 'max:512'],
             'subscriptions.*.site_url' => ['nullable', 'string', 'url:http,https', 'max:2048'],
-            'subscriptions.*.source_type' => ['required', Rule::in(self::SOURCE_TYPES)],
+            'subscriptions.*.source_type' => ['required', Rule::enum(SourceType::class)],
         ];
     }
 }

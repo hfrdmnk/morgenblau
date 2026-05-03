@@ -1,8 +1,10 @@
 <?php
 
-namespace App\Services\FeedAdapters;
+namespace App\Services\Feeds\Adapters;
 
-use App\Services\FeedAdapters\Exceptions\UnresolvableFeedException;
+use App\Data\Feeds\ResolvedFeedData;
+use App\Services\Feeds\Exceptions\UnresolvableFeedException;
+use App\Services\Feeds\FeedAdapter;
 use DOMDocument;
 use DOMXPath;
 use Illuminate\Support\Facades\Http;
@@ -23,7 +25,7 @@ class WebsiteAdapter implements FeedAdapter
     ];
 
     /**
-     * @return list<ResolvedFeed>
+     * @return list<ResolvedFeedData>
      */
     public function tryResolve(string $url): array
     {
@@ -61,9 +63,9 @@ class WebsiteAdapter implements FeedAdapter
         return Str::startsWith($head, ['<?xml', '<rss', '<feed', '<rdf:RDF']);
     }
 
-    private function resolveDirectFeed(string $url, string $body): ResolvedFeed
+    private function resolveDirectFeed(string $url, string $body): ResolvedFeedData
     {
-        return new ResolvedFeed(
+        return new ResolvedFeedData(
             feedUrl: $url,
             title: $this->extractFeedTitle($body),
             siteUrl: null,
@@ -71,7 +73,7 @@ class WebsiteAdapter implements FeedAdapter
     }
 
     /**
-     * @return non-empty-list<ResolvedFeed>
+     * @return non-empty-list<ResolvedFeedData>
      */
     private function resolveFromHtml(string $url, string $body): array
     {
@@ -85,7 +87,7 @@ class WebsiteAdapter implements FeedAdapter
         $pageTitle = $this->extractHtmlTitle($xpath);
 
         return array_map(
-            fn (array $link) => new ResolvedFeed(
+            fn (array $link) => new ResolvedFeedData(
                 feedUrl: $link['href'],
                 title: $link['title'] ?? $pageTitle,
                 siteUrl: $url,

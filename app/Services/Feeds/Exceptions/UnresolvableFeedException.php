@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\FeedAdapters\Exceptions;
+namespace App\Services\Feeds\Exceptions;
 
 use RuntimeException;
 

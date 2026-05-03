@@ -1,13 +1,13 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Subscriptions;
 
-use App\Http\Requests\DiscoverSubscriptionRequest;
-use App\Http\Requests\StoreSubscriptionRequest;
-use App\Services\ChosenFeed;
-use App\Services\FeedAdapters\Exceptions\UnresolvableFeedException;
-use App\Services\FeedAdapters\ResolvedFeed;
-use App\Services\SubscriptionService;
+use App\Data\Feeds\ChosenFeedData;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Subscriptions\DiscoverRequest;
+use App\Http\Requests\Subscriptions\StoreRequest;
+use App\Services\Feeds\Exceptions\UnresolvableFeedException;
+use App\Services\Subscriptions\SubscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,7 +19,7 @@ class SubscriptionController extends Controller
 {
     public function __construct(private readonly SubscriptionService $subscriptions) {}
 
-    public function discover(DiscoverSubscriptionRequest $request): JsonResponse
+    public function discover(DiscoverRequest $request): JsonResponse
     {
         try {
             $candidates = $this->subscriptions->discover($request->validated()['url']);
@@ -33,26 +33,23 @@ class SubscriptionController extends Controller
         );
 
         return response()->json([
-            'candidates' => array_map(fn (ResolvedFeed $c) => [
-                'feed_url' => $c->feedUrl,
-                'title' => $c->title,
-                'site_url' => $c->siteUrl,
-                'source_type' => $c->sourceType,
-            ], $candidates),
+            'candidates' => $candidates,
             'existing_subscriptions' => $existingSubscriptions,
         ]);
     }
 
-    public function store(StoreSubscriptionRequest $request): RedirectResponse
+    public function store(StoreRequest $request): RedirectResponse
     {
         $items = $request->validated()['subscriptions'];
         $session = $this->oauthSession($request);
         $user = $request->user();
 
-        $existing = array_flip(array_column(
-            $this->subscriptions->listSubscriptions($user, $session),
-            'feed_url',
-        ));
+        $existing = array_flip(
+            $this->subscriptions->listSubscriptions($user, $session)
+                ->toCollection()
+                ->pluck('feedUrl')
+                ->all(),
+        );
 
         $duplicateErrors = [];
         foreach ($items as $index => $item) {
@@ -73,12 +70,7 @@ class SubscriptionController extends Controller
                 $result = $this->subscriptions->create(
                     user: $user,
                     session: $session,
-                    choice: new ChosenFeed(
-                        feedUrl: $item['feed_url'],
-                        title: $item['title'] ?? null,
-                        siteUrl: $item['site_url'] ?? null,
-                        sourceType: $item['source_type'],
-                    ),
+                    choice: ChosenFeedData::from($item),
                 );
                 $succeeded[] = $result->title;
             } catch (RuntimeException) {

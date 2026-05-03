@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\Subscriptions;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
-class DiscoverSubscriptionRequest extends FormRequest
+class DiscoverRequest extends FormRequest
 {
     public function authorize(): bool
     {

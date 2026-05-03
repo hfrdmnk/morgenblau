@@ -8,14 +8,10 @@ import { toast } from 'sonner';
 import {
     discover,
     store,
-} from '@/actions/App/Http/Controllers/SubscriptionController';
-import type {
-    FeedCandidate,
-    SelectedMeta,
-    SourceType,
-} from '@/components/feed-candidate-list';
-import { FeedCandidateList } from '@/components/feed-candidate-list';
+} from '@/actions/App/Http/Controllers/Subscriptions/SubscriptionController';
 import InputError from '@/components/input-error';
+import { FeedCandidateList } from '@/components/subscriptions/feed-candidate-list';
+import type { SelectedMeta } from '@/components/subscriptions/feed-candidate-list';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -28,16 +24,15 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
+type FeedCandidate = App.Data.Feeds.ResolvedFeedData;
+type ExistingSubscription = App.Data.Subscriptions.ExistingSubscriptionData;
+type SourceType = App.Enums.SourceType;
+
 type SubscriptionItem = {
     feed_url: string;
     title: string;
     site_url: string;
     source_type: SourceType;
-};
-
-type ExistingSubscription = {
-    feed_url: string;
-    title: string | null;
 };
 
 type FormShape = {

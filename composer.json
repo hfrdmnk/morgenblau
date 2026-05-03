@@ -15,7 +15,9 @@
         "laravel/socialite": "^5.26",
         "laravel/tinker": "^3.0",
         "laravel/wayfinder": "^0.1.14",
-        "revolution/laravel-bluesky": "^1.2"
+        "revolution/laravel-bluesky": "^1.2",
+        "spatie/laravel-data": "^4.22",
+        "spatie/laravel-typescript-transformer": "^3.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.24",

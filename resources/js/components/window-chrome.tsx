@@ -8,7 +8,7 @@ import { HugeiconsIcon } from '@hugeicons/react';
 import { Deferred, Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
-import { AddSubscriptionDialog } from '@/components/add-subscription-dialog';
+import { AddSubscriptionDialog } from '@/components/subscriptions/add-dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {

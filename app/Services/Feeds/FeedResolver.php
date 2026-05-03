@@ -1,8 +1,9 @@
 <?php
 
-namespace App\Services\FeedAdapters;
+namespace App\Services\Feeds;
 
-use App\Services\FeedAdapters\Exceptions\UnresolvableFeedException;
+use App\Data\Feeds\ResolvedFeedData;
+use App\Services\Feeds\Exceptions\UnresolvableFeedException;
 
 class FeedResolver
 {
@@ -12,7 +13,7 @@ class FeedResolver
     public function __construct(private readonly iterable $adapters) {}
 
     /**
-     * @return non-empty-list<ResolvedFeed>
+     * @return non-empty-list<ResolvedFeedData>
      */
     public function resolve(string $url): array
     {

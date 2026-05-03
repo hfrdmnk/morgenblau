@@ -22,6 +22,7 @@ When you spot an opportunity to improve the lexicon (new field, refined semantic
 - **Never use inline eval** (`node -e`, `bun -e`, or equivalent). Don't create temporary files to work around this. To investigate JS package APIs, use [npmx.dev](https://npmx.dev) instead.
 - **Wayfinder over hardcoded URLs.** Import route helpers from `@/routes/*` and action helpers from `@/actions/*`. Re-run `php artisan wayfinder:generate` after route or controller changes.
 - **Inertia + React pages live at `resources/js/pages/`.** Kebab-case filenames, default export a component.
+- **Data shapes use `spatie/laravel-data`.** TS types are generated via `spatie/laravel-typescript-transformer` (`php artisan typescript:transform`, output: `resources/js/types/generated.d.ts`). Don't hand-roll TS interfaces that mirror PHP shapes — see `.claude/rules/laravel-data.md`.
 
 ## Testing
 

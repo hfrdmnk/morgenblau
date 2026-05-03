@@ -1,15 +1,18 @@
 <?php
 
-namespace App\Services\FeedAdapters;
+namespace App\Services\Feeds\Adapters;
 
-use App\Services\FeedAdapters\Exceptions\UnresolvableFeedException;
+use App\Data\Feeds\ResolvedFeedData;
+use App\Enums\SourceType;
+use App\Services\Feeds\Exceptions\UnresolvableFeedException;
+use App\Services\Feeds\FeedAdapter;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 class PodcastAdapter implements FeedAdapter
 {
     /**
-     * @return list<ResolvedFeed>
+     * @return list<ResolvedFeedData>
      */
     public function tryResolve(string $url): array
     {
@@ -31,7 +34,7 @@ class PodcastAdapter implements FeedAdapter
         return [];
     }
 
-    private function resolveApple(string $url): ResolvedFeed
+    private function resolveApple(string $url): ResolvedFeedData
     {
         if (preg_match('#/id(\d+)#', $url, $matches) !== 1) {
             throw new UnresolvableFeedException("Couldn't extract an Apple podcast ID from {$url}.");
@@ -55,11 +58,11 @@ class PodcastAdapter implements FeedAdapter
             throw new UnresolvableFeedException("No public RSS feed found for Apple podcast {$podcastId}.");
         }
 
-        return new ResolvedFeed(
+        return new ResolvedFeedData(
             feedUrl: $result['feedUrl'],
             title: $result['collectionName'] ?? $result['trackName'] ?? null,
             siteUrl: $result['collectionViewUrl'] ?? $url,
-            sourceType: 'podcast',
+            sourceType: SourceType::Podcast,
         );
     }
 }

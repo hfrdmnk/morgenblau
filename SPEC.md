@@ -68,16 +68,6 @@ A calm content platform powered by RSS and ATProto. Not a classic RSS reader —
 
 The core consumption model. Content is organized into daily editions rather than a continuous feed.
 
-### Editions
-
-The app fetches feeds at set times throughout the day (morning, lunch, evening). Whatever is new since the last fetch goes into that edition.
-
-- **Morning edition** — fetched early morning
-- **Lunch edition** — fetched around midday
-- **Evening edition** — fetched in the evening
-
-Previous days show as complete daily digests (all editions merged).
-
 ### Empty Editions
 
 An empty edition is a feature, not a bug. Display a simple, calm message. No nudges, no guilt. Example: _"Nothing new this morning. Enjoy your coffee."_
