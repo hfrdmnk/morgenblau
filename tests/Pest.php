@@ -5,9 +5,12 @@ use Firebase\JWT\JWT;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Mockery\MockInterface;
 use Revolution\Bluesky\Contracts\Factory as BlueskyFactory;
+use Tests\Concerns\FakesBlueskyClient;
 use Tests\TestCase;
 
-pest()->extend(TestCase::class)->use(LazilyRefreshDatabase::class)->in('Feature');
+pest()->extend(TestCase::class)
+    ->use(LazilyRefreshDatabase::class, FakesBlueskyClient::class)
+    ->in('Feature');
 
 function freshOAuthJwt(int $expIn = 3600): string
 {

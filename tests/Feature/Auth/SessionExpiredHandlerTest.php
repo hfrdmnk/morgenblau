@@ -25,7 +25,7 @@ test('stashes url.intended after a refresh failure on a GET route', function () 
     expect(session('url.intended'))->toBe(route('discover'));
 });
 
-test('does not stash url.intended for unsafe methods', function () {
+test('does not stash url.intended for unsafe methods and redirects to login', function () {
     Log::spy();
 
     $user = User::factory()->create();
@@ -40,9 +40,11 @@ test('does not stash url.intended for unsafe methods', function () {
     $factory->shouldReceive('refreshSession')->andThrow(new AuthenticationException);
 
     $this->actingAs($user)
-        ->post(route('subscriptions.discover'), ['url' => 'https://example.com']);
+        ->post(route('subscriptions.discover'), ['url' => 'https://example.com'])
+        ->assertRedirect(route('login'));
 
     expect(session('url.intended'))->toBeNull();
+    expect(auth()->check())->toBeFalse();
 });
 
 test('logs a warning with the request context on session expiry', function () {

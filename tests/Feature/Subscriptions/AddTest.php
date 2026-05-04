@@ -2,12 +2,8 @@
 
 use App\Models\User;
 use Illuminate\Auth\AuthenticationException;
-use Illuminate\Http\Client\Response as HttpResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
-use Mockery\MockInterface;
-use Revolution\Bluesky\Client\AtpClient;
-use Revolution\Bluesky\Contracts\Factory as BlueskyFactory;
 
 beforeEach(function () {
     Http::preventStrayRequests();
@@ -39,7 +35,7 @@ test('discover returns every advertised feed in document order', function () {
         ),
     ]);
 
-    fakeListRecords(fakeBlueskyClient(), []);
+    $this->fakeListRecords($this->fakeBlueskyClient(), []);
 
     $this->actingAs(User::factory()->create());
 
@@ -76,7 +72,7 @@ test('discover falls back to og:site_name when a link has no title', function ()
         ),
     ]);
 
-    fakeListRecords(fakeBlueskyClient(), []);
+    $this->fakeListRecords($this->fakeBlueskyClient(), []);
 
     $this->actingAs(User::factory()->create());
 
@@ -98,7 +94,7 @@ test('discover surfaces feeds the user is already subscribed to with their saved
         ),
     ]);
 
-    fakeListRecords(fakeBlueskyClient(), [
+    $this->fakeListRecords($this->fakeBlueskyClient(), [
         ['feed_url' => 'https://example.com/rss.xml', 'title' => 'My nickname for this feed'],
     ]);
 
@@ -122,7 +118,7 @@ test('discover returns null title for existing subscriptions saved without one',
         ),
     ]);
 
-    fakeListRecords(fakeBlueskyClient(), ['https://example.com/rss.xml']);
+    $this->fakeListRecords($this->fakeBlueskyClient(), ['https://example.com/rss.xml']);
 
     $this->actingAs(User::factory()->create());
 
@@ -158,20 +154,23 @@ test('discover rejects a malformed URL', function () {
 });
 
 test('storing a subscription writes the chosen feed to the user PDS', function () {
-    $client = fakeBlueskyClient();
-    fakeListRecords($client, []);
+    $client = $this->fakeBlueskyClient();
+    $this->fakeListRecords($client, []);
     $client->shouldReceive('createRecord')
         ->once()
-        ->withArgs(function (string $repo, string $collection, array $record) {
+        ->withArgs(function (string $repo, string $collection, array $record, ?string $rkey = null, ?bool $validate = null, ?string $swapCommit = null) {
             expect($collection)->toBe('app.skyreader.feed.subscription');
+            expect($record['$type'])->toBe('app.skyreader.feed.subscription');
             expect($record['feedUrl'])->toBe('https://example.com/rss.xml');
             expect($record['title'])->toBe('Example Blog');
             expect($record['sourceType'])->toBe('rss');
             expect($record)->not->toHaveKey('category');
+            expect($validate)->toBeNull();
+            expect($record['createdAt'])->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/');
 
             return true;
         })
-        ->andReturn(fakeSuccessResponse([
+        ->andReturn($this->fakeSuccessResponse([
             'uri' => 'at://did:plc:test/app.skyreader.feed.subscription/abc',
             'cid' => 'bafy...',
         ]));
@@ -189,8 +188,8 @@ test('storing a subscription writes the chosen feed to the user PDS', function (
 });
 
 test('storing rejects a feed_url the user is already subscribed to', function () {
-    $client = fakeBlueskyClient();
-    fakeListRecords($client, ['https://example.com/rss.xml']);
+    $client = $this->fakeBlueskyClient();
+    $this->fakeListRecords($client, ['https://example.com/rss.xml']);
     $client->shouldNotReceive('createRecord');
 
     $this->actingAs(User::factory()->create());
@@ -208,13 +207,13 @@ test('storing rejects a feed_url the user is already subscribed to', function ()
 });
 
 test('storing creates multiple subscriptions in one request', function () {
-    $client = fakeBlueskyClient();
-    fakeListRecords($client, []);
+    $client = $this->fakeBlueskyClient();
+    $this->fakeListRecords($client, []);
     $client->shouldReceive('createRecord')
         ->twice()
         ->andReturn(
-            fakeSuccessResponse(['uri' => 'at://did:plc:test/app.skyreader.feed.subscription/a', 'cid' => 'bafy1']),
-            fakeSuccessResponse(['uri' => 'at://did:plc:test/app.skyreader.feed.subscription/b', 'cid' => 'bafy2']),
+            $this->fakeSuccessResponse(['uri' => 'at://did:plc:test/app.skyreader.feed.subscription/a', 'cid' => 'bafy1']),
+            $this->fakeSuccessResponse(['uri' => 'at://did:plc:test/app.skyreader.feed.subscription/b', 'cid' => 'bafy2']),
         );
 
     $this->actingAs(User::factory()->create());
@@ -235,17 +234,17 @@ test('storing creates multiple subscriptions in one request', function () {
             ],
         ],
     ])->assertRedirect()
-        ->assertSessionHas('flash.message', fn (string $msg) => str_contains($msg, '2 sources'));
+        ->assertSessionHas('inertia.flash_data.toast.message', fn (string $msg) => str_contains($msg, '2 sources'));
 });
 
 test('storing succeeds the rest when one createRecord fails', function () {
-    $client = fakeBlueskyClient();
-    fakeListRecords($client, []);
+    $client = $this->fakeBlueskyClient();
+    $this->fakeListRecords($client, []);
     $client->shouldReceive('createRecord')
         ->twice()
         ->andReturn(
-            fakeSuccessResponse(['uri' => 'at://did:plc:test/app.skyreader.feed.subscription/a', 'cid' => 'bafy1']),
-            fakeFailureResponse(500, ['error' => 'InternalServerError']),
+            $this->fakeSuccessResponse(['uri' => 'at://did:plc:test/app.skyreader.feed.subscription/a', 'cid' => 'bafy1']),
+            $this->fakeFailureResponse(500, ['error' => 'InternalServerError']),
         );
 
     $this->actingAs(User::factory()->create());
@@ -266,7 +265,7 @@ test('storing succeeds the rest when one createRecord fails', function () {
             ],
         ],
     ])->assertRedirect()
-        ->assertSessionHas('flash.message', fn (string $msg) => str_contains($msg, 'Subscribed to Main')
+        ->assertSessionHas('inertia.flash_data.toast.message', fn (string $msg) => str_contains($msg, 'Subscribed to Main')
             && str_contains($msg, 'Failed: Comments'));
 });
 
@@ -292,7 +291,7 @@ test('discover resolves YouTube channels to their videos.xml feed', function (st
         ),
     ]);
 
-    fakeListRecords(fakeBlueskyClient(), []);
+    $this->fakeListRecords($this->fakeBlueskyClient(), []);
 
     $this->actingAs(User::factory()->create());
 
@@ -319,7 +318,7 @@ test('discover bypasses YouTube EU consent by sending the SOCS cookie', function
         ),
     ]);
 
-    fakeListRecords(fakeBlueskyClient(), []);
+    $this->fakeListRecords($this->fakeBlueskyClient(), []);
 
     $this->actingAs(User::factory()->create());
 
@@ -339,7 +338,7 @@ test('discover triggers a refresh when no bluesky_session is cached', function (
         ),
     ]);
 
-    fakeListRecords(fakeBlueskyClient(), []);
+    $this->fakeListRecords($this->fakeBlueskyClient(), []);
 
     $user = User::factory()->create(['refresh_token' => 'valid-db-refresh-token']);
 
@@ -360,7 +359,7 @@ test('a refresh failure during discover (inertia) logs the user out and redirect
         ),
     ]);
 
-    $client = fakeBlueskyClient();
+    $client = $this->fakeBlueskyClient();
     $client->shouldReceive('listRecords')->andThrow(new AuthenticationException);
 
     $this->actingAs(User::factory()->create(['refresh_token' => 'invalid']));
@@ -385,7 +384,7 @@ test('a refresh failure during discover (raw fetch) returns 401 json', function 
         ),
     ]);
 
-    $client = fakeBlueskyClient();
+    $client = $this->fakeBlueskyClient();
     $client->shouldReceive('listRecords')->andThrow(new AuthenticationException);
 
     $this->actingAs(User::factory()->create(['refresh_token' => 'invalid']));
@@ -406,7 +405,7 @@ test('a failure thrown directly by refreshSession also logs the user out (inerti
         ),
     ]);
 
-    fakeBlueskyRefreshFailure();
+    $this->fakeBlueskyRefreshFailure();
 
     $this->actingAs(User::factory()->create(['refresh_token' => 'invalid']));
 
@@ -430,7 +429,7 @@ test('a failure thrown directly by refreshSession also logs the user out (raw fe
         ),
     ]);
 
-    fakeBlueskyRefreshFailure();
+    $this->fakeBlueskyRefreshFailure();
 
     $this->actingAs(User::factory()->create(['refresh_token' => 'invalid']));
 
@@ -440,56 +439,3 @@ test('a failure thrown directly by refreshSession also logs the user out (raw fe
 
     expect(Auth::check())->toBeFalse();
 });
-
-function fakeBlueskyClient(): MockInterface
-{
-    $client = Mockery::mock(AtpClient::class);
-
-    $factory = Mockery::mock(BlueskyFactory::class);
-    $factory->shouldReceive('withToken')->andReturnSelf();
-    $factory->shouldReceive('refreshSession')->andReturnSelf();
-    $factory->shouldReceive('client')->with(true)->andReturn($client);
-
-    app()->instance(BlueskyFactory::class, $factory);
-
-    return $client;
-}
-
-function fakeBlueskyRefreshFailure(): void
-{
-    $factory = Mockery::mock(BlueskyFactory::class);
-    $factory->shouldReceive('withToken')->andReturnSelf();
-    $factory->shouldReceive('refreshSession')->andThrow(new AuthenticationException);
-
-    app()->instance(BlueskyFactory::class, $factory);
-}
-
-/**
- * @param  array<int, string|array{feed_url: string, title?: ?string}>  $records
- */
-function fakeListRecords(MockInterface $client, array $records = []): void
-{
-    $client->shouldReceive('listRecords')
-        ->andReturn(fakeSuccessResponse([
-            'records' => array_map(function ($record) {
-                if (is_string($record)) {
-                    return ['value' => ['feedUrl' => $record]];
-                }
-
-                return ['value' => array_filter([
-                    'feedUrl' => $record['feed_url'],
-                    'title' => $record['title'] ?? null,
-                ], fn ($value): bool => $value !== null)];
-            }, $records),
-        ]));
-}
-
-function fakeSuccessResponse(array $body): HttpResponse
-{
-    return new HttpResponse(Http::response($body, 200)->wait());
-}
-
-function fakeFailureResponse(int $status, array $body = []): HttpResponse
-{
-    return new HttpResponse(Http::response($body, $status)->wait());
-}

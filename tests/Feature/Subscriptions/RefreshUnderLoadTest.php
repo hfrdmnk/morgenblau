@@ -2,12 +2,9 @@
 
 use App\Models\User;
 use Illuminate\Contracts\Cache\LockTimeoutException;
-use Illuminate\Http\Client\Response as HttpResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
-use Mockery\MockInterface;
-use Revolution\Bluesky\Client\AtpClient;
 
 beforeEach(function () {
     Http::preventStrayRequests();
@@ -31,8 +28,8 @@ test('fresh access token in session goes straight to the pds with no refresh', f
     $factory = blueskyFactoryMock();
     $factory->shouldReceive('refreshSession')->never();
 
-    fakeHtmlResponse();
-    fakeListRecordsOnFactory($factory, []);
+    $this->fakeHtmlResponse();
+    $this->fakeListRecordsOnFactory($factory, []);
 
     $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
         ->assertOk();
@@ -65,8 +62,8 @@ test('expired access token in session triggers exactly one refresh before the pd
             return $factory;
         });
 
-    fakeHtmlResponse();
-    fakeListRecordsOnFactory($factory, []);
+    $this->fakeHtmlResponse();
+    $this->fakeListRecordsOnFactory($factory, []);
 
     $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
         ->assertOk();
@@ -94,9 +91,9 @@ test('lock held by another holder eventually times out instead of silently falli
     $factory = blueskyFactoryMock();
     $factory->shouldReceive('refreshSession')->never();
 
-    fakeHtmlResponse();
+    $this->fakeHtmlResponse();
 
-    // Fake sleep so the 5s lock wait runs in microseconds; sync to Carbon so
+    // Fake sleep so the lock wait runs in microseconds; sync to Carbon so
     // the in-loop time check inside Lock::block() actually trips the timeout.
     Sleep::fake(syncWithCarbon: true);
 
@@ -108,22 +105,33 @@ test('lock held by another holder eventually times out instead of silently falli
     $blocker->forceRelease();
 });
 
-function fakeListRecordsOnFactory(MockInterface $factory, array $records = []): void
-{
-    $client = Mockery::mock(AtpClient::class);
-    $client->shouldReceive('listRecords')
-        ->andReturn(new HttpResponse(Http::response(['records' => $records], 200)->wait()));
-
-    $factory->shouldReceive('client')->with(true)->andReturn($client);
-}
-
-function fakeHtmlResponse(): void
-{
-    Http::fake([
-        'example.com' => Http::response(
-            '<html><head><link rel="alternate" type="application/rss+xml" title="Main" href="/rss.xml"></head></html>',
-            200,
-            ['Content-Type' => 'text/html'],
-        ),
+test('two consecutive bluesky() calls within one request only refresh once', function () {
+    // Models the inner double-check guard inside User::bluesky(): when the
+    // winner refreshes and rotates the session token, a follow-up call sees
+    // the fresh token and skips the lock-acquisition path entirely.
+    $user = User::factory()->create([
+        'did' => 'did:plc:doublecheck1234567890',
+        'iss' => 'https://eurosky.social',
     ]);
-}
+
+    $this->actingAs($user);
+
+    session()->put('bluesky_session', [
+        'did' => $user->did,
+        'access_token' => expiredOAuthJwt(),
+        'refresh_token' => $user->refresh_token,
+        'iss' => $user->iss,
+    ]);
+
+    $factory = blueskyFactoryMock();
+    $factory->shouldReceive('refreshSession')
+        ->once()
+        ->andReturnUsing(function () use ($factory) {
+            session()->put('bluesky_session.access_token', freshOAuthJwt());
+
+            return $factory;
+        });
+
+    $user->bluesky();
+    $user->bluesky();
+});
