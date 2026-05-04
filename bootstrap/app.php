@@ -1,5 +1,7 @@
 <?php
 
+use App\Data\Shared\FlashToastData;
+use App\Enums\FlashToastType;
 use App\Http\Middleware\EnsureBlueskySession;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -56,9 +58,10 @@ return Application::configure(basePath: dirname(__DIR__))
                 $request->session()->put('url.intended', $request->fullUrl());
             }
 
-            $request->session()->flash('flash', [
+            Inertia::flash('toast', FlashToastData::from([
+                'type' => FlashToastType::Info,
                 'message' => 'Your session expired — please sign in again.',
-            ]);
+            ]));
 
             if ($request->header('X-Inertia')) {
                 return Inertia::location(route('login'));

@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\FlashToastType;
 use App\Models\User;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\Facades\Log;
@@ -23,6 +24,10 @@ test('stashes url.intended after a refresh failure on a GET route', function () 
         ->assertRedirect(route('login'));
 
     expect(session('url.intended'))->toBe(route('discover'));
+
+    $toast = session('inertia.flash_data')['toast'];
+    expect($toast->type)->toBe(FlashToastType::Info);
+    expect($toast->message)->toBe('Your session expired — please sign in again.');
 });
 
 test('does not stash url.intended for unsafe methods and redirects to login', function () {

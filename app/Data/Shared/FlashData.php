@@ -13,7 +13,6 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 class FlashData extends Data
 {
     public function __construct(
-        public string|Optional $message,
         public FlashToastData|Optional $toast,
     ) {}
 }

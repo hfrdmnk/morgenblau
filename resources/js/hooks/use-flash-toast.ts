@@ -14,7 +14,9 @@ export function useFlashToast(): void {
                 return;
             }
 
-            toast[data.type](data.message);
+            toast[data.type](data.message, {
+                id: `flash:${data.type}:${data.message}`,
+            });
         });
     }, []);
 }
