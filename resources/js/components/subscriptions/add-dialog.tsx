@@ -80,11 +80,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         onOpenChange(false);
     };
 
-    const handleOpenChangeComplete = (nextOpen: boolean) => {
-        if (nextOpen) {
-            return;
-        }
-
+    const resetState = () => {
         reset();
         clearErrors();
         setUrl('');
@@ -92,6 +88,14 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         setExistingSubscriptions([]);
         setDiscoverError(null);
         setDiscovering(false);
+    };
+
+    const handleOpenChangeComplete = (nextOpen: boolean) => {
+        if (nextOpen) {
+            return;
+        }
+
+        resetState();
     };
 
     const onUrlChange = (next: string) => {
@@ -309,6 +313,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                         ? 'Source added.'
                         : `${selectedCount} sources added.`,
                 );
+                resetState();
                 close();
             },
         });
