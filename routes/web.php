@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\OAuthCallbackController;
 use App\Http\Controllers\Subscriptions\SubscriptionController;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Revolution\Bluesky\Socialite\Http\OAuthMetaController;
@@ -14,6 +15,10 @@ Route::get('/', function (Request $request) {
     // the ?iss callback here and forward to the real handler.
     if (app()->isLocal() && $request->has('iss')) {
         return to_route('bluesky.oauth.redirect', $request->query());
+    }
+
+    if (Auth::check()) {
+        return redirect()->route('consume');
     }
 
     return Inertia::render('welcome');

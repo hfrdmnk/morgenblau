@@ -142,7 +142,7 @@ test('discover returns a 422 with a url error when the page exposes no feed', fu
         ),
     ]);
 
-    $this->actingAs(User::factory()->create());
+    $this->actingAs(freshenBluesky(User::factory()->create()));
 
     $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
         ->assertStatus(422)
@@ -150,7 +150,7 @@ test('discover returns a 422 with a url error when the page exposes no feed', fu
 });
 
 test('discover rejects a malformed URL', function () {
-    $this->actingAs(User::factory()->create());
+    $this->actingAs(freshenBluesky(User::factory()->create()));
 
     $this->postJson(route('subscriptions.discover'), ['url' => 'not-a-url'])
         ->assertStatus(422)
@@ -271,7 +271,7 @@ test('storing succeeds the rest when one createRecord fails', function () {
 });
 
 test('storing a subscription validates the source type', function () {
-    $this->actingAs(User::factory()->create());
+    $this->actingAs(freshenBluesky(User::factory()->create()));
 
     $this->from(route('consume'))->post(route('subscriptions.store'), [
         'subscriptions' => [[

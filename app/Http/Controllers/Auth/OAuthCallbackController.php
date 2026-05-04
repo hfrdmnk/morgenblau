@@ -38,6 +38,6 @@ class OAuthCallbackController extends Controller
 
         Auth::login($user, remember: true);
 
-        return to_route('consume');
+        return redirect()->intended(route('consume'));
     }
 }

@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use Mockery\MockInterface;
 use Revolution\Bluesky\Client\AtpClient;
-use Revolution\Bluesky\Contracts\Factory as BlueskyFactory;
 
 beforeEach(function () {
     Http::preventStrayRequests();
@@ -55,7 +54,16 @@ test('expired access token in session triggers exactly one refresh before the pd
     ]);
 
     $factory = blueskyFactoryMock();
-    $factory->shouldReceive('refreshSession')->once()->andReturnSelf();
+    // Mimic the package's real refresh behavior: rotate the in-session
+    // access_token, so the second tokenExpired() check (inside the per-DID
+    // lock) sees fresh tokens and the controller does not re-refresh.
+    $factory->shouldReceive('refreshSession')
+        ->once()
+        ->andReturnUsing(function () use ($factory) {
+            session()->put('bluesky_session.access_token', freshOAuthJwt());
+
+            return $factory;
+        });
 
     fakeHtmlResponse();
     fakeListRecordsOnFactory($factory, []);
@@ -99,16 +107,6 @@ test('lock held by another holder eventually times out instead of silently falli
 
     $blocker->forceRelease();
 });
-
-function blueskyFactoryMock(): MockInterface
-{
-    $factory = Mockery::mock(BlueskyFactory::class);
-    $factory->shouldReceive('withToken')->andReturnSelf();
-
-    app()->instance(BlueskyFactory::class, $factory);
-
-    return $factory;
-}
 
 function fakeListRecordsOnFactory(MockInterface $factory, array $records = []): void
 {

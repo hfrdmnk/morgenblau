@@ -1,7 +1,10 @@
 <?php
 
+use App\Models\User;
 use Firebase\JWT\JWT;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Mockery\MockInterface;
+use Revolution\Bluesky\Contracts\Factory as BlueskyFactory;
 use Tests\TestCase;
 
 pest()->extend(TestCase::class)->use(LazilyRefreshDatabase::class)->in('Feature');
@@ -22,4 +25,26 @@ function oauthJwtWithExp(int $exp): string
     $payload = JWT::urlsafeB64Encode((string) json_encode(['exp' => $exp]));
 
     return "{$header}.{$payload}.sig";
+}
+
+function blueskyFactoryMock(): MockInterface
+{
+    $factory = Mockery::mock(BlueskyFactory::class);
+    $factory->shouldReceive('withToken')->andReturnSelf();
+
+    app()->instance(BlueskyFactory::class, $factory);
+
+    return $factory;
+}
+
+function freshenBluesky(User $user): User
+{
+    session()->put('bluesky_session', [
+        'did' => $user->did,
+        'access_token' => freshOAuthJwt(),
+        'refresh_token' => $user->refresh_token,
+        'iss' => $user->iss ?? 'https://bsky.social',
+    ]);
+
+    return $user;
 }

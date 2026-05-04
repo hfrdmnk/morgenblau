@@ -54,6 +54,20 @@ test('callback updates the existing row when the same DID re-auths', function ()
         ->and(User::count())->toBe(1);
 });
 
+test('callback redirects to the stashed intended URL when present', function () {
+    $session = OAuthSession::create([
+        'did' => 'did:plc:returnuser1234567890abcd',
+        'handle' => 'alice.bsky.social',
+        'iss' => 'https://bsky.social',
+        'refresh_token' => 'fake-refresh-token',
+    ]);
+    $this->fakeBlueskyCallback($session);
+
+    $this->withSession(['url.intended' => route('discover')])
+        ->get(route('bluesky.oauth.redirect'))
+        ->assertRedirect(route('discover'));
+});
+
 test('callback does not create a user or log anyone in when Socialite throws', function () {
     Exceptions::fake();
     $this->fakeBlueskyCallbackThrows(new RuntimeException('state mismatch'));
