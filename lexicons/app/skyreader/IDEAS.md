@@ -38,3 +38,18 @@ Open question: how to express ATProto-stream subscriptions (the original `atprot
 Migration path: clients that read `sourceType` should fall back to `'rss'` when absent or unknown. No mass migration required — values fill in over time.
 
 Goal: a generally-useful RSS-subscription lexicon that any reader can adopt.
+
+## Conditional-required fields on `app.skyreader.feed.subscription`
+
+The current schema requires only `createdAt`. `feedUrl` and `subjectDid` are both optional. In practice every record needs **one or the other** depending on `sourceType`:
+
+- For URL-driven types (`rss`, `video`, `podcast`, `microblog`): `feedUrl` is required.
+- For ATProto-stream types (`atproto.shares`, `atproto.documents`, `atproto.collection`): `subjectDid` is required and `feedUrl` is meaningless.
+
+The lexicon spec doesn't currently express conditional-required fields. Options:
+
+- **Today (interim):** enforce client-side. The Morgenblau client validates inputs before writing; consumers should reject records missing the field implied by their `sourceType`. The lexicon doesn't help here, so reader/writer correctness is by convention.
+- **Proposal A — split the record into two collections.** `app.skyreader.feed.subscription` for URL feeds (`feedUrl` required), `app.skyreader.account.subscription` for ATProto streams (`subjectDid` required). Cleaner; doubles the surface area; breaks the "one collection per concept" framing currently shared with Skyreader.
+- **Proposal B — `oneOf` constraint on the lexicon.** Add a top-level `oneOf: [{required: ["feedUrl"]}, {required: ["subjectDid"]}]`. Requires an upstream change to the lexicon spec — `oneOf` isn't part of the current grammar. Out of our hands without coordination.
+
+**Decision:** defer. Document for now. Revisit when (a) an ATProto-stream `sourceType` actually ships, or (b) the lexicon spec gains `oneOf`/`if/then` semantics.

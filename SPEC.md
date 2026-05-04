@@ -137,7 +137,9 @@ When a user opens Morgenblau, they land on **today's digest** — a unified view
 
 ### Adding Sources
 
-Users manually add RSS/Atom feed URLs. No auto-discovery in v1. Each subscription is stored as an `app.skyreader.feed.subscription` record in the user's ATProto repo.
+Users add sources by pasting a URL. Morgenblau resolves the URL into one or more feeds: it follows `<link rel="alternate" type="application/rss+xml">` (and Atom equivalents) on HTML pages, maps YouTube channel / `@handle` / `/c/` / `/user/` URLs to the corresponding `feeds/videos.xml`, and resolves Apple Podcasts URLs to the show's RSS feed via the iTunes lookup API. Each subscription is stored as an `app.skyreader.feed.subscription` record in the user's ATProto repo.
+
+"No auto-discovery in v1" applies to **social-graph discovery** — Morgenblau will not surface follow recommendations, popular-feeds lists, or trending sources. That belongs to the future Discover mode. Feed-URL resolution from a single user-supplied URL is in scope and ships in v1.
 
 ### Organization
 
