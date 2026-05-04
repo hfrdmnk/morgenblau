@@ -19,11 +19,6 @@ import { cn } from '@/lib/utils';
 type FeedCandidate = App.Data.Feeds.ResolvedFeedData;
 type SourceType = App.Enums.SourceType;
 
-export type SelectedMeta = {
-    title: string;
-    source_type: SourceType;
-};
-
 export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
     rss: 'Website',
     video: 'Video',
@@ -31,10 +26,17 @@ export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
     microblog: 'Microblog',
 };
 
+const DEFAULT_SOURCE_TYPE: SourceType = 'rss';
+
+type Selection = {
+    title: string;
+    source_type: SourceType;
+};
+
 type Props = {
     candidates: FeedCandidate[];
     existingByFeedUrl: Record<string, string | null>;
-    selected: Record<string, SelectedMeta>;
+    selected: Record<string, Selection>;
     onToggle: (candidate: FeedCandidate) => void;
     onTitleChange: (feedUrl: string, title: string) => void;
     onSourceTypeChange: (feedUrl: string, type: SourceType) => void;
@@ -65,7 +67,11 @@ export function FeedCandidateList({
                 const savedTitle = isExisting
                     ? existingByFeedUrl[candidate.feed_url]
                     : null;
-                const meta = selected[candidate.feed_url];
+                // Pass primitives, not the selection object — memo's default
+                // Object.is comparison short-circuits string/bool changes but
+                // would see a fresh object reference every parent render.
+                const selection = selected[candidate.feed_url];
+                const isSelected = selection !== undefined;
 
                 return (
                     <FeedCandidateCard
@@ -73,7 +79,11 @@ export function FeedCandidateList({
                         candidate={candidate}
                         isExisting={isExisting}
                         savedTitle={savedTitle}
-                        meta={meta}
+                        isSelected={isSelected}
+                        selectedTitle={selection?.title ?? ''}
+                        selectedSourceType={
+                            selection?.source_type ?? DEFAULT_SOURCE_TYPE
+                        }
                         onToggle={onToggle}
                         onTitleChange={onTitleChange}
                         onSourceTypeChange={onSourceTypeChange}
@@ -94,7 +104,9 @@ type CardProps = {
     candidate: FeedCandidate;
     isExisting: boolean;
     savedTitle: string | null;
-    meta: SelectedMeta | undefined;
+    isSelected: boolean;
+    selectedTitle: string;
+    selectedSourceType: SourceType;
     onToggle: (candidate: FeedCandidate) => void;
     onTitleChange: (feedUrl: string, title: string) => void;
     onSourceTypeChange: (feedUrl: string, type: SourceType) => void;
@@ -106,7 +118,9 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
     candidate,
     isExisting,
     savedTitle,
-    meta,
+    isSelected,
+    selectedTitle,
+    selectedSourceType,
     onToggle,
     onTitleChange,
     onSourceTypeChange,
@@ -116,8 +130,6 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
     const inputId = useId();
     const titleId = useId();
     const typeId = useId();
-
-    const isSelected = meta !== undefined;
 
     return (
         <div
@@ -185,7 +197,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                 ref={firstTitleInputRef}
                                 id={titleId}
                                 type="text"
-                                value={meta?.title ?? ''}
+                                value={selectedTitle}
                                 onChange={(event) =>
                                     onTitleChange(
                                         candidate.feed_url,
@@ -199,7 +211,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                 Source type
                             </Label>
                             <Select
-                                value={meta?.source_type ?? 'rss'}
+                                value={selectedSourceType}
                                 onValueChange={(value) =>
                                     onSourceTypeChange(
                                         candidate.feed_url,

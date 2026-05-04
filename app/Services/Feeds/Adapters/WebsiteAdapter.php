@@ -106,7 +106,9 @@ class WebsiteAdapter implements FeedAdapter
         $previousErrors = libxml_use_internal_errors(true);
 
         try {
-            $document->loadHTML($body, LIBXML_NOERROR | LIBXML_NOWARNING);
+            // loadHTML defaults to ISO-8859-1; the XML encoding hint forces UTF-8
+            // so non-ASCII titles round-trip cleanly.
+            $document->loadHTML('<?xml encoding="UTF-8">'.$body, LIBXML_NOERROR | LIBXML_NOWARNING);
         } finally {
             libxml_clear_errors();
             libxml_use_internal_errors($previousErrors);

@@ -64,6 +64,49 @@ test('rejects IPv6 loopback and ULA', function () {
         ->toThrow(UnsafeUrlException::class, 'private IP');
 });
 
+test('rejects IPv4-mapped IPv6 forms that wrap private IPv4', function () {
+    // FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE only flag native
+    // IPv6 ranges; ::ffff:0:0/96 mapped IPv4 must be unwrapped + re-checked.
+    bindDns([]);
+
+    expect(fn () => app(OutboundHttpClient::class)->getUserUrl('http://[::ffff:127.0.0.1]/x'))
+        ->toThrow(UnsafeUrlException::class, 'private IP')
+        ->and(fn () => app(OutboundHttpClient::class)->getUserUrl('http://[::ffff:7f00:1]/x'))
+        ->toThrow(UnsafeUrlException::class, 'private IP')
+        ->and(fn () => app(OutboundHttpClient::class)->getUserUrl('http://[::ffff:169.254.169.254]/x'))
+        ->toThrow(UnsafeUrlException::class, 'private IP');
+});
+
+test('rejects hosts whose DNS A record points at an IPv4-mapped IPv6 loopback', function () {
+    bindDns(['mapped.example' => ['::ffff:127.0.0.1']]);
+
+    expect(fn () => app(OutboundHttpClient::class)->getUserUrl('http://mapped.example/'))
+        ->toThrow(UnsafeUrlException::class, 'private IP');
+});
+
+test('assertSafeRedirectTarget rejects a redirect to a loopback host', function () {
+    // Http::fake bypasses Guzzle's redirect middleware, so on_redirect can't be
+    // exercised through fakes — the public seam is what real redirects call.
+    bindDns(['rebound.example' => ['127.0.0.1']]);
+
+    expect(fn () => app(OutboundHttpClient::class)->assertSafeRedirectTarget('http://rebound.example/'))
+        ->toThrow(UnsafeUrlException::class, 'private IP');
+});
+
+test('assertSafeRedirectTarget rejects a non-http(s) downgrade', function () {
+    bindDns([]);
+
+    expect(fn () => app(OutboundHttpClient::class)->assertSafeRedirectTarget('ftp://example.com/'))
+        ->toThrow(UnsafeUrlException::class, 'Disallowed scheme');
+});
+
+test('assertSafeRedirectTarget rejects an IPv4-mapped IPv6 redirect target', function () {
+    bindDns(['mapped-redirect.example' => ['::ffff:127.0.0.1']]);
+
+    expect(fn () => app(OutboundHttpClient::class)->assertSafeRedirectTarget('http://mapped-redirect.example/'))
+        ->toThrow(UnsafeUrlException::class, 'private IP');
+});
+
 test('rejects unresolvable hosts', function () {
     bindDns([]);
 

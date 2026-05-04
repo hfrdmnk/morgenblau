@@ -7,20 +7,21 @@ use App\Enums\SourceType;
 use App\Exceptions\UnresolvableFeedException;
 use App\Services\Feeds\FeedAdapter;
 use App\Services\Http\OutboundHttpClient;
-use Illuminate\Support\Str;
 
 class PodcastAdapter implements FeedAdapter
 {
+    private const APPLE_HOST = 'podcasts.apple.com';
+
+    private const SPOTIFY_HOST = 'open.spotify.com';
+
     public function __construct(private readonly OutboundHttpClient $http) {}
 
     public function claims(string $url): bool
     {
-        $host = parse_url($url, PHP_URL_HOST);
-        if (! is_string($host)) {
-            return false;
-        }
+        $host = $this->host($url);
 
-        return Str::contains($host, ['podcasts.apple.com', 'open.spotify.com']);
+        return $this->matches($host, self::APPLE_HOST)
+            || $this->matches($host, self::SPOTIFY_HOST);
     }
 
     /**
@@ -28,15 +29,25 @@ class PodcastAdapter implements FeedAdapter
      */
     public function resolve(string $url): array
     {
-        $host = (string) parse_url($url, PHP_URL_HOST);
-
-        if (Str::contains($host, 'open.spotify.com')) {
+        if ($this->matches($this->host($url), self::SPOTIFY_HOST)) {
             throw new UnresolvableFeedException(
                 "Spotify-only podcasts can't be subscribed to yet. Try the show's website RSS or its Apple Podcasts page."
             );
         }
 
         return [$this->resolveApple($url)];
+    }
+
+    private function host(string $url): ?string
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+
+        return is_string($host) ? strtolower($host) : null;
+    }
+
+    private function matches(?string $host, string $domain): bool
+    {
+        return $host !== null && ($host === $domain || str_ends_with($host, '.'.$domain));
     }
 
     private function resolveApple(string $url): ResolvedFeedData

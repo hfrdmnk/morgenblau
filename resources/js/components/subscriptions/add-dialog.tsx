@@ -9,7 +9,6 @@ import {
     store,
 } from '@/actions/App/Http/Controllers/Subscriptions/SubscriptionController';
 import InputError from '@/components/input-error';
-import type { SelectedMeta } from '@/components/subscriptions/feed-candidate-list';
 import { FeedCandidateList } from '@/components/subscriptions/feed-candidate-list';
 import { Button } from '@/components/ui/button';
 import {
@@ -227,7 +226,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         firstCheckboxRef.current?.focus();
     }, [candidates, data.subscriptions.length]);
 
-    const selectedMap: Record<string, SelectedMeta> = useMemo(
+    const selectedMap = useMemo(
         () =>
             Object.fromEntries(
                 data.subscriptions.map((item) => [

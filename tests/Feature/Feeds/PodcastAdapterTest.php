@@ -17,6 +17,14 @@ test('claims Apple and Spotify hosts only', function () {
     expect($adapter->claims('https://example.com'))->toBeFalse();
 });
 
+test('does not claim hosts that merely contain the matched domain as a substring', function () {
+    $adapter = app(PodcastAdapter::class);
+
+    expect($adapter->claims('https://podcasts.apple.com.evil.example/'))->toBeFalse();
+    expect($adapter->claims('https://notpodcasts.apple.com/'))->toBeFalse();
+    expect($adapter->claims('https://open.spotify.com.evil.example/'))->toBeFalse();
+});
+
 test('resolves an Apple Podcasts URL via iTunes lookup', function () {
     Http::fake([
         'itunes.apple.com/lookup*' => Http::response([

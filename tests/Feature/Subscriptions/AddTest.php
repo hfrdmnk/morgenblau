@@ -60,6 +60,27 @@ test('discover returns every advertised feed in document order', function () {
     ]);
 });
 
+test('discover preserves UTF-8 in feed and page titles', function () {
+    Http::fake([
+        'example.com' => Http::response(
+            '<html><head>'
+            .'<title>Café — Morgenblau</title>'
+            .'<link rel="alternate" type="application/rss+xml" title="Café feed" href="/rss.xml">'
+            .'</head></html>',
+            200,
+            ['Content-Type' => 'text/html; charset=utf-8'],
+        ),
+    ]);
+
+    $this->fakeListRecords($this->fakeBlueskyClient(), []);
+
+    $this->actingAs(User::factory()->create());
+
+    $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
+        ->assertOk()
+        ->assertJsonPath('candidates.0.title', 'Café feed');
+});
+
 test('discover falls back to og:site_name when a link has no title', function () {
     Http::fake([
         'example.com' => Http::response(
@@ -338,9 +359,23 @@ test('discover triggers a refresh when no bluesky_session is cached', function (
         ),
     ]);
 
-    $this->fakeListRecords($this->fakeBlueskyClient(), []);
-
     $user = User::factory()->create(['refresh_token' => 'valid-db-refresh-token']);
+
+    $factory = blueskyFactoryMock();
+    $factory->shouldReceive('refreshSession')
+        ->once()
+        ->andReturnUsing(function () use ($factory, $user) {
+            // Simulate the package's real refresh: seed the session so subsequent
+            // tokenForBluesky() calls in the same request layer the fresh access
+            // token onto the DB-backed refresh_token instead of refreshing again.
+            session()->put('bluesky_session', [
+                'did' => $user->did,
+                'access_token' => freshOAuthJwt(),
+            ]);
+
+            return $factory;
+        });
+    $this->fakeListRecordsOnFactory($factory, []);
 
     $this->actingAs($user);
 

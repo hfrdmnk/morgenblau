@@ -17,8 +17,10 @@ use Psr\Http\Message\UriInterface;
 
 /**
  * SSRF-aware outbound HTTP client. Used by feed adapters to fetch user-supplied
- * URLs safely: rejects loopback, RFC1918, link-local, IPv6 ULA, non-http(s)
- * schemes, and re-validates after every redirect to defeat DNS rebinding.
+ * URLs safely: rejects loopback, RFC1918, link-local, IPv6 ULA + IPv4-mapped
+ * IPv6, non-http(s) schemes; pins validated IPs into cURL on the initial fetch
+ * so the kernel cannot re-resolve to a private address, and re-validates on
+ * every redirect.
  *
  * Trusted destinations (e.g. itunes.apple.com) bypass the IP guard via
  * getTrusted() but still get timeouts and the body cap.
@@ -37,26 +39,50 @@ class OutboundHttpClient
 
     /**
      * Fetch a URL provided by the user. Validates scheme, host, and resolved
-     * IPs against private/loopback ranges; re-validates on every redirect.
+     * IPs against private/loopback ranges; pins those IPs into cURL; re-validates
+     * each redirect target before Guzzle dispatches the next hop.
      *
      * @param  array<string, string>  $headers
      */
     public function getUserUrl(string $url, array $headers = []): Response
     {
-        $this->assertSafeUrl($url);
+        $ips = $this->assertUserUrlIsSafe($url);
+
+        $parts = parse_url($url);
+        $host = strtolower(trim((string) $parts['host'], '[]'));
+        $scheme = strtolower((string) $parts['scheme']);
+        $port = $parts['port'] ?? ($scheme === 'https' ? 443 : 80);
 
         return $this->base($headers)
             ->withOptions([
+                'curl' => [
+                    CURLOPT_RESOLVE => ["{$host}:{$port}:".implode(',', $ips)],
+                ],
                 'allow_redirects' => [
                     'max' => self::MAX_REDIRECTS,
                     'protocols' => ['http', 'https'],
                     'strict' => true,
-                    'on_redirect' => function (RequestInterface $req, ResponseInterface $res, UriInterface $next) {
-                        $this->assertSafeUrl((string) $next);
+                    // Cross-host redirects re-resolve via cURL since CURLOPT_RESOLVE
+                    // only pins the initial host. assertSafeRedirectTarget validates
+                    // the new host's IPs before Guzzle dispatches; a TOCTOU window
+                    // remains between that check and the connect — accepted given
+                    // the 50/min rate limit and 5MB body cap.
+                    'on_redirect' => function (RequestInterface $req, ResponseInterface $res, UriInterface $next): void {
+                        $this->assertSafeRedirectTarget((string) $next);
                     },
                 ],
             ])
             ->get($url);
+    }
+
+    /**
+     * Public seam for redirect re-validation. The on_redirect Closure delegates
+     * here so tests can drive it directly (Http::fake bypasses Guzzle's redirect
+     * middleware, so the Closure cannot be exercised through faked requests).
+     */
+    public function assertSafeRedirectTarget(string $url): void
+    {
+        $this->assertUserUrlIsSafe($url);
     }
 
     /**
@@ -89,7 +115,12 @@ class OutboundHttpClient
             ->withMiddleware($this->bodySizeMiddleware());
     }
 
-    private function assertSafeUrl(string $url): void
+    /**
+     * @return non-empty-list<string> validated IPs, returned so callers can
+     *                                pin them via CURLOPT_RESOLVE without
+     *                                resolving twice.
+     */
+    private function assertUserUrlIsSafe(string $url): array
     {
         $parts = parse_url($url);
         if ($parts === false || ! isset($parts['scheme'], $parts['host'])) {
@@ -118,21 +149,55 @@ class OutboundHttpClient
                 throw new UnsafeUrlException("Resolved {$host} to private IP {$ip}.");
             }
         }
+
+        return $ips;
     }
 
     /**
      * FILTER_FLAG_NO_PRIV_RANGE rejects RFC1918 (10/8, 172.16/12, 192.168/16)
      * and IPv6 ULA (fc00::/7). FILTER_FLAG_NO_RES_RANGE rejects 0.0.0.0/8,
      * 127/8, 169.254/16 (which covers AWS IMDS at 169.254.169.254), ::1,
-     * fe80::/10, etc.
+     * fe80::/10, etc. IPv4-mapped IPv6 (::ffff:0:0/96) is NOT covered by
+     * those flags, so we extract the embedded IPv4 and re-check.
      */
     private function ipIsPublic(string $ip): bool
     {
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false) {
+            $mapped = $this->extractMappedIPv4($ip);
+            if ($mapped !== null) {
+                return (bool) filter_var(
+                    $mapped,
+                    FILTER_VALIDATE_IP,
+                    FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE,
+                );
+            }
+        }
+
         return (bool) filter_var(
             $ip,
             FILTER_VALIDATE_IP,
             FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE,
         );
+    }
+
+    /**
+     * Returns the embedded IPv4 string when $ipv6 falls in ::ffff:0:0/96.
+     * Handles both ::ffff:127.0.0.1 (mixed) and ::ffff:7f00:1 (pure hex).
+     */
+    private function extractMappedIPv4(string $ipv6): ?string
+    {
+        $packed = @inet_pton($ipv6);
+        if ($packed === false || strlen($packed) !== 16) {
+            return null;
+        }
+
+        if (substr($packed, 0, 10) !== str_repeat("\0", 10) || substr($packed, 10, 2) !== "\xff\xff") {
+            return null;
+        }
+
+        $ipv4 = @inet_ntop("\0\0\0\0".substr($packed, 12));
+
+        return $ipv4 === false ? null : $ipv4;
     }
 
     /**
