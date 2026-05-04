@@ -84,7 +84,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         reset();
         clearErrors();
         discoverHttp.cancel();
-        discoverHttp.reset();
+        discoverHttp.setData('url', '');
         discoverHttp.clearErrors();
         setCandidates(null);
         setExistingSubscriptions([]);
