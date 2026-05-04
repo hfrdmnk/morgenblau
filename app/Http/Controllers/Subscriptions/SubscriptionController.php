@@ -3,15 +3,23 @@
 namespace App\Http\Controllers\Subscriptions;
 
 use App\Data\Feeds\ChosenFeedData;
+use App\Data\Feeds\ResolvedFeedData;
+use App\Data\Shared\FlashToastData;
+use App\Data\Subscriptions\DiscoverResultData;
+use App\Data\Subscriptions\SubscriptionResultData;
+use App\Enums\FlashToastType;
+use App\Exceptions\AlreadySubscribedException;
+use App\Exceptions\PdsWriteException;
+use App\Exceptions\UnresolvableFeedException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Subscriptions\DiscoverRequest;
 use App\Http\Requests\Subscriptions\StoreRequest;
-use App\Services\Feeds\Exceptions\UnresolvableFeedException;
 use App\Services\Subscriptions\SubscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
-use RuntimeException;
+use Inertia\Inertia;
+use Spatie\LaravelData\DataCollection;
 
 class SubscriptionController extends Controller
 {
@@ -25,12 +33,12 @@ class SubscriptionController extends Controller
             throw ValidationException::withMessages(['url' => $e->getMessage()]);
         }
 
-        $existingSubscriptions = $this->subscriptions->listSubscriptions($request->user());
+        $result = new DiscoverResultData(
+            candidates: new DataCollection(ResolvedFeedData::class, $candidates),
+            existingSubscriptions: $this->subscriptions->listSubscriptions($request->user()),
+        );
 
-        return response()->json([
-            'candidates' => $candidates,
-            'existing_subscriptions' => $existingSubscriptions,
-        ]);
+        return response()->json($result);
     }
 
     public function store(StoreRequest $request): RedirectResponse
@@ -38,16 +46,15 @@ class SubscriptionController extends Controller
         $items = $request->validated()['subscriptions'];
         $user = $request->user();
 
-        $existing = array_flip(
-            $this->subscriptions->listSubscriptions($user)
-                ->toCollection()
-                ->pluck('feedUrl')
-                ->all(),
-        );
+        $choices = array_map(fn (array $item) => ChosenFeedData::from($item), $items);
 
+        [$succeeded, $failed] = $this->subscriptions->createMany($user, $choices);
+
+        // Surface duplicates as field errors so the React form keeps its
+        // existing per-row validation contract.
         $duplicateErrors = [];
-        foreach ($items as $index => $item) {
-            if (isset($existing[$item['feed_url']])) {
+        foreach ($failed as $index => $row) {
+            if ($row['error'] instanceof AlreadySubscribedException) {
                 $duplicateErrors["subscriptions.{$index}.feed_url"] = 'You are already subscribed to this feed.';
             }
         }
@@ -56,24 +63,28 @@ class SubscriptionController extends Controller
             throw ValidationException::withMessages($duplicateErrors);
         }
 
-        $succeeded = [];
-        $failed = [];
-
-        foreach ($items as $item) {
-            try {
-                $result = $this->subscriptions->create(
-                    user: $user,
-                    choice: ChosenFeedData::from($item),
-                );
-                $succeeded[] = $result->title;
-            } catch (RuntimeException) {
-                $failed[] = $item['title'] ?: $item['feed_url'];
-            }
+        // Other failures (PDS write errors, etc.) are surfaced in the flash
+        // message and reported for ops follow-up.
+        $writeFailures = array_values(array_filter(
+            $failed,
+            fn (array $row) => $row['error'] instanceof PdsWriteException,
+        ));
+        foreach ($writeFailures as $row) {
+            report($row['error']);
         }
 
-        return back()->with('flash', [
-            'message' => $this->buildFlashMessage($succeeded, $failed),
-        ]);
+        $succeededTitles = array_map(fn (SubscriptionResultData $r) => $r->title, $succeeded);
+        $failedTitles = array_map(
+            fn (array $row) => $row['choice']->title ?: $row['choice']->feedUrl,
+            $writeFailures,
+        );
+
+        Inertia::flash('toast', FlashToastData::from([
+            'type' => $writeFailures === [] ? FlashToastType::Success : FlashToastType::Warning,
+            'message' => $this->buildFlashMessage($succeededTitles, $failedTitles),
+        ]));
+
+        return back();
     }
 
     /**

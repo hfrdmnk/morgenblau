@@ -3,7 +3,7 @@
 namespace App\Services\Feeds;
 
 use App\Data\Feeds\ResolvedFeedData;
-use App\Services\Feeds\Exceptions\UnresolvableFeedException;
+use App\Exceptions\UnresolvableFeedException;
 
 class FeedResolver
 {
@@ -18,10 +18,8 @@ class FeedResolver
     public function resolve(string $url): array
     {
         foreach ($this->adapters as $adapter) {
-            $candidates = $adapter->tryResolve($url);
-
-            if ($candidates !== []) {
-                return $candidates;
+            if ($adapter->claims($url)) {
+                return $adapter->resolve($url);
             }
         }
 

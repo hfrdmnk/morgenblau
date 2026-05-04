@@ -4,29 +4,31 @@ namespace App\Services\Feeds\Adapters;
 
 use App\Data\Feeds\ResolvedFeedData;
 use App\Enums\SourceType;
-use App\Services\Feeds\Exceptions\UnresolvableFeedException;
+use App\Exceptions\UnresolvableFeedException;
 use App\Services\Feeds\FeedAdapter;
-use Illuminate\Support\Facades\Http;
+use App\Services\Http\OutboundHttpClient;
 use Illuminate\Support\Str;
 
 class YouTubeAdapter implements FeedAdapter
 {
     private const FEED_URL = 'https://www.youtube.com/feeds/videos.xml?channel_id=';
 
-    /**
-     * @return list<ResolvedFeedData>
-     */
-    public function tryResolve(string $url): array
+    public function __construct(private readonly OutboundHttpClient $http) {}
+
+    public function claims(string $url): bool
     {
         $host = parse_url($url, PHP_URL_HOST);
-        if ($host === null || ! Str::endsWith($host, ['youtube.com', 'youtu.be'])) {
-            return [];
-        }
 
+        return is_string($host) && Str::endsWith($host, ['youtube.com', 'youtu.be']);
+    }
+
+    /**
+     * @return non-empty-list<ResolvedFeedData>
+     */
+    public function resolve(string $url): array
+    {
         // SOCS=CAI bypasses YouTube's EU consent redirect, which otherwise serves a metadata-free page.
-        $response = Http::timeout(10)
-            ->withHeaders(['Cookie' => 'SOCS=CAI'])
-            ->get($url);
+        $response = $this->http->getUserUrl($url, ['Cookie' => 'SOCS=CAI']);
 
         if ($response->failed()) {
             throw new UnresolvableFeedException("Couldn't fetch {$url} (HTTP {$response->status()}).");

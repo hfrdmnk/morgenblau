@@ -4,6 +4,7 @@ namespace App\Listeners;
 
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Revolution\Bluesky\Events\OAuthSessionUpdated;
 
 class PersistOAuthSession
@@ -23,13 +24,27 @@ class PersistOAuthSession
         }
 
         $refresh = $event->session->refresh();
-        $iss = $event->session->issuer();
+        $newIss = $event->session->issuer();
+
+        // Reject silent iss changes for an existing user. A bug, account
+        // migration, or attacker-influenced refresh shouldn't be able to
+        // rewrite the auth server. Refresh still rotates so the session stays
+        // usable; iss is preserved.
+        $update = ['refresh_token' => $refresh];
+        $issForMemory = $user->iss;
+        if ($user->iss !== null && $newIss !== '' && $user->iss !== $newIss) {
+            Log::warning('oauth iss change rejected', [
+                'did' => $did,
+                'old_iss' => $user->iss,
+                'new_iss' => $newIss,
+            ]);
+        } else {
+            $update['iss'] = $newIss;
+            $issForMemory = $newIss;
+        }
 
         // Route through the model so the 'refresh_token' encrypted cast applies.
-        $user->update([
-            'refresh_token' => $refresh,
-            'iss' => $iss,
-        ]);
+        $user->update($update);
 
         session()->put('bluesky_session', $event->session->toArray());
 
@@ -41,7 +56,7 @@ class PersistOAuthSession
         if ($current instanceof User && $current->getKey() === $did) {
             $current->forceFill([
                 'refresh_token' => $refresh,
-                'iss' => $iss,
+                'iss' => $issForMemory,
             ])->syncOriginal();
         }
     }

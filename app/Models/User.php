@@ -46,7 +46,7 @@ class User extends Authenticatable
             return $this->baseBluesky();
         }
 
-        return Cache::lock("bluesky:auth:{$this->did}", 10)->block(5, function (): BlueskyFactory {
+        return Cache::lock("bluesky:auth:{$this->did}", 30)->block(8, function (): BlueskyFactory {
             // Another request may have just refreshed under the lock.
             if (! $this->tokenForBluesky()->tokenExpired()) {
                 return $this->baseBluesky();
@@ -66,9 +66,15 @@ class User extends Authenticatable
 
         $cached = session('bluesky_session');
         if (is_array($cached) && data_get($cached, 'did') === $this->did) {
-            // Session has access_token, dpop nonces, didDoc, etc.
-            // DB wins on overlap so the post-rotation refresh_token is canonical.
-            return OAuthSession::create(array_merge($cached, $base));
+            // DB is canonical for refresh_token + iss; only layer transient
+            // session-only fields on top so a poisoned session can't shadow
+            // the rotated refresh_token in the DB.
+            $layered = array_intersect_key($cached, array_flip([
+                'access_token', 'expires_in', 'expires_at',
+                'dpop_nonce', 'auth_dpop_nonce', 'didDoc', 'profile', 'pds',
+            ]));
+
+            return OAuthSession::create([...$layered, ...$base]);
         }
 
         return OAuthSession::create($base);

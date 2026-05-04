@@ -27,6 +27,9 @@ class HandleInertiaRequests extends Middleware
                     : null
                 ),
             ],
+            // Laravel session flash, used for the login banner. Toast
+            // notifications go through Inertia v3's flash channel
+            // (Inertia::flash + the useFlashToast event listener).
             'flash' => fn () => $request->session()->get('flash'),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

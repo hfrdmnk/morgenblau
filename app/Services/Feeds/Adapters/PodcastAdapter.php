@@ -4,26 +4,31 @@ namespace App\Services\Feeds\Adapters;
 
 use App\Data\Feeds\ResolvedFeedData;
 use App\Enums\SourceType;
-use App\Services\Feeds\Exceptions\UnresolvableFeedException;
+use App\Exceptions\UnresolvableFeedException;
 use App\Services\Feeds\FeedAdapter;
-use Illuminate\Support\Facades\Http;
+use App\Services\Http\OutboundHttpClient;
 use Illuminate\Support\Str;
 
 class PodcastAdapter implements FeedAdapter
 {
-    /**
-     * @return list<ResolvedFeedData>
-     */
-    public function tryResolve(string $url): array
+    public function __construct(private readonly OutboundHttpClient $http) {}
+
+    public function claims(string $url): bool
     {
         $host = parse_url($url, PHP_URL_HOST);
-        if ($host === null) {
-            return [];
+        if (! is_string($host)) {
+            return false;
         }
 
-        if (Str::contains($host, 'podcasts.apple.com')) {
-            return [$this->resolveApple($url)];
-        }
+        return Str::contains($host, ['podcasts.apple.com', 'open.spotify.com']);
+    }
+
+    /**
+     * @return non-empty-list<ResolvedFeedData>
+     */
+    public function resolve(string $url): array
+    {
+        $host = (string) parse_url($url, PHP_URL_HOST);
 
         if (Str::contains($host, 'open.spotify.com')) {
             throw new UnresolvableFeedException(
@@ -31,7 +36,7 @@ class PodcastAdapter implements FeedAdapter
             );
         }
 
-        return [];
+        return [$this->resolveApple($url)];
     }
 
     private function resolveApple(string $url): ResolvedFeedData
@@ -42,11 +47,10 @@ class PodcastAdapter implements FeedAdapter
 
         $podcastId = $matches[1];
 
-        $response = Http::timeout(10)
-            ->get('https://itunes.apple.com/lookup', [
-                'id' => $podcastId,
-                'entity' => 'podcast',
-            ]);
+        $response = $this->http->getTrusted('https://itunes.apple.com/lookup', [
+            'id' => $podcastId,
+            'entity' => 'podcast',
+        ]);
 
         if ($response->failed()) {
             throw new UnresolvableFeedException("iTunes lookup failed for podcast {$podcastId}.");

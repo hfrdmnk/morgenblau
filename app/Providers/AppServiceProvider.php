@@ -2,25 +2,29 @@
 
 namespace App\Providers;
 
-use App\Listeners\PersistOAuthSession;
 use App\Services\Feeds\Adapters\PodcastAdapter;
 use App\Services\Feeds\Adapters\WebsiteAdapter;
 use App\Services\Feeds\Adapters\YouTubeAdapter;
 use App\Services\Feeds\FeedResolver;
+use App\Services\Http\DnsResolver;
+use App\Services\Http\SystemDnsResolver;
 use Carbon\CarbonImmutable;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
-use Revolution\Bluesky\Events\OAuthSessionUpdated;
 use Revolution\Bluesky\Socialite\OAuthConfig;
 
 class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(DnsResolver::class, SystemDnsResolver::class);
+
         $this->app->singleton(FeedResolver::class, fn ($app) => new FeedResolver([
             $app->make(YouTubeAdapter::class),
             $app->make(PodcastAdapter::class),
@@ -32,6 +36,15 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
         $this->configureBluesky();
+        $this->configureRateLimiting();
+    }
+
+    protected function configureRateLimiting(): void
+    {
+        RateLimiter::for(
+            'subscriptions',
+            fn (Request $request) => Limit::perMinute(50)->by($request->user()?->getKey() ?: $request->ip()),
+        );
     }
 
     protected function configureDefaults(): void
@@ -48,13 +61,12 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Wire Bluesky OAuth: event listeners for token rotation and a custom
-     * client-metadata document served at /oauth-client-metadata.json.
+     * Wire a custom client-metadata document served at /oauth-client-metadata.json.
+     * Token-rotation listening lives in app/Listeners/PersistOAuthSession.php
+     * (auto-registered via Laravel's listener discovery).
      */
     protected function configureBluesky(): void
     {
-        Event::listen(OAuthSessionUpdated::class, PersistOAuthSession::class);
-
         OAuthConfig::clientMetadataUsing(function (): array {
             return collect(config('bluesky.oauth.metadata'))
                 ->merge([

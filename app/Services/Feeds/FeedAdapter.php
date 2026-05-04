@@ -7,10 +7,16 @@ use App\Data\Feeds\ResolvedFeedData;
 interface FeedAdapter
 {
     /**
-     * Attempt to resolve the URL into one or more candidate feeds.
-     * Return [] if this adapter cannot handle the URL — the resolver will try the next one.
-     *
-     * @return list<ResolvedFeedData>
+     * Whether this adapter wants to handle the URL. The resolver picks the
+     * first adapter whose claims() returns true and dispatches resolve() to it.
      */
-    public function tryResolve(string $url): array;
+    public function claims(string $url): bool;
+
+    /**
+     * Resolve the URL into one or more candidate feeds. Caller guarantees
+     * claims($url) returned true. Throws UnresolvableFeedException on failure.
+     *
+     * @return non-empty-list<ResolvedFeedData>
+     */
+    public function resolve(string $url): array;
 }

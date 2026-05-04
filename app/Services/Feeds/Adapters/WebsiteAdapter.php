@@ -3,11 +3,11 @@
 namespace App\Services\Feeds\Adapters;
 
 use App\Data\Feeds\ResolvedFeedData;
-use App\Services\Feeds\Exceptions\UnresolvableFeedException;
+use App\Exceptions\UnresolvableFeedException;
 use App\Services\Feeds\FeedAdapter;
+use App\Services\Http\OutboundHttpClient;
 use DOMDocument;
 use DOMXPath;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 class WebsiteAdapter implements FeedAdapter
@@ -24,17 +24,21 @@ class WebsiteAdapter implements FeedAdapter
         'application/atom+xml',
     ];
 
-    /**
-     * @return list<ResolvedFeedData>
-     */
-    public function tryResolve(string $url): array
+    public function __construct(private readonly OutboundHttpClient $http) {}
+
+    public function claims(string $url): bool
     {
         $scheme = parse_url($url, PHP_URL_SCHEME);
-        if (! in_array($scheme, ['http', 'https'], true)) {
-            return [];
-        }
 
-        $response = Http::timeout(10)->get($url);
+        return in_array($scheme, ['http', 'https'], true);
+    }
+
+    /**
+     * @return non-empty-list<ResolvedFeedData>
+     */
+    public function resolve(string $url): array
+    {
+        $response = $this->http->getUserUrl($url);
 
         if ($response->failed()) {
             throw new UnresolvableFeedException("Couldn't fetch {$url} (HTTP {$response->status()}).");
