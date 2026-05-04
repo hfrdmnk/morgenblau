@@ -1,8 +1,8 @@
 import { createInertiaApp } from '@inertiajs/react';
-import { Retune } from 'retune';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { initializeTheme } from '@/hooks/use-appearance';
+import { useFlashToast } from '@/hooks/use-flash-toast';
 import AppLayout from '@/layouts/app-layout';
 import AuthGoldenLayout from '@/layouts/auth/auth-golden-layout';
 import AuthLayout from '@/layouts/auth-layout';
@@ -12,6 +12,12 @@ import WindowLayout from '@/layouts/window-layout';
 const WINDOW_PAGES = new Set(['discover', 'consume', 'create']);
 
 const appName = import.meta.env.VITE_APP_NAME || 'Morgenblau';
+
+function FlashListener() {
+    useFlashToast();
+
+    return null;
+}
 
 createInertiaApp({
     title: (title) => (title ? `${title} | ${appName}` : appName),
@@ -35,9 +41,9 @@ createInertiaApp({
     withApp(app) {
         return (
             <TooltipProvider delay={0}>
+                <FlashListener />
                 {app}
                 <Toaster />
-                <Retune />
             </TooltipProvider>
         );
     },

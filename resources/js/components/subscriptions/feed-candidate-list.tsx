@@ -1,6 +1,7 @@
 import { Tick02Icon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
 import type { Ref } from 'react';
+import { memo } from 'react';
 import { useId } from 'react';
 
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
@@ -37,7 +38,9 @@ type Props = {
     onToggle: (candidate: FeedCandidate) => void;
     onTitleChange: (feedUrl: string, title: string) => void;
     onSourceTypeChange: (feedUrl: string, type: SourceType) => void;
-    containerRef?: Ref<HTMLDivElement>;
+    firstCheckboxRef?: Ref<HTMLInputElement>;
+    firstTitleInputRef?: Ref<HTMLInputElement>;
+    'aria-labelledby'?: string;
 };
 
 export function FeedCandidateList({
@@ -47,11 +50,17 @@ export function FeedCandidateList({
     onToggle,
     onTitleChange,
     onSourceTypeChange,
-    containerRef,
+    firstCheckboxRef,
+    firstTitleInputRef,
+    'aria-labelledby': ariaLabelledBy,
 }: Props) {
     return (
-        <div ref={containerRef} role="group" className="flex flex-col gap-2">
-            {candidates.map((candidate) => {
+        <div
+            role="group"
+            aria-labelledby={ariaLabelledBy}
+            className="flex flex-col gap-2"
+        >
+            {candidates.map((candidate, index) => {
                 const isExisting = candidate.feed_url in existingByFeedUrl;
                 const savedTitle = isExisting
                     ? existingByFeedUrl[candidate.feed_url]
@@ -65,12 +74,14 @@ export function FeedCandidateList({
                         isExisting={isExisting}
                         savedTitle={savedTitle}
                         meta={meta}
-                        onToggle={() => onToggle(candidate)}
-                        onTitleChange={(title) =>
-                            onTitleChange(candidate.feed_url, title)
+                        onToggle={onToggle}
+                        onTitleChange={onTitleChange}
+                        onSourceTypeChange={onSourceTypeChange}
+                        firstCheckboxRef={
+                            index === 0 ? firstCheckboxRef : undefined
                         }
-                        onSourceTypeChange={(type) =>
-                            onSourceTypeChange(candidate.feed_url, type)
+                        firstTitleInputRef={
+                            index === 0 ? firstTitleInputRef : undefined
                         }
                     />
                 );
@@ -84,12 +95,14 @@ type CardProps = {
     isExisting: boolean;
     savedTitle: string | null;
     meta: SelectedMeta | undefined;
-    onToggle: () => void;
-    onTitleChange: (title: string) => void;
-    onSourceTypeChange: (type: SourceType) => void;
+    onToggle: (candidate: FeedCandidate) => void;
+    onTitleChange: (feedUrl: string, title: string) => void;
+    onSourceTypeChange: (feedUrl: string, type: SourceType) => void;
+    firstCheckboxRef?: Ref<HTMLInputElement>;
+    firstTitleInputRef?: Ref<HTMLInputElement>;
 };
 
-function FeedCandidateCard({
+const FeedCandidateCard = memo(function FeedCandidateCard({
     candidate,
     isExisting,
     savedTitle,
@@ -97,6 +110,8 @@ function FeedCandidateCard({
     onToggle,
     onTitleChange,
     onSourceTypeChange,
+    firstCheckboxRef,
+    firstTitleInputRef,
 }: CardProps) {
     const inputId = useId();
     const titleId = useId();
@@ -123,17 +138,18 @@ function FeedCandidateCard({
             >
                 <span className="relative mt-0.5 inline-flex shrink-0">
                     <input
+                        ref={firstCheckboxRef}
                         id={inputId}
                         type="checkbox"
                         className={cn(
                             'peer size-4 cursor-pointer appearance-none rounded-sm border border-foreground/30 bg-background transition-colors',
                             'checked:border-foreground/60 checked:bg-foreground/70',
-                            'focus-visible:border-ring focus-visible:outline-none',
+                            'outline-none focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid',
                             'disabled:cursor-not-allowed',
                         )}
                         checked={isSelected || isExisting}
                         disabled={isExisting}
-                        onChange={onToggle}
+                        onChange={() => onToggle(candidate)}
                     />
                     <HugeiconsIcon
                         icon={Tick02Icon}
@@ -166,11 +182,15 @@ function FeedCandidateCard({
                                 Title
                             </Label>
                             <Input
+                                ref={firstTitleInputRef}
                                 id={titleId}
                                 type="text"
                                 value={meta?.title ?? ''}
                                 onChange={(event) =>
-                                    onTitleChange(event.target.value)
+                                    onTitleChange(
+                                        candidate.feed_url,
+                                        event.target.value,
+                                    )
                                 }
                             />
                         </div>
@@ -181,7 +201,10 @@ function FeedCandidateCard({
                             <Select
                                 value={meta?.source_type ?? 'rss'}
                                 onValueChange={(value) =>
-                                    onSourceTypeChange(value as SourceType)
+                                    onSourceTypeChange(
+                                        candidate.feed_url,
+                                        value as SourceType,
+                                    )
                                 }
                             >
                                 <SelectTrigger id={typeId}>
@@ -211,4 +234,4 @@ function FeedCandidateCard({
             </Collapsible>
         </div>
     );
-}
+});

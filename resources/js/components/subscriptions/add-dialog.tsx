@@ -1,17 +1,16 @@
 import { Loading03Icon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { useForm } from '@inertiajs/react';
+import { useForm, useHttp } from '@inertiajs/react';
 import type { FormEvent, KeyboardEvent } from 'react';
-import { useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
     discover,
     store,
 } from '@/actions/App/Http/Controllers/Subscriptions/SubscriptionController';
 import InputError from '@/components/input-error';
-import { FeedCandidateList } from '@/components/subscriptions/feed-candidate-list';
 import type { SelectedMeta } from '@/components/subscriptions/feed-candidate-list';
+import { FeedCandidateList } from '@/components/subscriptions/feed-candidate-list';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -23,10 +22,11 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { login } from '@/routes';
+import { isMacPlatform } from '@/lib/utils';
 
 type FeedCandidate = App.Data.Feeds.ResolvedFeedData;
 type ExistingSubscription = App.Data.Subscriptions.ExistingSubscriptionData;
+type DiscoverResult = App.Data.Subscriptions.DiscoverResultData;
 type SourceType = App.Enums.SourceType;
 
 type SubscriptionItem = {
@@ -47,12 +47,6 @@ type Props = {
 
 const EMPTY_FORM: FormShape = { subscriptions: [] };
 
-function readCsrfToken(): string {
-    const match = document.cookie.match(/XSRF-TOKEN=([^;]+)/);
-
-    return match ? decodeURIComponent(match[1]) : '';
-}
-
 function toItem(candidate: FeedCandidate): SubscriptionItem {
     return {
         feed_url: candidate.feed_url,
@@ -63,18 +57,24 @@ function toItem(candidate: FeedCandidate): SubscriptionItem {
 }
 
 export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
-    const [url, setUrl] = useState('');
     const [candidates, setCandidates] = useState<FeedCandidate[] | null>(null);
     const [existingSubscriptions, setExistingSubscriptions] = useState<
         ExistingSubscription[]
     >([]);
-    const [discovering, setDiscovering] = useState(false);
-    const [discoverError, setDiscoverError] = useState<string | null>(null);
-    const candidateListRef = useRef<HTMLDivElement>(null);
+    const firstCheckboxRef = useRef<HTMLInputElement>(null);
+    const firstTitleInputRef = useRef<HTMLInputElement>(null);
     const previousCandidatesRef = useRef<FeedCandidate[] | null>(null);
 
     const { data, setData, post, processing, errors, reset, clearErrors } =
         useForm<FormShape>(EMPTY_FORM);
+
+    const discoverHttp = useHttp<{ url: string }, DiscoverResult>(
+        'post',
+        discover().url,
+        { url: '' },
+    );
+
+    const isMac = useMemo(() => isMacPlatform(), []);
 
     const close = () => {
         onOpenChange(false);
@@ -83,11 +83,11 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
     const resetState = () => {
         reset();
         clearErrors();
-        setUrl('');
+        discoverHttp.cancel();
+        discoverHttp.reset();
+        discoverHttp.clearErrors();
         setCandidates(null);
         setExistingSubscriptions([]);
-        setDiscoverError(null);
-        setDiscovering(false);
     };
 
     const handleOpenChangeComplete = (nextOpen: boolean) => {
@@ -99,14 +99,49 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
     };
 
     const onUrlChange = (next: string) => {
-        setUrl(next);
+        discoverHttp.setData('url', next);
 
         if (candidates !== null) {
             setCandidates(null);
             setExistingSubscriptions([]);
-            setDiscoverError(null);
+            discoverHttp.clearErrors();
             setData(EMPTY_FORM);
         }
+    };
+
+    const findFeeds = () => {
+        if (!discoverHttp.data.url.trim()) {
+            return;
+        }
+
+        discoverHttp.cancel();
+        discoverHttp.post(discover().url, {
+            onSuccess: (response) => {
+                setCandidates(response.candidates);
+                setExistingSubscriptions(response.existing_subscriptions);
+
+                const existing = new Set(
+                    response.existing_subscriptions.map((s) => s.feed_url),
+                );
+                const fresh = response.candidates.filter(
+                    (c) => !existing.has(c.feed_url),
+                );
+
+                if (fresh.length === 1) {
+                    setData({ subscriptions: [toItem(fresh[0])] });
+                }
+            },
+            onHttpException: (response) => {
+                if (response.status >= 500) {
+                    discoverHttp.setError(
+                        'url',
+                        'Couldn’t reach that URL. Try again?',
+                    );
+
+                    return true;
+                }
+            },
+        });
     };
 
     const onUrlKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -114,13 +149,21 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
             return;
         }
 
-        if (candidates !== null || !url.trim() || discovering) {
+        if (
+            candidates !== null ||
+            !discoverHttp.data.url.trim() ||
+            discoverHttp.processing
+        ) {
             return;
         }
 
         event.preventDefault();
         findFeeds();
     };
+
+    const hasCandidates = candidates !== null && candidates.length > 0;
+    const selectedCount = data.subscriptions.length;
+    const submitDisabled = processing || selectedCount === 0;
 
     const onFormKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
         if (event.key !== 'Enter' || event.nativeEvent.isComposing) {
@@ -149,8 +192,16 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
             return;
         }
 
+        // Swallow Enter on the discovery URL input (it has its own handler) and
+        // on checkboxes; let it bubble inside title inputs so the form submits
+        // naturally for keyboard / screen-reader users.
         if (target instanceof HTMLInputElement) {
-            event.preventDefault();
+            const isUrlInput = target.id === 'subscription-url';
+            const isCheckbox = target.type === 'checkbox';
+
+            if (isUrlInput || isCheckbox) {
+                event.preventDefault();
+            }
         }
     };
 
@@ -162,15 +213,8 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
             return;
         }
 
-        const container = candidateListRef.current;
-
-        if (!container) {
-            return;
-        }
-
         if (data.subscriptions.length === 1) {
-            const titleInput =
-                container.querySelector<HTMLInputElement>('input[type="text"]');
+            const titleInput = firstTitleInputRef.current;
 
             if (titleInput) {
                 titleInput.focus();
@@ -180,119 +224,83 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
             }
         }
 
-        const checkbox = container.querySelector<HTMLInputElement>(
-            'input[type="checkbox"]:not(:disabled)',
-        );
-        checkbox?.focus();
+        firstCheckboxRef.current?.focus();
     }, [candidates, data.subscriptions.length]);
 
-    const findFeeds = async () => {
-        setDiscovering(true);
-        setDiscoverError(null);
-
-        try {
-            const response = await fetch(discover().url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json',
-                    'X-XSRF-TOKEN': readCsrfToken(),
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'same-origin',
-                body: JSON.stringify({ url }),
-            });
-
-            if (response.status === 401) {
-                window.location.href = login().url;
-
-                return;
-            }
-
-            if (response.status === 422) {
-                const body = (await response.json()) as {
-                    errors?: { url?: string[] };
-                };
-                setDiscoverError(
-                    body.errors?.url?.[0] ?? 'That URL didn’t resolve.',
-                );
-
-                return;
-            }
-
-            if (!response.ok) {
-                setDiscoverError(
-                    'Something went wrong reaching that URL. Try again?',
-                );
-
-                return;
-            }
-
-            const body = (await response.json()) as {
-                candidates: FeedCandidate[];
-                existing_subscriptions: ExistingSubscription[];
-            };
-            setCandidates(body.candidates);
-            setExistingSubscriptions(body.existing_subscriptions);
-
-            const existing = new Set(
-                body.existing_subscriptions.map((s) => s.feed_url),
-            );
-            const fresh = body.candidates.filter(
-                (c) => !existing.has(c.feed_url),
-            );
-
-            if (fresh.length === 1) {
-                setData({ subscriptions: [toItem(fresh[0])] });
-            }
-        } finally {
-            setDiscovering(false);
-        }
-    };
-
-    const hasCandidates = candidates !== null && candidates.length > 0;
-    const selectedCount = data.subscriptions.length;
-    const submitDisabled = processing || selectedCount === 0;
-
-    const selectedMap: Record<string, SelectedMeta> = Object.fromEntries(
-        data.subscriptions.map((item) => [
-            item.feed_url,
-            { title: item.title, source_type: item.source_type },
-        ]),
-    );
-
-    const existingByFeedUrl: Record<string, string | null> = Object.fromEntries(
-        existingSubscriptions.map((s) => [s.feed_url, s.title]),
-    );
-
-    const toggleCandidate = (candidate: FeedCandidate) => {
-        const exists = data.subscriptions.some(
-            (item) => item.feed_url === candidate.feed_url,
-        );
-
-        const next = exists
-            ? data.subscriptions.filter(
-                  (item) => item.feed_url !== candidate.feed_url,
-              )
-            : [...data.subscriptions, toItem(candidate)];
-
-        setData('subscriptions', next);
-    };
-
-    const updateItem = (feedUrl: string, patch: Partial<SubscriptionItem>) => {
-        setData(
-            'subscriptions',
-            data.subscriptions.map((item) =>
-                item.feed_url === feedUrl ? { ...item, ...patch } : item,
+    const selectedMap: Record<string, SelectedMeta> = useMemo(
+        () =>
+            Object.fromEntries(
+                data.subscriptions.map((item) => [
+                    item.feed_url,
+                    { title: item.title, source_type: item.source_type },
+                ]),
             ),
-        );
-    };
+        [data.subscriptions],
+    );
+
+    const existingByFeedUrl: Record<string, string | null> = useMemo(
+        () =>
+            Object.fromEntries(
+                existingSubscriptions.map((s) => [s.feed_url, s.title]),
+            ),
+        [existingSubscriptions],
+    );
+
+    const toggleCandidate = useCallback(
+        (candidate: FeedCandidate) => {
+            setData((current) => {
+                const exists = current.subscriptions.some(
+                    (item) => item.feed_url === candidate.feed_url,
+                );
+
+                return {
+                    ...current,
+                    subscriptions: exists
+                        ? current.subscriptions.filter(
+                              (item) => item.feed_url !== candidate.feed_url,
+                          )
+                        : [...current.subscriptions, toItem(candidate)],
+                };
+            });
+        },
+        [setData],
+    );
+
+    const handleTitleChange = useCallback(
+        (feedUrl: string, title: string) => {
+            setData((current) => ({
+                ...current,
+                subscriptions: current.subscriptions.map((item) =>
+                    item.feed_url === feedUrl ? { ...item, title } : item,
+                ),
+            }));
+        },
+        [setData],
+    );
+
+    const handleSourceTypeChange = useCallback(
+        (feedUrl: string, type: SourceType) => {
+            setData((current) => ({
+                ...current,
+                subscriptions: current.subscriptions.map((item) =>
+                    item.feed_url === feedUrl
+                        ? { ...item, source_type: type }
+                        : item,
+                ),
+            }));
+        },
+        [setData],
+    );
 
     const submit = (event: FormEvent) => {
         event.preventDefault();
 
+        if (processing) {
+            return;
+        }
+
         if (!hasCandidates) {
-            if (!url.trim() || discovering) {
+            if (!discoverHttp.data.url.trim() || discoverHttp.processing) {
                 return;
             }
 
@@ -308,11 +316,6 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         post(store().url, {
             preserveScroll: true,
             onSuccess: () => {
-                toast.success(
-                    selectedCount === 1
-                        ? 'Source added.'
-                        : `${selectedCount} sources added.`,
-                );
                 resetState();
                 close();
             },
@@ -321,6 +324,10 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
 
     const submitLabel =
         selectedCount > 1 ? `Add ${selectedCount} sources` : 'Add source';
+
+    const topLevelError =
+        (errors as Record<string, string | undefined>).subscriptions ??
+        (errors as Record<string, string | undefined>).message;
 
     return (
         <Dialog
@@ -354,12 +361,14 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                                 autoFocus
                                 spellCheck={false}
                                 placeholder="https://example.com"
-                                value={url}
+                                value={discoverHttp.data.url}
                                 onChange={(event) =>
                                     onUrlChange(event.target.value)
                                 }
                                 onKeyDown={onUrlKeyDown}
-                                aria-invalid={discoverError ? true : undefined}
+                                aria-invalid={
+                                    discoverHttp.errors.url ? true : undefined
+                                }
                                 className="flex-1"
                             />
                             <Button
@@ -367,12 +376,12 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                                 variant="secondary"
                                 onClick={findFeeds}
                                 disabled={
-                                    discovering ||
-                                    !url.trim() ||
+                                    discoverHttp.processing ||
+                                    !discoverHttp.data.url.trim() ||
                                     candidates !== null
                                 }
                             >
-                                {discovering ? (
+                                {discoverHttp.processing ? (
                                     <>
                                         <HugeiconsIcon
                                             icon={Loading03Icon}
@@ -385,27 +394,30 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                                 )}
                             </Button>
                         </div>
-                        {discoverError && (
-                            <InputError message={discoverError} />
+                        {discoverHttp.errors.url && (
+                            <InputError message={discoverHttp.errors.url} />
                         )}
                     </div>
 
                     {hasCandidates && (
-                        <div className="-mx-6 min-h-0 flex-1 overflow-y-auto px-6">
-                            <FeedCandidateList
-                                containerRef={candidateListRef}
-                                candidates={candidates}
-                                existingByFeedUrl={existingByFeedUrl}
-                                selected={selectedMap}
-                                onToggle={toggleCandidate}
-                                onTitleChange={(feedUrl, title) =>
-                                    updateItem(feedUrl, { title })
-                                }
-                                onSourceTypeChange={(feedUrl, type) =>
-                                    updateItem(feedUrl, { source_type: type })
-                                }
-                            />
-                        </div>
+                        <>
+                            <h2 id="candidate-list-heading" className="sr-only">
+                                Discovered feeds
+                            </h2>
+                            <div className="-mx-6 min-h-0 flex-1 overflow-y-auto px-6">
+                                <FeedCandidateList
+                                    aria-labelledby="candidate-list-heading"
+                                    candidates={candidates}
+                                    existingByFeedUrl={existingByFeedUrl}
+                                    selected={selectedMap}
+                                    onToggle={toggleCandidate}
+                                    onTitleChange={handleTitleChange}
+                                    onSourceTypeChange={handleSourceTypeChange}
+                                    firstCheckboxRef={firstCheckboxRef}
+                                    firstTitleInputRef={firstTitleInputRef}
+                                />
+                            </div>
+                        </>
                     )}
 
                     {hasCandidates &&
@@ -440,6 +452,8 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                             );
                         })}
 
+                    {topLevelError && <InputError message={topLevelError} />}
+
                     <p className="font-handwritten text-sm text-muted-foreground">
                         Your subscriptions are currently all public. (Selective
                         private subscriptions are coming.)
@@ -464,7 +478,16 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                                     Adding…
                                 </>
                             ) : (
-                                submitLabel
+                                <>
+                                    {submitLabel}
+                                    <kbd
+                                        data-slot="kbd"
+                                        aria-hidden="true"
+                                        className="ml-1 font-sans text-xs opacity-50"
+                                    >
+                                        {isMac ? '⌘⏎' : 'Ctrl+⏎'}
+                                    </kbd>
+                                </>
                             )}
                         </Button>
                     </DialogFooter>
