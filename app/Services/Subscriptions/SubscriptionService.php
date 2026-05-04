@@ -42,11 +42,17 @@ class SubscriptionService
      */
     public function listSubscriptions(User $user): DataCollection
     {
-        return Cache::remember(
+        // Cache the underlying array, not the DataCollection — Spatie's
+        // collection carries internal state (lazy/include trees, _dataClass)
+        // that doesn't survive serialize/unserialize cleanly and rehydrates
+        // as __PHP_Incomplete_Class.
+        $items = Cache::remember(
             $this->listCacheKey($user),
             self::LIST_CACHE_TTL,
-            fn (): DataCollection => $this->fetchSubscriptionsFromPds($user),
+            fn (): array => $this->fetchSubscriptionsFromPds($user),
         );
+
+        return ExistingSubscriptionData::collect($items, DataCollection::class);
     }
 
     /**
@@ -127,7 +133,10 @@ class SubscriptionService
         );
     }
 
-    private function fetchSubscriptionsFromPds(User $user): DataCollection
+    /**
+     * @return list<ExistingSubscriptionData>
+     */
+    private function fetchSubscriptionsFromPds(User $user): array
     {
         $client = $user->bluesky()->client(auth: true);
 
@@ -172,7 +181,7 @@ class SubscriptionService
             $cursor = $response->json('cursor');
         } while (is_string($cursor) && $cursor !== '');
 
-        return ExistingSubscriptionData::collect($subscriptions, DataCollection::class);
+        return $subscriptions;
     }
 
     private function listCacheKey(User $user): string
