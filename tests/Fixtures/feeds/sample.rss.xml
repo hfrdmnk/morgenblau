@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Sample Feed</title>
+    <link>https://example.com</link>
+    <description>A test feed</description>
+    <item>
+      <title>First post</title>
+      <link>https://example.com/posts/first</link>
+      <guid isPermaLink="false">post-1</guid>
+      <description>Short summary of the first post.</description>
+      <dc:creator>Jane Doe</dc:creator>
+      <pubDate>Wed, 15 Apr 2026 09:30:00 +0000</pubDate>
+    </item>
+    <item>
+      <title>Bare item</title>
+      <link>https://example.com/posts/bare</link>
+    </item>
+  </channel>
+</rss>
