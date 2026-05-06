@@ -56,7 +56,14 @@ A calm content platform powered by RSS and ATProto. Not a classic RSS reader —
 
 ## Authentication
 
-**ATProto OAuth only.** Users must log in with an ATProto account. There is no anonymous or email-based access. This unlocks the social layer from day one.
+ATProto OAuth is the only auth mechanism — no passwords, email, or registration. The user row stores `did` (primary key), encrypted `refresh_token`, and `iss` (auth server URL). Handle is resolved at login and lives in the Laravel session, never the DB. Profile data (avatar, display name) is re-fetched live from the PDS when needed.
+
+Scopes: granular `repo:app.skyreader.*` per-collection, following [Dan Abramov's guidance](https://underreacted.leaflet.pub/3mjfozhlhys2z). Avoid `transition:generic`.
+
+Client metadata is served at `/oauth-client-metadata.json`, JWKS at `/oauth-jwks.json`, callback at `/oauth/callback` (route name `bluesky.oauth.redirect`, package convention).
+
+References:
+- [ATProto OAuth](https://atproto.com/specs/oauth), [ATProto permissions](https://atproto.com/specs/permission)
 
 </authentication>
 
@@ -139,11 +146,9 @@ When a user opens Morgenblau, they land on **today's digest** — a unified view
 
 Users add sources by pasting a URL. Morgenblau resolves the URL into one or more feeds: it follows `<link rel="alternate" type="application/rss+xml">` (and Atom equivalents) on HTML pages, maps YouTube channel / `@handle` / `/c/` / `/user/` URLs to the corresponding `feeds/videos.xml`, and resolves Apple Podcasts URLs to the show's RSS feed via the iTunes lookup API. Each subscription is stored as an `app.skyreader.feed.subscription` record in the user's ATProto repo.
 
-"No auto-discovery in v1" applies to **social-graph discovery** — Morgenblau will not surface follow recommendations, popular-feeds lists, or trending sources. That belongs to the future Discover mode. Feed-URL resolution from a single user-supplied URL is in scope and ships in v1.
-
 ### Organization
 
-Flat list of subscriptions. No folders or categories — Windows handle the filtering/viewing.
+Flat list of subscriptions. Windows handle the filtering/viewing.
 
 ### Primary Sources
 
@@ -233,11 +238,6 @@ Things Morgenblau will never do.
 
 - **No unread counts.** Never show unread badges, counts, or inbox-zero mechanics. This is the foundational design principle.
 
-### Open for Future (Tasteful Only)
-
-- **Notifications** — could see optional edition-ready notifications ("Your morning edition is ready"), but never content-level push notifications
-- **Smart ranking** — could consider light curation in the future, but never engagement-based algorithmic sorting
-
 </anti-features>
 
 ---
@@ -249,10 +249,6 @@ Things Morgenblau will never do.
 ### Texture
 
 **Crisp morning.** Clear, sharp, awake — not warm and cozy. The terrace on a clear morning, not the candlelit cafe.
-
-- Clean sans-serifs
-- Cool blues
-- Precise transitions
 
 ### Core Metaphors
 

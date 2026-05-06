@@ -33,12 +33,8 @@ When you spot an opportunity to improve the lexicon (new field, refined semantic
 
 - Use **Red/Green TDD** as the standard development paradigm.
 - **Pest** for backend tests (`tests/Feature`, `tests/Unit`). Run with `php artisan test --compact` — add `--filter=<name>` to scope.
-- Prefer feature tests over unit tests unless the logic is genuinely pure.
-- **Extract shared setup into traits** (or Pest `beforeEach`/helpers) instead of repeating arrange code across individual test cases. Reach for a trait the second time you'd copy-paste setup.
-- **Test like an experienced senior dev**: focus on meaningful behavior and likely failure modes, not exhaustive edge-case enumeration. Each test should earn its place.
-- No frontend test runner is installed yet; add Vitest when the first interaction-worthy UI lands.
 
-## Skills
+## Special Skills
 
 - For any frontend/UI task (components, styling, layout, copy, polish), invoke `morgenblau-designer`.
 - For ATProto protocol work, invoke the matching skill: `atproto-oauth`, `atproto-lexicon`, `atproto-publish-lexicon`, `atproto-identity-resolution`, `atproto-repository`, `atproto-cid`, `atproto-attestation`.
@@ -52,17 +48,10 @@ After each batch of work, run:
 - `./vendor/bin/pint --dirty --format agent` — PHP formatter (Laravel's style)
 - `php artisan test --compact` — Pest suite
 
-## OAuth
-
-ATProto OAuth is the only auth mechanism — no passwords, email, or registration. The user row stores `did` (primary key), encrypted `refresh_token`, and `iss` (auth server URL). Handle is resolved at login and lives in the Laravel session, never the DB. Profile data (avatar, display name) is re-fetched live from the PDS when needed.
-
-Scopes: granular `repo:app.skyreader.*` per-collection, following [Dan Abramov's guidance](https://underreacted.leaflet.pub/3mjfozhlhys2z). Avoid `transition:generic`.
-
-Client metadata is served at `/oauth-client-metadata.json`, JWKS at `/oauth-jwks.json`, callback at `/oauth/callback` (route name `bluesky.oauth.redirect`, package convention).
-
 ## Key References
 
-- [SPEC.md](./SPEC.md) — product spec
-- [ATProto OAuth](https://atproto.com/specs/oauth), [ATProto permissions](https://atproto.com/specs/permission)
+- [SPEC.md](./SPEC.md): Product spec
+- [atproto.com](https://atproto.com/): General ATproto docs
 - [revolution/laravel-bluesky docs](https://github.com/invokable/laravel-bluesky/blob/main/docs/socialite.md)
-- Skyreader lexicons — `lexicons/app/skyreader/`
+- Skyreader lexicons: `lexicons/app/skyreader/`
+- [Microcosm](https://www.microcosm.blue/): Helpful APIs (e.g. for backlink discovery on the protocol)
