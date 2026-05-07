@@ -187,6 +187,8 @@ Morgenblau uses [Skyreader's](https://github.com/disnet/skyreader) lexicons (`ap
 
 Vendored lexicon schemas live in `lexicons/app/skyreader/`.
 
+Any local database tables that mirror PDS-resident data (e.g. a local `subscriptions` index for fast joins) are **derived indexes only** — reconciled from PDS reads, never authoritative. User-owned state always belongs in a lexicon record, not a local column.
+
 | Feature            | NSID                              | Schema                                          |
 | ------------------ | --------------------------------- | ----------------------------------------------- |
 | Feed subscriptions | `app.skyreader.feed.subscription` | `lexicons/app/skyreader/feed/subscription.json` |
