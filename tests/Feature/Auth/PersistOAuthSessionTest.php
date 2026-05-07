@@ -107,6 +107,50 @@ test('syncs the rotated refresh token onto the currently-authenticated user inst
         ->and($user->refresh_token)->toBe('post-rotation');
 });
 
+test('refuses to overwrite a good DB refresh_token with empty', function () {
+    // The package can produce a Token with null fields when the PDS returns
+    // 4xx errors it doesn't catch (e.g. use_dpop_nonce). Without this guard,
+    // the next request would hit the empty-refresh throw in OAuthAgent.
+    $user = User::factory()->create([
+        'did' => 'did:plc:noempty12345678901234567a',
+        'refresh_token' => 'good-refresh',
+        'iss' => 'https://eurosky.social',
+    ]);
+
+    event(new OAuthSessionUpdated(OAuthSession::create([
+        'did' => $user->did,
+        'refresh_token' => '',
+        'iss' => 'https://eurosky.social',
+    ])));
+
+    $user->refresh();
+    expect($user->refresh_token)->toBe('good-refresh')
+        ->and(session('bluesky_session'))->toBeNull();
+});
+
+test('stamps expires_at on the session payload after a rotation', function () {
+    $user = User::factory()->create([
+        'did' => 'did:plc:expat12345678901234567890',
+        'refresh_token' => 'old',
+        'iss' => 'https://eurosky.social',
+    ]);
+
+    $before = now()->getTimestamp();
+
+    event(new OAuthSessionUpdated(OAuthSession::create([
+        'did' => $user->did,
+        'refresh_token' => 'rotated',
+        'iss' => 'https://eurosky.social',
+        'access_token' => 'opaque',
+        'expires_in' => 1800,
+    ])));
+
+    $expiresAt = session('bluesky_session.expires_at');
+    expect($expiresAt)
+        ->toBeInt()
+        ->toBeGreaterThanOrEqual($before + 1800);
+});
+
 test('does not touch the in-memory user when a different DID rotates', function () {
     $user = User::factory()->create([
         'did' => 'did:plc:meuser123456789012abcd',

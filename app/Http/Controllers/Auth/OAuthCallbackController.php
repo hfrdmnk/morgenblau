@@ -33,6 +33,12 @@ class OAuthCallbackController extends Controller
             ],
         );
 
+        // ATProto access tokens are opaque (not JWTs) on most PDSes, so the
+        // package's JWT-exp expiry check would treat them as expired on every
+        // request. Compute expires_at from the spec-mandated expires_in and let
+        // PersistableOAuthSession::tokenExpired() consult it instead.
+        $session->put('expires_at', now()->getTimestamp() + (int) ($session->get('expires_in') ?: 1800));
+
         $request->session()->put('bluesky_session', $session->toArray());
         $request->session()->put('atproto.handle', $session->handle());
 

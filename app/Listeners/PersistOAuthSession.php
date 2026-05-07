@@ -17,13 +17,23 @@ class PersistOAuthSession
             return;
         }
 
+        $refresh = $event->session->refresh();
+
+        // The package can produce a Token with null fields when the PDS
+        // returns 4xx errors it doesn't catch (e.g. use_dpop_nonce). Refuse
+        // to overwrite a good DB refresh_token with empty — otherwise the
+        // next request hits the empty-refresh throw in OAuthAgent and the
+        // user is logged out.
+        if (empty($refresh)) {
+            return;
+        }
+
         $user = User::find($did);
 
         if ($user === null) {
             return;
         }
 
-        $refresh = $event->session->refresh();
         $newIss = $event->session->issuer();
 
         // Reject silent iss changes for an existing user. A bug, account
@@ -45,6 +55,10 @@ class PersistOAuthSession
 
         // Route through the model so the 'refresh_token' encrypted cast applies.
         $user->update($update);
+
+        // Stamp expires_at from expires_in (same convention as OAuthCallbackController)
+        // so PersistableOAuthSession::tokenExpired() can short-circuit per-request refreshes.
+        $event->session->put('expires_at', now()->getTimestamp() + (int) ($event->session->get('expires_in') ?: 1800));
 
         session()->put('bluesky_session', $event->session->toArray());
 

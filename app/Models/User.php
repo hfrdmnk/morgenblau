@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Bluesky\PersistableOAuthSession;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -10,7 +11,6 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Cache;
 use Revolution\Bluesky\Contracts\Factory as BlueskyFactory;
-use Revolution\Bluesky\Session\OAuthSession;
 use Revolution\Bluesky\Traits\WithBluesky;
 
 #[Fillable(['did', 'refresh_token', 'iss'])]
@@ -47,7 +47,12 @@ class User extends Authenticatable
         }
 
         return Cache::lock("bluesky:auth:{$this->did}", 30)->block(8, function (): BlueskyFactory {
-            // Another request may have just refreshed under the lock.
+            // Reload from DB so a waiting request picks up the rotated
+            // refresh_token written by the request that just refreshed —
+            // otherwise we'd send an already-consumed token and get
+            // invalid_grant from the PDS.
+            $this->refresh();
+
             if (! $this->tokenForBluesky()->tokenExpired()) {
                 return $this->baseBluesky();
             }
@@ -56,7 +61,7 @@ class User extends Authenticatable
         });
     }
 
-    protected function tokenForBluesky(): OAuthSession
+    protected function tokenForBluesky(): PersistableOAuthSession
     {
         $base = array_filter([
             'did' => $this->did,
@@ -74,9 +79,9 @@ class User extends Authenticatable
                 'dpop_nonce', 'auth_dpop_nonce', 'didDoc', 'profile', 'pds',
             ]));
 
-            return OAuthSession::create([...$layered, ...$base]);
+            return PersistableOAuthSession::create([...$layered, ...$base]);
         }
 
-        return OAuthSession::create($base);
+        return PersistableOAuthSession::create($base);
     }
 }

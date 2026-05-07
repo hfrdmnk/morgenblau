@@ -68,6 +68,46 @@ test('callback redirects to the stashed intended URL when present', function () 
         ->assertRedirect(route('discover'));
 });
 
+test('callback stamps expires_at on the stored bluesky_session from expires_in', function () {
+    $session = OAuthSession::create([
+        'did' => 'did:plc:expiresat1234567890abcd',
+        'handle' => 'alice.bsky.social',
+        'iss' => 'https://eurosky.social',
+        'refresh_token' => 'fake-refresh-token',
+        'access_token' => 'opaque-token',
+        'expires_in' => 1800,
+    ]);
+    $this->fakeBlueskyCallback($session);
+
+    $before = now()->getTimestamp();
+    $this->get(route('bluesky.oauth.redirect'))->assertRedirect(route('consume'));
+    $after = now()->getTimestamp();
+
+    $expiresAt = session('bluesky_session.expires_at');
+    expect($expiresAt)
+        ->toBeInt()
+        ->toBeGreaterThanOrEqual($before + 1800)
+        ->toBeLessThanOrEqual($after + 1800);
+});
+
+test('callback falls back to a 1800s default when the response is missing expires_in', function () {
+    $session = OAuthSession::create([
+        'did' => 'did:plc:noexpin12345678901234567890',
+        'handle' => 'alice.bsky.social',
+        'iss' => 'https://eurosky.social',
+        'refresh_token' => 'fake-refresh-token',
+    ]);
+    $this->fakeBlueskyCallback($session);
+
+    $before = now()->getTimestamp();
+    $this->get(route('bluesky.oauth.redirect'))->assertRedirect(route('consume'));
+
+    $expiresAt = session('bluesky_session.expires_at');
+    expect($expiresAt)
+        ->toBeInt()
+        ->toBeGreaterThanOrEqual($before + 1800);
+});
+
 test('callback does not create a user or log anyone in when Socialite throws', function () {
     Exceptions::fake();
     $this->fakeBlueskyCallbackThrows(new RuntimeException('state mismatch'));
