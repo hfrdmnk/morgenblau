@@ -3,10 +3,12 @@
 use App\Models\User;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
     Http::preventStrayRequests();
+    Bus::fake();
 });
 
 test('guests cannot discover or store subscriptions', function () {
@@ -124,7 +126,12 @@ test('discover surfaces feeds the user is already subscribed to with their saved
     $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
         ->assertOk()
         ->assertJsonPath('existing_subscriptions', [
-            ['feed_url' => 'https://example.com/rss.xml', 'title' => 'My nickname for this feed'],
+            [
+                'feed_url' => 'https://example.com/rss.xml',
+                'title' => 'My nickname for this feed',
+                'custom_title' => null,
+                'at_uri' => null,
+            ],
         ]);
 });
 
@@ -146,7 +153,12 @@ test('discover returns null title for existing subscriptions saved without one',
     $this->postJson(route('subscriptions.discover'), ['url' => 'https://example.com'])
         ->assertOk()
         ->assertJsonPath('existing_subscriptions', [
-            ['feed_url' => 'https://example.com/rss.xml', 'title' => null],
+            [
+                'feed_url' => 'https://example.com/rss.xml',
+                'title' => null,
+                'custom_title' => null,
+                'at_uri' => null,
+            ],
         ]);
 });
 

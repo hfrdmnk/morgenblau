@@ -9,6 +9,9 @@ use App\Data\Subscriptions\SubscriptionResultData;
 use App\Exceptions\AlreadySubscribedException;
 use App\Exceptions\PdsReadException;
 use App\Exceptions\PdsWriteException;
+use App\Jobs\RefreshFeedJob;
+use App\Models\Feed;
+use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Feeds\FeedResolver;
 use Illuminate\Support\Facades\Cache;
@@ -49,7 +52,17 @@ class SubscriptionService
         $items = Cache::remember(
             $this->listCacheKey($user),
             self::LIST_CACHE_TTL,
-            fn (): array => $this->fetchSubscriptionsFromPds($user),
+            function () use ($user): array {
+                $pdsList = $this->fetchSubscriptionsFromPds($user);
+                $this->reconcileLocalMirror($user, $pdsList);
+
+                return array_map(fn (ExistingSubscriptionData $item) => [
+                    'feedUrl' => $item->feedUrl,
+                    'title' => $item->title,
+                    'customTitle' => $item->customTitle,
+                    'atUri' => $item->atUri,
+                ], $pdsList);
+            },
         );
 
         return ExistingSubscriptionData::collect($items, DataCollection::class);
@@ -89,6 +102,7 @@ class SubscriptionService
                 try {
                     $result = $this->create($user, $choice);
                     $existing[$choice->feedUrl] = true;
+                    $this->mirrorSingleSubscription($user, $choice, $result);
                     $succeeded[] = $result;
                 } catch (PdsWriteException $e) {
                     $failed[] = ['choice' => $choice, 'error' => $e];
@@ -134,6 +148,64 @@ class SubscriptionService
     }
 
     /**
+     * Materialise local feeds + subscriptions rows from a PDS subscription set
+     * and dispatch RefreshFeedJob for any feed never fetched.
+     *
+     * @param  list<ExistingSubscriptionData>  $pdsList
+     */
+    private function reconcileLocalMirror(User $user, array $pdsList): void
+    {
+        $seenFeedIds = [];
+
+        foreach ($pdsList as $sub) {
+            $feed = Feed::query()->firstOrCreate(['feed_url' => $sub->feedUrl]);
+            $seenFeedIds[] = $feed->id;
+
+            Subscription::query()->updateOrCreate(
+                ['user_id' => $user->did, 'feed_id' => $feed->id],
+                [
+                    'at_uri' => $sub->atUri,
+                    'custom_title' => $sub->customTitle,
+                    'pds_title' => $sub->title,
+                ],
+            );
+
+            $this->dispatchIfUnfetched($feed);
+        }
+
+        Subscription::query()
+            ->where('user_id', $user->did)
+            ->when($seenFeedIds !== [], fn ($q) => $q->whereNotIn('feed_id', $seenFeedIds))
+            ->delete();
+    }
+
+    private function mirrorSingleSubscription(User $user, ChosenFeedData $choice, SubscriptionResultData $result): void
+    {
+        $feed = Feed::query()->firstOrCreate(['feed_url' => $choice->feedUrl]);
+
+        Subscription::query()->updateOrCreate(
+            ['user_id' => $user->did, 'feed_id' => $feed->id],
+            [
+                'at_uri' => $result->atUri,
+                'custom_title' => null,
+                'pds_title' => $choice->title,
+            ],
+        );
+
+        $this->dispatchIfUnfetched($feed);
+    }
+
+    private function dispatchIfUnfetched(Feed $feed): void
+    {
+        if ($feed->last_fetched_at !== null || $feed->last_dispatched_at !== null) {
+            return;
+        }
+
+        $feed->forceFill(['last_dispatched_at' => Date::now()])->save();
+        RefreshFeedJob::dispatch($feed->id);
+    }
+
+    /**
      * @return list<ExistingSubscriptionData>
      */
     private function fetchSubscriptionsFromPds(User $user): array
@@ -172,9 +244,14 @@ class SubscriptionService
                 }
 
                 $title = data_get($record, 'value.title');
+                $customTitle = data_get($record, 'value.customTitle');
+                $atUri = data_get($record, 'uri');
+
                 $subscriptions[] = new ExistingSubscriptionData(
                     feedUrl: $feedUrl,
                     title: is_string($title) && $title !== '' ? $title : null,
+                    customTitle: is_string($customTitle) && $customTitle !== '' ? $customTitle : null,
+                    atUri: is_string($atUri) && $atUri !== '' ? $atUri : null,
                 );
             }
 

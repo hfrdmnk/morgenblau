@@ -15,6 +15,7 @@ test('authed pages share the user model and the session-stashed handle', functio
         'did' => 'did:plc:shareduser1234567890abcd',
     ]);
     freshenBluesky($user);
+    $this->fakePdsList([]);
 
     $this->actingAs($user)
         ->withSession(['atproto.handle' => 'alice.bsky.social'])

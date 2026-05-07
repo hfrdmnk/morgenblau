@@ -3,6 +3,7 @@
 use App\Exceptions\PdsReadException;
 use App\Models\User;
 use App\Services\Subscriptions\SubscriptionService;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -10,6 +11,7 @@ use Illuminate\Support\Facades\Log;
 beforeEach(function () {
     Http::preventStrayRequests();
     Cache::flush();
+    Bus::fake();
 });
 
 test('paginates through cursor pages until the cursor is empty', function () {

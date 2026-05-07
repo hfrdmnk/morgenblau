@@ -54,7 +54,21 @@ trait FakesBlueskyClient
     }
 
     /**
-     * @param  array<int, string|array{feed_url: string, title?: ?string}>  $records
+     * Stub the user's PDS list to return exactly these feed URLs. Convenience
+     * around fakeBlueskyClient + fakeListRecords for the common case.
+     *
+     * @param  array<int, string>  $feedUrls
+     */
+    public function fakePdsList(array $feedUrls): void
+    {
+        $this->fakeListRecords($this->fakeBlueskyClient(), array_map(
+            fn (string $url): array => ['feed_url' => $url],
+            $feedUrls,
+        ));
+    }
+
+    /**
+     * @param  array<int, string|array{feed_url: string, title?: ?string, custom_title?: ?string}>  $records
      */
     protected function fakeListRecords(MockInterface $client, array $records = []): void
     {
@@ -68,13 +82,14 @@ trait FakesBlueskyClient
                     return ['value' => array_filter([
                         'feedUrl' => $record['feed_url'],
                         'title' => $record['title'] ?? null,
+                        'customTitle' => $record['custom_title'] ?? null,
                     ], fn ($value): bool => $value !== null)];
                 }, $records),
             ]));
     }
 
     /**
-     * @param  array<int, string|array{feed_url: string, title?: ?string}>  $records
+     * @param  array<int, string|array{feed_url: string, title?: ?string, custom_title?: ?string}>  $records
      */
     protected function fakeListRecordsOnFactory(MockInterface $factory, array $records = []): void
     {

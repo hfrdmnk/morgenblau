@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\OAuthCallbackController;
+use App\Http\Controllers\ConsumeController;
+use App\Http\Controllers\Feeds\FeedRefreshController;
 use App\Http\Controllers\Subscriptions\SubscriptionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -44,7 +46,7 @@ Route::get('oauth/callback', OAuthCallbackController::class)
 
 Route::middleware(['auth'])->group(function () {
     Route::inertia('discover', 'discover')->name('discover');
-    Route::inertia('consume', 'consume')->name('consume');
+    Route::get('consume', ConsumeController::class)->name('consume');
     Route::inertia('create', 'create')->name('create');
 
     Route::post('subscriptions/discover', [SubscriptionController::class, 'discover'])
@@ -53,6 +55,10 @@ Route::middleware(['auth'])->group(function () {
     Route::post('subscriptions', [SubscriptionController::class, 'store'])
         ->middleware('throttle:subscriptions')
         ->name('subscriptions.store');
+
+    Route::post('feeds/refresh', FeedRefreshController::class)
+        ->middleware('throttle:6,1')
+        ->name('feeds.refresh');
 });
 
 require __DIR__.'/settings.php';

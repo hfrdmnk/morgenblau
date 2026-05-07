@@ -14,5 +14,7 @@ class ExistingSubscriptionData extends Data
     public function __construct(
         public string $feedUrl,
         public ?string $title,
+        public ?string $customTitle = null,
+        public ?string $atUri = null,
     ) {}
 }
