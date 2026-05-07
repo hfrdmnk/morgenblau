@@ -51,7 +51,7 @@ Surfaces lighten as they come forward. **Controls do the opposite: they step for
 | **Input bg**            | one step past surface              | gray-50                                                                                          | gray-100 | gray-50  | gray-700 | gray-800 | gray-700 |
 | **Input border**        | two steps past                     | gray-200                                                                                         | gray-200 | gray-100 | gray-600 | gray-700 | gray-600 |
 | **Secondary button bg** | two steps past                     | gray-100                                                                                         | gray-200 | gray-100 | gray-600 | gray-700 | gray-600 |
-| **Primary button**      | color-defined, not level-dependent | soft atmosphere-blue tint in both modes (filled tint, tinted border, atmosphere-blue foreground) |          |          |          |          |          |
+| **Primary button**      | color-defined, not level-dependent | solid atmosphere-blue background, white foreground, no border — same in both modes               |          |          |          |          |          |
 
 **In light mode controls go darker; in dark mode they go lighter.** The rule holds: controls always stand _against_ the surface trend, so they visually step forward.
 
@@ -66,7 +66,7 @@ Why split: an outline on a control with a visible border looks like two parallel
 
 Error / invalid states (`aria-invalid`) swap the border to `border-destructive` on inputs, and the existing destructive ring style on buttons — so focus and validation stay distinguishable.
 
-**Two button variants only: primary (soft blue) and secondary (gray).** There is no solid / dark / black variant. When a button needs to feel more critical, the answer is **copy and placement**, not a louder color. A confirmation word, a more prominent position, a Caveat hint — but never a third button variant.
+**Two button variants only: primary (solid atmosphere-blue, white text) and secondary (gray).** There is no dark / black variant. When a button needs to feel more critical, the answer is **copy and placement**, not a louder color. A confirmation word, a more prominent position, a Caveat hint — but never a third button variant.
 
 ---
 

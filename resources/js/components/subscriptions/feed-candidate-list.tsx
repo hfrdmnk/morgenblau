@@ -155,7 +155,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                         type="checkbox"
                         className={cn(
                             'peer size-4 cursor-pointer appearance-none rounded-sm border border-foreground/30 bg-background transition-colors',
-                            'checked:border-foreground/60 checked:bg-foreground/70',
+                            'checked:border-primary checked:bg-primary',
                             'outline-none focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid',
                             'disabled:cursor-not-allowed',
                         )}
@@ -165,7 +165,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                     />
                     <HugeiconsIcon
                         icon={Tick02Icon}
-                        className="pointer-events-none absolute inset-0 m-auto size-3 text-background opacity-0 peer-checked:opacity-100"
+                        className="pointer-events-none absolute inset-0 m-auto size-3 text-primary-foreground opacity-0 peer-checked:opacity-100"
                     />
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
