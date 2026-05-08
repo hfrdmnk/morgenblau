@@ -73,7 +73,7 @@ References:
 
 ## Daily Digests
 
-The core consumption model. Content is organized into daily editions rather than a continuous feed.
+The core consumption model. Content is **grouped by day** into daily editions rather than presented as a continuous feed. "Daily" describes the *grouping*, not the *fetch cadence* — fetch cadence is governed by [Refresh Cadence](#refresh-cadence) under Feed Sources.
 
 ### Empty Editions
 
@@ -111,6 +111,12 @@ In-app reader by default — fetch and render article content directly. Users ca
 ### Media Playback
 
 Custom video and audio player UI that matches Morgenblau's design language. Not YouTube iframes or bare HTML audio elements.
+
+### Classification & Sanitization
+
+Content type is **classified at fetch time and persisted** — entries land in storage with a `content_type` column already set, not derived at render. Same applies to HTML sanitization for the in-app reader: sanitize once during the fetch pipeline, store the safe form, never sanitize at render.
+
+Type-specific metadata (reading-time, YouTube video id, podcast enclosure + duration, etc.) lives in a `metadata` JSON column on `feed_entries`. Fields get promoted to typed columns only when their content-type UI ships and the access patterns are known.
 
 </content-types>
 
@@ -153,6 +159,24 @@ Flat list of subscriptions. Windows handle the filtering/viewing.
 ### Primary Sources
 
 Users can mark feeds as **primary sources**. These receive prominent placement in the digest — front-page treatment.
+
+### Refresh Cadence
+
+Refresh has **exactly three triggers**:
+
+- **Auto-refresh** every 30 minutes for all active subscriptions.
+- **Manual refresh** is available on the digest view.
+- **On subscription add**, the new subscription is fetched immediately (only that feed, not the whole set).
+
+Notably absent: refresh on digest visit. The window metaphor is "step away, come back, content has accumulated on its own clock" — opening the digest does not trigger fetches.
+
+Architecture must permit evolving toward finer real-time refresh per feed (HTTP caching headers, per-feed `next_check_at`, exponential backoff on errors). The 30-minute default is a product choice, not an architectural ceiling.
+
+### Failure Handling
+
+Failed fetches back off exponentially (5min → 15min → 1h → 6h → 24h cap) until success or auto-disable. After **20 consecutive failures** the feed is silently muted — no toasts, no banners, no digest-side nudges. Muted feeds still auto-retry once per day; on the first success they silently re-enable, no user action required.
+
+Failure state is **visible only in the subscription list** as quiet metadata (last successful fetch time, muted state). The digest itself never surfaces feed errors — the calm-brand promise extends to "no apologies for missing content."
 
 </feed-sources>
 
