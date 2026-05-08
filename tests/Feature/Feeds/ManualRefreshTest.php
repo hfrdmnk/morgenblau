@@ -167,8 +167,9 @@ test('still dispatches for already-mirrored feeds when the PDS read fails', func
     $feed = Feed::query()->create(['feed_url' => 'https://local.example/rss']);
     subscribe($user, $feed);
 
-    // No fake Bluesky factory — the real one will throw inside reconcile,
-    // exercising the try/catch in FeedRefreshController.
+    $this->fakeBlueskyClient()
+        ->shouldReceive('listRecords')
+        ->andThrow(new RuntimeException('PDS unavailable'));
 
     $this->actingAs($user)->post(route('feeds.refresh'))->assertRedirect();
 

@@ -47,9 +47,9 @@ test('callback still completes when the PDS reconcile fails', function () {
     ]);
     $this->fakeBlueskyCallback($session);
 
-    // Intentionally do NOT bind a faked Bluesky factory — calling
-    // listRecords on the real factory will throw, exercising the
-    // try/catch in OAuthCallbackController.
+    $this->fakeBlueskyClient()
+        ->shouldReceive('listRecords')
+        ->andThrow(new RuntimeException('PDS unavailable'));
 
     $this->get(route('bluesky.oauth.redirect'))->assertRedirect(route('consume'));
 

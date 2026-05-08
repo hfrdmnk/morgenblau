@@ -164,8 +164,6 @@ test('returns silently when the feed has been deleted', function () {
     app()->instance(FeedFetcher::class, $fetcher);
 
     (new RefreshFeedJob(999_999))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class));
-
-    expect(true)->toBeTrue();
 });
 
 test('on Failed result records bookkeeping, advances next_check_at by backoff, and does not rethrow', function () {

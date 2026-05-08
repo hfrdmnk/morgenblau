@@ -208,7 +208,7 @@ test('failed() hook records the same state as the Failed branch', function () {
 test('failed() hook is a no-op when the feed has been deleted', function () {
     (new RefreshFeedJob(999_999))->failed(new RuntimeException('worker died'));
 
-    expect(true)->toBeTrue();
+    expect(Feed::query()->count())->toBe(0);
 });
 
 test('feeds:retry-disabled dispatches a refresh job for each muted feed with subscribers', function () {
