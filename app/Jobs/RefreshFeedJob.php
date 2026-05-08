@@ -5,6 +5,8 @@ namespace App\Jobs;
 use App\Models\Feed;
 use App\Services\Feeds\FeedEntryUpserter;
 use App\Services\Feeds\FeedFetcher;
+use App\Services\Feeds\Results\Modified;
+use App\Services\Feeds\Results\NotModified;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -36,8 +38,7 @@ class RefreshFeedJob implements ShouldBeUnique, ShouldQueue
         }
 
         try {
-            $entries = $fetcher->fetch($feed->feed_url);
-            $upserter->upsert($feed, $entries);
+            $result = $fetcher->fetch($feed->feed_url, $feed->etag_header, $feed->last_modified_header);
         } catch (Throwable $e) {
             $feed->forceFill([
                 'last_failed_at' => Date::now(),
@@ -48,11 +49,27 @@ class RefreshFeedJob implements ShouldBeUnique, ShouldQueue
             throw $e;
         }
 
-        $feed->forceFill([
-            'last_fetched_at' => Date::now(),
-            'last_dispatched_at' => null,
-            'last_failed_at' => null,
-            'last_error' => null,
-        ])->save();
+        if ($result instanceof Modified) {
+            $upserter->upsert($feed, $result->entries);
+            $feed->forceFill([
+                'last_fetched_at' => Date::now(),
+                'last_dispatched_at' => null,
+                'last_failed_at' => null,
+                'last_error' => null,
+                'etag_header' => $result->etag,
+                'last_modified_header' => $result->lastModified,
+            ])->save();
+
+            return;
+        }
+
+        if ($result instanceof NotModified) {
+            $feed->forceFill([
+                'last_fetched_at' => Date::now(),
+                'last_dispatched_at' => null,
+                'last_failed_at' => null,
+                'last_error' => null,
+            ])->save();
+        }
     }
 }

@@ -27,6 +27,8 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(DnsResolver::class, SystemDnsResolver::class);
 
+        $this->app->bind(ConditionalFeedClient::class, OutboundFeedClient::class);
+
         $this->app->bind(FeedIo::class, fn ($app) => new FeedIo($app->make(OutboundFeedClient::class)));
 
         $this->app->singleton(FeedResolver::class, fn ($app) => new FeedResolver([

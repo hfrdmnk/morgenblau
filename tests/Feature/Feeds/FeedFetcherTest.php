@@ -3,13 +3,20 @@
 use App\Data\Feeds\FetchedEntryData;
 use App\Exceptions\FeedFetchException;
 use App\Services\Feeds\FeedFetcher;
+use App\Services\Feeds\Results\Modified;
+use App\Services\Feeds\Results\NotModified;
 use Carbon\CarbonImmutable;
 use FeedIo\FeedIo;
 use Tests\Doubles\StubFeedClient;
 
-function feedFetcherWith(array $bodies): FeedFetcher
+function feedFetcherWith(StubFeedClient $client): FeedFetcher
 {
-    return new FeedFetcher(new FeedIo(new StubFeedClient($bodies)));
+    return new FeedFetcher(new FeedIo($client), $client);
+}
+
+function feedFetcherForUrls(array $bodies): FeedFetcher
+{
+    return feedFetcherWith(new StubFeedClient($bodies));
 }
 
 function sampleRssFixture(): string
@@ -17,15 +24,16 @@ function sampleRssFixture(): string
     return (string) file_get_contents(__DIR__.'/../../Fixtures/feeds/sample.rss.xml');
 }
 
-test('it parses an RSS feed into FetchedEntryData', function () {
-    $fetcher = feedFetcherWith(['https://example.com/feed.xml' => sampleRssFixture()]);
+test('it parses an RSS feed into a Modified result with FetchedEntryData', function () {
+    $fetcher = feedFetcherForUrls(['https://example.com/feed.xml' => sampleRssFixture()]);
 
-    $entries = $fetcher->fetch('https://example.com/feed.xml');
+    $result = $fetcher->fetch('https://example.com/feed.xml');
 
-    expect($entries)->toHaveCount(2)
-        ->and($entries[0])->toBeInstanceOf(FetchedEntryData::class);
+    expect($result)->toBeInstanceOf(Modified::class);
+    expect($result->entries)->toHaveCount(2)
+        ->and($result->entries[0])->toBeInstanceOf(FetchedEntryData::class);
 
-    $first = $entries[0];
+    $first = $result->entries[0];
     expect($first->title)->toBe('First post')
         ->and($first->link)->toBe('https://example.com/posts/first')
         ->and($first->guid)->toBe('post-1')
@@ -37,9 +45,9 @@ test('it parses an RSS feed into FetchedEntryData', function () {
 });
 
 test('it tolerates items missing optional fields', function () {
-    $fetcher = feedFetcherWith(['https://example.com/feed.xml' => sampleRssFixture()]);
+    $fetcher = feedFetcherForUrls(['https://example.com/feed.xml' => sampleRssFixture()]);
 
-    $second = $fetcher->fetch('https://example.com/feed.xml')[1];
+    $second = $fetcher->fetch('https://example.com/feed.xml')->entries[1];
 
     expect($second->title)->toBe('Bare item')
         ->and($second->link)->toBe('https://example.com/posts/bare')
@@ -51,8 +59,51 @@ test('it tolerates items missing optional fields', function () {
         ->and($second->publishedAt)->toBeNull();
 });
 
+test('it captures ETag and Last-Modified headers from a 200 response', function () {
+    $fetcher = feedFetcherForUrls([
+        'https://example.com/feed.xml' => [
+            'result' => 'modified',
+            'body' => sampleRssFixture(),
+            'etag' => 'W/"abc123"',
+            'last_modified' => 'Wed, 15 Apr 2026 09:30:00 +0000',
+        ],
+    ]);
+
+    $result = $fetcher->fetch('https://example.com/feed.xml');
+
+    expect($result)->toBeInstanceOf(Modified::class);
+    expect($result->etag)->toBe('W/"abc123"');
+    expect($result->lastModified)->toBe('Wed, 15 Apr 2026 09:30:00 +0000');
+});
+
+test('it returns NotModified for a 304 response and forwards stored conditional headers', function () {
+    $client = new StubFeedClient([
+        'https://example.com/feed.xml' => [
+            'result' => 'not_modified',
+            'etag' => 'W/"abc123"',
+            'last_modified' => 'Wed, 15 Apr 2026 09:30:00 +0000',
+        ],
+    ]);
+    $fetcher = feedFetcherWith($client);
+
+    $result = $fetcher->fetch(
+        'https://example.com/feed.xml',
+        etag: 'W/"abc123"',
+        lastModified: 'Wed, 15 Apr 2026 09:30:00 +0000',
+    );
+
+    expect($result)->toBeInstanceOf(NotModified::class);
+    expect($result->etag)->toBe('W/"abc123"');
+    expect($result->lastModified)->toBe('Wed, 15 Apr 2026 09:30:00 +0000');
+
+    expect($client->lastConditionalHeaders['https://example.com/feed.xml'])->toBe([
+        'etag' => 'W/"abc123"',
+        'last_modified' => 'Wed, 15 Apr 2026 09:30:00 +0000',
+    ]);
+});
+
 test('it wraps feed-io errors in FeedFetchException', function () {
-    $fetcher = feedFetcherWith([]);
+    $fetcher = feedFetcherForUrls([]);
 
     expect(fn () => $fetcher->fetch('https://example.com/missing.xml'))
         ->toThrow(FeedFetchException::class);
