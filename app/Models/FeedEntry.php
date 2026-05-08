@@ -8,7 +8,20 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class FeedEntry extends Model
 {
-    protected $guarded = [];
+    protected $fillable = [
+        'feed_id',
+        'guid',
+        'title',
+        'link',
+        'summary',
+        'content',
+        'author',
+        'published_at',
+        'content_type',
+        'metadata',
+        'first_seen_at',
+        'updated_at',
+    ];
 
     public $timestamps = false;
 

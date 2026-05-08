@@ -1,10 +1,8 @@
 import { RefreshIcon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { Form, Head, router } from '@inertiajs/react';
-import { useEffect, useRef } from 'react';
+import { Form, Head } from '@inertiajs/react';
 import TextLink from '@/components/text-link';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
 import { discover } from '@/routes';
 import { refresh } from '@/routes/feeds';
 
@@ -12,50 +10,10 @@ type FeedEntry = App.Data.Feeds.FeedEntryViewData;
 
 type ConsumeProps = {
     entries: FeedEntry[];
-    refreshing_feed_ids: number[];
     has_subscriptions: boolean;
 };
 
-const POLL_INTERVAL_MS = 2000;
-const POLL_MAX_TICKS = 15;
-
-export default function Consume({
-    entries,
-    refreshing_feed_ids,
-    has_subscriptions,
-}: ConsumeProps) {
-    const isRefreshing = refreshing_feed_ids.length > 0;
-    const tickRef = useRef(0);
-
-    useEffect(() => {
-        if (!isRefreshing) {
-            tickRef.current = 0;
-
-            return;
-        }
-
-        tickRef.current = 0;
-
-        const interval = window.setInterval(() => {
-            tickRef.current += 1;
-
-            if (tickRef.current > POLL_MAX_TICKS) {
-                window.clearInterval(interval);
-
-                return;
-            }
-
-            router.reload({
-                only: ['entries', 'refreshing_feed_ids'],
-                async: true,
-            });
-        }, POLL_INTERVAL_MS);
-
-        return () => {
-            window.clearInterval(interval);
-        };
-    }, [isRefreshing]);
-
+export default function Consume({ entries, has_subscriptions }: ConsumeProps) {
     const isEmpty = entries.length === 0;
 
     return (
@@ -63,22 +21,12 @@ export default function Consume({
             <Head title="Consume" />
             <div className="mx-auto w-full max-w-2xl px-6 py-10">
                 {has_subscriptions ? (
-                    <div className="mb-8 flex items-center justify-between gap-4">
-                        {isRefreshing ? (
-                            <RefreshIndicator
-                                count={refreshing_feed_ids.length}
-                            />
-                        ) : (
-                            <span aria-hidden />
-                        )}
-                        <RefreshButton disabled={isRefreshing} />
+                    <div className="mb-8 flex items-center justify-end">
+                        <RefreshButton />
                     </div>
                 ) : null}
                 {isEmpty ? (
-                    <EmptyState
-                        hasSubscriptions={has_subscriptions}
-                        isRefreshing={isRefreshing}
-                    />
+                    <EmptyState hasSubscriptions={has_subscriptions} />
                 ) : (
                     <ul className="flex flex-col gap-8">
                         {entries.map((entry) => (
@@ -91,7 +39,7 @@ export default function Consume({
     );
 }
 
-function RefreshButton({ disabled }: { disabled: boolean }) {
+function RefreshButton() {
     return (
         <Form {...refresh.form()} options={{ preserveScroll: true }}>
             {({ processing }) => (
@@ -99,7 +47,7 @@ function RefreshButton({ disabled }: { disabled: boolean }) {
                     type="submit"
                     variant="secondary"
                     size="sm"
-                    disabled={disabled || processing}
+                    disabled={processing}
                 >
                     <HugeiconsIcon icon={RefreshIcon} />
                     Refresh now
@@ -109,13 +57,7 @@ function RefreshButton({ disabled }: { disabled: boolean }) {
     );
 }
 
-function EmptyState({
-    hasSubscriptions,
-    isRefreshing,
-}: {
-    hasSubscriptions: boolean;
-    isRefreshing: boolean;
-}) {
+function EmptyState({ hasSubscriptions }: { hasSubscriptions: boolean }) {
     if (!hasSubscriptions) {
         return (
             <div className="flex flex-col gap-2">
@@ -128,10 +70,6 @@ function EmptyState({
         );
     }
 
-    if (isRefreshing) {
-        return null;
-    }
-
     return (
         <div className="flex flex-col gap-2">
             <p>Nothing new this morning.</p>
@@ -139,19 +77,6 @@ function EmptyState({
                 Enjoy your coffee.
             </p>
         </div>
-    );
-}
-
-function RefreshIndicator({ count }: { count: number }) {
-    return (
-        <p
-            role="status"
-            aria-live="polite"
-            className="inline-flex items-center gap-[0.5em] font-handwritten text-sm text-muted-foreground"
-        >
-            <Spinner className="size-3.5" />
-            {count === 1 ? 'Refreshing 1 feed…' : `Refreshing ${count} feeds…`}
-        </p>
     );
 }
 

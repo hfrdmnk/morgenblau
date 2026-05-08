@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Services\Feeds\FeedResolver;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Spatie\LaravelData\DataCollection;
 use Throwable;
@@ -155,28 +156,30 @@ class SubscriptionService
      */
     private function reconcileLocalMirror(User $user, array $pdsList): void
     {
-        $seenFeedIds = [];
+        DB::transaction(function () use ($user, $pdsList): void {
+            $seenFeedIds = [];
 
-        foreach ($pdsList as $sub) {
-            $feed = Feed::query()->firstOrCreate(['feed_url' => $sub->feedUrl]);
-            $seenFeedIds[] = $feed->id;
+            foreach ($pdsList as $sub) {
+                $feed = Feed::query()->firstOrCreate(['feed_url' => $sub->feedUrl]);
+                $seenFeedIds[] = $feed->id;
 
-            Subscription::query()->updateOrCreate(
-                ['user_id' => $user->did, 'feed_id' => $feed->id],
-                [
-                    'at_uri' => $sub->atUri,
-                    'custom_title' => $sub->customTitle,
-                    'pds_title' => $sub->title,
-                ],
-            );
+                Subscription::query()->updateOrCreate(
+                    ['user_id' => $user->did, 'feed_id' => $feed->id],
+                    [
+                        'at_uri' => $sub->atUri,
+                        'custom_title' => $sub->customTitle,
+                        'pds_title' => $sub->title,
+                    ],
+                );
 
-            $this->dispatchIfUnfetched($feed);
-        }
+                $this->dispatchIfUnfetched($feed);
+            }
 
-        Subscription::query()
-            ->where('user_id', $user->did)
-            ->when($seenFeedIds !== [], fn ($q) => $q->whereNotIn('feed_id', $seenFeedIds))
-            ->delete();
+            Subscription::query()
+                ->where('user_id', $user->did)
+                ->when($seenFeedIds !== [], fn ($q) => $q->whereNotIn('feed_id', $seenFeedIds))
+                ->delete();
+        });
     }
 
     private function mirrorSingleSubscription(User $user, ChosenFeedData $choice, SubscriptionResultData $result): void
@@ -201,7 +204,7 @@ class SubscriptionService
             return;
         }
 
-        $feed->forceFill(['last_dispatched_at' => Date::now()])->save();
+        $feed->markDispatched();
         RefreshFeedJob::dispatch($feed->id);
     }
 

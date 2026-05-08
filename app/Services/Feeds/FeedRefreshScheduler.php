@@ -48,17 +48,17 @@ class FeedRefreshScheduler
                 ->orWhere('next_check_at', '<=', $now));
         }
 
-        $feedIds = $query->pluck('feeds.id')->all();
+        $feeds = $query->get();
 
         $dispatched = 0;
-        foreach ($feedIds as $feedId) {
+        foreach ($feeds as $feed) {
             try {
-                RefreshFeedJob::dispatch((int) $feedId);
-                Feed::query()->where('id', $feedId)->update(['last_dispatched_at' => $now]);
+                RefreshFeedJob::dispatch($feed->id);
+                $feed->markDispatched();
                 $dispatched++;
             } catch (Throwable $e) {
                 Log::warning('RefreshFeedJob dispatch failed', [
-                    'feed_id' => $feedId,
+                    'feed_id' => $feed->id,
                     'error' => $e->getMessage(),
                 ]);
             }
