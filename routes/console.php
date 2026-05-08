@@ -9,3 +9,4 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('feeds:refresh-all')->everyThirtyMinutes()->withoutOverlapping();
+Schedule::command('feeds:retry-disabled')->dailyAt('03:00')->withoutOverlapping();

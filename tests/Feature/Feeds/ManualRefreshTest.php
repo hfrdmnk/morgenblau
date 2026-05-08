@@ -122,3 +122,25 @@ test('runs cleanly when the user has no subscriptions', function () {
 
     Bus::assertNotDispatched(RefreshFeedJob::class);
 });
+
+test('skips muted feeds even on manual refresh', function () {
+    $user = freshenBluesky(User::factory()->create());
+
+    $muted = Feed::query()->create([
+        'feed_url' => 'https://muted.example/rss',
+        'disabled_at' => Carbon::parse('2026-05-06 09:00:00'),
+    ]);
+    $healthy = Feed::query()->create([
+        'feed_url' => 'https://healthy.example/rss',
+    ]);
+    subscribe($user, $muted);
+    subscribe($user, $healthy);
+
+    $this->actingAs($user)->post(route('feeds.refresh'))->assertRedirect();
+
+    Bus::assertNotDispatched(RefreshFeedJob::class, fn ($job) => $job->feedId === $muted->id);
+    Bus::assertDispatched(RefreshFeedJob::class, fn ($job) => $job->feedId === $healthy->id);
+    Bus::assertDispatchedTimes(RefreshFeedJob::class, 1);
+
+    expect($muted->fresh()->last_dispatched_at)->toBeNull();
+});

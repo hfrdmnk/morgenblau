@@ -7,6 +7,8 @@ use DateTime;
 use FeedIo\Adapter\ClientInterface;
 use FeedIo\Adapter\NotFoundException;
 use FeedIo\Adapter\ResponseInterface;
+use FeedIo\Adapter\ServerErrorException;
+use GuzzleHttp\Psr7\Response as Psr7Response;
 
 class StubFeedClient implements ClientInterface, ConditionalFeedClient
 {
@@ -19,8 +21,14 @@ class StubFeedClient implements ClientInterface, ConditionalFeedClient
     public array $lastConditionalHeaders = [];
 
     /**
-     * @param  array<string, string|array{result?: 'modified'|'not_modified', body?: string, etag?: ?string, last_modified?: ?string}>  $responses
-     *                                                                                                                                              A bare string is shorthand for ['result' => 'modified', 'body' => $string].
+     * @param  array<string, string|array<string, mixed>>  $responses
+     *                                                                 A bare string is shorthand for ['result' => 'modified', 'body' => $string].
+     *                                                                 Supported shapes:
+     *                                                                 ['result' => 'modified', 'body' => string, 'etag' => ?string, 'last_modified' => ?string]
+     *                                                                 ['result' => 'not_modified', 'etag' => ?string, 'last_modified' => ?string]
+     *                                                                 ['result' => 'gone']
+     *                                                                 ['result' => 'rate_limited', 'retry_after' => int|string]
+     *                                                                 ['result' => 'failed', 'status' => int]
      */
     public function __construct(private readonly array $responses) {}
 
@@ -45,9 +53,30 @@ class StubFeedClient implements ClientInterface, ConditionalFeedClient
         $this->lastConditionalHeaders[$url] = ['etag' => $etag, 'last_modified' => $lastModified];
 
         $config = $this->normalize($this->responses[$url]);
+        $result = $config['result'];
 
-        $status = $config['result'] === 'not_modified' ? 304 : 200;
-        $body = $config['result'] === 'not_modified' ? '' : (string) $config['body'];
+        if ($result === 'gone') {
+            throw new ServerErrorException(new Psr7Response(410));
+        }
+
+        if ($result === 'rate_limited') {
+            $headers = [];
+            if (isset($config['retry_after'])) {
+                $headers['Retry-After'] = (string) $config['retry_after'];
+            }
+            throw new ServerErrorException(new Psr7Response(429, $headers));
+        }
+
+        if ($result === 'failed') {
+            $status = (int) ($config['status'] ?? 500);
+            if ($status === 404) {
+                throw new NotFoundException('not found');
+            }
+            throw new ServerErrorException(new Psr7Response($status));
+        }
+
+        $status = $result === 'not_modified' ? 304 : 200;
+        $body = $result === 'not_modified' ? '' : (string) ($config['body'] ?? '');
 
         return new StubFeedResponse(
             body: $body,
@@ -59,19 +88,14 @@ class StubFeedClient implements ClientInterface, ConditionalFeedClient
 
     /**
      * @param  string|array<string, mixed>  $config
-     * @return array{result: 'modified'|'not_modified', body: ?string, etag: ?string, last_modified: ?string}
+     * @return array<string, mixed>
      */
     private function normalize(string|array $config): array
     {
         if (is_string($config)) {
-            return ['result' => 'modified', 'body' => $config, 'etag' => null, 'last_modified' => null];
+            return ['result' => 'modified', 'body' => $config];
         }
 
-        return [
-            'result' => $config['result'] ?? 'modified',
-            'body' => $config['body'] ?? null,
-            'etag' => $config['etag'] ?? null,
-            'last_modified' => $config['last_modified'] ?? null,
-        ];
+        return $config + ['result' => 'modified'];
     }
 }

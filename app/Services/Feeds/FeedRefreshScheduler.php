@@ -31,11 +31,13 @@ class FeedRefreshScheduler
     {
         $now = Date::now();
 
-        $query = Feed::query()->whereHas('subscriptions', function ($q) use ($user) {
-            if ($user !== null) {
-                $q->where('subscriptions.user_id', $user->did);
-            }
-        });
+        $query = Feed::query()
+            ->whereNull('disabled_at')
+            ->whereHas('subscriptions', function ($q) use ($user) {
+                if ($user !== null) {
+                    $q->where('subscriptions.user_id', $user->did);
+                }
+            });
 
         if ($force) {
             $inFlightSince = $now->copy()->subMinutes(self::MANUAL_IN_FLIGHT_WINDOW_MINUTES);

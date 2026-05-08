@@ -123,6 +123,24 @@ test('runs cleanly with zero feeds', function () {
     Bus::assertNotDispatched(RefreshFeedJob::class);
 });
 
+test('skips feeds whose disabled_at is set', function () {
+    $muted = Feed::query()->create([
+        'feed_url' => 'https://muted.example/rss',
+        'disabled_at' => Carbon::parse('2026-05-06 09:00:00'),
+    ]);
+    $healthy = Feed::query()->create([
+        'feed_url' => 'https://healthy.example/rss',
+    ]);
+    makeSubscriber($muted);
+    makeSubscriber($healthy);
+
+    Artisan::call('feeds:refresh-all');
+
+    Bus::assertNotDispatched(RefreshFeedJob::class, fn ($job) => $job->feedId === $muted->id);
+    Bus::assertDispatched(RefreshFeedJob::class, fn ($job) => $job->feedId === $healthy->id);
+    Bus::assertDispatchedTimes(RefreshFeedJob::class, 1);
+});
+
 test('schedule registers feeds:refresh-all every thirty minutes with withoutOverlapping', function () {
     /** @var Schedule $schedule */
     $schedule = app(Schedule::class);

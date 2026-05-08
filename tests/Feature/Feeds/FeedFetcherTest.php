@@ -3,8 +3,11 @@
 use App\Data\Feeds\FetchedEntryData;
 use App\Exceptions\FeedFetchException;
 use App\Services\Feeds\FeedFetcher;
+use App\Services\Feeds\Results\Failed;
+use App\Services\Feeds\Results\Gone;
 use App\Services\Feeds\Results\Modified;
 use App\Services\Feeds\Results\NotModified;
+use App\Services\Feeds\Results\RateLimited;
 use Carbon\CarbonImmutable;
 use FeedIo\FeedIo;
 use Tests\Doubles\StubFeedClient;
@@ -102,9 +105,65 @@ test('it returns NotModified for a 304 response and forwards stored conditional 
     ]);
 });
 
-test('it wraps feed-io errors in FeedFetchException', function () {
+test('it returns Failed when no fixture is mapped (NotFoundException from client)', function () {
     $fetcher = feedFetcherForUrls([]);
 
-    expect(fn () => $fetcher->fetch('https://example.com/missing.xml'))
-        ->toThrow(FeedFetchException::class);
+    $result = $fetcher->fetch('https://example.com/missing.xml');
+
+    expect($result)->toBeInstanceOf(Failed::class);
+    expect($result->cause)->toBeInstanceOf(FeedFetchException::class);
+});
+
+test('it returns Failed for an upstream 404', function () {
+    $fetcher = feedFetcherForUrls([
+        'https://example.com/feed.xml' => ['result' => 'failed', 'status' => 404],
+    ]);
+
+    $result = $fetcher->fetch('https://example.com/feed.xml');
+
+    expect($result)->toBeInstanceOf(Failed::class);
+    expect($result->cause->getMessage())->toContain('HTTP 404');
+});
+
+test('it returns Failed for a 500 server error', function () {
+    $fetcher = feedFetcherForUrls([
+        'https://example.com/feed.xml' => ['result' => 'failed', 'status' => 500],
+    ]);
+
+    $result = $fetcher->fetch('https://example.com/feed.xml');
+
+    expect($result)->toBeInstanceOf(Failed::class);
+    expect($result->cause->getMessage())->toContain('HTTP 500');
+});
+
+test('it returns Gone for an HTTP 410', function () {
+    $fetcher = feedFetcherForUrls([
+        'https://example.com/feed.xml' => ['result' => 'gone'],
+    ]);
+
+    $result = $fetcher->fetch('https://example.com/feed.xml');
+
+    expect($result)->toBeInstanceOf(Gone::class);
+});
+
+test('it returns RateLimited with parsed numeric Retry-After', function () {
+    $fetcher = feedFetcherForUrls([
+        'https://example.com/feed.xml' => ['result' => 'rate_limited', 'retry_after' => 90],
+    ]);
+
+    $result = $fetcher->fetch('https://example.com/feed.xml');
+
+    expect($result)->toBeInstanceOf(RateLimited::class);
+    expect($result->retryAfterSeconds)->toBe(90);
+});
+
+test('it returns RateLimited with 0 when Retry-After header is missing', function () {
+    $fetcher = feedFetcherForUrls([
+        'https://example.com/feed.xml' => ['result' => 'rate_limited'],
+    ]);
+
+    $result = $fetcher->fetch('https://example.com/feed.xml');
+
+    expect($result)->toBeInstanceOf(RateLimited::class);
+    expect($result->retryAfterSeconds)->toBe(0);
 });

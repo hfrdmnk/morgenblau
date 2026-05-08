@@ -20,6 +20,7 @@ class Feed extends Model
             'last_failed_at' => 'immutable_datetime',
             'last_dispatched_at' => 'immutable_datetime',
             'next_check_at' => 'immutable_datetime',
+            'disabled_at' => 'immutable_datetime',
         ];
     }
 

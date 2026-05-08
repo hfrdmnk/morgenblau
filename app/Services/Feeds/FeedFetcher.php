@@ -4,14 +4,20 @@ namespace App\Services\Feeds;
 
 use App\Data\Feeds\FetchedEntryData;
 use App\Exceptions\FeedFetchException;
+use App\Services\Feeds\Results\Failed;
 use App\Services\Feeds\Results\FetchedFeedResult;
+use App\Services\Feeds\Results\Gone;
 use App\Services\Feeds\Results\Modified;
 use App\Services\Feeds\Results\NotModified;
+use App\Services\Feeds\Results\RateLimited;
 use Carbon\CarbonImmutable;
+use FeedIo\Adapter\NotFoundException;
 use FeedIo\Adapter\ResponseInterface;
+use FeedIo\Adapter\ServerErrorException;
 use FeedIo\Feed;
 use FeedIo\Feed\ItemInterface;
 use FeedIo\FeedIo;
+use Psr\Http\Message\ResponseInterface as PsrResponseInterface;
 use Throwable;
 
 class FeedFetcher
@@ -25,8 +31,12 @@ class FeedFetcher
     {
         try {
             $response = $this->client->fetchConditional($feedUrl, $etag, $lastModified);
+        } catch (NotFoundException $e) {
+            return new Failed(new FeedFetchException("HTTP 404 for {$feedUrl}", previous: $e));
+        } catch (ServerErrorException $e) {
+            return $this->mapServerError($feedUrl, $e);
         } catch (Throwable $e) {
-            throw new FeedFetchException("Failed to fetch {$feedUrl}: {$e->getMessage()}", previous: $e);
+            return new Failed(new FeedFetchException("Failed to fetch {$feedUrl}: {$e->getMessage()}", previous: $e));
         }
 
         $newEtag = $this->firstHeader($response, 'ETag');
@@ -41,7 +51,7 @@ class FeedFetcher
             $feed->setLink($feedUrl);
             $this->feedIo->getReader()->handleResponse($response, $feed);
         } catch (Throwable $e) {
-            throw new FeedFetchException("Failed to parse {$feedUrl}: {$e->getMessage()}", previous: $e);
+            return new Failed(new FeedFetchException("Failed to parse {$feedUrl}: {$e->getMessage()}", previous: $e));
         }
 
         $entries = [];
@@ -52,6 +62,41 @@ class FeedFetcher
         }
 
         return new Modified(entries: $entries, etag: $newEtag, lastModified: $newLastModified);
+    }
+
+    private function mapServerError(string $feedUrl, ServerErrorException $e): FetchedFeedResult
+    {
+        $response = $e->getResponse();
+        $status = $response->getStatusCode();
+
+        if ($status === 410) {
+            return new Gone;
+        }
+
+        if ($status === 429) {
+            return new RateLimited($this->parseRetryAfter($response));
+        }
+
+        return new Failed(new FeedFetchException("HTTP {$status} for {$feedUrl}", previous: $e));
+    }
+
+    private function parseRetryAfter(PsrResponseInterface $response): int
+    {
+        $header = trim($response->getHeaderLine('Retry-After'));
+        if ($header === '') {
+            return 0;
+        }
+
+        if (ctype_digit($header)) {
+            return (int) $header;
+        }
+
+        $timestamp = strtotime($header);
+        if ($timestamp === false) {
+            return 0;
+        }
+
+        return max(0, $timestamp - time());
     }
 
     private function toEntry(ItemInterface $item): FetchedEntryData

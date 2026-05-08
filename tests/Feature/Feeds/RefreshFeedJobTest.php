@@ -7,6 +7,7 @@ use App\Models\Feed;
 use App\Models\FeedEntry;
 use App\Services\Feeds\FeedEntryUpserter;
 use App\Services\Feeds\FeedFetcher;
+use App\Services\Feeds\Results\Failed;
 use App\Services\Feeds\Results\Modified;
 use App\Services\Feeds\Results\NotModified;
 use Carbon\CarbonImmutable;
@@ -166,7 +167,7 @@ test('returns silently when the feed has been deleted', function () {
     expect(true)->toBeTrue();
 });
 
-test('on failure records last_failed_at, last_error, clears last_dispatched_at, leaves last_fetched_at untouched, and re-throws', function () {
+test('on Failed result records bookkeeping, advances next_check_at by backoff, and does not rethrow', function () {
     Date::setTestNow('2026-05-07 12:00:00');
 
     $previousFetchedAt = Date::now()->subDay();
@@ -180,19 +181,18 @@ test('on failure records last_failed_at, last_error, clears last_dispatched_at, 
     $fetcher = Mockery::mock(FeedFetcher::class);
     $fetcher->shouldReceive('fetch')
         ->once()
-        ->andThrow(new FeedFetchException('boom'));
+        ->andReturn(new Failed(new FeedFetchException('boom')));
     app()->instance(FeedFetcher::class, $fetcher);
 
-    expect(fn () => (new RefreshFeedJob($feed->id))->handle(
-        app(FeedFetcher::class),
-        app(FeedEntryUpserter::class),
-    ))->toThrow(FeedFetchException::class, 'boom');
+    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class));
 
     $feed->refresh();
     expect($feed->last_failed_at?->toDateTimeString())->toBe('2026-05-07 12:00:00');
     expect($feed->last_error)->toBe('boom');
     expect($feed->last_dispatched_at)->toBeNull();
     expect($feed->last_fetched_at?->toDateTimeString())->toBe($previousFetchedAt->toDateTimeString());
+    expect($feed->consecutive_failures)->toBe(1);
+    expect($feed->next_check_at?->toDateTimeString())->toBe('2026-05-07 12:05:00');
 });
 
 test('truncates last_error to 500 characters', function () {
@@ -205,14 +205,10 @@ test('truncates last_error to 500 characters', function () {
     $fetcher = Mockery::mock(FeedFetcher::class);
     $fetcher->shouldReceive('fetch')
         ->once()
-        ->andThrow(new FeedFetchException($longMessage));
+        ->andReturn(new Failed(new FeedFetchException($longMessage)));
     app()->instance(FeedFetcher::class, $fetcher);
 
-    try {
-        (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class));
-    } catch (FeedFetchException) {
-        // expected
-    }
+    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class));
 
     $feed->refresh();
     expect(strlen((string) $feed->last_error))->toBe(500);
@@ -224,7 +220,7 @@ test('does not auto-retry on failure', function () {
     $feed = Feed::query()->create(['feed_url' => 'https://example.com/rss']);
 
     $fetcher = Mockery::mock(FeedFetcher::class);
-    $fetcher->shouldReceive('fetch')->andThrow(new FeedFetchException('boom'));
+    $fetcher->shouldReceive('fetch')->andReturn(new Failed(new FeedFetchException('boom')));
     app()->instance(FeedFetcher::class, $fetcher);
 
     RefreshFeedJob::dispatch($feed->id);
