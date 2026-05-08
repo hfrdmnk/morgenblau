@@ -6,70 +6,62 @@ use App\Jobs\RefreshFeedJob;
 use App\Models\Feed;
 use App\Models\User;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class FeedRefreshScheduler
 {
-    private const IN_FLIGHT_WINDOW_MINUTES = 5;
+    private const MANUAL_IN_FLIGHT_WINDOW_MINUTES = 5;
 
-    /**
-     * Dispatch RefreshFeedJob for every feed with at least one local subscription.
-     * Returns the number of feeds dispatched.
-     *
-     * Pre-marks last_dispatched_at = now() for the exact id set so the in-flight
-     * signal is accurate even before workers pick up the jobs. Dispatches
-     * unconditionally; ShouldBeUnique on the job drops in-flight duplicates at the
-     * queue layer.
-     */
     public function dispatchAll(): int
     {
-        $feedIds = Feed::query()
-            ->join('subscriptions', 'subscriptions.feed_id', '=', 'feeds.id')
-            ->distinct()
-            ->pluck('feeds.id')
-            ->all();
+        return $this->dispatchFor(user: null, force: false);
+    }
 
-        if ($feedIds === []) {
-            return 0;
-        }
-
-        Feed::query()->whereIn('id', $feedIds)->update(['last_dispatched_at' => Date::now()]);
-
-        foreach ($feedIds as $feedId) {
-            RefreshFeedJob::dispatch((int) $feedId);
-        }
-
-        return count($feedIds);
+    public function dispatchForUser(User $user): int
+    {
+        return $this->dispatchFor(user: $user, force: true);
     }
 
     /**
-     * Dispatch RefreshFeedJob for the given user's feeds that aren't already in
-     * flight (last_dispatched_at within the last 5 minutes). Returns the number
-     * of feeds dispatched.
+     * Manual refresh ($force=true) bypasses next_check_at but keeps a short
+     * in-flight guard so rapid clicks don't double-dispatch.
      */
-    public function dispatchForUser(User $user): int
+    private function dispatchFor(?User $user, bool $force): int
     {
         $now = Date::now();
-        $inFlightSince = $now->copy()->subMinutes(self::IN_FLIGHT_WINDOW_MINUTES);
 
-        $feedIds = Feed::query()
-            ->join('subscriptions', 'subscriptions.feed_id', '=', 'feeds.id')
-            ->where('subscriptions.user_id', $user->did)
-            ->where(fn ($q) => $q->whereNull('feeds.last_dispatched_at')
-                ->orWhere('feeds.last_dispatched_at', '<', $inFlightSince))
-            ->distinct()
-            ->pluck('feeds.id')
-            ->all();
+        $query = Feed::query()->whereHas('subscriptions', function ($q) use ($user) {
+            if ($user !== null) {
+                $q->where('subscriptions.user_id', $user->did);
+            }
+        });
 
-        if ($feedIds === []) {
-            return 0;
+        if ($force) {
+            $inFlightSince = $now->copy()->subMinutes(self::MANUAL_IN_FLIGHT_WINDOW_MINUTES);
+            $query->where(fn ($q) => $q->whereNull('last_dispatched_at')
+                ->orWhere('last_dispatched_at', '<', $inFlightSince));
+        } else {
+            $query->where(fn ($q) => $q->whereNull('next_check_at')
+                ->orWhere('next_check_at', '<=', $now));
         }
 
-        Feed::query()->whereIn('id', $feedIds)->update(['last_dispatched_at' => $now]);
+        $feedIds = $query->pluck('feeds.id')->all();
 
+        $dispatched = 0;
         foreach ($feedIds as $feedId) {
-            RefreshFeedJob::dispatch((int) $feedId);
+            try {
+                RefreshFeedJob::dispatch((int) $feedId);
+                Feed::query()->where('id', $feedId)->update(['last_dispatched_at' => $now]);
+                $dispatched++;
+            } catch (Throwable $e) {
+                Log::warning('RefreshFeedJob dispatch failed', [
+                    'feed_id' => $feedId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
-        return count($feedIds);
+        return $dispatched;
     }
 }

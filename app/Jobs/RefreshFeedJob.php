@@ -22,6 +22,8 @@ class RefreshFeedJob implements ShouldBeUnique, ShouldQueue
 
     public int $uniqueFor = 300;
 
+    private const REFRESH_INTERVAL_MINUTES = 30;
+
     public function __construct(public readonly int $feedId) {}
 
     public function uniqueId(): string
@@ -49,6 +51,8 @@ class RefreshFeedJob implements ShouldBeUnique, ShouldQueue
             throw $e;
         }
 
+        $nextCheckAt = Date::now()->addMinutes(self::REFRESH_INTERVAL_MINUTES);
+
         if ($result instanceof Modified) {
             $upserter->upsert($feed, $result->entries);
             $feed->forceFill([
@@ -58,6 +62,7 @@ class RefreshFeedJob implements ShouldBeUnique, ShouldQueue
                 'last_error' => null,
                 'etag_header' => $result->etag,
                 'last_modified_header' => $result->lastModified,
+                'next_check_at' => $nextCheckAt,
             ])->save();
 
             return;
@@ -69,6 +74,7 @@ class RefreshFeedJob implements ShouldBeUnique, ShouldQueue
                 'last_dispatched_at' => null,
                 'last_failed_at' => null,
                 'last_error' => null,
+                'next_check_at' => $nextCheckAt,
             ])->save();
         }
     }

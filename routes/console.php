@@ -8,4 +8,4 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('feeds:refresh-all')->hourly()->withoutOverlapping();
+Schedule::command('feeds:refresh-all')->everyThirtyMinutes()->withoutOverlapping();

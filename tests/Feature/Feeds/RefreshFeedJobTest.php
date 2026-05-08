@@ -11,6 +11,7 @@ use App\Services\Feeds\Results\Modified;
 use App\Services\Feeds\Results\NotModified;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Date;
 
 test('on success updates last_fetched_at, clears last_dispatched_at, and writes entries', function () {
@@ -47,6 +48,7 @@ test('on success updates last_fetched_at, clears last_dispatched_at, and writes 
     $feed->refresh();
     expect($feed->last_fetched_at?->toDateTimeString())->toBe('2026-05-07 12:00:00');
     expect($feed->last_dispatched_at)->toBeNull();
+    expect($feed->next_check_at?->toDateTimeString())->toBe('2026-05-07 12:30:00');
     expect($feed->feedEntries()->count())->toBe(1);
 });
 
@@ -150,6 +152,7 @@ test('on NotModified it advances last_fetched_at, clears dispatched/failure, and
     expect($feed->last_dispatched_at)->toBeNull();
     expect($feed->last_failed_at)->toBeNull();
     expect($feed->last_error)->toBeNull();
+    expect($feed->next_check_at?->toDateTimeString())->toBe('2026-05-07 12:30:00');
     expect($feed->feedEntries()->count())->toBe(1);
 });
 
@@ -215,8 +218,18 @@ test('truncates last_error to 500 characters', function () {
     expect(strlen((string) $feed->last_error))->toBe(500);
 });
 
-test('uses a single try (no automatic retry on failure)', function () {
-    expect((new RefreshFeedJob(1))->tries)->toBe(1);
+test('does not auto-retry on failure', function () {
+    Bus::fake();
+
+    $feed = Feed::query()->create(['feed_url' => 'https://example.com/rss']);
+
+    $fetcher = Mockery::mock(FeedFetcher::class);
+    $fetcher->shouldReceive('fetch')->andThrow(new FeedFetchException('boom'));
+    app()->instance(FeedFetcher::class, $fetcher);
+
+    RefreshFeedJob::dispatch($feed->id);
+
+    Bus::assertDispatchedTimes(RefreshFeedJob::class, 1);
 });
 
 test('declares uniqueness keyed by feed id with a 5 minute window', function () {

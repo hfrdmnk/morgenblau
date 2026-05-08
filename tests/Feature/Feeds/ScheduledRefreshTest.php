@@ -85,20 +85,36 @@ test('does not touch last_dispatched_at on orphan feeds', function () {
     expect($orphan->last_dispatched_at?->equalTo($original))->toBeTrue();
 });
 
-test('repeated invocation within the uniqueness window does not double-dispatch', function () {
-    $feed = Feed::query()->create(['feed_url' => 'https://a.example/rss']);
-    makeSubscriber($feed);
+test('skips feeds whose next_check_at is still in the future', function () {
+    $future = Feed::query()->create([
+        'feed_url' => 'https://future.example/rss',
+        'next_check_at' => Carbon::parse('2026-05-07 10:15:00'),
+    ]);
+    makeSubscriber($future);
 
-    Carbon::setTestNow('2026-05-07 10:00:00');
     Artisan::call('feeds:refresh-all');
 
-    Carbon::setTestNow('2026-05-07 10:00:30');
+    Bus::assertNotDispatched(RefreshFeedJob::class);
+    expect($future->fresh()->last_dispatched_at)->toBeNull();
+});
+
+test('dispatches feeds whose next_check_at has elapsed or is null', function () {
+    $elapsed = Feed::query()->create([
+        'feed_url' => 'https://elapsed.example/rss',
+        'next_check_at' => Carbon::parse('2026-05-07 09:30:00'),
+    ]);
+    $never = Feed::query()->create([
+        'feed_url' => 'https://never.example/rss',
+        'next_check_at' => null,
+    ]);
+    makeSubscriber($elapsed);
+    makeSubscriber($never);
+
     Artisan::call('feeds:refresh-all');
 
-    // ShouldBeUnique on RefreshFeedJob (5-min window) drops the second dispatch
-    // at the queue lock layer, even though the scheduler calls dispatch() on
-    // every tick.
-    Bus::assertDispatchedTimes(RefreshFeedJob::class, 1);
+    Bus::assertDispatched(RefreshFeedJob::class, fn ($job) => $job->feedId === $elapsed->id);
+    Bus::assertDispatched(RefreshFeedJob::class, fn ($job) => $job->feedId === $never->id);
+    Bus::assertDispatchedTimes(RefreshFeedJob::class, 2);
 });
 
 test('runs cleanly with zero feeds', function () {
@@ -107,7 +123,7 @@ test('runs cleanly with zero feeds', function () {
     Bus::assertNotDispatched(RefreshFeedJob::class);
 });
 
-test('schedule registers feeds:refresh-all hourly with withoutOverlapping', function () {
+test('schedule registers feeds:refresh-all every thirty minutes with withoutOverlapping', function () {
     /** @var Schedule $schedule */
     $schedule = app(Schedule::class);
 
@@ -120,6 +136,6 @@ test('schedule registers feeds:refresh-all hourly with withoutOverlapping', func
     /** @var Event $event */
     $event = $events->first();
 
-    expect($event->expression)->toBe('0 * * * *');
+    expect($event->expression)->toBe('*/30 * * * *');
     expect($event->withoutOverlapping)->toBeTrue();
 });
