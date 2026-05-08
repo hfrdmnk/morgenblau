@@ -7,6 +7,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Feeds\FeedEntryUpserter;
 use App\Services\Feeds\FeedFetcher;
+use App\Services\Feeds\Processors\ProcessorPipeline;
 use App\Services\Feeds\Results\Failed;
 use App\Services\Feeds\Results\FetchedFeedResult;
 use App\Services\Feeds\Results\Gone;
@@ -36,7 +37,11 @@ function bindFetcherReturning(FetchedFeedResult $result): void
 
 function runJob(int $feedId): void
 {
-    (new RefreshFeedJob($feedId))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class));
+    (new RefreshFeedJob($feedId))->handle(
+        app(FeedFetcher::class),
+        app(FeedEntryUpserter::class),
+        app(ProcessorPipeline::class),
+    );
 }
 
 function makeFeedSubscriber(Feed $feed): User

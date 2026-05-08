@@ -2,6 +2,7 @@
 
 namespace App\Services\Feeds;
 
+use App\Data\Feeds\FeedEnclosureData;
 use App\Data\Feeds\FetchedEntryData;
 use App\Exceptions\FeedFetchException;
 use App\Services\Feeds\Results\Failed;
@@ -15,6 +16,7 @@ use FeedIo\Adapter\NotFoundException;
 use FeedIo\Adapter\ResponseInterface;
 use FeedIo\Adapter\ServerErrorException;
 use FeedIo\Feed;
+use FeedIo\Feed\Item\MediaInterface;
 use FeedIo\Feed\ItemInterface;
 use FeedIo\FeedIo;
 use Psr\Http\Message\ResponseInterface as PsrResponseInterface;
@@ -113,7 +115,37 @@ class FeedFetcher
             content: $item->getContent(),
             author: $item->getAuthor()?->getName(),
             publishedAt: $lastModified !== null ? CarbonImmutable::instance($lastModified) : null,
+            enclosures: $this->toEnclosures($item),
         );
+    }
+
+    /**
+     * @return list<FeedEnclosureData>|null
+     */
+    private function toEnclosures(ItemInterface $item): ?array
+    {
+        if (! $item->hasMedia()) {
+            return null;
+        }
+
+        $out = [];
+        foreach ($item->getMedias() as $media) {
+            if (! $media instanceof MediaInterface) {
+                continue;
+            }
+            $url = $media->getUrl();
+            if ($url === null || $url === '') {
+                continue;
+            }
+            $length = $media->getLength();
+            $out[] = new FeedEnclosureData(
+                url: $url,
+                type: $media->getType(),
+                length: $length !== null && $length !== '' && ctype_digit((string) $length) ? (int) $length : null,
+            );
+        }
+
+        return $out === [] ? null : $out;
     }
 
     private function firstHeader(ResponseInterface $response, string $name): ?string

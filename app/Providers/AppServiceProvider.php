@@ -5,8 +5,12 @@ namespace App\Providers;
 use App\Services\Feeds\Adapters\PodcastAdapter;
 use App\Services\Feeds\Adapters\WebsiteAdapter;
 use App\Services\Feeds\Adapters\YouTubeAdapter;
+use App\Services\Feeds\ConditionalFeedClient;
 use App\Services\Feeds\FeedResolver;
 use App\Services\Feeds\OutboundFeedClient;
+use App\Services\Feeds\Processors\ContentTypeClassifier;
+use App\Services\Feeds\Processors\HtmlSanitizer;
+use App\Services\Feeds\Processors\ProcessorPipeline;
 use App\Services\Http\DnsResolver;
 use App\Services\Http\SystemDnsResolver;
 use Carbon\CarbonImmutable;
@@ -35,6 +39,11 @@ class AppServiceProvider extends ServiceProvider
             $app->make(YouTubeAdapter::class),
             $app->make(PodcastAdapter::class),
             $app->make(WebsiteAdapter::class),
+        ]));
+
+        $this->app->bind(ProcessorPipeline::class, fn ($app) => new ProcessorPipeline([
+            $app->make(ContentTypeClassifier::class),
+            $app->make(HtmlSanitizer::class),
         ]));
     }
 

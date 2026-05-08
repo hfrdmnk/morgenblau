@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Data\Feeds\FeedEntryViewData;
+use App\Enums\ContentType;
 use App\Jobs\RefreshFeedJob;
 use App\Models\Feed;
 use App\Models\FeedEntry;
@@ -60,6 +61,7 @@ class ConsumeController extends Controller
                 'feed_entries.author',
                 'feed_entries.published_at',
                 'feed_entries.first_seen_at',
+                'feed_entries.content_type',
                 'feeds.feed_url',
                 'feeds.title as feed_title',
                 'subscriptions.custom_title',
@@ -82,6 +84,7 @@ class ConsumeController extends Controller
             author: $row->author,
             publishedAt: $row->published_at !== null ? CarbonImmutable::parse($row->published_at) : null,
             firstSeenAt: CarbonImmutable::parse($row->first_seen_at),
+            contentType: $row->content_type instanceof ContentType ? $row->content_type : ContentType::from((string) $row->content_type),
         ))->all();
     }
 

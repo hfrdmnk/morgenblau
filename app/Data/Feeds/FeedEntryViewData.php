@@ -2,6 +2,7 @@
 
 namespace App\Data\Feeds;
 
+use App\Enums\ContentType;
 use Carbon\CarbonImmutable;
 use Spatie\LaravelData\Attributes\MapOutputName;
 use Spatie\LaravelData\Data;
@@ -22,5 +23,6 @@ class FeedEntryViewData extends Data
         public ?string $author,
         public ?CarbonImmutable $publishedAt,
         public CarbonImmutable $firstSeenAt,
+        public ContentType $contentType,
     ) {}
 }

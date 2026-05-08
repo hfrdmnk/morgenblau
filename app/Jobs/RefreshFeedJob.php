@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Feed;
 use App\Services\Feeds\FeedEntryUpserter;
 use App\Services\Feeds\FeedFetcher;
+use App\Services\Feeds\Processors\ProcessorPipeline;
 use App\Services\Feeds\Results\Failed;
 use App\Services\Feeds\Results\Gone;
 use App\Services\Feeds\Results\Modified;
@@ -36,7 +37,7 @@ class RefreshFeedJob implements ShouldBeUnique, ShouldQueue
         return (string) $this->feedId;
     }
 
-    public function handle(FeedFetcher $fetcher, FeedEntryUpserter $upserter): void
+    public function handle(FeedFetcher $fetcher, FeedEntryUpserter $upserter, ProcessorPipeline $pipeline): void
     {
         $feed = Feed::query()->find($this->feedId);
 
@@ -47,7 +48,7 @@ class RefreshFeedJob implements ShouldBeUnique, ShouldQueue
         $result = $fetcher->fetch($feed->feed_url, $feed->etag_header, $feed->last_modified_header);
 
         match (true) {
-            $result instanceof Modified => $this->onModified($feed, $upserter, $result),
+            $result instanceof Modified => $this->onModified($feed, $upserter, $pipeline, $result),
             $result instanceof NotModified => $this->onNotModified($feed, $result),
             $result instanceof Gone => $this->onGone($feed),
             $result instanceof RateLimited => $this->onRateLimited($feed, $result),
@@ -70,9 +71,10 @@ class RefreshFeedJob implements ShouldBeUnique, ShouldQueue
         $this->onFailed($feed, $e);
     }
 
-    private function onModified(Feed $feed, FeedEntryUpserter $upserter, Modified $result): void
+    private function onModified(Feed $feed, FeedEntryUpserter $upserter, ProcessorPipeline $pipeline, Modified $result): void
     {
-        $upserter->upsert($feed, $result->entries);
+        $processed = $pipeline->processBatch($result->entries, $feed);
+        $upserter->upsert($feed, $processed);
 
         $feed->forceFill([
             'last_fetched_at' => Date::now(),

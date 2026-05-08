@@ -167,3 +167,55 @@ test('it returns RateLimited with 0 when Retry-After header is missing', functio
     expect($result)->toBeInstanceOf(RateLimited::class);
     expect($result->retryAfterSeconds)->toBe(0);
 });
+
+test('it parses an Atom 1.0 feed', function () {
+    $body = (string) file_get_contents(__DIR__.'/../../Fixtures/feeds/atom.xml');
+    $fetcher = feedFetcherForUrls(['https://example.com/atom.xml' => $body]);
+
+    $result = $fetcher->fetch('https://example.com/atom.xml');
+
+    expect($result)->toBeInstanceOf(Modified::class);
+    expect($result->entries)->toHaveCount(2);
+    expect($result->entries[0]->title)->toBe('Atom Entry One');
+    expect($result->entries[0]->link)->toBe('https://example.com/posts/atom-one');
+    expect($result->entries[0]->content)->toContain('Body of the first atom entry');
+});
+
+test('it parses an RSS feed with content:encoded HTML', function () {
+    $body = (string) file_get_contents(__DIR__.'/../../Fixtures/feeds/content-encoded.rss.xml');
+    $fetcher = feedFetcherForUrls(['https://example.com/encoded.rss' => $body]);
+
+    $result = $fetcher->fetch('https://example.com/encoded.rss');
+
+    expect($result)->toBeInstanceOf(Modified::class);
+    expect($result->entries)->toHaveCount(1);
+    expect($result->entries[0]->content)->toContain('<script>')
+        ->and($result->entries[0]->content)->toContain('<iframe');
+});
+
+test('it falls back to link as guid when no <guid> element is present', function () {
+    $body = (string) file_get_contents(__DIR__.'/../../Fixtures/feeds/no-guid.rss.xml');
+    $fetcher = feedFetcherForUrls(['https://example.com/no-guid.rss' => $body]);
+
+    $result = $fetcher->fetch('https://example.com/no-guid.rss');
+
+    expect($result)->toBeInstanceOf(Modified::class);
+    expect($result->entries[0]->guid)->toBe('https://example.com/posts/linkable');
+    expect($result->entries[1]->guid)->toBe('https://example.com/posts/another');
+});
+
+test('it captures audio enclosures from a podcast RSS feed', function () {
+    $body = (string) file_get_contents(__DIR__.'/../../Fixtures/feeds/podcast.rss.xml');
+    $fetcher = feedFetcherForUrls(['https://example.com/podcast.rss' => $body]);
+
+    $result = $fetcher->fetch('https://example.com/podcast.rss');
+
+    expect($result)->toBeInstanceOf(Modified::class);
+    expect($result->entries)->toHaveCount(2);
+
+    $first = $result->entries[0];
+    expect($first->enclosures)->toHaveCount(1);
+    expect($first->enclosures[0]->url)->toBe('https://example.com/audio/ep-1.mp3');
+    expect($first->enclosures[0]->type)->toBe('audio/mpeg');
+    expect($first->enclosures[0]->length)->toBe(1234567);
+});

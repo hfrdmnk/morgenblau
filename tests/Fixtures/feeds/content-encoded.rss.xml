@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Encoded Content Feed</title>
+    <link>https://example.com</link>
+    <description>RSS with HTML body</description>
+    <item>
+      <title>HTML post</title>
+      <link>https://example.com/posts/html</link>
+      <guid isPermaLink="false">post-html-1</guid>
+      <description><![CDATA[<p>Real prose with a <strong>bold</strong> word.</p><script>alert('xss')</script><iframe src="https://evil.example.com"></iframe><p onclick="alert(1)">More prose.</p>]]></description>
+      <dc:creator>Author Name</dc:creator>
+      <pubDate>Wed, 15 Apr 2026 09:30:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>

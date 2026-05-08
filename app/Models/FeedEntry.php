@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ContentType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -20,6 +21,8 @@ class FeedEntry extends Model
             'published_at' => 'immutable_datetime',
             'first_seen_at' => 'immutable_datetime',
             'updated_at' => 'immutable_datetime',
+            'content_type' => ContentType::class,
+            'metadata' => 'array',
         ];
     }
 
