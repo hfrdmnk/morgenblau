@@ -144,3 +144,33 @@ test('skips muted feeds even on manual refresh', function () {
 
     expect($muted->fresh()->last_dispatched_at)->toBeNull();
 });
+
+test('reconciles the PDS subscription mirror before dispatching feed jobs', function () {
+    $user = freshenBluesky(User::factory()->create());
+
+    $client = $this->fakeBlueskyClient();
+    $this->fakeListRecords($client, [
+        ['feed_url' => 'https://newfromPDS.example/rss', 'title' => 'New From PDS'],
+    ]);
+
+    $this->actingAs($user)->post(route('feeds.refresh'))->assertRedirect();
+
+    $newFeed = Feed::query()->where('feed_url', 'https://newfromPDS.example/rss')->firstOrFail();
+    $sub = Subscription::query()->where('user_id', $user->did)->firstOrFail();
+    expect($sub->feed_id)->toBe($newFeed->id);
+
+    Bus::assertDispatched(RefreshFeedJob::class, fn ($job) => $job->feedId === $newFeed->id);
+});
+
+test('still dispatches for already-mirrored feeds when the PDS read fails', function () {
+    $user = freshenBluesky(User::factory()->create());
+    $feed = Feed::query()->create(['feed_url' => 'https://local.example/rss']);
+    subscribe($user, $feed);
+
+    // No fake Bluesky factory — the real one will throw inside reconcile,
+    // exercising the try/catch in FeedRefreshController.
+
+    $this->actingAs($user)->post(route('feeds.refresh'))->assertRedirect();
+
+    Bus::assertDispatched(RefreshFeedJob::class, fn ($job) => $job->feedId === $feed->id);
+});

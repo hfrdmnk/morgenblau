@@ -42,6 +42,23 @@ class SubscriptionService
     }
 
     /**
+     * Pull this user's subscription records from PDS and reconcile the local
+     * mirror. Cache-free — call this from explicit "make things current"
+     * affordances (login, manual refresh).
+     *
+     * Pass $fetchSync = true to block until newly-mirrored feeds have been
+     * fetched and entries upserted (used at login so /consume has entries on
+     * first render). Default async dispatch keeps the manual refresh and
+     * discover/store paths snappy.
+     */
+    public function reconcile(User $user, bool $fetchSync = false): void
+    {
+        $newFeedIds = $this->reconcileLocalMirror($user, $this->fetchSubscriptionsFromPds($user));
+        $this->dispatchFetches($newFeedIds, sync: $fetchSync);
+        Cache::forget($this->listCacheKey($user));
+    }
+
+    /**
      * @return DataCollection<int, ExistingSubscriptionData>
      */
     public function listSubscriptions(User $user): DataCollection
@@ -55,7 +72,8 @@ class SubscriptionService
             self::LIST_CACHE_TTL,
             function () use ($user): array {
                 $pdsList = $this->fetchSubscriptionsFromPds($user);
-                $this->reconcileLocalMirror($user, $pdsList);
+                $newFeedIds = $this->reconcileLocalMirror($user, $pdsList);
+                $this->dispatchFetches($newFeedIds, sync: false);
 
                 return array_map(fn (ExistingSubscriptionData $item) => [
                     'feedUrl' => $item->feedUrl,
@@ -149,15 +167,20 @@ class SubscriptionService
     }
 
     /**
-     * Materialise local feeds + subscriptions rows from a PDS subscription set
-     * and dispatch RefreshFeedJob for any feed never fetched.
+     * Materialise local feeds + subscriptions rows from a PDS subscription set.
+     * Returns the IDs of feeds that need fetching (firstOrCreate'd a new row,
+     * or existing row that has never been fetched/dispatched). Dispatch happens
+     * outside this transaction so sync fetches don't hold a DB transaction
+     * open across HTTP calls.
      *
      * @param  list<ExistingSubscriptionData>  $pdsList
+     * @return list<int>
      */
-    private function reconcileLocalMirror(User $user, array $pdsList): void
+    private function reconcileLocalMirror(User $user, array $pdsList): array
     {
-        DB::transaction(function () use ($user, $pdsList): void {
+        return DB::transaction(function () use ($user, $pdsList): array {
             $seenFeedIds = [];
+            $newFeedIds = [];
 
             foreach ($pdsList as $sub) {
                 $feed = Feed::query()->firstOrCreate(['feed_url' => $sub->feedUrl]);
@@ -172,13 +195,18 @@ class SubscriptionService
                     ],
                 );
 
-                $this->dispatchIfUnfetched($feed);
+                if ($feed->last_fetched_at === null && $feed->last_dispatched_at === null) {
+                    $feed->markDispatched();
+                    $newFeedIds[] = $feed->id;
+                }
             }
 
             Subscription::query()
                 ->where('user_id', $user->did)
                 ->when($seenFeedIds !== [], fn ($q) => $q->whereNotIn('feed_id', $seenFeedIds))
                 ->delete();
+
+            return $newFeedIds;
         });
     }
 
@@ -195,17 +223,32 @@ class SubscriptionService
             ],
         );
 
-        $this->dispatchIfUnfetched($feed);
+        if ($feed->last_fetched_at === null && $feed->last_dispatched_at === null) {
+            $feed->markDispatched();
+            $this->dispatchFetches([$feed->id], sync: false);
+        }
     }
 
-    private function dispatchIfUnfetched(Feed $feed): void
+    /**
+     * @param  list<int>  $feedIds
+     */
+    private function dispatchFetches(array $feedIds, bool $sync): void
     {
-        if ($feed->last_fetched_at !== null || $feed->last_dispatched_at !== null) {
-            return;
+        foreach ($feedIds as $id) {
+            try {
+                if ($sync) {
+                    RefreshFeedJob::dispatchSync($id);
+                } else {
+                    RefreshFeedJob::dispatch($id);
+                }
+            } catch (Throwable $e) {
+                Log::warning('refresh feed job failed', [
+                    'feed_id' => $id,
+                    'sync' => $sync,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
-
-        $feed->markDispatched();
-        RefreshFeedJob::dispatch($feed->id);
     }
 
     /**

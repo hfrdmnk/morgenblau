@@ -1,11 +1,63 @@
 <?php
 
+use App\Jobs\RefreshFeedJob;
+use App\Models\Feed;
+use App\Models\Subscription;
 use App\Models\User;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Exceptions;
 use Revolution\Bluesky\Session\OAuthSession;
 use Tests\Concerns\FakesBlueskyOAuth;
 
 uses(FakesBlueskyOAuth::class);
+
+test('callback reconciles the local subscription mirror from the user PDS', function () {
+    Bus::fake();
+
+    $session = OAuthSession::create([
+        'did' => 'did:plc:reconcile1234567890abcd',
+        'handle' => 'alice.bsky.social',
+        'iss' => 'https://eurosky.social',
+        'refresh_token' => 'fake-refresh-token',
+    ]);
+    $this->fakeBlueskyCallback($session);
+
+    $client = $this->fakeBlueskyClient();
+    $this->fakeListRecords($client, [
+        ['feed_url' => 'https://example.com/rss', 'title' => 'Example'],
+    ]);
+
+    $this->get(route('bluesky.oauth.redirect'))->assertRedirect(route('consume'));
+
+    $feed = Feed::query()->where('feed_url', 'https://example.com/rss')->firstOrFail();
+    $sub = Subscription::query()->where('user_id', 'did:plc:reconcile1234567890abcd')->firstOrFail();
+
+    expect($sub->feed_id)->toBe($feed->id)
+        ->and($sub->pds_title)->toBe('Example');
+
+    Bus::assertDispatchedSync(RefreshFeedJob::class, fn (RefreshFeedJob $job) => $job->feedId === $feed->id);
+});
+
+test('callback still completes when the PDS reconcile fails', function () {
+    $session = OAuthSession::create([
+        'did' => 'did:plc:reconcilefail1234567890',
+        'handle' => 'alice.bsky.social',
+        'iss' => 'https://eurosky.social',
+        'refresh_token' => 'fake-refresh-token',
+    ]);
+    $this->fakeBlueskyCallback($session);
+
+    // Intentionally do NOT bind a faked Bluesky factory — calling
+    // listRecords on the real factory will throw, exercising the
+    // try/catch in OAuthCallbackController.
+
+    $this->get(route('bluesky.oauth.redirect'))->assertRedirect(route('consume'));
+
+    $user = User::find('did:plc:reconcilefail1234567890');
+    expect($user)->not->toBeNull();
+    $this->assertAuthenticatedAs($user);
+    expect(Subscription::query()->where('user_id', $user->did)->count())->toBe(0);
+});
 
 test('callback creates user, stashes handle, and logs in', function () {
     $session = OAuthSession::create([

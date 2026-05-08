@@ -4,14 +4,19 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\Subscriptions\SubscriptionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Laravel\Socialite\Facades\Socialite;
 use Revolution\Bluesky\Session\OAuthSession;
+use Throwable;
 
 class OAuthCallbackController extends Controller
 {
+    public function __construct(private readonly SubscriptionService $subscriptions) {}
+
     public function __invoke(Request $request): RedirectResponse
     {
         $hint = $request->session()->pull('atproto.hint');
@@ -43,6 +48,15 @@ class OAuthCallbackController extends Controller
         $request->session()->put('atproto.handle', $session->handle());
 
         Auth::login($user, remember: true);
+
+        try {
+            $this->subscriptions->reconcile($user, fetchSync: true);
+        } catch (Throwable $e) {
+            Log::warning('subscriptions reconcile on login failed', [
+                'did' => $user->did,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return redirect()->intended(route('consume'));
     }
