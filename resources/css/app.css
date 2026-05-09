@@ -47,7 +47,7 @@
         'Newsreader', ui-serif, Georgia, Cambria, 'Times New Roman', Times,
         serif;
 
-    --color-atmosphere-blue: oklch(0.7856 0.1479 224.27);
+    --color-atmosphere-blue: oklch(0.5721 0.2508 256.1);
     --color-leaf-green: oklch(0.7856 0.1479 139.64);
     --color-sunset-orange: oklch(0.7856 0.1479 57.72);
     --color-coral-red: oklch(0.6915 0.2121 22.14);
@@ -170,6 +170,8 @@
 @layer base {
     * {
         @apply border-border;
+        scrollbar-width: thin;
+        scrollbar-color: gray transparent;
     }
     body {
         @apply bg-background text-foreground;
