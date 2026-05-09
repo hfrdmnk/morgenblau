@@ -59,8 +59,25 @@ class FeedEntryRepository
             contentType: $row->content_type instanceof ContentType
                 ? $row->content_type
                 : ContentType::from((string) $row->content_type),
+            faviconUrl: self::deriveFaviconUrl((string) $row->feed_url),
         ))->all();
 
         return FeedEntryViewData::collect($items, DataCollection::class);
+    }
+
+    /**
+     * Naive client-side derivation: most sites serve /favicon.ico off the host root.
+     * The frontend renders with onError → globe-icon fallback, so misses are graceful.
+     * Replace with php-feed-io/favicon-io discovery (apple-touch-icon, og:image, sized
+     * link rels) once we have an SSRF-safe PSR-18 adapter for OutboundHttpClient.
+     */
+    private static function deriveFaviconUrl(string $feedUrl): ?string
+    {
+        $parts = parse_url($feedUrl);
+        if ($parts === false || ! isset($parts['scheme'], $parts['host'])) {
+            return null;
+        }
+
+        return $parts['scheme'].'://'.$parts['host'].'/favicon.ico';
     }
 }

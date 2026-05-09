@@ -24,5 +24,6 @@ class FeedEntryViewData extends Data
         public ?CarbonImmutable $publishedAt,
         public CarbonImmutable $firstSeenAt,
         public ContentType $contentType,
+        public ?string $faviconUrl,
     ) {}
 }
