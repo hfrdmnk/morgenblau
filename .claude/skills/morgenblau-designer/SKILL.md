@@ -1,6 +1,6 @@
 ---
 name: morgenblau-designer
-description: Morgenblau's complete design language for all UI work — surface layers, control tokens, color rules, typography, radius, the Window primitive, Caveat annotations, motion, voice, icons, anti-patterns. Use this skill whenever designing or building Morgenblau UI — new components, new screens, layout changes, or any edit that touches how Morgenblau looks, feels, sounds, or moves. Invoke before choosing classNames, sizes, colors, radii, or writing UI copy for Morgenblau. Also invoke when reviewing a Morgenblau PR for visual or tonal consistency.
+description: Morgenblau's complete design language for all UI work — surface layers, control tokens, color rules, typography (Geist sans for product, Newsreader serif for the reader), radius, the Window primitive, motion, voice, icons, anti-patterns. Use this skill whenever designing or building Morgenblau UI — new components, new screens, layout changes, or any edit that touches how Morgenblau looks, feels, sounds, or moves. Invoke before choosing classNames, sizes, colors, radii, or writing UI copy for Morgenblau. Also invoke when reviewing a Morgenblau PR for visual or tonal consistency.
 ---
 
 # Morgenblau designer
@@ -13,7 +13,7 @@ This is **design language only**. Implementation details (file paths, CSS tokens
 
 ## North star
 
-- **80 / 20.** 80 % of the surface area should feel clean, minimal, straight-to-the-point. The remaining 20 % is personality — delivered through copy, Caveat annotations, and subtle motion. Never through louder color or extra decoration.
+- **80 / 20.** 80 % of the surface area should feel clean, minimal, straight-to-the-point. The remaining 20 % is personality — delivered through copy and subtle motion. Never through louder color or extra decoration.
 - **Texture: crisp morning.** The terrace on a clear morning, not the candlelit cafe. Clean sans-serifs, cool blues, precise transitions, generous whitespace.
 - **Craft reference cluster** (taste, not concrete examples): Linear's precision, Family / Benji Taylor's warmth, Emil Kowalski's restraint, Josh Puckett's animation care, Dieter Rams' "less but better."
 - **Motion metaphor: ripples settling on water, not springs.** Ease-out dominant. Overshoot and bounce are reserved for rare delight moments.
@@ -66,7 +66,7 @@ Why split: an outline on a control with a visible border looks like two parallel
 
 Error / invalid states (`aria-invalid`) swap the border to `border-destructive` on inputs, and the existing destructive ring style on buttons — so focus and validation stay distinguishable.
 
-**Two button variants only: primary (solid atmosphere-blue, white text) and secondary (gray).** There is no dark / black variant. When a button needs to feel more critical, the answer is **copy and placement**, not a louder color. A confirmation word, a more prominent position, a Caveat hint — but never a third button variant.
+**Two button variants only: primary (solid atmosphere-blue, white text) and secondary (gray).** There is no dark / black variant. When a button needs to feel more critical, the answer is **copy and placement**, not a louder color. A confirmation word, a more prominent position, a soft hint underneath — but never a third button variant.
 
 ---
 
@@ -96,12 +96,12 @@ Morgenblau's palette is almost entirely monochrome, with two exceptions: one **b
 
 ## Typography
 
-**Geist** for almost everything. **Caveat** for annotations — and only annotations (see the annotation section).
+**Geist** carries the entire product UI — chrome, digest, forms, settings, navigation. **Newsreader** (variable serif, `opsz` + `wght` axes) is the project's reading font, used inside the long-form article reader for body copy only. Titles and captions inside the reader stay Geist; the size delta between sans title and serif body is the visual cue that "you're now reading."
 
 **Two font colors, ever:**
 
 - **Primary** (darker) — headings, body text
-- **Secondary** (lighter, `muted-foreground`) — hints, metadata, all Caveat
+- **Secondary** (lighter, `muted-foreground`) — hints, metadata, fine print
 
 Scale is **calm, not dramatic**. h1 is not 40 px. Hierarchy is built more with weight than size.
 
@@ -116,23 +116,25 @@ Scale is **calm, not dramatic**. h1 is not 40 px. Hierarchy is built more with w
 
 **These defaults are wired into base styles in `app.css` and apply automatically by tag.** Plain `<h1>`, `<h2>`, … pick up size + weight + tracking without any className. Plain `<p>` picks up `font-normal`. Override only when the semantic tag doesn't match the role (e.g. a `<span>` acting as a heading) or when stepping a paragraph down to light for muted/secondary copy. **Don't repeat the defaults in className** — if you find yourself writing `<h1 className="text-2xl font-semibold tracking-tight">`, delete those classes.
 
-| Token       | Size      | Weight | Tracking         | Use                                       |
-| ----------- | --------- | ------ | ---------------- | ----------------------------------------- |
-| `text-xs`   | 0.75 rem  | 300    | normal           | tiny meta (timestamps, fine print)        |
-| `text-sm`   | 0.875 rem | 300    | normal           | secondary text, hints                     |
-| `text-sm`   | 0.875 rem | 400    | normal           | labels, inline UI text                    |
-| `text-base` | 1 rem     | 400    | normal           | body                                      |
-| `text-lg`   | 1.125 rem | 500    | `tracking-tight` | small headings, card titles               |
-| `text-xl`   | 1.25 rem  | 500    | `tracking-tight` | section headings (h3)                     |
-| `text-2xl`  | 1.5 rem   | 600    | `tracking-tight` | page headings (h1 / h2) — `font-semibold` |
+| Token                  | Size      | Weight | Tracking         | Use                                                       |
+| ---------------------- | --------- | ------ | ---------------- | --------------------------------------------------------- |
+| `text-xs`              | 0.75 rem  | 300    | normal           | tiny meta (timestamps, fine print)                        |
+| `text-sm`              | 0.875 rem | 300    | normal           | secondary text, hints                                     |
+| `text-sm`              | 0.875 rem | 400    | normal           | labels, inline UI text                                    |
+| `text-base`            | 1 rem     | 400    | normal           | body                                                      |
+| `text-lg`              | 1.125 rem | 500    | `tracking-tight` | small headings, card titles                               |
+| `text-xl`              | 1.25 rem  | 500    | `tracking-tight` | section headings (h3)                                     |
+| `text-2xl`             | 1.5 rem   | 600    | `tracking-tight` | page headings (h1 / h2) — `font-semibold`                 |
+| `font-serif text-base` | 1 rem     | 400    | normal           | **reader body only.** Newsreader for long-form paragraphs |
+| `font-serif text-sm`   | 0.875 rem | 300    | normal           | **reader captions only.** Figure captions, fine print     |
 
 **Rules:**
 
 - h1 caps at 1.5 rem (about 1.5× body). Whispered, not shouted — but at this size, semibold (600) is what carries the page; medium would feel too soft against the calm scale.
 - **Headings always use `tracking-tight` (-0.025em)** — body stays at normal tracking. Tightening once, gently, is a craft signature; tightening more (`tracking-tighter`) reads as anxious, not calm. Don't escalate.
-- In long-form text (article reader), titles and paragraphs differ mainly by **weight**, not size. Titles go medium (500), paragraphs stay regular (400) — the delta reads as hierarchy without size jumps. Long-form titles stay at medium; only page headings step up to semibold. Drop a paragraph to light (300) only when it is genuinely *secondary* (caption under a figure, fine print under a form).
-- Caveat renders visually smaller than Geist at the same nominal size — bump it up one step when placed beside Geist body. Caveat's usable weights are 400–700; let it pick the nearest when used inside `<p>` (it reads as regular either way).
-- **Caveat is always secondary color.** Never primary. Never atmosphere-blue. Never a category color.
+- In long-form text (article reader), the **font shift itself** carries hierarchy: title in Geist (`font-sans`, medium 500), body in Newsreader (`font-serif`, regular 400). Sans-to-serif is the cue. Inside a single voice (the body) the same weight-not-size rule still applies — drop to light (300) only for genuinely *secondary* copy (caption under a figure, blockquote attribution).
+- **Newsreader is reader-only.** Never used in product UI chrome (digest, forms, settings, navigation, dialogs); never used for titles, captions, or metadata outside the long-form reader. If you find yourself reaching for `font-serif` in a non-reader surface, you've broken the metaphor — the serif appears only after the user has chosen to read.
+- Newsreader's optical-size axis (`opsz` 9pt–60pt) auto-targets the rendered size; the variable font picks an appropriate optical cut without per-tag overrides. Don't set `font-variation-settings` manually unless you have a specific reason.
 
 ---
 
@@ -171,26 +173,28 @@ The Window's insets, positioning, and scroll behavior are **consumer-level** con
 
 ---
 
-## Caveat annotations — the reader's pencil
+## The reader view — Newsreader's only home
 
-Caveat is a small, warm hand laid on top of a crisp page. It's the reader's pencil mark, the editor's note in the margin. To keep it from becoming decoration, Caveat is allowed in exactly four places and forbidden everywhere else.
+The long-form article reader is the one place a user comes to **read**, not to scan. It is also the only place Newsreader appears.
 
-**Allowed uses (always secondary color):**
+**Why Newsreader, why only here.** Sans-serif is right for product UI: scanning a digest, picking a source, navigating settings. Serif is right for sustained reading: paragraphs of prose at body size for minutes at a time. Newsreader is purpose-built for that — its variable optical-size axis tunes letterforms to the rendered point size, and its proportions read calmly at body sizes on screen. Letting the typeface shift between scanning and reading turns the reader view into a felt place, not just a different layout.
 
-1. **Input hints** — one line below a form field. Short. Example: _"New here? Enter your handle without `@`."_
-2. **Content meta** — time-to-read, relative date, source name next to a card. Example: _"4 min · 2 days ago"_ next to a Geist title.
-3. **Margin asides** on long-form reading surfaces only (article reader, settings pages, docs) — a short pencil-mark thought in the margin. Never on digest rows, cards, or forms.
-4. **Empty-state personality** — the second line of an empty-state block can be Caveat. Example: _"Nothing new this morning."_ (Geist body) / _"Enjoy your coffee."_ (Caveat, smaller, secondary).
+**Inside the reader:**
 
-**Forbidden uses:**
+- **Title:** Geist (`font-sans`), medium (500), `tracking-tight`. Stays sans so the article header reads as continuous with the rest of the product chrome — the reader is a place inside Morgenblau, not a separate brand.
+- **Byline / meta line:** Geist (`font-sans`), light (300) or regular (400), `text-muted-foreground`. Source name, author, relative date, time-to-read.
+- **Body paragraphs:** Newsreader (`font-serif`), regular (400), default tracking. This is the only place serif appears in the entire product.
+- **Blockquotes, asides, captions:** Newsreader (`font-serif`), light (300) for figure captions; serif italic (the variable italic axis) is acceptable inside a blockquote. Stay in the serif voice — switching back to sans inside the body fragments the reading surface.
+- **Inline emphasis:** italic (variable italic) for `<em>`, semibold (600) for `<strong>` — both in Newsreader. Don't bring back sans inside a paragraph.
 
-- As a button label
-- As a heading or section title
-- Inside buttons, cards, or any interactive surface label
-- For navigation, tabs, or menu items
-- As the primary copy in any block — Caveat always accompanies Geist body that carries the information; it never carries the information alone
+**Forbidden uses of `font-serif`:**
 
-**Never:** hand-drawn decorations (circles, arrows, underlines) outside long-form reading surfaces. They belong to marketing and long-form contexts, not to the app chrome or digest.
+- Anywhere outside the article reader page
+- Page headings, section headings, button labels, navigation, form labels
+- Empty-state copy (lives in Geist + light + muted)
+- Marketing chrome, error messages, settings copy, dialog titles
+
+If you're tempted to use `font-serif` to "make this feel more bookish" outside the reader, you've found a marketing / decoration urge — resist. The serif's weight as a metaphor depends on it being scarce.
 
 ---
 
@@ -225,7 +229,7 @@ Caveat is a small, warm hand laid on top of a crisp page. It's the reader's penc
 
 **Rules:**
 
-1. **Short sentences.** Most copy fits in one line. Two lines only if the second is a gentle afterthought (the Caveat line).
+1. **Short sentences.** Most copy fits in one line. Two lines only if the second is a gentle afterthought — a soft, light-weight aside that accepts the calm rather than apologising for it.
 2. **Second person is default.** _"You curated this"_ — not _"Users can curate..."_
 3. **No exclamation marks. Ever.** The product is calm; the copy mirrors it.
 4. **No emoji.** Ever.
@@ -263,8 +267,8 @@ If a Morgenblau design exhibits any of these, something has gone wrong:
 - **`sand-brown` as a text or surface color.** It's the sunrise-horizon endpoint — nothing else.
 - **Spring physics by default on UI motion.** The motion metaphor is ripples settling, not springs bouncing.
 - **Staggered card entrances on digest load.** All content arrives together.
-- **Hand-drawn decoration on app chrome, digest rows, or forms.** Those belong to marketing and long-form surfaces only.
 - **A third button variant** (solid, black, dark). Two variants carry every action. Critical actions earn emphasis through copy and placement, not louder buttons.
-- **Caveat as primary copy, button label, heading, or nav item.** Caveat accompanies Geist; it never carries meaning alone.
+- **Newsreader (or any serif) outside the article reader.** Serif belongs to long-form body copy only. Using `font-serif` for titles, captions, UI chrome, or marketing breaks the metaphor — the reader stops feeling like a place.
+- **Hand-drawn fonts, script fonts, or decorative typefaces** of any kind. The product is Geist + Newsreader; no third typeface, no decorative flourishes. Personality lives in copy and motion.
 - **Unread counts, progress indicators, "X items left" badges.** These are anti-Morgenblau.
 - **Exclamation marks or emoji in UI copy.** Breaks the voice.

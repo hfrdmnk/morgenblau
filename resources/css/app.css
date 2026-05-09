@@ -24,18 +24,28 @@
 }
 
 @font-face {
-    font-family: 'Caveat';
+    font-family: 'Newsreader';
     font-style: normal;
-    font-weight: 400 700;
+    font-weight: 200 800;
     font-display: swap;
-    src: url('../fonts/Caveat-VF.ttf') format('truetype-variations');
+    src: url('../fonts/NewsreaderVF.woff2') format('woff2-variations');
+}
+
+@font-face {
+    font-family: 'Newsreader';
+    font-style: italic;
+    font-weight: 200 800;
+    font-display: swap;
+    src: url('../fonts/NewsreaderVF-Italic.woff2') format('woff2-variations');
 }
 
 @theme {
     --font-sans:
         'Geist', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
         'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
-    --font-handwritten: 'Caveat', ui-sans-serif, cursive;
+    --font-serif:
+        'Newsreader', ui-serif, Georgia, Cambria, 'Times New Roman', Times,
+        serif;
 
     --color-atmosphere-blue: oklch(0.7856 0.1479 224.27);
     --color-leaf-green: oklch(0.7856 0.1479 139.64);

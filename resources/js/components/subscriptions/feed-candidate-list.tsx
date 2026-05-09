@@ -175,7 +175,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                 candidate.feed_url}
                         </span>
                         {isExisting && (
-                            <span className="font-handwritten text-xs text-muted-foreground">
+                            <span className="text-xs font-light text-muted-foreground">
                                 Already added
                             </span>
                         )}

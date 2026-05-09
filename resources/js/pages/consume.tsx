@@ -62,7 +62,7 @@ function EmptyState({ hasSubscriptions }: { hasSubscriptions: boolean }) {
         return (
             <div className="flex flex-col gap-2">
                 <p>No sources yet.</p>
-                <p className="font-handwritten text-sm text-muted-foreground">
+                <p className="text-sm font-light text-muted-foreground">
                     Pick one over at{' '}
                     <TextLink href={discover().url}>/discover</TextLink>.
                 </p>
@@ -73,7 +73,7 @@ function EmptyState({ hasSubscriptions }: { hasSubscriptions: boolean }) {
     return (
         <div className="flex flex-col gap-2">
             <p>Nothing new this morning.</p>
-            <p className="font-handwritten text-sm text-muted-foreground">
+            <p className="text-sm font-light text-muted-foreground">
                 Enjoy your coffee.
             </p>
         </div>
@@ -85,7 +85,7 @@ function EntryRow({ entry }: { entry: FeedEntry }) {
 
     return (
         <li className="flex flex-col gap-2">
-            <p className="font-handwritten text-sm text-muted-foreground">
+            <p className="text-sm font-light text-muted-foreground">
                 {entry.display_title ?? 'Untitled source'}
             </p>
             {entry.entry_title ? (
@@ -106,7 +106,7 @@ function EntryRow({ entry }: { entry: FeedEntry }) {
                 <p className="text-sm text-muted-foreground">{entry.summary}</p>
             ) : null}
             {meta ? (
-                <p className="font-handwritten text-sm text-muted-foreground">
+                <p className="text-sm font-light text-muted-foreground">
                     {meta}
                 </p>
             ) : null}

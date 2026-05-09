@@ -453,7 +453,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
 
                     {topLevelError && <InputError message={topLevelError} />}
 
-                    <p className="font-handwritten text-sm text-muted-foreground">
+                    <p className="text-sm font-light text-muted-foreground">
                         Your subscriptions are currently all public. (Selective
                         private subscriptions are coming.)
                     </p>

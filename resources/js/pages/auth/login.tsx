@@ -83,7 +83,7 @@ export default function Login() {
                             <InputError message={errors.handle} />
                         </div>
 
-                        <div className="space-y-1 pt-2 font-handwritten text-base leading-snug text-muted-foreground">
+                        <div className="space-y-1 pt-2 text-sm leading-snug font-light text-muted-foreground">
                             <p>New here?</p>
                             <p>
                                 An Atmosphere account is your identity (or user
