@@ -5,6 +5,7 @@ use App\Exceptions\FeedFetchException;
 use App\Jobs\RefreshFeedJob;
 use App\Models\Feed;
 use App\Models\FeedEntry;
+use App\Services\Feeds\FaviconDiscoverer;
 use App\Services\Feeds\FeedEntryUpserter;
 use App\Services\Feeds\FeedFetcher;
 use App\Services\Feeds\Processors\ProcessorPipeline;
@@ -15,6 +16,9 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Date;
+use Tests\Doubles\NullFaviconDiscoverer;
+
+beforeEach(fn () => app()->bind(FaviconDiscoverer::class, NullFaviconDiscoverer::class));
 
 test('on success updates last_fetched_at, clears last_dispatched_at, and writes entries', function () {
     Date::setTestNow('2026-05-07 12:00:00');
@@ -45,7 +49,7 @@ test('on success updates last_fetched_at, clears last_dispatched_at, and writes 
         ));
     app()->instance(FeedFetcher::class, $fetcher);
 
-    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class));
+    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class), app(FaviconDiscoverer::class));
 
     $feed->refresh();
     expect($feed->last_fetched_at?->toDateTimeString())->toBe('2026-05-07 12:00:00');
@@ -70,7 +74,7 @@ test('on success clears any previously recorded failure state', function () {
         ->andReturn(new Modified(entries: [], etag: null, lastModified: null));
     app()->instance(FeedFetcher::class, $fetcher);
 
-    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class));
+    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class), app(FaviconDiscoverer::class));
 
     $feed->refresh();
     expect($feed->last_failed_at)->toBeNull();
@@ -96,7 +100,7 @@ test('on Modified result it persists rotated etag and last_modified headers', fu
         ));
     app()->instance(FeedFetcher::class, $fetcher);
 
-    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class));
+    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class), app(FaviconDiscoverer::class));
 
     $feed->refresh();
     expect($feed->etag_header)->toBe('W/"new"');
@@ -117,7 +121,7 @@ test('it forwards stored cache headers into the fetcher call', function () {
         ->andReturn(new Modified(entries: [], etag: 'W/"abc"', lastModified: 'Wed, 15 Apr 2026 09:30:00 +0000'));
     app()->instance(FeedFetcher::class, $fetcher);
 
-    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class));
+    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class), app(FaviconDiscoverer::class));
 });
 
 test('on NotModified it advances last_fetched_at, clears dispatched/failure, and persists no entries', function () {
@@ -147,7 +151,7 @@ test('on NotModified it advances last_fetched_at, clears dispatched/failure, and
         ->andReturn(new NotModified(etag: 'W/"abc"', lastModified: 'Wed, 15 Apr 2026 09:30:00 +0000'));
     app()->instance(FeedFetcher::class, $fetcher);
 
-    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class));
+    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class), app(FaviconDiscoverer::class));
 
     $feed->refresh();
     expect($feed->last_fetched_at?->toDateTimeString())->toBe('2026-05-07 12:00:00');
@@ -163,7 +167,7 @@ test('returns silently when the feed has been deleted', function () {
     $fetcher->shouldNotReceive('fetch');
     app()->instance(FeedFetcher::class, $fetcher);
 
-    (new RefreshFeedJob(999_999))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class));
+    (new RefreshFeedJob(999_999))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class), app(FaviconDiscoverer::class));
 });
 
 test('on Failed result records bookkeeping, advances next_check_at by backoff, and does not rethrow', function () {
@@ -183,7 +187,7 @@ test('on Failed result records bookkeeping, advances next_check_at by backoff, a
         ->andReturn(new Failed(new FeedFetchException('boom')));
     app()->instance(FeedFetcher::class, $fetcher);
 
-    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class));
+    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class), app(FaviconDiscoverer::class));
 
     $feed->refresh();
     expect($feed->last_failed_at?->toDateTimeString())->toBe('2026-05-07 12:00:00');
@@ -207,7 +211,7 @@ test('truncates last_error to 500 characters', function () {
         ->andReturn(new Failed(new FeedFetchException($longMessage)));
     app()->instance(FeedFetcher::class, $fetcher);
 
-    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class));
+    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class), app(FaviconDiscoverer::class));
 
     $feed->refresh();
     expect(strlen((string) $feed->last_error))->toBe(500);
@@ -233,4 +237,34 @@ test('declares uniqueness keyed by feed id with a 5 minute window', function () 
     expect($job)->toBeInstanceOf(ShouldBeUnique::class);
     expect($job->uniqueId())->toBe('42');
     expect($job->uniqueFor)->toBe(300);
+});
+
+test('runs favicon discovery after a successful refresh', function () {
+    $feed = Feed::query()->create(['feed_url' => 'https://example.com/rss']);
+
+    $fetcher = Mockery::mock(FeedFetcher::class);
+    $fetcher->shouldReceive('fetch')
+        ->once()
+        ->andReturn(new Modified(entries: [], etag: null, lastModified: null));
+    app()->instance(FeedFetcher::class, $fetcher);
+
+    $discoverer = Mockery::mock(FaviconDiscoverer::class);
+    $discoverer->shouldReceive('discover')->once()->with(Mockery::type(Feed::class));
+    app()->instance(FaviconDiscoverer::class, $discoverer);
+
+    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class), app(FaviconDiscoverer::class));
+});
+
+test('skips favicon discovery when the refresh failed', function () {
+    $feed = Feed::query()->create(['feed_url' => 'https://example.com/rss']);
+
+    $fetcher = Mockery::mock(FeedFetcher::class);
+    $fetcher->shouldReceive('fetch')->once()->andReturn(new Failed(new FeedFetchException('boom')));
+    app()->instance(FeedFetcher::class, $fetcher);
+
+    $discoverer = Mockery::mock(FaviconDiscoverer::class);
+    $discoverer->shouldNotReceive('discover');
+    app()->instance(FaviconDiscoverer::class, $discoverer);
+
+    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class), app(FaviconDiscoverer::class));
 });

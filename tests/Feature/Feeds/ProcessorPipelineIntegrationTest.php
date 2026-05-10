@@ -5,11 +5,15 @@ use App\Jobs\RefreshFeedJob;
 use App\Models\Feed;
 use App\Models\FeedEntry;
 use App\Services\Feeds\ConditionalFeedClient;
+use App\Services\Feeds\FaviconDiscoverer;
 use App\Services\Feeds\FeedEntryUpserter;
 use App\Services\Feeds\FeedFetcher;
 use App\Services\Feeds\Processors\ProcessorPipeline;
 use FeedIo\FeedIo;
+use Tests\Doubles\NullFaviconDiscoverer;
 use Tests\Doubles\StubFeedClient;
+
+beforeEach(fn () => app()->bind(FaviconDiscoverer::class, NullFaviconDiscoverer::class));
 
 test('end-to-end: Modified result flows fetch → classify → sanitize → upsert', function () {
     $feed = Feed::query()->create(['feed_url' => 'https://example.com/encoded.rss']);
@@ -24,6 +28,7 @@ test('end-to-end: Modified result flows fetch → classify → sanitize → upse
         app(FeedFetcher::class),
         app(FeedEntryUpserter::class),
         app(ProcessorPipeline::class),
+        app(FaviconDiscoverer::class),
     );
 
     $row = FeedEntry::query()->where('feed_id', $feed->id)->firstOrFail();
@@ -49,6 +54,7 @@ test('end-to-end: YouTube channel feed entries land as Video', function () {
         app(FeedFetcher::class),
         app(FeedEntryUpserter::class),
         app(ProcessorPipeline::class),
+        app(FaviconDiscoverer::class),
     );
 
     $rows = FeedEntry::query()->where('feed_id', $feed->id)->get();
@@ -70,6 +76,7 @@ test('end-to-end: podcast feed entries land as Podcast', function () {
         app(FeedFetcher::class),
         app(FeedEntryUpserter::class),
         app(ProcessorPipeline::class),
+        app(FaviconDiscoverer::class),
     );
 
     $rows = FeedEntry::query()->where('feed_id', $feed->id)->get();

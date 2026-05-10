@@ -15,6 +15,7 @@
         "laravel/socialite": "^5.26",
         "laravel/tinker": "^3.0",
         "laravel/wayfinder": "^0.1.14",
+        "php-feed-io/favicon-io": "^1.0",
         "php-feed-io/feed-io": "^6.3",
         "revolution/laravel-bluesky": "^1.2",
         "spatie/laravel-data": "^4.22",

@@ -111,7 +111,24 @@ test('uses the resolved display title (custom_title beats pds_title beats feed.t
     expect($byTitle['Url row']['display_title'])->toBe('https://url.example/rss');
 });
 
-test('derives favicon_url from the feed url host', function () {
+test('serves the persisted favicon_url when discovery has populated it', function () {
+    $user = User::factory()->create();
+    $feed = Feed::query()->create([
+        'feed_url' => 'https://blog.example.com/feed.xml',
+        'favicon_url' => 'https://blog.example.com/static/icon.svg',
+        'favicon_checked_at' => now(),
+    ]);
+    Subscription::query()->create(['user_id' => $user->did, 'feed_id' => $feed->id, 'at_uri' => 'at://x/a']);
+    makeFeedEntry($feed, ['title' => 'Hi', 'published_at' => now()]);
+
+    $this->actingAs(freshenBluesky($user));
+
+    $this->get(route('consume'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('entries.0.favicon_url', 'https://blog.example.com/static/icon.svg'));
+});
+
+test('falls back to /favicon.ico when favicon_url has not been discovered yet', function () {
     $user = User::factory()->create();
     $feed = Feed::query()->create(['feed_url' => 'https://blog.example.com/feed.xml']);
     Subscription::query()->create(['user_id' => $user->did, 'feed_id' => $feed->id, 'at_uri' => 'at://x/a']);
@@ -124,7 +141,7 @@ test('derives favicon_url from the feed url host', function () {
             ->where('entries.0.favicon_url', 'https://blog.example.com/favicon.ico'));
 });
 
-test('returns null favicon_url when feed_url cannot be parsed', function () {
+test('returns null favicon_url when feed_url cannot be parsed and nothing is persisted', function () {
     $user = User::factory()->create();
     $feed = Feed::query()->create(['feed_url' => 'not-a-real-url']);
     Subscription::query()->create(['user_id' => $user->did, 'feed_id' => $feed->id, 'at_uri' => 'at://x/a']);

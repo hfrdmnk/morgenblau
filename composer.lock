@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "95849b6c4c13544601aca20211d8746b",
+    "content-hash": "5325674ffbeff80c9d42b0c572fc07cf",
     "packages": [
         {
             "name": "brick/math",
@@ -3233,6 +3233,63 @@
                 "source": "https://github.com/paragonie/random_compat"
             },
             "time": "2020-10-15T08:29:30+00:00"
+        },
+        {
+            "name": "php-feed-io/favicon-io",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/php-feed-io/favicon-io.git",
+                "reference": "c3e777a7e66ec4324f698965cc93b0b1cd55a878"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/php-feed-io/favicon-io/zipball/c3e777a7e66ec4324f698965cc93b0b1cd55a878",
+                "reference": "c3e777a7e66ec4324f698965cc93b0b1cd55a878",
+                "shasum": ""
+            },
+            "require": {
+                "ext-dom": "*",
+                "ext-libxml": "*",
+                "php": ">=8.2",
+                "psr/http-client": "^1.0",
+                "psr/http-factory": "^1.1",
+                "psr/http-message": "^2.0",
+                "psr/log": "^3.0",
+                "psr/simple-cache": "^3.0"
+            },
+            "require-dev": {
+                "nyholm/psr7": "^1.8",
+                "phpstan/phpstan": "^2.1",
+                "phpunit/phpunit": "^11.0"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "FeedIo\\FaviconIo\\": "src/FaviconIo"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Benjamin Brahmer",
+                    "email": "info@b-brahmer.de"
+                }
+            ],
+            "description": "PHP library for fetching favicons",
+            "keywords": [
+                "favicon",
+                "fetch",
+                "icon"
+            ],
+            "support": {
+                "issues": "https://github.com/php-feed-io/favicon-io/issues",
+                "source": "https://github.com/php-feed-io/favicon-io/tree/v1.0.0"
+            },
+            "time": "2026-05-03T07:45:15+00:00"
         },
         {
             "name": "php-feed-io/feed-io",

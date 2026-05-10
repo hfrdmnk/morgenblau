@@ -12,9 +12,12 @@ use App\Services\Feeds\Processors\ContentTypeClassifier;
 use App\Services\Feeds\Processors\HtmlSanitizer;
 use App\Services\Feeds\Processors\ProcessorPipeline;
 use App\Services\Http\DnsResolver;
+use App\Services\Http\OutboundPsr18Client;
 use App\Services\Http\SystemDnsResolver;
 use Carbon\CarbonImmutable;
+use FeedIo\FaviconIo\FaviconDiscovery;
 use FeedIo\FeedIo;
+use GuzzleHttp\Psr7\HttpFactory;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
@@ -23,6 +26,9 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Psr\Http\Client\ClientInterface as Psr18ClientInterface;
+use Psr\Http\Message\RequestFactoryInterface;
+use Psr\Http\Message\UriFactoryInterface;
 use Revolution\Bluesky\Socialite\OAuthConfig;
 
 class AppServiceProvider extends ServiceProvider
@@ -45,6 +51,16 @@ class AppServiceProvider extends ServiceProvider
             $app->make(ContentTypeClassifier::class),
             $app->make(HtmlSanitizer::class),
         ]));
+
+        $this->app->bind(Psr18ClientInterface::class, OutboundPsr18Client::class);
+        $this->app->bind(RequestFactoryInterface::class, HttpFactory::class);
+        $this->app->bind(UriFactoryInterface::class, HttpFactory::class);
+
+        $this->app->singleton(FaviconDiscovery::class, fn ($app) => new FaviconDiscovery(
+            httpClient: $app->make(Psr18ClientInterface::class),
+            requestFactory: $app->make(RequestFactoryInterface::class),
+            logger: $app->make('log'),
+        ));
     }
 
     public function boot(): void

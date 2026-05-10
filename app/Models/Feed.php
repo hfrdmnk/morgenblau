@@ -15,6 +15,8 @@ class Feed extends Model
         'feed_url',
         'site_url',
         'title',
+        'favicon_url',
+        'favicon_checked_at',
         'last_fetched_at',
         'last_failed_at',
         'last_error',
@@ -41,6 +43,7 @@ class Feed extends Model
             'last_dispatched_at' => 'immutable_datetime',
             'next_check_at' => 'immutable_datetime',
             'disabled_at' => 'immutable_datetime',
+            'favicon_checked_at' => 'immutable_datetime',
         ];
     }
 

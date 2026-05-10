@@ -19,9 +19,11 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Date;
+use Tests\Doubles\NullFaviconDiscoverer;
 
 beforeEach(function () {
     Date::setTestNow('2026-05-07 12:00:00');
+    app()->bind(FaviconDiscoverer::class, NullFaviconDiscoverer::class);
 });
 
 afterEach(function () {
@@ -41,6 +43,7 @@ function runJob(int $feedId): void
         app(FeedFetcher::class),
         app(FeedEntryUpserter::class),
         app(ProcessorPipeline::class),
+        app(FaviconDiscoverer::class),
     );
 }
 

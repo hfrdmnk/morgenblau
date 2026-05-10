@@ -31,6 +31,7 @@ class FeedEntryRepository
                 'feed_entries.content_type',
                 'feeds.feed_url',
                 'feeds.title as feed_title',
+                'feeds.favicon_url',
                 'subscriptions.custom_title',
                 'subscriptions.pds_title',
             ])
@@ -59,17 +60,17 @@ class FeedEntryRepository
             contentType: $row->content_type instanceof ContentType
                 ? $row->content_type
                 : ContentType::from((string) $row->content_type),
-            faviconUrl: self::deriveFaviconUrl((string) $row->feed_url),
+            faviconUrl: $row->favicon_url ?? self::deriveFaviconUrl((string) $row->feed_url),
         ))->all();
 
         return FeedEntryViewData::collect($items, DataCollection::class);
     }
 
     /**
-     * Naive client-side derivation: most sites serve /favicon.ico off the host root.
-     * The frontend renders with onError → globe-icon fallback, so misses are graceful.
-     * Replace with php-feed-io/favicon-io discovery (apple-touch-icon, og:image, sized
-     * link rels) once we have an SSRF-safe PSR-18 adapter for OutboundHttpClient.
+     * Fallback when feeds.favicon_url is still null (newly subscribed feed
+     * before its first refresh, or discovery legitimately failed). The
+     * frontend's onError handler degrades to a globe icon if /favicon.ico
+     * doesn't resolve.
      */
     private static function deriveFaviconUrl(string $feedUrl): ?string
     {

@@ -46,6 +46,18 @@ class OutboundHttpClient
      */
     public function getUserUrl(string $url, array $headers = []): Response
     {
+        return $this->sendUserUrl('GET', $url, $headers);
+    }
+
+    /**
+     * Generalised SSRF-guarded send. Underpins getUserUrl and any caller that
+     * needs a non-GET method (e.g. PSR-18 adapter performing HEAD probes for
+     * favicon discovery).
+     *
+     * @param  array<string, string>  $headers
+     */
+    public function sendUserUrl(string $method, string $url, array $headers = []): Response
+    {
         $ips = $this->assertUserUrlIsSafe($url);
 
         $parts = parse_url($url);
@@ -72,7 +84,7 @@ class OutboundHttpClient
                     },
                 ],
             ])
-            ->get($url);
+            ->send($method, $url);
     }
 
     /**
