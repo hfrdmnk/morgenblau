@@ -18,14 +18,7 @@ export function DigestPill({
     onReady,
     onCaughtUpFade,
 }: DigestPillProps) {
-    const [mounted, setMounted] = useState(false);
     const [leaving, setLeaving] = useState(false);
-
-    useEffect(() => {
-        const raf = requestAnimationFrame(() => setMounted(true));
-
-        return () => cancelAnimationFrame(raf);
-    }, []);
 
     useEffect(() => {
         if (state.phase !== 'caught_up') {
@@ -76,19 +69,21 @@ export function DigestPill({
         </>
     );
 
-    const baseClasses = cn(
+    const pillClasses = cn(
         'pointer-events-auto inline-flex h-9 items-center gap-2 rounded-2xl border bg-card px-4',
         'border-gray-100 dark:border-gray-700',
-        'transition-[opacity,transform] duration-[180ms] ease-[cubic-bezier(0.23,1,0.32,1)]',
-        'motion-reduce:transition-opacity motion-reduce:duration-[120ms]',
-        mounted && !leaving
-            ? 'translate-y-0 scale-100 opacity-100'
-            : '-translate-y-1 scale-[0.98] opacity-0 motion-reduce:translate-y-0 motion-reduce:scale-100',
     );
 
-    const wrapper = (
+    return (
         <div
-            className="pointer-events-none fixed inset-x-0 top-6 z-30 flex justify-center"
+            className={cn(
+                'pointer-events-none fixed inset-x-0 top-6 z-30 flex justify-center',
+                'transition-[opacity,transform] duration-[180ms] ease-[cubic-bezier(0.23,1,0.32,1)]',
+                'motion-reduce:transition-opacity motion-reduce:duration-[120ms]',
+                leaving
+                    ? '-translate-y-1 scale-[0.98] opacity-0 motion-reduce:translate-y-0 motion-reduce:scale-100'
+                    : 'translate-y-0 scale-100 opacity-100 starting:-translate-y-1 starting:scale-[0.98] starting:opacity-0',
+            )}
             aria-live="polite"
         >
             {isReady ? (
@@ -96,8 +91,8 @@ export function DigestPill({
                     type="button"
                     onClick={onReady}
                     className={cn(
-                        baseClasses,
-                        'cursor-pointer outline-none',
+                        pillClasses,
+                        'cursor-pointer transition-transform duration-100 ease-out outline-none',
                         'hover:bg-gray-50 dark:hover:bg-gray-700',
                         'active:scale-[0.97]',
                         'focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid',
@@ -106,12 +101,10 @@ export function DigestPill({
                     {content}
                 </button>
             ) : (
-                <div className={baseClasses} role="status">
+                <div className={pillClasses} role="status">
                     {content}
                 </div>
             )}
         </div>
     );
-
-    return wrapper;
 }
