@@ -2,7 +2,6 @@
 
 namespace App\Data\Feeds;
 
-use App\Enums\SourceType;
 use Spatie\LaravelData\Attributes\MapOutputName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Mappers\SnakeCaseMapper;
@@ -16,6 +15,5 @@ class ResolvedFeedData extends Data
         public string $feedUrl,
         public ?string $title,
         public ?string $siteUrl,
-        public SourceType $sourceType = SourceType::Rss,
     ) {}
 }

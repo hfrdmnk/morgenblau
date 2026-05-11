@@ -27,7 +27,6 @@ test('PdsWriteException carries the parsed status and errorCode', function () {
                 'feed_url' => 'https://example.com/rss.xml',
                 'title' => 'X',
                 'site_url' => 'https://example.com',
-                'source_type' => 'rss',
             ]),
         );
         expect()->fail('Expected PdsWriteException');
@@ -56,7 +55,6 @@ test('a 200 response with a malformed at-uri throws PdsWriteException', function
                 'feed_url' => 'https://example.com/rss.xml',
                 'title' => 'X',
                 'site_url' => 'https://example.com',
-                'source_type' => 'rss',
             ]),
         );
         expect()->fail('Expected PdsWriteException');

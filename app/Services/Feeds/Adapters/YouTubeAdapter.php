@@ -3,7 +3,6 @@
 namespace App\Services\Feeds\Adapters;
 
 use App\Data\Feeds\ResolvedFeedData;
-use App\Enums\SourceType;
 use App\Exceptions\UnresolvableFeedException;
 use App\Services\Feeds\FeedAdapter;
 use App\Services\Http\OutboundHttpClient;
@@ -50,7 +49,6 @@ class YouTubeAdapter implements FeedAdapter
             feedUrl: self::FEED_URL.$channelId,
             title: $title,
             siteUrl: $url,
-            sourceType: SourceType::Video,
         )];
     }
 

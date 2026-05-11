@@ -3,7 +3,6 @@
 namespace App\Services\Feeds\Adapters;
 
 use App\Data\Feeds\ResolvedFeedData;
-use App\Enums\SourceType;
 use App\Exceptions\UnresolvableFeedException;
 use App\Services\Feeds\FeedAdapter;
 use App\Services\Http\OutboundHttpClient;
@@ -77,7 +76,6 @@ class PodcastAdapter implements FeedAdapter
             feedUrl: $result['feedUrl'],
             title: $result['collectionName'] ?? $result['trackName'] ?? null,
             siteUrl: $result['collectionViewUrl'] ?? $url,
-            sourceType: SourceType::Podcast,
         );
     }
 }

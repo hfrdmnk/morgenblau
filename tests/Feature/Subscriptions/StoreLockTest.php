@@ -32,7 +32,6 @@ test('store blocks behind the per-user write lock and times out cleanly', functi
             'feed_url' => 'https://example.com/rss.xml',
             'title' => 'Foo',
             'site_url' => 'https://example.com',
-            'source_type' => 'rss',
         ]],
     ]))->toThrow(LockTimeoutException::class);
 

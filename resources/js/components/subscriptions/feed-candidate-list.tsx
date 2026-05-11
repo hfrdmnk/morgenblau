@@ -7,30 +7,12 @@ import { useId } from 'react';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
 type FeedCandidate = App.Data.Feeds.ResolvedFeedData;
-type SourceType = App.Enums.SourceType;
-
-export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
-    rss: 'Website',
-    video: 'Video',
-    podcast: 'Podcast',
-    microblog: 'Microblog',
-};
-
-const DEFAULT_SOURCE_TYPE: SourceType = 'rss';
 
 type Selection = {
     title: string;
-    source_type: SourceType;
 };
 
 type Props = {
@@ -39,7 +21,6 @@ type Props = {
     selected: Record<string, Selection>;
     onToggle: (candidate: FeedCandidate) => void;
     onTitleChange: (feedUrl: string, title: string) => void;
-    onSourceTypeChange: (feedUrl: string, type: SourceType) => void;
     firstCheckboxRef?: Ref<HTMLInputElement>;
     firstTitleInputRef?: Ref<HTMLInputElement>;
     'aria-labelledby'?: string;
@@ -51,7 +32,6 @@ export function FeedCandidateList({
     selected,
     onToggle,
     onTitleChange,
-    onSourceTypeChange,
     firstCheckboxRef,
     firstTitleInputRef,
     'aria-labelledby': ariaLabelledBy,
@@ -67,9 +47,6 @@ export function FeedCandidateList({
                 const savedTitle = isExisting
                     ? existingByFeedUrl[candidate.feed_url]
                     : null;
-                // Pass primitives, not the selection object — memo's default
-                // Object.is comparison short-circuits string/bool changes but
-                // would see a fresh object reference every parent render.
                 const selection = selected[candidate.feed_url];
                 const isSelected = selection !== undefined;
 
@@ -81,12 +58,8 @@ export function FeedCandidateList({
                         savedTitle={savedTitle}
                         isSelected={isSelected}
                         selectedTitle={selection?.title ?? ''}
-                        selectedSourceType={
-                            selection?.source_type ?? DEFAULT_SOURCE_TYPE
-                        }
                         onToggle={onToggle}
                         onTitleChange={onTitleChange}
-                        onSourceTypeChange={onSourceTypeChange}
                         firstCheckboxRef={
                             index === 0 ? firstCheckboxRef : undefined
                         }
@@ -106,10 +79,8 @@ type CardProps = {
     savedTitle: string | null;
     isSelected: boolean;
     selectedTitle: string;
-    selectedSourceType: SourceType;
     onToggle: (candidate: FeedCandidate) => void;
     onTitleChange: (feedUrl: string, title: string) => void;
-    onSourceTypeChange: (feedUrl: string, type: SourceType) => void;
     firstCheckboxRef?: Ref<HTMLInputElement>;
     firstTitleInputRef?: Ref<HTMLInputElement>;
 };
@@ -120,16 +91,13 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
     savedTitle,
     isSelected,
     selectedTitle,
-    selectedSourceType,
     onToggle,
     onTitleChange,
-    onSourceTypeChange,
     firstCheckboxRef,
     firstTitleInputRef,
 }: CardProps) {
     const inputId = useId();
     const titleId = useId();
-    const typeId = useId();
 
     return (
         <div
@@ -205,41 +173,6 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                     )
                                 }
                             />
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                            <Label htmlFor={typeId} className="text-xs">
-                                Source type
-                            </Label>
-                            <Select
-                                value={selectedSourceType}
-                                onValueChange={(value) =>
-                                    onSourceTypeChange(
-                                        candidate.feed_url,
-                                        value as SourceType,
-                                    )
-                                }
-                            >
-                                <SelectTrigger id={typeId}>
-                                    <SelectValue>
-                                        {(value) =>
-                                            SOURCE_TYPE_LABELS[
-                                                value as SourceType
-                                            ] ?? SOURCE_TYPE_LABELS.rss
-                                        }
-                                    </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {(
-                                        Object.keys(
-                                            SOURCE_TYPE_LABELS,
-                                        ) as SourceType[]
-                                    ).map((type) => (
-                                        <SelectItem key={type} value={type}>
-                                            {SOURCE_TYPE_LABELS[type]}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
                         </div>
                     </div>
                 </CollapsibleContent>

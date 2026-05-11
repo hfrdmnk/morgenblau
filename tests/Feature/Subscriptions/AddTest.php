@@ -18,7 +18,6 @@ test('guests cannot discover or store subscriptions', function () {
     $this->post(route('subscriptions.store'), [
         'subscriptions' => [[
             'feed_url' => 'https://example.com/rss.xml',
-            'source_type' => 'rss',
         ]],
     ])->assertRedirect(route('login'));
 });
@@ -49,13 +48,11 @@ test('discover returns every advertised feed in document order', function () {
                 'feed_url' => 'https://example.com/rss.xml',
                 'title' => 'Main feed',
                 'site_url' => 'https://example.com',
-                'source_type' => 'rss',
             ],
             [
                 'feed_url' => 'https://example.com/comments.atom',
                 'title' => 'Comments',
                 'site_url' => 'https://example.com',
-                'source_type' => 'rss',
             ],
         ],
         'existing_subscriptions' => [],
@@ -196,7 +193,7 @@ test('storing a subscription writes the chosen feed to the user PDS', function (
             expect($record['$type'])->toBe('app.skyreader.feed.subscription');
             expect($record['feedUrl'])->toBe('https://example.com/rss.xml');
             expect($record['title'])->toBe('Example Blog');
-            expect($record['sourceType'])->toBe('rss');
+            expect($record)->not->toHaveKey('sourceType');
             expect($record)->not->toHaveKey('category');
             expect($validate)->toBeNull();
             expect($record['createdAt'])->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/');
@@ -215,7 +212,6 @@ test('storing a subscription writes the chosen feed to the user PDS', function (
             'feed_url' => 'https://example.com/rss.xml',
             'title' => 'Example Blog',
             'site_url' => 'https://example.com',
-            'source_type' => 'rss',
         ]],
     ])->assertRedirect();
 });
@@ -232,7 +228,6 @@ test('storing rejects a feed_url the user is already subscribed to', function ()
             'feed_url' => 'https://example.com/rss.xml',
             'title' => 'Example Blog',
             'site_url' => 'https://example.com',
-            'source_type' => 'rss',
         ]],
     ])
         ->assertRedirect(route('consume'))
@@ -257,13 +252,11 @@ test('storing creates multiple subscriptions in one request', function () {
                 'feed_url' => 'https://example.com/rss.xml',
                 'title' => 'Main',
                 'site_url' => 'https://example.com',
-                'source_type' => 'rss',
             ],
             [
                 'feed_url' => 'https://example.com/comments.atom',
                 'title' => 'Comments',
                 'site_url' => 'https://example.com',
-                'source_type' => 'rss',
             ],
         ],
     ])->assertRedirect()
@@ -288,31 +281,16 @@ test('storing succeeds the rest when one createRecord fails', function () {
                 'feed_url' => 'https://example.com/rss.xml',
                 'title' => 'Main',
                 'site_url' => 'https://example.com',
-                'source_type' => 'rss',
             ],
             [
                 'feed_url' => 'https://example.com/comments.atom',
                 'title' => 'Comments',
                 'site_url' => 'https://example.com',
-                'source_type' => 'rss',
             ],
         ],
     ])->assertRedirect()
         ->assertSessionHas('inertia.flash_data.toast.message', fn (string $msg) => str_contains($msg, 'Subscribed to Main')
             && str_contains($msg, 'Failed: Comments'));
-});
-
-test('storing a subscription validates the source type', function () {
-    $this->actingAs(freshenBluesky(User::factory()->create()));
-
-    $this->from(route('consume'))->post(route('subscriptions.store'), [
-        'subscriptions' => [[
-            'feed_url' => 'https://example.com/rss.xml',
-            'source_type' => 'newsletter',
-        ]],
-    ])
-        ->assertRedirect(route('consume'))
-        ->assertSessionHasErrors('subscriptions.0.source_type');
 });
 
 test('discover resolves YouTube channels to their videos.xml feed', function (string $fixture, string $url) {
@@ -332,7 +310,6 @@ test('discover resolves YouTube channels to their videos.xml feed', function (st
         ->assertOk()
         ->assertJsonCount(1, 'candidates')
         ->assertJsonPath('candidates.0.feed_url', 'https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ')
-        ->assertJsonPath('candidates.0.source_type', 'video')
         ->assertJsonPath('candidates.0.title', 'Marques Brownlee');
 })->with([
     'channel URL' => ['channel.html', 'https://www.youtube.com/channel/UCBJycsmduvYEL83R_U4JriQ'],

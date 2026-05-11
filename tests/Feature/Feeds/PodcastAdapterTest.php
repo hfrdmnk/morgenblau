@@ -1,6 +1,5 @@
 <?php
 
-use App\Enums\SourceType;
 use App\Exceptions\UnresolvableFeedException;
 use App\Services\Feeds\Adapters\PodcastAdapter;
 use Illuminate\Support\Facades\Http;
@@ -43,8 +42,7 @@ test('resolves an Apple Podcasts URL via iTunes lookup', function () {
 
     expect($candidates)->toHaveCount(1)
         ->and($candidates[0]->feedUrl)->toBe('https://example.com/podcast.rss')
-        ->and($candidates[0]->title)->toBe('Calm Mornings')
-        ->and($candidates[0]->sourceType)->toBe(SourceType::Podcast);
+        ->and($candidates[0]->title)->toBe('Calm Mornings');
 });
 
 test('throws when iTunes lookup omits feedUrl', function () {

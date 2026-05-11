@@ -322,7 +322,6 @@ class SubscriptionService
             'feedUrl' => $choice->feedUrl,
             'title' => $choice->title,
             'siteUrl' => $choice->siteUrl,
-            'sourceType' => $choice->sourceType->value,
             'createdAt' => Date::now()->utc()->format('Y-m-d\\TH:i:s.u\\Z'),
         ], fn ($value): bool => $value !== null);
     }

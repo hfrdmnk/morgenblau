@@ -26,13 +26,11 @@ import { isMacPlatform } from '@/lib/utils';
 type FeedCandidate = App.Data.Feeds.ResolvedFeedData;
 type ExistingSubscription = App.Data.Subscriptions.ExistingSubscriptionData;
 type DiscoverResult = App.Data.Subscriptions.DiscoverResultData;
-type SourceType = App.Enums.SourceType;
 
 type SubscriptionItem = {
     feed_url: string;
     title: string;
     site_url: string;
-    source_type: SourceType;
 };
 
 type FormShape = {
@@ -51,7 +49,6 @@ function toItem(candidate: FeedCandidate): SubscriptionItem {
         feed_url: candidate.feed_url,
         title: candidate.title ?? '',
         site_url: candidate.site_url ?? '',
-        source_type: candidate.source_type,
     };
 }
 
@@ -231,7 +228,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
             Object.fromEntries(
                 data.subscriptions.map((item) => [
                     item.feed_url,
-                    { title: item.title, source_type: item.source_type },
+                    { title: item.title },
                 ]),
             ),
         [data.subscriptions],
@@ -271,20 +268,6 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                 ...current,
                 subscriptions: current.subscriptions.map((item) =>
                     item.feed_url === feedUrl ? { ...item, title } : item,
-                ),
-            }));
-        },
-        [setData],
-    );
-
-    const handleSourceTypeChange = useCallback(
-        (feedUrl: string, type: SourceType) => {
-            setData((current) => ({
-                ...current,
-                subscriptions: current.subscriptions.map((item) =>
-                    item.feed_url === feedUrl
-                        ? { ...item, source_type: type }
-                        : item,
                 ),
             }));
         },
@@ -411,7 +394,6 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                                     selected={selectedMap}
                                     onToggle={toggleCandidate}
                                     onTitleChange={handleTitleChange}
-                                    onSourceTypeChange={handleSourceTypeChange}
                                     firstCheckboxRef={firstCheckboxRef}
                                     firstTitleInputRef={firstTitleInputRef}
                                 />
@@ -427,9 +409,6 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                                 ],
                                 errors[
                                     `subscriptions.${index}.title` as keyof typeof errors
-                                ],
-                                errors[
-                                    `subscriptions.${index}.source_type` as keyof typeof errors
                                 ],
                             ].filter(Boolean) as string[];
 

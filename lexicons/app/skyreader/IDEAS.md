@@ -8,14 +8,16 @@ The lexicon currently describes `sourceType` as `'rss', 'atproto.shares', 'atpro
 
 ### Today (interim)
 
-The Morgenblau client writes `sourceType` as one of:
+Morgenblau **no longer writes `sourceType`** to subscription records. Per-feed type was decoupled from per-entry classification: the lexicon field served as a subscribe-time hint, but Morgenblau drives all UI from per-entry `app.skyreader.feed.entry.contentType`, set automatically by the fetcher (`ContentTypeClassifier`). Omitting `sourceType` is backwards-compatible with the lexicon (`"Omitted means RSS"`).
+
+Earlier Morgenblau builds wrote one of:
 
 - `rss` — default; generic blog/article RSS
 - `video` — YouTube etc.
 - `podcast` — audio feeds
 - `microblog` — Mastodon / micropost-style streams
 
-These values are written as plain strings against the current schema (`type: "string"`, no enum), so they're already valid; the description is just stale.
+Existing records in the wild may still carry these values. New writes omit the field entirely.
 
 ### Tomorrow (proposed)
 

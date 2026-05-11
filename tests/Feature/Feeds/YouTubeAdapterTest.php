@@ -1,6 +1,5 @@
 <?php
 
-use App\Enums\SourceType;
 use App\Exceptions\UnresolvableFeedException;
 use App\Services\Feeds\Adapters\YouTubeAdapter;
 use App\Services\Http\DnsResolver;
@@ -38,8 +37,7 @@ test('extracts channel ID from a /channel/ URL via the response body', function 
 
     expect($candidates)->toHaveCount(1)
         ->and($candidates[0]->feedUrl)
-        ->toBe('https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ')
-        ->and($candidates[0]->sourceType)->toBe(SourceType::Video);
+        ->toBe('https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ');
 });
 
 test('throws when no channel ID can be resolved', function () {
