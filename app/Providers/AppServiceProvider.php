@@ -6,6 +6,7 @@ use App\Services\Feeds\Adapters\PodcastAdapter;
 use App\Services\Feeds\Adapters\WebsiteAdapter;
 use App\Services\Feeds\Adapters\YouTubeAdapter;
 use App\Services\Feeds\ConditionalFeedClient;
+use App\Services\Feeds\FeedIo\Specification;
 use App\Services\Feeds\FeedResolver;
 use App\Services\Feeds\OutboundFeedClient;
 use App\Services\Feeds\Processors\ContentTypeClassifier;
@@ -39,7 +40,11 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->bind(ConditionalFeedClient::class, OutboundFeedClient::class);
 
-        $this->app->bind(FeedIo::class, fn ($app) => new FeedIo($app->make(OutboundFeedClient::class)));
+        $this->app->bind(FeedIo::class, fn ($app) => new FeedIo(
+            client: $app->make(OutboundFeedClient::class),
+            logger: $app->make('log'),
+            specification: new Specification($app->make('log')),
+        ));
 
         $this->app->singleton(FeedResolver::class, fn ($app) => new FeedResolver([
             $app->make(YouTubeAdapter::class),

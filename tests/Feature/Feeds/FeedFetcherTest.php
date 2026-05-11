@@ -3,6 +3,7 @@
 use App\Data\Feeds\FetchedEntryData;
 use App\Exceptions\FeedFetchException;
 use App\Services\Feeds\FeedFetcher;
+use App\Services\Feeds\FeedIo\Specification as PublishedFirstSpecification;
 use App\Services\Feeds\Results\Failed;
 use App\Services\Feeds\Results\Gone;
 use App\Services\Feeds\Results\Modified;
@@ -10,11 +11,17 @@ use App\Services\Feeds\Results\NotModified;
 use App\Services\Feeds\Results\RateLimited;
 use Carbon\CarbonImmutable;
 use FeedIo\FeedIo;
+use Psr\Log\NullLogger;
 use Tests\Doubles\StubFeedClient;
 
 function feedFetcherWith(StubFeedClient $client): FeedFetcher
 {
-    return new FeedFetcher(new FeedIo($client), $client);
+    $logger = new NullLogger;
+
+    return new FeedFetcher(
+        new FeedIo(client: $client, logger: $logger, specification: new PublishedFirstSpecification($logger)),
+        $client,
+    );
 }
 
 function feedFetcherForUrls(array $bodies): FeedFetcher
@@ -179,6 +186,21 @@ test('it parses an Atom 1.0 feed', function () {
     expect($result->entries[0]->title)->toBe('Atom Entry One');
     expect($result->entries[0]->link)->toBe('https://example.com/posts/atom-one');
     expect($result->entries[0]->content)->toContain('Body of the first atom entry');
+});
+
+test('it prefers Atom <published> over <updated> for publishedAt', function () {
+    // YouTube ships both: <published> is the real upload date; <updated>
+    // bumps on view-count refreshes. feed-io's default standard reads
+    // whichever element appears last (and YouTube puts <updated> last),
+    // which gave us the same "6 days ago" for every recent video.
+    $body = (string) file_get_contents(__DIR__.'/../../Fixtures/feeds/youtube.atom.xml');
+    $fetcher = feedFetcherForUrls(['https://example.com/yt.atom' => $body]);
+
+    $result = $fetcher->fetch('https://example.com/yt.atom');
+
+    expect($result)->toBeInstanceOf(Modified::class);
+    expect($result->entries[0]->publishedAt?->toIso8601String())->toBe('2026-04-15T09:30:00+00:00');
+    expect($result->entries[1]->publishedAt?->toIso8601String())->toBe('2026-04-16T10:00:00+00:00');
 });
 
 test('it parses an RSS feed with content:encoded HTML', function () {
