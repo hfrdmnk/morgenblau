@@ -17,6 +17,8 @@ return new class extends Migration
             $table->text('summary')->nullable();
             $table->longText('content')->nullable();
             $table->string('author')->nullable();
+            $table->string('content_type')->default('blogpost');
+            $table->json('metadata')->nullable();
             $table->timestamp('published_at')->nullable();
             $table->timestamp('first_seen_at');
             $table->timestamp('updated_at');
@@ -24,6 +26,7 @@ return new class extends Migration
             $table->unique(['feed_id', 'guid']);
             $table->index(['feed_id', 'published_at']);
             $table->index(['published_at']);
+            $table->index('content_type');
         });
     }
 
