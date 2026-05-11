@@ -169,9 +169,9 @@ class SubscriptionService
     /**
      * Materialise local feeds + subscriptions rows from a PDS subscription set.
      * Returns the IDs of feeds that need fetching (firstOrCreate'd a new row,
-     * or existing row that has never been fetched/dispatched). Dispatch happens
-     * outside this transaction so sync fetches don't hold a DB transaction
-     * open across HTTP calls.
+     * or existing row that has never been fetched/dispatched). The dispatched
+     * stamp is set inside dispatchFetches so a PHP timeout mid-loop doesn't
+     * leave un-fetched feeds stuck behind the in-flight window.
      *
      * @param  list<ExistingSubscriptionData>  $pdsList
      * @return list<int>
@@ -196,7 +196,6 @@ class SubscriptionService
                 );
 
                 if ($feed->last_fetched_at === null && $feed->last_dispatched_at === null) {
-                    $feed->markDispatched();
                     $newFeedIds[] = $feed->id;
                 }
             }
@@ -224,18 +223,24 @@ class SubscriptionService
         );
 
         if ($feed->last_fetched_at === null && $feed->last_dispatched_at === null) {
-            $feed->markDispatched();
             $this->dispatchFetches([$feed->id], sync: false);
         }
     }
 
     /**
+     * Queue (or sync-run) RefreshFeedJob for each feed id. The dispatched
+     * stamp is set per-iteration so a PHP timeout mid-loop leaves later
+     * feeds with last_dispatched_at = null, free to be picked up by the
+     * next manual refresh instead of waiting out the in-flight window.
+     *
      * @param  list<int>  $feedIds
      */
     private function dispatchFetches(array $feedIds, bool $sync): void
     {
         foreach ($feedIds as $id) {
             try {
+                Feed::query()->whereKey($id)->update(['last_dispatched_at' => Date::now()]);
+
                 if ($sync) {
                     RefreshFeedJob::dispatchSync($id);
                 } else {
