@@ -44,17 +44,14 @@ class SubscriptionService
     /**
      * Pull this user's subscription records from PDS and reconcile the local
      * mirror. Cache-free — call this from explicit "make things current"
-     * affordances (login, manual refresh).
-     *
-     * Pass $fetchSync = true to block until newly-mirrored feeds have been
-     * fetched and entries upserted (used at login so /consume has entries on
-     * first render). Default async dispatch keeps the manual refresh and
-     * discover/store paths snappy.
+     * affordances (login, manual refresh). Newly-mirrored feeds are queued
+     * for async fetch; the caller is responsible for any user-facing
+     * progress affordance.
      */
-    public function reconcile(User $user, bool $fetchSync = false): void
+    public function reconcile(User $user): void
     {
         $newFeedIds = $this->reconcileLocalMirror($user, $this->fetchSubscriptionsFromPds($user));
-        $this->dispatchFetches($newFeedIds, sync: $fetchSync);
+        $this->dispatchFetches($newFeedIds);
         Cache::forget($this->listCacheKey($user));
     }
 
@@ -73,7 +70,7 @@ class SubscriptionService
             function () use ($user): array {
                 $pdsList = $this->fetchSubscriptionsFromPds($user);
                 $newFeedIds = $this->reconcileLocalMirror($user, $pdsList);
-                $this->dispatchFetches($newFeedIds, sync: false);
+                $this->dispatchFetches($newFeedIds);
 
                 return array_map(fn (ExistingSubscriptionData $item) => [
                     'feedUrl' => $item->feedUrl,
@@ -223,33 +220,27 @@ class SubscriptionService
         );
 
         if ($feed->last_fetched_at === null && $feed->last_dispatched_at === null) {
-            $this->dispatchFetches([$feed->id], sync: false);
+            $this->dispatchFetches([$feed->id]);
         }
     }
 
     /**
-     * Queue (or sync-run) RefreshFeedJob for each feed id. The dispatched
-     * stamp is set per-iteration so a PHP timeout mid-loop leaves later
-     * feeds with last_dispatched_at = null, free to be picked up by the
-     * next manual refresh instead of waiting out the in-flight window.
+     * Queue RefreshFeedJob for each feed id. The dispatched stamp is set
+     * per-iteration so a PHP timeout mid-loop leaves later feeds with
+     * last_dispatched_at = null, free to be picked up by the next manual
+     * refresh instead of waiting out the in-flight window.
      *
      * @param  list<int>  $feedIds
      */
-    private function dispatchFetches(array $feedIds, bool $sync): void
+    private function dispatchFetches(array $feedIds): void
     {
         foreach ($feedIds as $id) {
             try {
                 Feed::query()->whereKey($id)->update(['last_dispatched_at' => Date::now()]);
-
-                if ($sync) {
-                    RefreshFeedJob::dispatchSync($id);
-                } else {
-                    RefreshFeedJob::dispatch($id);
-                }
+                RefreshFeedJob::dispatch($id);
             } catch (Throwable $e) {
                 Log::warning('refresh feed job failed', [
                     'feed_id' => $id,
-                    'sync' => $sync,
                     'error' => $e->getMessage(),
                 ]);
             }

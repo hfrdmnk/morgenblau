@@ -35,7 +35,9 @@ test('callback reconciles the local subscription mirror from the user PDS', func
     expect($sub->feed_id)->toBe($feed->id)
         ->and($sub->pds_title)->toBe('Example');
 
-    Bus::assertDispatchedSync(RefreshFeedJob::class, fn (RefreshFeedJob $job) => $job->feedId === $feed->id);
+    Bus::assertDispatched(RefreshFeedJob::class, fn (RefreshFeedJob $job) => $job->feedId === $feed->id);
+    Bus::assertNotDispatchedSync(RefreshFeedJob::class);
+    expect(session('fetch_action_at'))->toBeString();
 });
 
 test('callback still completes when the PDS reconcile fails', function () {

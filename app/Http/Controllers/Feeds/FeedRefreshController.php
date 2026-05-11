@@ -32,6 +32,8 @@ class FeedRefreshController extends Controller
 
         $this->scheduler->dispatchForUser($user);
 
+        $request->session()->put('fetch_action_at', now()->toIso8601String());
+
         return back();
     }
 }

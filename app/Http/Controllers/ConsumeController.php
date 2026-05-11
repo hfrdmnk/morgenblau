@@ -14,10 +14,12 @@ class ConsumeController extends Controller
     {
         $user = $request->user();
         $hasSubscriptions = Subscription::query()->where('user_id', $user->did)->exists();
+        $pollingSince = $request->session()->pull('fetch_action_at');
 
         return Inertia::render('consume', [
-            'entries' => fn () => $entries->digestEntries($user),
+            'entries' => Inertia::defer(fn () => $entries->digestEntries($user)),
             'has_subscriptions' => $hasSubscriptions,
+            'polling_since' => is_string($pollingSince) ? $pollingSince : null,
         ]);
     }
 }

@@ -60,6 +60,7 @@ test('dispatches RefreshFeedJob for the user feeds and stamps last_dispatched_at
 
     expect($never->fresh()->last_dispatched_at?->equalTo(now()))->toBeTrue();
     expect($stale->fresh()->last_dispatched_at?->equalTo(now()))->toBeTrue();
+    expect(session('fetch_action_at'))->toBeString();
 });
 
 test('skips feeds currently in flight', function () {

@@ -214,6 +214,8 @@ test('storing a subscription writes the chosen feed to the user PDS', function (
             'site_url' => 'https://example.com',
         ]],
     ])->assertRedirect();
+
+    expect(session('fetch_action_at'))->toBeString();
 });
 
 test('storing rejects a feed_url the user is already subscribed to', function () {

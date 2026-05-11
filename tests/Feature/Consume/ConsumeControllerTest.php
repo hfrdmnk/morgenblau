@@ -44,9 +44,10 @@ test('renders the user\'s entries newest-first across feeds', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('consume')
             ->where('has_subscriptions', true)
-            ->has('entries', 2)
-            ->where('entries.0.entry_title', 'Newer B')
-            ->where('entries.1.entry_title', 'Older A'));
+            ->loadDeferredProps(fn (Assert $loaded) => $loaded
+                ->has('entries', 2)
+                ->where('entries.0.entry_title', 'Newer B')
+                ->where('entries.1.entry_title', 'Older A')));
 });
 
 test('caps entries at 200', function () {
@@ -61,7 +62,7 @@ test('caps entries at 200', function () {
     $this->actingAs(freshenBluesky($user));
 
     $this->get(route('consume'))
-        ->assertInertia(fn (Assert $page) => $page->has('entries', 200));
+        ->assertInertia(fn (Assert $page) => $page->loadDeferredProps(fn (Assert $loaded) => $loaded->has('entries', 200)));
 });
 
 test('orders by COALESCE(published_at, first_seen_at)', function () {
@@ -75,9 +76,9 @@ test('orders by COALESCE(published_at, first_seen_at)', function () {
     $this->actingAs(freshenBluesky($user));
 
     $this->get(route('consume'))
-        ->assertInertia(fn (Assert $page) => $page
+        ->assertInertia(fn (Assert $page) => $page->loadDeferredProps(fn (Assert $loaded) => $loaded
             ->where('entries.0.entry_title', 'Falls back')
-            ->where('entries.1.entry_title', 'Has published_at'));
+            ->where('entries.1.entry_title', 'Has published_at')));
 });
 
 test('uses the resolved display title (custom_title beats pds_title beats feed.title beats feed_url)', function () {
@@ -101,14 +102,18 @@ test('uses the resolved display title (custom_title beats pds_title beats feed.t
 
     $this->actingAs(freshenBluesky($user));
 
-    $response = $this->get(route('consume'));
-    $entries = $response->viewData('page')['props']['entries'];
-    $byTitle = collect($entries)->keyBy('entry_title');
+    $this->get(route('consume'))
+        ->assertInertia(fn (Assert $page) => $page->loadDeferredProps(fn (Assert $loaded) => $loaded
+            ->where('entries', function ($entries) {
+                $byTitle = collect($entries)->keyBy('entry_title');
 
-    expect($byTitle['Custom row']['display_title'])->toBe('My nickname');
-    expect($byTitle['Pds row']['display_title'])->toBe('PDS title');
-    expect($byTitle['Feed-title row']['display_title'])->toBe('Feed title');
-    expect($byTitle['Url row']['display_title'])->toBe('https://url.example/rss');
+                expect($byTitle['Custom row']['display_title'])->toBe('My nickname');
+                expect($byTitle['Pds row']['display_title'])->toBe('PDS title');
+                expect($byTitle['Feed-title row']['display_title'])->toBe('Feed title');
+                expect($byTitle['Url row']['display_title'])->toBe('https://url.example/rss');
+
+                return true;
+            })));
 });
 
 test('serves the persisted favicon_url when discovery has populated it', function () {
@@ -124,8 +129,8 @@ test('serves the persisted favicon_url when discovery has populated it', functio
     $this->actingAs(freshenBluesky($user));
 
     $this->get(route('consume'))
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('entries.0.favicon_url', 'https://blog.example.com/static/icon.svg'));
+        ->assertInertia(fn (Assert $page) => $page->loadDeferredProps(fn (Assert $loaded) => $loaded
+            ->where('entries.0.favicon_url', 'https://blog.example.com/static/icon.svg')));
 });
 
 test('falls back to /favicon.ico when favicon_url has not been discovered yet', function () {
@@ -137,8 +142,8 @@ test('falls back to /favicon.ico when favicon_url has not been discovered yet', 
     $this->actingAs(freshenBluesky($user));
 
     $this->get(route('consume'))
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('entries.0.favicon_url', 'https://blog.example.com/favicon.ico'));
+        ->assertInertia(fn (Assert $page) => $page->loadDeferredProps(fn (Assert $loaded) => $loaded
+            ->where('entries.0.favicon_url', 'https://blog.example.com/favicon.ico')));
 });
 
 test('returns null favicon_url when feed_url cannot be parsed and nothing is persisted', function () {
@@ -150,8 +155,29 @@ test('returns null favicon_url when feed_url cannot be parsed and nothing is per
     $this->actingAs(freshenBluesky($user));
 
     $this->get(route('consume'))
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('entries.0.favicon_url', null));
+        ->assertInertia(fn (Assert $page) => $page->loadDeferredProps(fn (Assert $loaded) => $loaded
+            ->where('entries.0.favicon_url', null)));
+});
+
+test('surfaces session.fetch_action_at as polling_since and clears the session field', function () {
+    $user = User::factory()->create();
+    $this->actingAs(freshenBluesky($user));
+
+    $stamp = '2026-05-11T08:00:00+00:00';
+    session()->put('fetch_action_at', $stamp);
+
+    $this->get(route('consume'))
+        ->assertInertia(fn (Assert $page) => $page->where('polling_since', $stamp));
+
+    expect(session('fetch_action_at'))->toBeNull();
+});
+
+test('polling_since is null when no fetch action stamped this session', function () {
+    $user = User::factory()->create();
+    $this->actingAs(freshenBluesky($user));
+
+    $this->get(route('consume'))
+        ->assertInertia(fn (Assert $page) => $page->where('polling_since', null));
 });
 
 test('does not render entries from other users\' subscriptions', function () {
@@ -167,5 +193,5 @@ test('does not render entries from other users\' subscriptions', function () {
     $this->get(route('consume'))
         ->assertInertia(fn (Assert $page) => $page
             ->where('has_subscriptions', false)
-            ->has('entries', 0));
+            ->loadDeferredProps(fn (Assert $loaded) => $loaded->has('entries', 0)));
 });

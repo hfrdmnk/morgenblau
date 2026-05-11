@@ -7,12 +7,14 @@ import {
     Video01Icon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { Form, Head } from '@inertiajs/react';
-import { useState } from 'react';
+import { Form, Head, router } from '@inertiajs/react';
+import { useCallback, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 
+import { DigestPill } from '@/components/digest-pill';
 import TextLink from '@/components/text-link';
 import { Button } from '@/components/ui/button';
+import { useDigestStatus } from '@/hooks/use-digest-status';
 import { LevelContext } from '@/lib/level-context';
 import { cn } from '@/lib/utils';
 import { discover } from '@/routes';
@@ -22,8 +24,9 @@ type FeedEntry = App.Data.Feeds.FeedEntryViewData;
 type ContentType = App.Enums.ContentType;
 
 type ConsumeProps = {
-    entries: FeedEntry[];
+    entries?: FeedEntry[];
     has_subscriptions: boolean;
+    polling_since: string | null;
 };
 
 const TYPE_ICONS: Record<ContentType, typeof NewsIcon> = {
@@ -33,51 +36,155 @@ const TYPE_ICONS: Record<ContentType, typeof NewsIcon> = {
     podcast: PodcastIcon,
 };
 
-export default function Consume({ entries, has_subscriptions }: ConsumeProps) {
-    const isEmpty = entries.length === 0;
+export default function Consume({
+    entries,
+    has_subscriptions,
+    polling_since,
+}: ConsumeProps) {
+    const isLoading = entries === undefined;
+    const isEmpty = entries !== undefined && entries.length === 0;
+    const [dismissedSince, setDismissedSince] = useState<string | null>(null);
+    const [highlightSince, setHighlightSince] = useState<string | null>(null);
+
+    const pollingSince =
+        dismissedSince === polling_since ? null : polling_since;
+
+    const status = useDigestStatus(pollingSince);
+
+    const isPending = status.phase === 'fetching' || status.phase === 'ready';
+
+    const handleReady = useCallback(() => {
+        if (!pollingSince) {
+            return;
+        }
+
+        const since = pollingSince;
+
+        router.reload({
+            only: ['entries'],
+            onSuccess: () => {
+                setHighlightSince(since);
+                setDismissedSince(since);
+            },
+        });
+    }, [pollingSince]);
+
+    const handleCaughtUpFade = useCallback(() => {
+        setDismissedSince(pollingSince);
+    }, [pollingSince]);
 
     return (
         <>
             <Head title="Consume" />
+            <DigestPill
+                state={status}
+                onReady={handleReady}
+                onCaughtUpFade={handleCaughtUpFade}
+            />
             <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6">
                 {has_subscriptions ? (
                     <div className="mb-6 flex items-center justify-end">
-                        <RefreshButton />
+                        <RefreshButton externallyPending={isPending} />
                     </div>
                 ) : null}
-                {isEmpty ? (
+                {isLoading ? (
+                    <DigestSkeleton />
+                ) : isEmpty ? (
                     <EmptyState hasSubscriptions={has_subscriptions} />
                 ) : (
-                    <Newspaper entries={entries} />
+                    <Newspaper
+                        entries={entries}
+                        highlightSince={highlightSince}
+                    />
                 )}
             </div>
         </>
     );
 }
 
-function Newspaper({ entries }: { entries: FeedEntry[] }) {
+function Newspaper({
+    entries,
+    highlightSince,
+}: {
+    entries: FeedEntry[];
+    highlightSince: string | null;
+}) {
     return (
         <LevelContext.Provider value={2}>
             <article className="overflow-hidden rounded-3xl border border-gray-100 bg-card dark:border-gray-700">
                 <ul className="flex flex-col">
-                    {entries.map((entry, index) => (
-                        <li key={entry.id}>
-                            {index > 0 ? (
-                                <div
-                                    aria-hidden
-                                    className="mx-6 border-t border-gray-100 dark:border-gray-700"
-                                />
-                            ) : null}
-                            {entry.content_type === 'microblog' ? (
-                                <InlineRow entry={entry} />
-                            ) : (
-                                <StandardRow entry={entry} />
-                            )}
-                        </li>
-                    ))}
+                    {entries.map((entry, index) => {
+                        const isFresh =
+                            highlightSince !== null &&
+                            entry.first_seen_at > highlightSince;
+
+                        return (
+                            <li key={entry.id}>
+                                {index > 0 ? (
+                                    <div
+                                        aria-hidden
+                                        className="mx-6 border-t border-gray-100 dark:border-gray-700"
+                                    />
+                                ) : null}
+                                <FreshHighlight active={isFresh}>
+                                    {entry.content_type === 'microblog' ? (
+                                        <InlineRow entry={entry} />
+                                    ) : (
+                                        <StandardRow entry={entry} />
+                                    )}
+                                </FreshHighlight>
+                            </li>
+                        );
+                    })}
                 </ul>
             </article>
         </LevelContext.Provider>
+    );
+}
+
+function FreshHighlight({
+    active,
+    children,
+}: {
+    active: boolean;
+    children: React.ReactNode;
+}) {
+    return (
+        <div className={cn(active && 'animate-fresh-highlight')}>
+            {children}
+        </div>
+    );
+}
+
+function DigestSkeleton() {
+    return (
+        <article
+            aria-busy
+            aria-label="Loading digest"
+            className="animate-digest-skeleton overflow-hidden rounded-3xl border border-gray-100 bg-card dark:border-gray-700"
+        >
+            <ul className="flex flex-col">
+                {Array.from({ length: 6 }).map((_, index) => (
+                    <li key={index}>
+                        {index > 0 ? (
+                            <div
+                                aria-hidden
+                                className="mx-6 border-t border-gray-100 dark:border-gray-700"
+                            />
+                        ) : null}
+                        <div className="flex flex-col gap-2 px-6 py-5">
+                            <div className="flex items-center gap-2">
+                                <div className="size-4 rounded-sm bg-gray-100 dark:bg-gray-700" />
+                                <div className="h-3 w-32 rounded-sm bg-gray-100 dark:bg-gray-700" />
+                            </div>
+                            <div className="h-5 w-3/4 rounded-sm bg-gray-100 dark:bg-gray-700" />
+                            <div className="h-3 w-11/12 rounded-sm bg-gray-100 dark:bg-gray-700" />
+                            <div className="h-3 w-2/3 rounded-sm bg-gray-100 dark:bg-gray-700" />
+                        </div>
+                    </li>
+                ))}
+            </ul>
+        </article>
     );
 }
 
@@ -339,7 +446,7 @@ function formatRelative(iso: string): string {
     return `${d} day${d === 1 ? '' : 's'} ago`;
 }
 
-function RefreshButton() {
+function RefreshButton({ externallyPending }: { externallyPending: boolean }) {
     return (
         <Form {...refresh.form()} options={{ preserveScroll: true }}>
             {({ processing }) => (
@@ -347,7 +454,7 @@ function RefreshButton() {
                     type="submit"
                     variant="secondary"
                     size="sm"
-                    disabled={processing}
+                    disabled={processing || externallyPending}
                 >
                     <HugeiconsIcon icon={RefreshIcon} />
                     Refresh now

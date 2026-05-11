@@ -84,6 +84,10 @@ class SubscriptionController extends Controller
             'message' => $this->buildFlashMessage($succeededTitles, $failedTitles),
         ]));
 
+        if ($succeeded !== []) {
+            $request->session()->put('fetch_action_at', now()->toIso8601String());
+        }
+
         return back();
     }
 

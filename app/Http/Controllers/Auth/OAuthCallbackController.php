@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\Feeds\FeedRefreshScheduler;
 use App\Services\Subscriptions\SubscriptionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,7 +16,10 @@ use Throwable;
 
 class OAuthCallbackController extends Controller
 {
-    public function __construct(private readonly SubscriptionService $subscriptions) {}
+    public function __construct(
+        private readonly SubscriptionService $subscriptions,
+        private readonly FeedRefreshScheduler $scheduler,
+    ) {}
 
     public function __invoke(Request $request): RedirectResponse
     {
@@ -50,13 +54,17 @@ class OAuthCallbackController extends Controller
         Auth::login($user, remember: true);
 
         try {
-            $this->subscriptions->reconcile($user, fetchSync: true);
+            $this->subscriptions->reconcile($user);
         } catch (Throwable $e) {
             Log::warning('subscriptions reconcile on login failed', [
                 'did' => $user->did,
                 'error' => $e->getMessage(),
             ]);
         }
+
+        $this->scheduler->dispatchForUser($user);
+
+        $request->session()->put('fetch_action_at', now()->toIso8601String());
 
         return redirect()->intended(route('consume'));
     }

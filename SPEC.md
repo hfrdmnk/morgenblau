@@ -162,13 +162,16 @@ Users can mark feeds as **primary sources**. These receive prominent placement i
 
 ### Refresh Cadence
 
-Refresh has **exactly three triggers**:
+Refresh has **exactly four triggers**:
 
 - **Auto-refresh** every 30 minutes for all active subscriptions.
 - **Manual refresh** is available on the digest view.
 - **On subscription add**, the new subscription is fetched immediately (only that feed, not the whole set).
+- **On login**, all of the user's subscriptions are refreshed (behaves like manual refresh), subject to a 5-minute in-flight guard so repeated logins don't thrash upstream feeds.
 
-Notably absent: refresh on digest visit. The window metaphor is "step away, come back, content has accumulated on its own clock" — opening the digest does not trigger fetches.
+Notably absent: refresh on digest visit. The window metaphor is "step away, come back, content has accumulated on its own clock" — opening the digest (without authenticating) does not trigger fetches.
+
+User-initiated refreshes (manual, add, login) dispatch asynchronously — controllers return immediately and a transient pill on `/consume` surfaces fetch progress. The pill is strictly action-scoped: it never appears for steady-state auto-refresh, never quantifies pending entries with a count, and never persists between sessions. This preserves the "no unread counts" anti-feature while still giving the user feedback that their own action is in flight.
 
 Architecture must permit evolving toward finer real-time refresh per feed (HTTP caching headers, per-feed `next_check_at`, exponential backoff on errors). The 30-minute default is a product choice, not an architectural ceiling.
 

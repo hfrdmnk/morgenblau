@@ -31,7 +31,7 @@ test('user with no local subscriptions sees has_subscriptions=false without cont
     $this->get(route('consume'))
         ->assertInertia(fn (Assert $page) => $page
             ->where('has_subscriptions', false)
-            ->has('entries', 0));
+            ->loadDeferredProps(fn (Assert $loaded) => $loaded->has('entries', 0)));
 });
 
 test('user with a local subscription but zero entries sees has_subscriptions=true and empty entries', function () {
@@ -48,5 +48,5 @@ test('user with a local subscription but zero entries sees has_subscriptions=tru
     $this->get(route('consume'))
         ->assertInertia(fn (Assert $page) => $page
             ->where('has_subscriptions', true)
-            ->has('entries', 0));
+            ->loadDeferredProps(fn (Assert $loaded) => $loaded->has('entries', 0)));
 });
