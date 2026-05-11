@@ -159,27 +159,6 @@ test('returns null favicon_url when feed_url cannot be parsed and nothing is per
             ->where('entries.0.favicon_url', null)));
 });
 
-test('surfaces session.fetch_action_at as polling_since and clears the session field', function () {
-    $user = User::factory()->create();
-    $this->actingAs(freshenBluesky($user));
-
-    $stamp = '2026-05-11T08:00:00+00:00';
-    session()->put('fetch_action_at', $stamp);
-
-    $this->get(route('consume'))
-        ->assertInertia(fn (Assert $page) => $page->where('polling_since', $stamp));
-
-    expect(session('fetch_action_at'))->toBeNull();
-});
-
-test('polling_since is null when no fetch action stamped this session', function () {
-    $user = User::factory()->create();
-    $this->actingAs(freshenBluesky($user));
-
-    $this->get(route('consume'))
-        ->assertInertia(fn (Assert $page) => $page->where('polling_since', null));
-});
-
 test('does not render entries from other users\' subscriptions', function () {
     $me = User::factory()->create();
     $other = User::factory()->create();

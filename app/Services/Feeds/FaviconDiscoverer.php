@@ -2,6 +2,7 @@
 
 namespace App\Services\Feeds;
 
+use App\Contracts\Feeds\FaviconDiscovererInterface;
 use App\Models\Feed;
 use Carbon\CarbonImmutable;
 use FeedIo\FaviconIo\FaviconDiscovery;
@@ -11,12 +12,11 @@ use Throwable;
 
 /**
  * Resolves and persists a feed's favicon URL via php-feed-io/favicon-io.
- * Discovery uses OutboundPsr18Client, so SSRF/redirect/body-cap guards apply.
  *
  * Re-checks every RECHECK_DAYS — favicons rarely change, and we don't want
  * to issue 1-3 extra HTTP calls per feed on every refresh tick.
  */
-class FaviconDiscoverer
+class FaviconDiscoverer implements FaviconDiscovererInterface
 {
     private const RECHECK_DAYS = 30;
 
@@ -38,19 +38,18 @@ class FaviconDiscoverer
 
         try {
             $url = $this->discovery->discover($base);
+
+            $feed->forceFill([
+                'favicon_url' => $url,
+                'favicon_checked_at' => Date::now(),
+            ])->save();
         } catch (Throwable $e) {
             $this->logger->info('favicon discovery failed', [
                 'feed_id' => $feed->id,
                 'base_url' => $base,
                 'error' => $e->getMessage(),
             ]);
-            $url = null;
         }
-
-        $feed->forceFill([
-            'favicon_url' => $url,
-            'favicon_checked_at' => Date::now(),
-        ])->save();
     }
 
     private function isStale(Feed $feed): bool

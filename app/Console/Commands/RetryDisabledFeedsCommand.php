@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Jobs\RefreshFeedJob;
 use App\Models\Feed;
+use App\Services\Feeds\FeedJobDispatcher;
 use Illuminate\Console\Command;
 
 class RetryDisabledFeedsCommand extends Command
@@ -12,7 +12,7 @@ class RetryDisabledFeedsCommand extends Command
 
     protected $description = 'Attempt a single fetch for each muted feed; silently re-enable on success.';
 
-    public function handle(): int
+    public function handle(FeedJobDispatcher $dispatcher): int
     {
         $count = 0;
 
@@ -20,9 +20,10 @@ class RetryDisabledFeedsCommand extends Command
             ->whereNotNull('disabled_at')
             ->whereHas('subscriptions')
             ->get()
-            ->each(function (Feed $feed) use (&$count) {
-                RefreshFeedJob::dispatch($feed->id);
-                $count++;
+            ->each(function (Feed $feed) use ($dispatcher, &$count) {
+                if ($dispatcher->dispatch($feed->id)) {
+                    $count++;
+                }
             });
 
         $this->info("Dispatched retry for {$count} muted feed(s).");

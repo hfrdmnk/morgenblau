@@ -203,6 +203,19 @@ test('it prefers Atom <published> over <updated> for publishedAt', function () {
     expect($result->entries[1]->publishedAt?->toIso8601String())->toBe('2026-04-16T10:00:00+00:00');
 });
 
+test('it falls back to <updated> when <published> is absent', function () {
+    // Vanilla Atom feeds may carry only <updated>. The PublishedFirst override
+    // should preserve the default behavior — fall through to <updated> when
+    // there's no <published> sibling.
+    $body = (string) file_get_contents(__DIR__.'/../../Fixtures/feeds/atom-updated-only.xml');
+    $fetcher = feedFetcherForUrls(['https://example.com/atom.xml' => $body]);
+
+    $result = $fetcher->fetch('https://example.com/atom.xml');
+
+    expect($result)->toBeInstanceOf(Modified::class);
+    expect($result->entries[0]->publishedAt?->toIso8601String())->toBe('2026-04-20T12:00:00+00:00');
+});
+
 test('it parses an RSS feed with content:encoded HTML', function () {
     $body = (string) file_get_contents(__DIR__.'/../../Fixtures/feeds/content-encoded.rss.xml');
     $fetcher = feedFetcherForUrls(['https://example.com/encoded.rss' => $body]);

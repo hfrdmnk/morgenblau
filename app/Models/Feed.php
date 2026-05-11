@@ -71,11 +71,6 @@ class Feed extends Model
         return $this->belongsToMany(User::class, 'subscriptions', 'feed_id', 'user_id');
     }
 
-    public function markDispatched(): void
-    {
-        $this->forceFill(['last_dispatched_at' => Date::now()])->save();
-    }
-
     public function markFetched(?string $etag, ?string $lastModified, int $intervalMinutes = self::REFRESH_INTERVAL_MINUTES): void
     {
         $now = Date::now();

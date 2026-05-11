@@ -21,6 +21,10 @@ class FeedRefreshController extends Controller
     {
         $user = $request->user();
 
+        // Capture before dispatch so the deferred-entries wait
+        // (last_dispatched_at >= since) holds for every feed this request stamps.
+        $actionAt = now()->toIso8601String();
+
         try {
             $this->subscriptions->reconcile($user);
         } catch (Throwable $e) {
@@ -32,7 +36,7 @@ class FeedRefreshController extends Controller
 
         $this->scheduler->dispatchForUser($user);
 
-        $request->session()->put('fetch_action_at', now()->toIso8601String());
+        $request->session()->put('fetch_action_at', $actionAt);
 
         return back();
     }

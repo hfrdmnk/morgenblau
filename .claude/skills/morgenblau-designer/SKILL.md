@@ -83,8 +83,6 @@ Morgenblau's palette is almost entirely monochrome, with two exceptions: one **b
 | `aurora-purple`   | podcast category                                                                        |
 | `sand-brown`      | **sunrise-horizon only** — gradient endpoints. Never text. Never surfaces.              |
 
-**Harmony to preserve:** `atmosphere-blue`, `leaf-green`, and `sunset-orange` share lightness and chroma (only the hue rotates). This is intentional — they sit side by side in a digest without one dominating. `coral-red` and `aurora-purple` are slightly punchier so video and podcast, which are more attention-seeking formats, earn a bit more visual pull. Do not break this harmony when introducing new colors; extend the same chroma + lightness pattern if a future category arrives.
-
 **Rules of use:**
 
 - `atmosphere-blue` is for intent: the primary action, a focus ring, a moment of discovery. Not for decoration, not for chrome, not for backgrounds.

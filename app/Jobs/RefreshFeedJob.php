@@ -2,8 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Contracts\Feeds\FaviconDiscovererInterface;
 use App\Models\Feed;
-use App\Services\Feeds\FaviconDiscoverer;
 use App\Services\Feeds\FeedEntryUpserter;
 use App\Services\Feeds\FeedFetcher;
 use App\Services\Feeds\Processors\ProcessorPipeline;
@@ -32,7 +32,7 @@ class RefreshFeedJob implements ShouldBeUnique, ShouldQueue
         return (string) $this->feedId;
     }
 
-    public function handle(FeedFetcher $fetcher, FeedEntryUpserter $upserter, ProcessorPipeline $pipeline, FaviconDiscoverer $favicons): void
+    public function handle(FeedFetcher $fetcher, FeedEntryUpserter $upserter, ProcessorPipeline $pipeline, FaviconDiscovererInterface $favicons): void
     {
         $feed = Feed::query()->find($this->feedId);
 
@@ -51,12 +51,7 @@ class RefreshFeedJob implements ShouldBeUnique, ShouldQueue
         };
 
         if ($result instanceof Modified || $result instanceof NotModified) {
-            try {
-                $favicons->discover($feed->refresh());
-            } catch (Throwable) {
-                // FaviconDiscoverer swallows internally; outer guard ensures a
-                // regression there can't break the refresh contract.
-            }
+            $favicons->discover($feed->refresh());
         }
     }
 

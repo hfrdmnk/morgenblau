@@ -48,6 +48,10 @@ class SubscriptionController extends Controller
 
         $choices = array_map(fn (array $item) => ChosenFeedData::from($item), $items);
 
+        // Capture before dispatch so the deferred-entries wait
+        // (last_dispatched_at >= since) holds for every feed this request stamps.
+        $actionAt = now()->toIso8601String();
+
         [$succeeded, $failed] = $this->subscriptions->createMany($user, $choices);
 
         // Surface duplicates as field errors so the React form keeps its
@@ -85,7 +89,7 @@ class SubscriptionController extends Controller
         ]));
 
         if ($succeeded !== []) {
-            $request->session()->put('fetch_action_at', now()->toIso8601String());
+            $request->session()->put('fetch_action_at', $actionAt);
         }
 
         return back();

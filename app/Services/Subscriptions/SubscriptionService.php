@@ -9,10 +9,10 @@ use App\Data\Subscriptions\SubscriptionResultData;
 use App\Exceptions\AlreadySubscribedException;
 use App\Exceptions\PdsReadException;
 use App\Exceptions\PdsWriteException;
-use App\Jobs\RefreshFeedJob;
 use App\Models\Feed;
 use App\Models\Subscription;
 use App\Models\User;
+use App\Services\Feeds\FeedJobDispatcher;
 use App\Services\Feeds\FeedResolver;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
@@ -31,7 +31,10 @@ class SubscriptionService
     /** Safety cap on PDS pagination. */
     private const MAX_PAGES = 50;
 
-    public function __construct(private readonly FeedResolver $feedResolver) {}
+    public function __construct(
+        private readonly FeedResolver $feedResolver,
+        private readonly FeedJobDispatcher $dispatcher,
+    ) {}
 
     /**
      * @return non-empty-list<ResolvedFeedData>
@@ -225,9 +228,9 @@ class SubscriptionService
     }
 
     /**
-     * Queue RefreshFeedJob for each feed id. The dispatched stamp is set
-     * per-iteration so a PHP timeout mid-loop leaves later feeds with
-     * last_dispatched_at = null, free to be picked up by the next manual
+     * Queue RefreshFeedJob for each feed id. The dispatcher stamps
+     * last_dispatched_at per-iteration so a PHP timeout mid-loop leaves
+     * later feeds unstamped, free to be picked up by the next manual
      * refresh instead of waiting out the in-flight window.
      *
      * @param  list<int>  $feedIds
@@ -235,15 +238,7 @@ class SubscriptionService
     private function dispatchFetches(array $feedIds): void
     {
         foreach ($feedIds as $id) {
-            try {
-                Feed::query()->whereKey($id)->update(['last_dispatched_at' => Date::now()]);
-                RefreshFeedJob::dispatch($id);
-            } catch (Throwable $e) {
-                Log::warning('refresh feed job failed', [
-                    'feed_id' => $id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+            $this->dispatcher->dispatch($id);
         }
     }
 

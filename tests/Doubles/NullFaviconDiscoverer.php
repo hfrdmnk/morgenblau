@@ -2,8 +2,8 @@
 
 namespace Tests\Doubles;
 
+use App\Contracts\Feeds\FaviconDiscovererInterface;
 use App\Models\Feed;
-use App\Services\Feeds\FaviconDiscoverer;
 
 /**
  * Test double bound in feed-refresh tests so RefreshFeedJob doesn't try to
@@ -11,9 +11,7 @@ use App\Services\Feeds\FaviconDiscoverer;
  * Tests that *do* care about discovery (FaviconDiscovererTest) leave the real
  * binding in place.
  */
-class NullFaviconDiscoverer extends FaviconDiscoverer
+class NullFaviconDiscoverer implements FaviconDiscovererInterface
 {
-    public function __construct() {}
-
     public function discover(Feed $feed): void {}
 }

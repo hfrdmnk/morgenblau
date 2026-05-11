@@ -1,22 +1,19 @@
 import {
     BubbleChatIcon,
     Globe02Icon,
+    LinkSquare01Icon,
     NewsIcon,
     PodcastIcon,
     RefreshIcon,
     Video01Icon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { Form, Head, router } from '@inertiajs/react';
-import { useCallback, useState } from 'react';
-import type { KeyboardEvent, MouseEvent } from 'react';
+import { Form, Head } from '@inertiajs/react';
+import { useState } from 'react';
 
-import { DigestPill } from '@/components/digest-pill';
 import TextLink from '@/components/text-link';
 import { Button } from '@/components/ui/button';
-import { useDigestStatus } from '@/hooks/use-digest-status';
 import { LevelContext } from '@/lib/level-context';
-import { cn } from '@/lib/utils';
 import { discover } from '@/routes';
 import { refresh } from '@/routes/feeds';
 
@@ -26,7 +23,6 @@ type ContentType = App.Enums.ContentType;
 type ConsumeProps = {
     entries?: FeedEntry[];
     has_subscriptions: boolean;
-    polling_since: string | null;
 };
 
 const TYPE_ICONS: Record<ContentType, typeof NewsIcon> = {
@@ -36,55 +32,17 @@ const TYPE_ICONS: Record<ContentType, typeof NewsIcon> = {
     podcast: PodcastIcon,
 };
 
-export default function Consume({
-    entries,
-    has_subscriptions,
-    polling_since,
-}: ConsumeProps) {
+export default function Consume({ entries, has_subscriptions }: ConsumeProps) {
     const isLoading = entries === undefined;
     const isEmpty = entries !== undefined && entries.length === 0;
-    const [dismissedSince, setDismissedSince] = useState<string | null>(null);
-    const [highlightSince, setHighlightSince] = useState<string | null>(null);
-
-    const pollingSince =
-        dismissedSince === polling_since ? null : polling_since;
-
-    const status = useDigestStatus(pollingSince);
-
-    const isPending = status.phase === 'fetching' || status.phase === 'ready';
-
-    const handleReady = useCallback(() => {
-        if (!pollingSince) {
-            return;
-        }
-
-        const since = pollingSince;
-
-        router.reload({
-            only: ['entries'],
-            onSuccess: () => {
-                setHighlightSince(since);
-                setDismissedSince(since);
-            },
-        });
-    }, [pollingSince]);
-
-    const handleCaughtUpFade = useCallback(() => {
-        setDismissedSince(pollingSince);
-    }, [pollingSince]);
 
     return (
         <>
             <Head title="Consume" />
-            <DigestPill
-                state={status}
-                onReady={handleReady}
-                onCaughtUpFade={handleCaughtUpFade}
-            />
             <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6">
                 {has_subscriptions ? (
                     <div className="mb-6 flex items-center justify-end">
-                        <RefreshButton externallyPending={isPending} />
+                        <RefreshButton />
                     </div>
                 ) : null}
                 {isLoading ? (
@@ -92,67 +50,36 @@ export default function Consume({
                 ) : isEmpty ? (
                     <EmptyState hasSubscriptions={has_subscriptions} />
                 ) : (
-                    <Newspaper
-                        entries={entries}
-                        highlightSince={highlightSince}
-                    />
+                    <Newspaper entries={entries} />
                 )}
             </div>
         </>
     );
 }
 
-function Newspaper({
-    entries,
-    highlightSince,
-}: {
-    entries: FeedEntry[];
-    highlightSince: string | null;
-}) {
+function Newspaper({ entries }: { entries: FeedEntry[] }) {
     return (
         <LevelContext.Provider value={2}>
             <article className="overflow-hidden rounded-3xl border border-gray-100 bg-card dark:border-gray-700">
                 <ul className="flex flex-col">
-                    {entries.map((entry, index) => {
-                        const isFresh =
-                            highlightSince !== null &&
-                            entry.first_seen_at > highlightSince;
-
-                        return (
-                            <li key={entry.id}>
-                                {index > 0 ? (
-                                    <div
-                                        aria-hidden
-                                        className="mx-6 border-t border-gray-100 dark:border-gray-700"
-                                    />
-                                ) : null}
-                                <FreshHighlight active={isFresh}>
-                                    {entry.content_type === 'microblog' ? (
-                                        <InlineRow entry={entry} />
-                                    ) : (
-                                        <StandardRow entry={entry} />
-                                    )}
-                                </FreshHighlight>
-                            </li>
-                        );
-                    })}
+                    {entries.map((entry, index) => (
+                        <li key={entry.id}>
+                            {index > 0 ? (
+                                <div
+                                    aria-hidden
+                                    className="mx-6 border-t border-gray-100 dark:border-gray-700"
+                                />
+                            ) : null}
+                            {entry.content_type === 'microblog' ? (
+                                <InlineRow entry={entry} />
+                            ) : (
+                                <StandardRow entry={entry} />
+                            )}
+                        </li>
+                    ))}
                 </ul>
             </article>
         </LevelContext.Provider>
-    );
-}
-
-function FreshHighlight({
-    active,
-    children,
-}: {
-    active: boolean;
-    children: React.ReactNode;
-}) {
-    return (
-        <div className={cn(active && 'animate-fresh-highlight')}>
-            {children}
-        </div>
     );
 }
 
@@ -237,61 +164,39 @@ function StandardRow({ entry }: { entry: FeedEntry }) {
 function InlineRow({ entry }: { entry: FeedEntry }) {
     const meta = formatMicroblogMeta(entry);
 
-    const handleClick = (e: MouseEvent<HTMLDivElement>) => {
-        if (!entry.link) {
-            return;
-        }
-
-        if ((e.target as HTMLElement).closest('a')) {
-            return;
-        }
-
-        window.open(entry.link, '_blank', 'noopener,noreferrer');
-    };
-
-    const handleKey = (e: KeyboardEvent<HTMLDivElement>) => {
-        if (!entry.link) {
-            return;
-        }
-
-        if (e.key !== 'Enter' && e.key !== ' ') {
-            return;
-        }
-
-        if ((e.target as HTMLElement).closest('a')) {
-            return;
-        }
-
-        e.preventDefault();
-        window.open(entry.link, '_blank', 'noopener,noreferrer');
-    };
-
     return (
-        <div
-            role={entry.link ? 'link' : undefined}
-            tabIndex={entry.link ? 0 : undefined}
-            onClick={entry.link ? handleClick : undefined}
-            onKeyDown={entry.link ? handleKey : undefined}
-            className={cn(
-                'px-6 py-5 outline-none',
-                entry.link && ROW_CLICKABLE_BASE,
-            )}
-        >
+        <div className="px-6 py-5">
             <div className="flex flex-col gap-3">
-                <RowHeader entry={entry} lead={meta ?? 'Unknown source'} />
-                {entry.summary ? (
-                    // Summary is sanitized at ingest by HtmlSanitizer (Purify).
-                    <div
-                        className="text-base text-foreground [&_a]:text-primary [&_a]:underline-offset-4 [&_a:hover]:underline"
-                        dangerouslySetInnerHTML={{ __html: entry.summary }}
-                    />
-                ) : null}
+                <RowHeader
+                    entry={entry}
+                    lead={meta ?? 'Unknown source'}
+                    linkHref={entry.link}
+                />
+                {entry.summary ? <MicroblogBody html={entry.summary} /> : null}
             </div>
         </div>
     );
 }
 
-function RowHeader({ entry, lead }: { entry: FeedEntry; lead: string }) {
+// Summary is sanitized at ingest by HtmlSanitizer (Purify).
+function MicroblogBody({ html }: { html: string }) {
+    return (
+        <div
+            className="text-base text-foreground [&_a]:text-primary [&_a]:underline-offset-4 [&_a:hover]:underline"
+            dangerouslySetInnerHTML={{ __html: html }}
+        />
+    );
+}
+
+function RowHeader({
+    entry,
+    lead,
+    linkHref,
+}: {
+    entry: FeedEntry;
+    lead: string;
+    linkHref?: string | null;
+}) {
     const TypeIcon = TYPE_ICONS[entry.content_type];
 
     return (
@@ -300,6 +205,20 @@ function RowHeader({ entry, lead }: { entry: FeedEntry; lead: string }) {
             <p className="line-clamp-1 min-w-0 flex-1 text-sm font-light text-muted-foreground">
                 {lead}
             </p>
+            {linkHref ? (
+                <a
+                    href={linkHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Open source post"
+                    className="rounded-sm text-muted-foreground transition-colors duration-200 ease-out hover:text-foreground focus-visible:outline-1 focus-visible:outline-ring"
+                >
+                    <HugeiconsIcon
+                        icon={LinkSquare01Icon}
+                        className="size-[1.125rem] shrink-0"
+                    />
+                </a>
+            ) : null}
             <HugeiconsIcon
                 icon={TypeIcon}
                 className="size-[1.125rem] shrink-0 text-muted-foreground"
@@ -446,7 +365,7 @@ function formatRelative(iso: string): string {
     return `${d} day${d === 1 ? '' : 's'} ago`;
 }
 
-function RefreshButton({ externallyPending }: { externallyPending: boolean }) {
+function RefreshButton() {
     return (
         <Form {...refresh.form()} options={{ preserveScroll: true }}>
             {({ processing }) => (
@@ -454,7 +373,7 @@ function RefreshButton({ externallyPending }: { externallyPending: boolean }) {
                     type="submit"
                     variant="secondary"
                     size="sm"
-                    disabled={processing || externallyPending}
+                    disabled={processing}
                 >
                     <HugeiconsIcon icon={RefreshIcon} />
                     Refresh now

@@ -3,7 +3,6 @@
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\OAuthCallbackController;
 use App\Http\Controllers\ConsumeController;
-use App\Http\Controllers\Digest\DigestStatusController;
 use App\Http\Controllers\Feeds\FeedRefreshController;
 use App\Http\Controllers\Subscriptions\SubscriptionController;
 use Illuminate\Http\Request;
@@ -60,9 +59,6 @@ Route::middleware(['auth'])->group(function () {
     Route::post('feeds/refresh', FeedRefreshController::class)
         ->middleware('throttle:6,1')
         ->name('feeds.refresh');
-
-    Route::get('api/digest/status', DigestStatusController::class)
-        ->name('digest.status');
 });
 
 require __DIR__.'/settings.php';

@@ -2,15 +2,18 @@
 
 namespace App\Providers;
 
+use App\Contracts\Feeds\FaviconDiscovererInterface;
 use App\Services\Feeds\Adapters\PodcastAdapter;
 use App\Services\Feeds\Adapters\WebsiteAdapter;
 use App\Services\Feeds\Adapters\YouTubeAdapter;
 use App\Services\Feeds\ConditionalFeedClient;
+use App\Services\Feeds\FaviconDiscoverer;
 use App\Services\Feeds\FeedIo\Specification;
 use App\Services\Feeds\FeedResolver;
 use App\Services\Feeds\OutboundFeedClient;
 use App\Services\Feeds\Processors\ContentTypeClassifier;
 use App\Services\Feeds\Processors\HtmlSanitizer;
+use App\Services\Feeds\Processors\MicroblogBodyNormalizer;
 use App\Services\Feeds\Processors\ProcessorPipeline;
 use App\Services\Http\DnsResolver;
 use App\Services\Http\OutboundPsr18Client;
@@ -54,6 +57,7 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->bind(ProcessorPipeline::class, fn ($app) => new ProcessorPipeline([
             $app->make(ContentTypeClassifier::class),
+            $app->make(MicroblogBodyNormalizer::class),
             $app->make(HtmlSanitizer::class),
         ]));
 
@@ -66,6 +70,8 @@ class AppServiceProvider extends ServiceProvider
             requestFactory: $app->make(RequestFactoryInterface::class),
             logger: $app->make('log'),
         ));
+
+        $this->app->bind(FaviconDiscovererInterface::class, FaviconDiscoverer::class);
     }
 
     public function boot(): void

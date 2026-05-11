@@ -53,6 +53,10 @@ class OAuthCallbackController extends Controller
 
         Auth::login($user, remember: true);
 
+        // Capture before dispatch so the deferred-entries wait
+        // (last_dispatched_at >= since) holds for every feed this request stamps.
+        $actionAt = now()->toIso8601String();
+
         try {
             $this->subscriptions->reconcile($user);
         } catch (Throwable $e) {
@@ -64,7 +68,7 @@ class OAuthCallbackController extends Controller
 
         $this->scheduler->dispatchForUser($user);
 
-        $request->session()->put('fetch_action_at', now()->toIso8601String());
+        $request->session()->put('fetch_action_at', $actionAt);
 
         return redirect()->intended(route('consume'));
     }
