@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\OAuthCallbackController;
 use App\Http\Controllers\ConsumeController;
 use App\Http\Controllers\Feeds\FeedRefreshController;
+use App\Http\Controllers\Reader\EntryController;
 use App\Http\Controllers\Subscriptions\SubscriptionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -48,6 +49,8 @@ Route::middleware(['auth'])->group(function () {
     Route::inertia('discover', 'discover')->name('discover');
     Route::get('consume', ConsumeController::class)->name('consume');
     Route::inertia('create', 'create')->name('create');
+    Route::get('entry/{slug}', [EntryController::class, 'show'])->name('entry.show');
+    Route::post('entry/{slug}/extract', [EntryController::class, 'extract'])->name('entry.extract');
 
     Route::post('subscriptions/discover', [SubscriptionController::class, 'discover'])
         ->middleware('throttle:subscriptions')

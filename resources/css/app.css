@@ -271,3 +271,29 @@
         animation: none;
     }
 }
+
+/*
+ * View Transitions — digest → reader.
+ *
+ * The blogpost card's <h3> and the reader's <h1> share a per-entry
+ * `view-transition-name` (`entry-title-{slug}`), so the title morphs in
+ * place instead of cross-fading with the rest of the page. The remainder
+ * of the page (the root group) gets a calm fade tuned to the scene
+ * duration in morgenblau-designer (~320 ms, ease-out — ripples settling).
+ *
+ * Feature-detection lives in Inertia (`document.startViewTransition`);
+ * Firefox falls straight through with no transition and no JS error.
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation-duration: 320ms;
+    animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    ::view-transition-group(*),
+    ::view-transition-old(*),
+    ::view-transition-new(*) {
+        animation: none !important;
+    }
+}

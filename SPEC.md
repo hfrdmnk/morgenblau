@@ -116,6 +116,8 @@ Custom video and audio player UI that matches Morgenblau's design language. Not 
 
 Content type is **classified at fetch time and persisted** — entries land in storage with a `content_type` column already set, not derived at render. Same applies to HTML sanitization for the in-app reader: sanitize once during the fetch pipeline, store the safe form, never sanitize at render.
 
+Documented exception: when the RSS feed only ships a summary, the reader **lazily** runs readability extraction against the source URL on first open and caches the sanitized result on the entry row. Eager sanitize-at-fetch still governs the feed-shipped body; the lazy path applies only to the readability-extracted body.
+
 Type-specific metadata (reading-time, YouTube video id, podcast enclosure + duration, etc.) lives in a `metadata` JSON column on `feed_entries`. Fields get promoted to typed columns only when their content-type UI ships and the access patterns are known.
 
 </content-types>

@@ -8,13 +8,14 @@ import {
     Video01Icon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { Form, Head } from '@inertiajs/react';
+import { Form, Head, Link } from '@inertiajs/react';
 import { useState } from 'react';
 
 import TextLink from '@/components/text-link';
 import { Button } from '@/components/ui/button';
 import { LevelContext } from '@/lib/level-context';
 import { discover } from '@/routes';
+import { show as entryShow } from '@/routes/entry';
 import { refresh } from '@/routes/feeds';
 
 type FeedEntry = App.Data.Feeds.FeedEntryViewData;
@@ -120,6 +121,10 @@ function StandardRow({ entry }: { entry: FeedEntry }) {
         ? cleanSummary(entry.summary, entry.entry_title)
         : null;
     const byline = formatByline(entry);
+    const isBlogpost = entry.content_type === 'blogpost';
+    const titleStyle = isBlogpost
+        ? { viewTransitionName: `entry-title-${entry.entry_slug}` }
+        : undefined;
 
     const content = (
         <div className="flex flex-col gap-1.5">
@@ -127,7 +132,10 @@ function StandardRow({ entry }: { entry: FeedEntry }) {
                 entry={entry}
                 lead={entry.display_title ?? 'Unknown source'}
             />
-            <h3 className="line-clamp-3 text-lg font-medium tracking-tight text-foreground">
+            <h3
+                className="line-clamp-3 text-lg font-medium tracking-tight text-foreground"
+                style={titleStyle}
+            >
                 {entry.entry_title ?? (
                     <em className="text-muted-foreground">Untitled</em>
                 )}
@@ -144,6 +152,18 @@ function StandardRow({ entry }: { entry: FeedEntry }) {
             ) : null}
         </div>
     );
+
+    if (isBlogpost) {
+        return (
+            <Link
+                href={entryShow.url(entry.entry_slug)}
+                viewTransition
+                className={ROW_CLICKABLE_CLASS}
+            >
+                {content}
+            </Link>
+        );
+    }
 
     if (!entry.link) {
         return <div className="px-6 py-5">{content}</div>;

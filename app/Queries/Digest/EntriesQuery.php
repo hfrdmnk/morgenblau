@@ -19,6 +19,7 @@ class EntriesQuery
             ->select([
                 'feed_entries.id',
                 'feed_entries.feed_id',
+                'feed_entries.entry_slug',
                 'feed_entries.title as entry_title',
                 'feed_entries.link',
                 'feed_entries.summary',

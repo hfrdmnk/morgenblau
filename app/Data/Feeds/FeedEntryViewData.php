@@ -17,6 +17,7 @@ class FeedEntryViewData extends Data
     public function __construct(
         public int $id,
         public int $feedId,
+        public string $entrySlug,
         public ?string $displayTitle,
         public ?string $entryTitle,
         public ?string $link,
@@ -49,6 +50,7 @@ class FeedEntryViewData extends Data
         return new self(
             id: (int) $row->id,
             feedId: (int) $row->feed_id,
+            entrySlug: (string) $row->entry_slug,
             displayTitle: Subscription::resolveDisplayTitle(
                 $row->custom_title,
                 $row->pds_title,

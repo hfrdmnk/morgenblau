@@ -39,6 +39,7 @@ class FeedEntryUpserter
             $rowsByGuid[$guid] = [
                 'feed_id' => $feed->id,
                 'guid' => $guid,
+                'entry_slug' => EntrySlugger::for($feed->id, $guid),
                 'title' => $entry->title,
                 'link' => $entry->link,
                 'summary' => $entry->summary,

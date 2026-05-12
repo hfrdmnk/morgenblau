@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Feeds\BackoffSchedule;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -29,8 +30,6 @@ class Feed extends Model
     ];
 
     private const REFRESH_INTERVAL_MINUTES = 30;
-
-    private const MUTE_THRESHOLD = 20;
 
     /**
      * @return array<string, string>
@@ -113,10 +112,10 @@ class Feed extends Model
             'last_failed_at' => $now,
             'last_error' => Str::limit($cause->getMessage(), 500, ''),
             'consecutive_failures' => $newCount,
-            'next_check_at' => $now->copy()->addMinutes(self::backoffStepMinutes($newCount)),
+            'next_check_at' => $now->copy()->addMinutes(BackoffSchedule::stepMinutes($newCount)),
         ];
 
-        if ($newCount >= self::MUTE_THRESHOLD) {
+        if (BackoffSchedule::isPermanentlyFailed($newCount)) {
             $attrs['disabled_at'] = $now;
         }
 
@@ -126,7 +125,7 @@ class Feed extends Model
     public function markRateLimited(int $retryAfterSeconds): void
     {
         $now = Date::now();
-        $backoffStep = self::backoffStepMinutes(max(1, (int) $this->consecutive_failures));
+        $backoffStep = BackoffSchedule::stepMinutes(max(1, (int) $this->consecutive_failures));
         $retryAt = $now->copy()->addSeconds($retryAfterSeconds);
         $backoffAt = $now->copy()->addMinutes($backoffStep);
 
@@ -144,16 +143,5 @@ class Feed extends Model
             'last_error' => 'HTTP 410 Gone',
             'disabled_at' => Date::now(),
         ])->save();
-    }
-
-    private static function backoffStepMinutes(int $failures): int
-    {
-        return match (true) {
-            $failures <= 1 => 5,
-            $failures === 2 => 15,
-            $failures === 3 => 60,
-            $failures === 4 => 360,
-            default => 1440,
-        };
     }
 }
