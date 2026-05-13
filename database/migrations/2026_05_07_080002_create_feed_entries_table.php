@@ -12,6 +12,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('feed_id')->constrained('feeds')->cascadeOnDelete();
             $table->string('guid');
+            $table->string('entry_slug', 16)->unique();
             $table->string('title')->nullable();
             $table->string('link')->nullable();
             $table->text('summary')->nullable();
@@ -19,6 +20,11 @@ return new class extends Migration
             $table->string('author')->nullable();
             $table->string('content_type')->default('blogpost');
             $table->json('metadata')->nullable();
+            $table->longText('extracted_html')->nullable();
+            $table->timestamp('extracted_at')->nullable();
+            $table->unsignedInteger('extraction_attempts')->default(0);
+            $table->timestamp('extraction_attempted_at')->nullable();
+            $table->string('extraction_failure_reason')->nullable();
             $table->timestamp('published_at')->nullable();
             $table->timestamp('first_seen_at');
             $table->timestamp('updated_at');
