@@ -12,8 +12,9 @@ return [
         'blogpost' => [
             'Core.Encoding' => 'utf-8',
             'HTML.Doctype' => 'HTML 4.01 Transitional',
-            'HTML.Allowed' => 'p,a[href|title],br,strong,em,b,i,u,s,del,code,pre,blockquote,ul,ol,li,h2,h3,h4,h5,h6,img[src|alt|title|width|height],figure,figcaption,span',
+            'HTML.Allowed' => 'p,a[href|title|id],br,strong,em,b,i,u,s,del,code,pre,blockquote,ul,ol,li[id],h2,h3,h4,h5,h6,img[src|alt|title|width|height],figure,figcaption,span,sup[id],sub',
             'URI.AllowedSchemes' => ['https' => true, 'http' => true, 'mailto' => true],
+            'Attr.EnableID' => true,
             'AutoFormat.AutoParagraph' => false,
             'AutoFormat.RemoveEmpty' => true,
         ],
@@ -30,8 +31,9 @@ return [
         'video' => [
             'Core.Encoding' => 'utf-8',
             'HTML.Doctype' => 'HTML 4.01 Transitional',
-            'HTML.Allowed' => 'p,a[href|title],br,strong,em,b,i,u,s,del,code,pre,blockquote,ul,ol,li,h2,h3,h4,h5,h6,img[src|alt|title|width|height],figure,figcaption,span',
+            'HTML.Allowed' => 'p,a[href|title|id],br,strong,em,b,i,u,s,del,code,pre,blockquote,ul,ol,li[id],h2,h3,h4,h5,h6,img[src|alt|title|width|height],figure,figcaption,span,sup[id],sub',
             'URI.AllowedSchemes' => ['https' => true, 'http' => true, 'mailto' => true],
+            'Attr.EnableID' => true,
             'AutoFormat.AutoParagraph' => false,
             'AutoFormat.RemoveEmpty' => true,
         ],
@@ -39,8 +41,9 @@ return [
         'podcast' => [
             'Core.Encoding' => 'utf-8',
             'HTML.Doctype' => 'HTML 4.01 Transitional',
-            'HTML.Allowed' => 'p,a[href|title],br,strong,em,b,i,u,s,del,code,pre,blockquote,ul,ol,li,h2,h3,h4,h5,h6,img[src|alt|title|width|height],figure,figcaption,span',
+            'HTML.Allowed' => 'p,a[href|title|id],br,strong,em,b,i,u,s,del,code,pre,blockquote,ul,ol,li[id],h2,h3,h4,h5,h6,img[src|alt|title|width|height],figure,figcaption,span,sup[id],sub',
             'URI.AllowedSchemes' => ['https' => true, 'http' => true, 'mailto' => true],
+            'Attr.EnableID' => true,
             'AutoFormat.AutoParagraph' => false,
             'AutoFormat.RemoveEmpty' => true,
         ],

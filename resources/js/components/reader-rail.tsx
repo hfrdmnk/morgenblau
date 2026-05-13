@@ -46,7 +46,7 @@ export function ReaderRail({
             <div
                 aria-label="Reader actions"
                 role="toolbar"
-                className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background/95 backdrop-blur sm:hidden"
+                className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-card/95 backdrop-blur sm:hidden"
             >
                 <ScrollProgressTrack
                     progress={progress}
@@ -154,6 +154,9 @@ function DisabledRailIcon({
     );
 }
 
+const RING_RADIUS = 8.25;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
 function ScrollProgressTrack({
     progress,
     orientation,
@@ -171,12 +174,33 @@ function ScrollProgressTrack({
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={percent}
-                className="mt-2 h-24 w-px overflow-hidden rounded-full bg-border"
+                className="mt-2 size-[1.125rem]"
             >
-                <div
-                    className="h-full w-full origin-top bg-foreground transition-transform duration-150 ease-out"
-                    style={{ transform: `scaleY(${progress})` }}
-                />
+                <svg
+                    viewBox="0 0 18 18"
+                    className="size-full -rotate-90"
+                    aria-hidden="true"
+                >
+                    <circle
+                        cx="9"
+                        cy="9"
+                        r={RING_RADIUS}
+                        fill="none"
+                        strokeWidth="1.5"
+                        className="stroke-border"
+                    />
+                    <circle
+                        cx="9"
+                        cy="9"
+                        r={RING_RADIUS}
+                        fill="none"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeDasharray={RING_CIRCUMFERENCE}
+                        strokeDashoffset={RING_CIRCUMFERENCE * (1 - progress)}
+                        className="stroke-primary [transition:stroke-dashoffset_150ms_ease-out]"
+                    />
+                </svg>
             </div>
         );
     }

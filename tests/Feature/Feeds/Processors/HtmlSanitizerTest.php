@@ -68,6 +68,25 @@ dataset('sanitizer_cases', [
         ContentType::Microblog,
         fn (string $out) => expect($out)->not->toContain('<h2')->and($out)->toContain('Heading'),
     ],
+    'footnote marker preserved on blogpost' => [
+        '<p>Text<sup id="fnref:1"><a href="#fn:1">1</a></sup>.</p>',
+        ContentType::Blogpost,
+        fn (string $out) => expect($out)
+            ->toContain('<sup id="fnref:1">')
+            ->and($out)->toContain('<a href="#fn:1">1</a>'),
+    ],
+    'footnote list anchor preserved on blogpost' => [
+        '<ol><li id="fn:1"><p>Note <a href="#fnref:1">↩</a></p></li></ol>',
+        ContentType::Blogpost,
+        fn (string $out) => expect($out)
+            ->toContain('<li id="fn:1">')
+            ->and($out)->toContain('<a href="#fnref:1">↩</a>'),
+    ],
+    'sup stripped on microblog' => [
+        '<p>Text<sup id="fnref:1"><a href="#fn:1">1</a></sup>.</p>',
+        ContentType::Microblog,
+        fn (string $out) => expect($out)->not->toContain('<sup'),
+    ],
 ]);
 
 test('sanitizes HTML according to content-type preset', function (string $html, ContentType $type, Closure $assertion) {

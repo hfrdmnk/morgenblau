@@ -89,7 +89,7 @@ export default function EntryPage({ entry }: EntryPageProps) {
     return (
         <>
             <Head title={entry.title ?? 'Reader'} />
-            <div className="min-h-svh bg-background">
+            <div className="min-h-svh bg-card">
                 <header className="sticky top-0 z-10 flex h-14 items-center px-4 sm:px-6">
                     <Link
                         href={consume().url}
@@ -152,7 +152,7 @@ function selectBody(entry: Entry, override: Override): string | null {
 function ReaderBody({ html }: { html: string }) {
     return (
         <div
-            className="font-serif text-base leading-relaxed text-foreground [&_a]:text-primary [&_a]:underline-offset-4 [&_a:hover]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-gray-200 [&_blockquote]:pl-4 [&_blockquote]:italic dark:[&_blockquote]:border-gray-700 [&_figcaption]:mt-2 [&_figcaption]:text-sm [&_figcaption]:font-light [&_figcaption]:text-muted-foreground [&_figure]:my-6 [&_h2]:mt-8 [&_h2]:mb-3 [&_h2]:font-sans [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:font-sans [&_img]:rounded-2xl [&_p]:mb-5 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-gray-100 [&_pre]:p-4 [&_pre]:font-mono [&_pre]:text-sm [&_pre]:not-italic dark:[&_pre]:bg-gray-800"
+            className="font-serif text-base leading-relaxed text-foreground [&_a]:text-primary [&_a]:underline-offset-4 [&_a:hover]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-gray-200 [&_blockquote]:pl-4 [&_blockquote]:italic dark:[&_blockquote]:border-gray-700 [&_figcaption]:mt-2 [&_figcaption]:text-sm [&_figcaption]:font-light [&_figcaption]:text-muted-foreground [&_figure]:my-6 [&_h2]:mt-8 [&_h2]:mb-3 [&_h2]:font-sans [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:font-sans [&_img]:rounded-2xl [&_li]:scroll-mt-20 [&_ol]:mb-5 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-5 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-gray-100 [&_pre]:p-4 [&_pre]:font-mono [&_pre]:text-sm [&_pre]:not-italic dark:[&_pre]:bg-gray-800 [&_sub]:font-sans [&_sub]:text-xs [&_sup]:scroll-mt-20 [&_sup]:font-sans [&_sup]:text-xs [&_ul]:mb-5 [&_ul]:list-disc [&_ul]:pl-6"
             dangerouslySetInnerHTML={{ __html: html }}
         />
     );
