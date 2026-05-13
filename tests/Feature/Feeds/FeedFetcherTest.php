@@ -41,7 +41,8 @@ test('it parses an RSS feed into a Modified result with FetchedEntryData', funct
 
     expect($result)->toBeInstanceOf(Modified::class);
     expect($result->entries)->toHaveCount(2)
-        ->and($result->entries[0])->toBeInstanceOf(FetchedEntryData::class);
+        ->and($result->entries[0])->toBeInstanceOf(FetchedEntryData::class)
+        ->and($result->feedTitle)->toBe('Sample Feed');
 
     $first = $result->entries[0];
     expect($first->title)->toBe('First post')
@@ -52,6 +53,30 @@ test('it parses an RSS feed into a Modified result with FetchedEntryData', funct
         ->and($first->author)->toBe('Jane Doe')
         ->and($first->publishedAt)->toBeInstanceOf(CarbonImmutable::class)
         ->and($first->publishedAt->toIso8601String())->toBe('2026-04-15T09:30:00+00:00');
+});
+
+test('it leaves feedTitle null when the channel has no <title>', function () {
+    // Hand-rolled body without a <channel><title> — covers RSS variants that
+    // omit it (rare in practice, but our backfill path must handle null).
+    $body = <<<'XML'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <link>https://example.com</link>
+            <description>Untitled feed</description>
+            <item>
+              <title>Only item</title>
+              <link>https://example.com/posts/one</link>
+            </item>
+          </channel>
+        </rss>
+        XML;
+    $fetcher = feedFetcherForUrls(['https://example.com/no-title.rss' => $body]);
+
+    $result = $fetcher->fetch('https://example.com/no-title.rss');
+
+    expect($result)->toBeInstanceOf(Modified::class);
+    expect($result->feedTitle)->toBeNull();
 });
 
 test('it tolerates items missing optional fields', function () {

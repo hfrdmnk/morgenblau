@@ -239,6 +239,50 @@ test('declares uniqueness keyed by feed id with a 5 minute window', function () 
     expect($job->uniqueFor)->toBe(300);
 });
 
+test('backfills feeds.title from the fetch result when previously null', function () {
+    $feed = Feed::query()->create([
+        'feed_url' => 'https://example.com/rss',
+        'title' => null,
+    ]);
+
+    $fetcher = Mockery::mock(FeedFetcher::class);
+    $fetcher->shouldReceive('fetch')
+        ->once()
+        ->andReturn(new Modified(
+            entries: [],
+            etag: null,
+            lastModified: null,
+            feedTitle: 'Mitchell Hashimoto',
+        ));
+    app()->instance(FeedFetcher::class, $fetcher);
+
+    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class), app(FaviconDiscoverer::class));
+
+    expect($feed->refresh()->title)->toBe('Mitchell Hashimoto');
+});
+
+test('does not overwrite a non-null feeds.title', function () {
+    $feed = Feed::query()->create([
+        'feed_url' => 'https://example.com/rss',
+        'title' => 'Custom Title',
+    ]);
+
+    $fetcher = Mockery::mock(FeedFetcher::class);
+    $fetcher->shouldReceive('fetch')
+        ->once()
+        ->andReturn(new Modified(
+            entries: [],
+            etag: null,
+            lastModified: null,
+            feedTitle: 'Different Parsed Title',
+        ));
+    app()->instance(FeedFetcher::class, $fetcher);
+
+    (new RefreshFeedJob($feed->id))->handle(app(FeedFetcher::class), app(FeedEntryUpserter::class), app(ProcessorPipeline::class), app(FaviconDiscoverer::class));
+
+    expect($feed->refresh()->title)->toBe('Custom Title');
+});
+
 test('runs favicon discovery after a successful refresh', function () {
     $feed = Feed::query()->create(['feed_url' => 'https://example.com/rss']);
 

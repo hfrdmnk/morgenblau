@@ -13,5 +13,6 @@ final class Modified extends FetchedFeedResult
         public readonly array $entries,
         public readonly ?string $etag,
         public readonly ?string $lastModified,
+        public readonly ?string $feedTitle = null,
     ) {}
 }

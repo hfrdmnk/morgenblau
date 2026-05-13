@@ -63,7 +63,14 @@ class FeedFetcher
             }
         }
 
-        return new Modified(entries: $entries, etag: $newEtag, lastModified: $newLastModified);
+        $title = trim((string) $feed->getTitle());
+
+        return new Modified(
+            entries: $entries,
+            etag: $newEtag,
+            lastModified: $newLastModified,
+            feedTitle: $title === '' ? null : $title,
+        );
     }
 
     private function mapServerError(string $feedUrl, ServerErrorException $e): FetchedFeedResult

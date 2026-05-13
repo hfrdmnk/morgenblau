@@ -69,6 +69,11 @@ class RefreshFeedJob implements ShouldBeUnique, ShouldQueue
     private function onModified(Feed $feed, FeedEntryUpserter $upserter, ProcessorPipeline $pipeline, Modified $result): void
     {
         $upserter->upsert($feed, $pipeline->processBatch($result->entries, $feed));
+
+        if ($feed->title === null && $result->feedTitle !== null) {
+            $feed->forceFill(['title' => $result->feedTitle])->save();
+        }
+
         $feed->markFetched($result->etag, $result->lastModified);
     }
 }
