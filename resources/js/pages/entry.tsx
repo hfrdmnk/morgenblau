@@ -93,6 +93,7 @@ export default function EntryPage({ entry }: EntryPageProps) {
                 <header className="sticky top-0 z-10 flex h-14 items-center px-4 sm:px-6">
                     <Link
                         href={consume().url}
+                        viewTransition
                         aria-label="Back to digest"
                         className="inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
                     >
@@ -110,12 +111,7 @@ export default function EntryPage({ entry }: EntryPageProps) {
                     <header className="mb-8 flex flex-col gap-4">
                         <FeedLine entry={entry} />
                         {entry.title ? (
-                            <h1
-                                className="text-2xl font-medium tracking-tight text-balance text-foreground"
-                                style={{
-                                    viewTransitionName: `entry-title-${entry.entry_slug}`,
-                                }}
-                            >
+                            <h1 className="text-2xl font-medium tracking-tight text-balance text-foreground">
                                 {entry.title}
                             </h1>
                         ) : null}

@@ -273,21 +273,30 @@
 }
 
 /*
- * View Transitions — digest → reader.
- *
- * The blogpost card's <h3> and the reader's <h1> share a per-entry
- * `view-transition-name` (`entry-title-{slug}`), so the title morphs in
- * place instead of cross-fading with the rest of the page. The remainder
- * of the page (the root group) gets a calm fade tuned to the scene
- * duration in morgenblau-designer (~320 ms, ease-out — ripples settling).
- *
- * Feature-detection lives in Inertia (`document.startViewTransition`);
- * Firefox falls straight through with no transition and no JS error.
+ * View Transitions — digest ↔ reader. Blur-and-replace: nothing moves,
+ * the outgoing page blurs out as the incoming page unblurs in. Durations
+ * match the scene/exit tokens in morgenblau-designer.
  */
-::view-transition-old(root),
+@keyframes view-root-out {
+    to {
+        opacity: 0;
+        filter: blur(12px);
+    }
+}
+
+@keyframes view-root-in {
+    from {
+        opacity: 0;
+        filter: blur(12px);
+    }
+}
+
+::view-transition-old(root) {
+    animation: view-root-out 400ms cubic-bezier(0.215, 0.61, 0.355, 1) both;
+}
+
 ::view-transition-new(root) {
-    animation-duration: 320ms;
-    animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+    animation: view-root-in 400ms cubic-bezier(0.215, 0.61, 0.355, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
