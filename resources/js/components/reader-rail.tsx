@@ -244,9 +244,13 @@ function useScrollProgress(): number {
         window.addEventListener('scroll', compute, { passive: true });
         window.addEventListener('resize', compute);
 
+        const observer = new ResizeObserver(compute);
+        observer.observe(document.documentElement);
+
         return () => {
             window.removeEventListener('scroll', compute);
             window.removeEventListener('resize', compute);
+            observer.disconnect();
         };
     }, []);
 
