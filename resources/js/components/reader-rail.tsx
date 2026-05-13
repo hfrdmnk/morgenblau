@@ -198,7 +198,7 @@ function ScrollProgressTrack({
                         strokeLinecap="round"
                         strokeDasharray={RING_CIRCUMFERENCE}
                         strokeDashoffset={RING_CIRCUMFERENCE * (1 - progress)}
-                        className="stroke-primary [transition:stroke-dashoffset_150ms_ease-out]"
+                        className="stroke-primary [transition:stroke-dashoffset_120ms_linear]"
                     />
                 </svg>
             </div>
@@ -215,7 +215,7 @@ function ScrollProgressTrack({
             className="h-px w-full overflow-hidden bg-border"
         >
             <div
-                className="h-full w-full origin-left bg-foreground transition-transform duration-150 ease-out"
+                className="h-full w-full origin-left bg-foreground transition-transform duration-[120ms] ease-linear"
                 style={{ transform: `scaleX(${progress})` }}
             />
         </div>
@@ -232,7 +232,7 @@ function useScrollProgress(): number {
                 document.documentElement.scrollHeight - window.innerHeight;
 
             if (max <= 0) {
-                setProgress(0);
+                setProgress(1);
 
                 return;
             }
