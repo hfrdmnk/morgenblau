@@ -122,9 +122,6 @@ function StandardRow({ entry }: { entry: FeedEntry }) {
         : null;
     const byline = formatByline(entry);
     const isBlogpost = entry.content_type === 'blogpost';
-    const titleStyle = isBlogpost
-        ? { viewTransitionName: `entry-title-${entry.entry_slug}` }
-        : undefined;
 
     const content = (
         <div className="flex flex-col gap-1.5">
@@ -132,10 +129,7 @@ function StandardRow({ entry }: { entry: FeedEntry }) {
                 entry={entry}
                 lead={entry.display_title ?? 'Unknown source'}
             />
-            <h3
-                className="line-clamp-3 text-lg font-medium tracking-tight text-foreground"
-                style={titleStyle}
-            >
+            <h3 className="line-clamp-3 text-lg font-medium tracking-tight text-foreground">
                 {entry.entry_title ?? (
                     <em className="text-muted-foreground">Untitled</em>
                 )}
@@ -281,7 +275,7 @@ function cleanSummary(summary: string, title: string | null): string | null {
         .replace(/\s+/g, ' ')
         .trim();
 
-    if (stripped.length < 40) {
+    if (stripped === '') {
         return null;
     }
 

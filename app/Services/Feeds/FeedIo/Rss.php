@@ -9,6 +9,8 @@ class Rss extends BaseRss
 {
     public function buildItemRuleSet(): RuleSet
     {
-        return parent::buildItemRuleSet()->add(new ContentEncoded);
+        return parent::buildItemRuleSet()
+            ->add(new Description)
+            ->add(new ContentEncoded);
     }
 }

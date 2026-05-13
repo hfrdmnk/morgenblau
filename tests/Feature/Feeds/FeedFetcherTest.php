@@ -49,7 +49,7 @@ test('it parses an RSS feed into a Modified result with FetchedEntryData', funct
         ->and($first->link)->toBe('https://example.com/posts/first')
         ->and($first->guid)->toBe('post-1')
         ->and($first->content)->toBe('Short summary of the first post.')
-        ->and($first->summary)->toBeNull()
+        ->and($first->summary)->toBe('Short summary of the first post.')
         ->and($first->author)->toBe('Jane Doe')
         ->and($first->publishedAt)->toBeInstanceOf(CarbonImmutable::class)
         ->and($first->publishedAt->toIso8601String())->toBe('2026-04-15T09:30:00+00:00');
@@ -265,11 +265,14 @@ test('it prefers <content:encoded> over <description> for the body', function ()
     $full = $result->entries[0];
     expect($full->content)->toContain('First paragraph of the real article.')
         ->and($full->content)->toContain('Second paragraph')
-        ->and($full->content)->not->toContain('Short teaser line.');
+        ->and($full->content)->not->toContain('Short teaser line.')
+        // <description> is still captured into summary as the preview blurb.
+        ->and($full->summary)->toBe('Short teaser line.');
 
     // Empty <content:encoded> must not clobber the description fallback.
     $fallback = $result->entries[1];
-    expect($fallback->content)->toBe('Description-only body.');
+    expect($fallback->content)->toBe('Description-only body.')
+        ->and($fallback->summary)->toBe('Description-only body.');
 });
 
 test('it falls back to link as guid when no <guid> element is present', function () {
