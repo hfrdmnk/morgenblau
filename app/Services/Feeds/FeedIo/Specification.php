@@ -5,7 +5,6 @@ namespace App\Services\Feeds\FeedIo;
 use FeedIo\Specification as BaseSpecification;
 use FeedIo\Standard\Json;
 use FeedIo\Standard\Rdf;
-use FeedIo\Standard\Rss;
 
 class Specification extends BaseSpecification
 {

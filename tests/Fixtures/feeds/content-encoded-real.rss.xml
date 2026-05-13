@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Real content:encoded Feed</title>
+    <link>https://example.com</link>
+    <description>Description-and-encoded RSS</description>
+    <item>
+      <title>Full body post</title>
+      <link>https://example.com/posts/full</link>
+      <guid isPermaLink="false">post-full-1</guid>
+      <description>Short teaser line.</description>
+      <content:encoded><![CDATA[<p>First paragraph of the real article.</p><p>Second paragraph with a <a href="https://example.com/link">link</a>.</p>]]></content:encoded>
+      <dc:creator>Author Name</dc:creator>
+      <pubDate>Wed, 15 Apr 2026 09:30:00 +0000</pubDate>
+    </item>
+    <item>
+      <title>Empty encoded falls back</title>
+      <link>https://example.com/posts/empty-encoded</link>
+      <guid isPermaLink="false">post-empty-encoded</guid>
+      <description>Description-only body.</description>
+      <content:encoded></content:encoded>
+      <pubDate>Thu, 16 Apr 2026 09:30:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>

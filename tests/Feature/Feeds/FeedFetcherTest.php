@@ -216,7 +216,7 @@ test('it falls back to <updated> when <published> is absent', function () {
     expect($result->entries[0]->publishedAt?->toIso8601String())->toBe('2026-04-20T12:00:00+00:00');
 });
 
-test('it parses an RSS feed with content:encoded HTML', function () {
+test('it parses an RSS feed whose <description> carries inline HTML', function () {
     $body = (string) file_get_contents(__DIR__.'/../../Fixtures/feeds/content-encoded.rss.xml');
     $fetcher = feedFetcherForUrls(['https://example.com/encoded.rss' => $body]);
 
@@ -226,6 +226,25 @@ test('it parses an RSS feed with content:encoded HTML', function () {
     expect($result->entries)->toHaveCount(1);
     expect($result->entries[0]->content)->toContain('<script>')
         ->and($result->entries[0]->content)->toContain('<iframe');
+});
+
+test('it prefers <content:encoded> over <description> for the body', function () {
+    $body = (string) file_get_contents(__DIR__.'/../../Fixtures/feeds/content-encoded-real.rss.xml');
+    $fetcher = feedFetcherForUrls(['https://example.com/full.rss' => $body]);
+
+    $result = $fetcher->fetch('https://example.com/full.rss');
+
+    expect($result)->toBeInstanceOf(Modified::class);
+    expect($result->entries)->toHaveCount(2);
+
+    $full = $result->entries[0];
+    expect($full->content)->toContain('First paragraph of the real article.')
+        ->and($full->content)->toContain('Second paragraph')
+        ->and($full->content)->not->toContain('Short teaser line.');
+
+    // Empty <content:encoded> must not clobber the description fallback.
+    $fallback = $result->entries[1];
+    expect($fallback->content)->toBe('Description-only body.');
 });
 
 test('it falls back to link as guid when no <guid> element is present', function () {
