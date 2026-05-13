@@ -4,16 +4,10 @@ namespace App\Services\Reader;
 
 use App\Models\FeedEntry;
 
-/**
- * Pure decision: should the reader auto-fetch the full article from the source
- * URL because the RSS feed only shipped a summary?
- *
- * Threshold of 1500 chars is tunable (not a SPEC commitment); 1499 → true,
- * 1500 → false. Strip tags first so HTML markup doesn't game the count.
- */
+/** Auto-fetch the source when the feed only shipped a stub. 300-char threshold is tunable. */
 final class AutoExtractDecider
 {
-    private const SUBSTANTIAL_CONTENT_LENGTH = 1500;
+    private const SUBSTANTIAL_CONTENT_LENGTH = 300;
 
     public static function shouldAutoExtract(FeedEntry $entry): bool
     {

@@ -6,12 +6,7 @@ use App\Data\Feeds\ProcessedEntryData;
 use App\Enums\ContentType;
 use App\Models\Feed;
 
-/**
- * Mastodon-style feeds put the post body in <content:encoded>, not
- * <description> — so microblog entries land with content set but summary
- * null. The renderer only shows summary for microblogs, so copy content
- * across when summary is empty.
- */
+/** ContentEncoded writes the body to `content`; copy to `summary` for microblogs whose renderer only reads summary. */
 class MicroblogBodyNormalizer implements EntryProcessor
 {
     public function process(ProcessedEntryData $entry, Feed $feed): ProcessedEntryData

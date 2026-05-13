@@ -34,7 +34,7 @@ test('substantial unique content returns false', function () {
 
 test('short content returns true', function () {
     $entry = makeEntryForDecider([
-        'content' => '<p>'.str_repeat('Word ', 30).'</p>',
+        'content' => '<p>'.str_repeat('Word ', 5).'</p>',
         'summary' => 'something else',
     ]);
 
@@ -63,8 +63,8 @@ test('null content returns true', function () {
     expect(AutoExtractDecider::shouldAutoExtract($entry))->toBeTrue();
 });
 
-test('1499 chars of stripped content returns true (below threshold)', function () {
-    $content = str_repeat('a', 1499);
+test('299 chars of stripped content returns true (below threshold)', function () {
+    $content = str_repeat('a', 299);
     $entry = makeEntryForDecider([
         'content' => $content,
         'summary' => 'distinct summary',
@@ -73,8 +73,8 @@ test('1499 chars of stripped content returns true (below threshold)', function (
     expect(AutoExtractDecider::shouldAutoExtract($entry))->toBeTrue();
 });
 
-test('1500 chars of stripped content returns false (at threshold)', function () {
-    $content = str_repeat('a', 1500);
+test('300 chars of stripped content returns false (at threshold)', function () {
+    $content = str_repeat('a', 300);
     $entry = makeEntryForDecider([
         'content' => $content,
         'summary' => 'distinct summary',
@@ -84,9 +84,9 @@ test('1500 chars of stripped content returns false (at threshold)', function () 
 });
 
 test('HTML tags do not count toward the threshold', function () {
-    // 1499 visible chars wrapped in <p> tags should still be below threshold.
+    // 299 visible chars wrapped in <p> tags should still be below threshold.
     $entry = makeEntryForDecider([
-        'content' => '<p>'.str_repeat('a', 1499).'</p>',
+        'content' => '<p>'.str_repeat('a', 299).'</p>',
         'summary' => 'distinct',
     ]);
 

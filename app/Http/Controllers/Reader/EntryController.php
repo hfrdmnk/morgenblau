@@ -15,19 +15,14 @@ use App\Models\Subscription;
 use App\Services\Feeds\BackoffSchedule;
 use App\Services\Reader\ArticleExtractor;
 use App\Services\Reader\AutoExtractDecider;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Date;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class EntryController extends Controller
 {
-    /**
-     * Explicit column list — extracted_html only loads here, never via
-     * EntriesQuery on the digest. Keep this scoped tightly so the column
-     * cannot fan out via SELECT *.
-     *
-     * @var list<string>
-     */
+    /** @var list<string> extracted_html is reader-only — never load it from EntriesQuery. */
     private const ENTRY_COLUMNS = [
         'id',
         'feed_id',
@@ -61,21 +56,18 @@ class EntryController extends Controller
         ]);
     }
 
-    public function extract(string $slug, ArticleExtractor $extractor): Response
+    public function extract(string $slug, ArticleExtractor $extractor): RedirectResponse
     {
         $entry = $this->resolveEntry($slug);
 
-        // Manual path: bypass shouldAutoExtract and the backoff window. A
-        // deliberate user click is always honoured. Only the "no link" guard
-        // stays — without an upstream URL there's nothing to fetch.
+        // Manual click bypasses auto-decide + backoff; only the no-link guard stays.
         if (is_string($entry->link) && $entry->link !== '') {
             $result = $extractor->extract($entry->link);
             $entry->forceFill(self::persistAttributes($entry, $result))->save();
         }
 
-        return Inertia::render('entry', [
-            'entry' => $this->buildReader($entry, false),
-        ]);
+        // PRG so the URL stays /entry/{slug} and the Inertia partial reload survives.
+        return redirect()->route('entry.show', ['slug' => $entry->entry_slug]);
     }
 
     private function resolveEntry(string $slug): FeedEntry
@@ -177,9 +169,7 @@ class EntryController extends Controller
     }
 
     /**
-     * Mirrors ExtractArticleJob::persistAttributes — the manual path writes
-     * the same shape as the queued one. Kept duplicated rather than extracted
-     * to keep both call sites readable; if a third caller appears, promote.
+     * Mirrors ExtractArticleJob::persistAttributes — promote if a third caller appears.
      *
      * @return array<string, mixed>
      */
@@ -219,10 +209,7 @@ class EntryController extends Controller
         return str_starts_with($host, 'www.') ? substr($host, 4) : $host;
     }
 
-    /**
-     * Mirrors FeedEntryViewData::deriveFaviconUrl so the reader gets the same
-     * fallback shape consume rows already use.
-     */
+    /** Mirrors FeedEntryViewData::deriveFaviconUrl. */
     private static function deriveFaviconUrl(string $feedUrl): ?string
     {
         $parts = parse_url($feedUrl);

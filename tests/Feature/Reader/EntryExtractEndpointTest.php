@@ -38,7 +38,7 @@ function bindFakeExtractor(ExtractionResult $result): MockInterface
     return $mock;
 }
 
-test('manual extract persists html and returns the available state on success', function () {
+test('manual extract persists html and redirects to entry.show with the available state', function () {
     $user = freshenBluesky(User::factory()->create());
     $feed = Feed::query()->create(['feed_url' => 'https://blog.example.com/rss']);
     $entry = makeBlogpostEntry($feed);
@@ -54,18 +54,21 @@ test('manual extract persists html and returns the available state on success', 
 
     actingAs($user)
         ->post(route('entry.extract', $entry->entry_slug))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('entry')
-            ->where('entry.extraction_state', 'available')
-            ->where('entry.auto_choice', 'extracted')
-            ->where('entry.extracted_body', '<p>Full extracted body.</p>'));
+        ->assertRedirect(route('entry.show', $entry->entry_slug));
 
     $entry->refresh();
     expect($entry->extracted_html)->toBe('<p>Full extracted body.</p>');
     expect($entry->extracted_at)->not->toBeNull();
     expect($entry->extraction_attempts)->toBe(1);
     expect($entry->extraction_failure_reason)->toBeNull();
+
+    actingAs($user)
+        ->get(route('entry.show', $entry->entry_slug))
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('entry')
+            ->where('entry.extraction_state', 'available')
+            ->where('entry.auto_choice', 'extracted')
+            ->where('entry.extracted_body', '<p>Full extracted body.</p>'));
 });
 
 test('manual extract records the failure reason and exposes the failed state', function () {
@@ -77,15 +80,18 @@ test('manual extract records the failure reason and exposes the failed state', f
 
     actingAs($user)
         ->post(route('entry.extract', $entry->entry_slug))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('entry.extraction_state', 'failed')
-            ->where('entry.extracted_body', null));
+        ->assertRedirect(route('entry.show', $entry->entry_slug));
 
     $entry->refresh();
     expect($entry->extracted_html)->toBeNull();
     expect($entry->extraction_attempts)->toBe(1);
     expect($entry->extraction_failure_reason)->toBe('unreachable');
+
+    actingAs($user)
+        ->get(route('entry.show', $entry->entry_slug))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('entry.extraction_state', 'failed')
+            ->where('entry.extracted_body', null));
 });
 
 test('manual extract bypasses the permanent-failure threshold', function () {
@@ -112,9 +118,7 @@ test('manual extract bypasses the permanent-failure threshold', function () {
 
     actingAs($user)
         ->post(route('entry.extract', $entry->entry_slug))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('entry.extraction_state', 'available'));
+        ->assertRedirect(route('entry.show', $entry->entry_slug));
 
     $entry->refresh();
     expect($entry->extracted_html)->toBe('<p>Recovered body.</p>');
@@ -145,7 +149,7 @@ test('manual extract bypasses the backoff window when a previous attempt is fres
 
     actingAs($user)
         ->post(route('entry.extract', $entry->entry_slug))
-        ->assertOk();
+        ->assertRedirect(route('entry.show', $entry->entry_slug));
 });
 
 test('manual extract fires even when the auto-decide rule would not', function () {
@@ -173,9 +177,10 @@ test('manual extract fires even when the auto-decide rule would not', function (
 
     actingAs($user)
         ->post(route('entry.extract', $entry->entry_slug))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('entry.extracted_body', '<p>Clean extract.</p>'));
+        ->assertRedirect(route('entry.show', $entry->entry_slug));
+
+    $entry->refresh();
+    expect($entry->extracted_html)->toBe('<p>Clean extract.</p>');
 });
 
 test('manual extract returns 404 for an unknown slug', function () {
