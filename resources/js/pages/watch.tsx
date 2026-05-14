@@ -109,7 +109,7 @@ function VideoPlayer({ entry }: { entry: Entry }) {
                 aria-hidden
                 className="absolute inset-0 flex items-center justify-center"
             >
-                <span className="inline-flex size-16 items-center justify-center rounded-full bg-black/55 text-white transition-colors duration-200 ease-out group-hover:bg-black/70">
+                <span className="inline-flex size-16 items-center justify-center rounded-full bg-black/30 backdrop-blur-lg text-white transition-colors duration-200 ease-out group-hover:bg-black/50">
                     <HugeiconsIcon
                         icon={PlayIcon}
                         className="size-7 translate-x-[1px]"
