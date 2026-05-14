@@ -110,7 +110,7 @@ In-app reader by default — fetch and render article content directly. Users ca
 
 ### Media Playback
 
-Custom video and audio player UI that matches Morgenblau's design language. Not YouTube iframes or bare HTML audio elements.
+The page around any player is Morgenblau's — our header, byline, source attribution, social backlinks. For audio, we render our own player rather than a bare HTML `<audio>` element. For provider-locked video, we use a **facade-then-iframe** pattern where the provider supports it: thumbnail and play button in Morgenblau chrome, swap in the provider's official embed only on click.
 
 ### Classification & Sanitization
 

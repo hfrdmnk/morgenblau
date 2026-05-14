@@ -26,6 +26,7 @@ createInertiaApp({
             case name === 'welcome':
                 return null;
             case name === 'entry':
+            case name === 'watch':
                 return null;
             case name === 'auth/login':
                 return AuthGoldenLayout;

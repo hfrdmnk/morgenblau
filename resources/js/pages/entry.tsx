@@ -103,8 +103,10 @@ export default function EntryPage({ entry }: EntryPageProps) {
 
                 <ReaderRail
                     sourceUrl={entry.source_url}
-                    toggleState={toggleState}
-                    onToggleClick={onToggleClick}
+                    extractedToggle={{
+                        state: toggleState,
+                        onClick: onToggleClick,
+                    }}
                 />
 
                 <article className="mx-auto w-full max-w-2xl px-4 pt-8 pb-24 sm:px-6">

@@ -11,18 +11,23 @@ import { useEffect, useState } from 'react';
 
 export type ExtractedToggleState = 'inactive' | 'active' | 'loading';
 
+export type ExtractedToggle = {
+    state: ExtractedToggleState;
+    onClick: () => void;
+};
+
 type ReaderRailProps = {
     sourceUrl: string | null;
-    toggleState: ExtractedToggleState;
-    onToggleClick: () => void;
+    extractedToggle?: ExtractedToggle;
+    showProgress?: boolean;
 };
 
 export function ReaderRail({
     sourceUrl,
-    toggleState,
-    onToggleClick,
+    extractedToggle,
+    showProgress = true,
 }: ReaderRailProps) {
-    const progress = useScrollProgress();
+    const progress = useScrollProgress(showProgress);
 
     return (
         <>
@@ -33,13 +38,14 @@ export function ReaderRail({
                 <div className="pointer-events-auto flex flex-col items-center gap-3">
                     <RailIcons
                         sourceUrl={sourceUrl}
-                        toggleState={toggleState}
-                        onToggleClick={onToggleClick}
+                        extractedToggle={extractedToggle}
                     />
-                    <ScrollProgressTrack
-                        progress={progress}
-                        orientation="vertical"
-                    />
+                    {showProgress ? (
+                        <ScrollProgressTrack
+                            progress={progress}
+                            orientation="vertical"
+                        />
+                    ) : null}
                 </div>
             </aside>
 
@@ -48,15 +54,16 @@ export function ReaderRail({
                 role="toolbar"
                 className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-card/95 backdrop-blur sm:hidden"
             >
-                <ScrollProgressTrack
-                    progress={progress}
-                    orientation="horizontal"
-                />
+                {showProgress ? (
+                    <ScrollProgressTrack
+                        progress={progress}
+                        orientation="horizontal"
+                    />
+                ) : null}
                 <div className="flex items-center justify-around px-4 py-2">
                     <RailIcons
                         sourceUrl={sourceUrl}
-                        toggleState={toggleState}
-                        onToggleClick={onToggleClick}
+                        extractedToggle={extractedToggle}
                     />
                 </div>
             </div>
@@ -66,18 +73,21 @@ export function ReaderRail({
 
 function RailIcons({
     sourceUrl,
-    toggleState,
-    onToggleClick,
+    extractedToggle,
 }: {
     sourceUrl: string | null;
-    toggleState: ExtractedToggleState;
-    onToggleClick: () => void;
+    extractedToggle?: ExtractedToggle;
 }) {
     return (
         <>
             <DisabledRailIcon icon={Bookmark01Icon} label="Save" />
             <DisabledRailIcon icon={Share01Icon} label="Share" />
-            <ExtractedToggleIcon state={toggleState} onClick={onToggleClick} />
+            {extractedToggle ? (
+                <ExtractedToggleIcon
+                    state={extractedToggle.state}
+                    onClick={extractedToggle.onClick}
+                />
+            ) : null}
             {sourceUrl ? (
                 <a
                     href={sourceUrl}
@@ -222,11 +232,15 @@ function ScrollProgressTrack({
     );
 }
 
-// Ephemeral — recomputed on mount, never persisted.
-function useScrollProgress(): number {
+// Ephemeral — recomputed on mount, never persisted. Skips wiring when disabled.
+function useScrollProgress(enabled: boolean): number {
     const [progress, setProgress] = useState(0);
 
     useEffect(() => {
+        if (!enabled) {
+            return;
+        }
+
         const compute = () => {
             const max =
                 document.documentElement.scrollHeight - window.innerHeight;
@@ -252,7 +266,7 @@ function useScrollProgress(): number {
             window.removeEventListener('resize', compute);
             observer.disconnect();
         };
-    }, []);
+    }, [enabled]);
 
     return progress;
 }

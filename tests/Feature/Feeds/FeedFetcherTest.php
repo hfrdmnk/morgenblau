@@ -228,6 +228,21 @@ test('it prefers Atom <published> over <updated> for publishedAt', function () {
     expect($result->entries[1]->publishedAt?->toIso8601String())->toBe('2026-04-16T10:00:00+00:00');
 });
 
+test('it surfaces <media:group><media:description> as entry content for YouTube feeds', function () {
+    // YouTube's Atom feed parks its descriptive text inside <media:group>, where
+    // stock FeedIO routes it to MediaInterface::description instead of the item
+    // body. The watch reader needs that text as the description, so the fetcher
+    // backfills it into content when nothing else is set.
+    $body = (string) file_get_contents(__DIR__.'/../../Fixtures/feeds/youtube.atom.xml');
+    $fetcher = feedFetcherForUrls(['https://example.com/yt.atom' => $body]);
+
+    $result = $fetcher->fetch('https://example.com/yt.atom');
+
+    expect($result)->toBeInstanceOf(Modified::class);
+    expect($result->entries[0]->content)->toBe('Description of the first video.');
+    expect($result->entries[1]->content)->toBe('Description of the second video.');
+});
+
 test('it falls back to <updated> when <published> is absent', function () {
     // Vanilla Atom feeds may carry only <updated>. The PublishedFirst override
     // should preserve the default behavior — fall through to <updated> when

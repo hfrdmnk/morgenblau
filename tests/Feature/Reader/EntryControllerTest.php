@@ -61,7 +61,7 @@ test('returns 404 for an unknown slug', function () {
         ->assertNotFound();
 });
 
-test('returns 404 when the slug resolves to a non-blogpost entry', function (string $contentType) {
+test('returns 404 for content types without a reader page', function (string $contentType) {
     $user = freshenBluesky(User::factory()->create());
     $feed = Feed::query()->create(['feed_url' => 'https://blog.example.com/rss']);
     $entry = makeReaderEntry($feed, ['content_type' => $contentType]);
@@ -71,9 +71,70 @@ test('returns 404 when the slug resolves to a non-blogpost entry', function (str
         ->assertNotFound();
 })->with([
     'microblog' => ContentType::Microblog->value,
-    'video' => ContentType::Video->value,
     'podcast' => ContentType::Podcast->value,
 ]);
+
+test('renders the watch page for a video with embed and thumbnail', function () {
+    $user = freshenBluesky(User::factory()->create());
+    $feed = Feed::query()->create([
+        'feed_url' => 'https://www.youtube.com/feeds/videos.xml?channel_id=UC123',
+        'title' => 'Example Channel',
+    ]);
+    $entry = makeReaderEntry($feed, [
+        'content_type' => ContentType::Video->value,
+        'title' => 'A calm video',
+        'link' => 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        'content' => 'Description body for the video.',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('entry.show', $entry->entry_slug))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('watch')
+            ->where('entry.entry_slug', $entry->entry_slug)
+            ->where('entry.title', 'A calm video')
+            ->where('entry.description', 'Description body for the video.')
+            ->where('entry.source_url', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+            ->where('entry.source_domain', 'youtube.com')
+            ->where('entry.embed_url', 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?autoplay=1&rel=0')
+            ->where('entry.thumbnail_url', 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg')
+            ->where('entry.feed.display_title', 'Example Channel'));
+});
+
+test('renders the watch page with null embed when the link is not a supported provider', function () {
+    $user = freshenBluesky(User::factory()->create());
+    $feed = Feed::query()->create([
+        'feed_url' => 'https://video.example.com/rss',
+        'title' => 'Unknown Host',
+    ]);
+    $entry = makeReaderEntry($feed, [
+        'content_type' => ContentType::Video->value,
+        'link' => 'https://vimeo.com/12345678',
+        'content' => null,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('entry.show', $entry->entry_slug))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('watch')
+            ->where('entry.embed_url', null)
+            ->where('entry.thumbnail_url', null));
+});
+
+test('extract endpoint 404s for a video entry', function () {
+    $user = freshenBluesky(User::factory()->create());
+    $feed = Feed::query()->create(['feed_url' => 'https://www.youtube.com/feeds/videos.xml?channel_id=UC123']);
+    $entry = makeReaderEntry($feed, [
+        'content_type' => ContentType::Video->value,
+        'link' => 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    ]);
+
+    $this->actingAs($user)
+        ->post(route('entry.extract', $entry->entry_slug))
+        ->assertNotFound();
+});
 
 test('guests are redirected to the login page', function () {
     $feed = Feed::query()->create(['feed_url' => 'https://blog.example.com/rss']);

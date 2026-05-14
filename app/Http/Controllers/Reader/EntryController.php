@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Reader;
 use App\Data\Reader\EntryReaderData;
 use App\Data\Reader\ExtractionResult;
 use App\Data\Reader\FeedReferenceData;
+use App\Data\Reader\WatchReaderData;
 use App\Enums\ContentType;
 use App\Enums\Reader\AutoChoice;
 use App\Enums\Reader\ExtractionState;
@@ -15,6 +16,7 @@ use App\Models\Subscription;
 use App\Services\Feeds\BackoffSchedule;
 use App\Services\Reader\ArticleExtractor;
 use App\Services\Reader\AutoExtractDecider;
+use App\Services\Reader\VideoEmbed;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Date;
 use Inertia\Inertia;
@@ -45,20 +47,17 @@ class EntryController extends Controller
     {
         $entry = $this->resolveEntry($slug);
 
-        $dispatched = false;
-        if ($this->shouldDispatch($entry)) {
-            ExtractArticleJob::dispatch($entry->id);
-            $dispatched = true;
-        }
-
-        return Inertia::render('entry', [
-            'entry' => $this->buildReader($entry, $dispatched),
-        ]);
+        return match ($entry->content_type) {
+            ContentType::Blogpost => $this->renderBlogpost($entry),
+            ContentType::Video => $this->renderVideo($entry),
+            default => abort(404),
+        };
     }
 
     public function extract(string $slug, ArticleExtractor $extractor): RedirectResponse
     {
         $entry = $this->resolveEntry($slug);
+        abort_unless($entry->content_type === ContentType::Blogpost, 404);
 
         // Manual click bypasses auto-decide + backoff; only the no-link guard stays.
         if (is_string($entry->link) && $entry->link !== '') {
@@ -70,6 +69,26 @@ class EntryController extends Controller
         return redirect()->route('entry.show', ['slug' => $entry->entry_slug]);
     }
 
+    private function renderBlogpost(FeedEntry $entry): Response
+    {
+        $dispatched = false;
+        if ($this->shouldDispatch($entry)) {
+            ExtractArticleJob::dispatch($entry->id);
+            $dispatched = true;
+        }
+
+        return Inertia::render('entry', [
+            'entry' => $this->buildReader($entry, $dispatched),
+        ]);
+    }
+
+    private function renderVideo(FeedEntry $entry): Response
+    {
+        return Inertia::render('watch', [
+            'entry' => $this->buildWatch($entry),
+        ]);
+    }
+
     private function resolveEntry(string $slug): FeedEntry
     {
         $entry = FeedEntry::query()
@@ -79,7 +98,6 @@ class EntryController extends Controller
             ->first();
 
         abort_if($entry === null, 404);
-        abort_unless($entry->content_type === ContentType::Blogpost, 404);
 
         return $entry;
     }
@@ -91,8 +109,6 @@ class EntryController extends Controller
             ? AutoChoice::Extracted
             : AutoChoice::Feed;
 
-        $feed = $entry->feed;
-
         return new EntryReaderData(
             entrySlug: (string) $entry->entry_slug,
             title: $entry->title,
@@ -100,19 +116,44 @@ class EntryController extends Controller
             publishedAt: $entry->published_at,
             sourceUrl: $entry->link,
             sourceDomain: self::deriveDomain($entry->link),
-            feed: new FeedReferenceData(
-                displayTitle: Subscription::resolveDisplayTitle(
-                    customTitle: null,
-                    pdsTitle: null,
-                    feedTitle: $feed?->title,
-                    feedUrl: $feed?->feed_url,
-                ),
-                faviconUrl: $feed?->favicon_url ?? self::deriveFaviconUrl((string) ($feed?->feed_url ?? '')),
-            ),
+            feed: self::buildFeedReference($entry),
             feedBody: $entry->content,
             extractedBody: $entry->extracted_html,
             autoChoice: $autoChoice,
             extractionState: $extractionState,
+        );
+    }
+
+    private function buildWatch(FeedEntry $entry): WatchReaderData
+    {
+        $embed = VideoEmbed::resolve($entry->link);
+
+        return new WatchReaderData(
+            entrySlug: (string) $entry->entry_slug,
+            title: $entry->title,
+            author: $entry->author,
+            publishedAt: $entry->published_at,
+            sourceUrl: $entry->link,
+            sourceDomain: self::deriveDomain($entry->link),
+            feed: self::buildFeedReference($entry),
+            description: $entry->content ?? $entry->summary,
+            embedUrl: $embed['embed_url'] ?? null,
+            thumbnailUrl: $embed['thumbnail_url'] ?? null,
+        );
+    }
+
+    private static function buildFeedReference(FeedEntry $entry): FeedReferenceData
+    {
+        $feed = $entry->feed;
+
+        return new FeedReferenceData(
+            displayTitle: Subscription::resolveDisplayTitle(
+                customTitle: null,
+                pdsTitle: null,
+                feedTitle: $feed?->title,
+                feedUrl: $feed?->feed_url,
+            ),
+            faviconUrl: $feed?->favicon_url ?? self::deriveFaviconUrl((string) ($feed?->feed_url ?? '')),
         );
     }
 

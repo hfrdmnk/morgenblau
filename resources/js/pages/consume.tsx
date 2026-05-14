@@ -121,7 +121,8 @@ function StandardRow({ entry }: { entry: FeedEntry }) {
         ? cleanSummary(entry.summary, entry.entry_title)
         : null;
     const byline = formatByline(entry);
-    const isBlogpost = entry.content_type === 'blogpost';
+    const opensInReader =
+        entry.content_type === 'blogpost' || entry.content_type === 'video';
 
     const content = (
         <div className="flex flex-col gap-1.5">
@@ -147,7 +148,7 @@ function StandardRow({ entry }: { entry: FeedEntry }) {
         </div>
     );
 
-    if (isBlogpost) {
+    if (opensInReader) {
         return (
             <Link
                 href={entryShow.url(entry.entry_slug)}

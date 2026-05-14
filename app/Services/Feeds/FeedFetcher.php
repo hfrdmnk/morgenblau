@@ -113,17 +113,46 @@ class FeedFetcher
         $lastModified = $item->getLastModified();
         $link = $item->getLink();
         $guid = $item->getPublicId() ?? $link;
+        $summary = $item->getSummary();
+        $content = $item->getContent();
+
+        // YouTube's Atom feed parks the description inside <media:group><media:description>,
+        // which FeedIO routes to MediaInterface::description rather than the item body.
+        // Surface it as content when the item itself has neither summary nor content.
+        if (($content === null || $content === '') && ($summary === null || $summary === '')) {
+            $content = $this->mediaDescription($item);
+        }
 
         return new FetchedEntryData(
             title: $item->getTitle(),
             link: $link,
             guid: $guid,
-            summary: $item->getSummary(),
-            content: $item->getContent(),
+            summary: $summary,
+            content: $content,
             author: $item->getAuthor()?->getName(),
             publishedAt: $lastModified !== null ? CarbonImmutable::instance($lastModified) : null,
             enclosures: $this->toEnclosures($item),
         );
+    }
+
+    private function mediaDescription(ItemInterface $item): ?string
+    {
+        if (! $item->hasMedia()) {
+            return null;
+        }
+
+        foreach ($item->getMedias() as $media) {
+            if (! $media instanceof MediaInterface) {
+                continue;
+            }
+
+            $description = $media->getDescription();
+            if (is_string($description) && trim($description) !== '') {
+                return $description;
+            }
+        }
+
+        return null;
     }
 
     /**
