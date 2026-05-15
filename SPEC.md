@@ -42,6 +42,26 @@ A calm content platform powered by RSS and ATProto. Not a classic RSS reader —
 
 ---
 
+<terminology>
+
+## Terminology
+
+Three near-synonyms with disciplined assignments to keep the codebase coherent.
+
+| Term             | Where it lives                                                                  | Refers to                                                |
+| ---------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| **Source**       | User-facing copy, routes (`/sources`), page labels                              | What the user *chooses* — their curated input list       |
+| **Subscription** | API (`/api/subscriptions`), Go entity, lexicon (`app.skyreader.feed.subscription`) | The PDS record representing one source                   |
+| **Feed**         | Internal/technical (RSS/Atom mechanics, fetch pipeline)                         | The underlying RSS/Atom URL the subscription points at   |
+
+A user **adds a source** → the app **creates a subscription record** → the fetcher **polls the feed**.
+
+Avoid: "manage subscriptions" in user copy (per `<brand>` — they're editors, not managers). Avoid: "feeds" in user-facing routes/pages (leaks the mechanism).
+
+</terminology>
+
+---
+
 <platform>
 
 ## Platform
@@ -235,6 +255,30 @@ Any local database tables that mirror PDS-resident data (e.g. a local `subscript
 | In-app follows     | `app.skyreader.social.follow`     | `lexicons/app/skyreader/social/follow.json`     |
 
 </atproto-lexicons>
+
+---
+
+<sync-architecture>
+
+## Sync Architecture
+
+Two-tier storage with different authority and sharing models.
+
+### Tier 1 — PDS-mirrored (per-user)
+
+User-owned records (`app.skyreader.feed.subscription`, `feed.saved`, `social.follow`, `social.share`) live authoritatively on the user's PDS. Local SQLite tables holding the same data are **derived indexes only** (per `<atproto-lexicons>`). Reconciliation: `listRecords` against PDS, diff against local index, apply changes. Reconciliation triggers are the same as fetch triggers in `<feed-sources>` (login, manual refresh, add).
+
+### Tier 2 — Upstream cache (shared, global)
+
+Parsed feed metadata (etag, last-modified, title, etc.) and parsed entries are cached in local SQLite, **deduped by canonical feed URL across all Morgenblau users**. One `feeds` row per URL; many Tier-1 subscriptions can point at it. The fetcher polls each upstream feed once regardless of how many users subscribe.
+
+Local is canonical for Tier 2 — there is no PDS path for entries, only upstream RSS/Atom. Cache invalidation follows HTTP semantics (etag, last-modified, conditional GET).
+
+### Privacy posture
+
+Cross-user dedup means *the existence of a feed URL in our cache* implies "at least one Morgenblau user subscribes to it." Subscription lists themselves remain per-user (in PDS). No user can enumerate which other users subscribe to a given feed via Morgenblau's API. To be documented in any future privacy/data policy.
+
+</sync-architecture>
 
 ---
 
