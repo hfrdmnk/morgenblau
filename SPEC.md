@@ -106,7 +106,7 @@ The core consumption model. Content is **grouped by day** into daily editions ra
 
 ### Empty Editions
 
-An empty edition is a feature, not a bug. Display a simple, calm message. No nudges, no guilt. Example: _"Nothing new this morning. Enjoy your coffee."_
+An empty edition is a feature, not a bug. Display a simple, calm message — _"Nothing new this morning. Enjoy your coffee."_ in the steady state; in-flight copy (e.g. _"Brewing your first edition…"_) when a refresh job is still running, so the empty state never reads as broken. No nudges, no guilt.
 
 ### History
 
@@ -193,9 +193,8 @@ Users can mark feeds as **primary sources**. These receive prominent placement i
 
 ### Refresh Cadence
 
-Refresh has **exactly four triggers**:
+Refresh has **exactly three triggers**:
 
-- **Auto-refresh** every 30 minutes for all active subscriptions.
 - **Manual refresh** is available on the digest view.
 - **On subscription add**, the new subscription is fetched immediately (only that feed, not the whole set).
 - **On login**, all of the user's subscriptions are refreshed (behaves like manual refresh), subject to a 5-minute in-flight guard so repeated logins don't thrash upstream feeds.
@@ -204,7 +203,7 @@ Notably absent: refresh on digest visit. The window metaphor is "step away, come
 
 User-initiated refreshes (manual, add, login) dispatch asynchronously — controllers return immediately and a transient pill on `/consume` surfaces fetch progress. The pill is strictly action-scoped: it never appears for steady-state auto-refresh, never quantifies pending entries with a count, and never persists between sessions. This preserves the "no unread counts" anti-feature while still giving the user feedback that their own action is in flight.
 
-Architecture must permit evolving toward finer real-time refresh per feed (HTTP caching headers, per-feed `next_check_at`, exponential backoff on errors). The 30-minute default is a product choice, not an architectural ceiling.
+Architecture must permit evolving toward finer real-time refresh per feed (HTTP caching headers, per-feed `next_check_at`, exponential backoff on errors).
 
 ### Failure Handling
 
@@ -224,10 +223,9 @@ The core differentiator. For each piece of content, the app checks for ATProto b
 
 ### v1 Scope
 
-- **Read:** Show Bluesky likes, reposts, and reply threads found via backlinks
-- **Like:** Users can like content from within Morgenblau
+- **Read:** Show Bluesky reposts and reply threads found via backlinks — social context, not engagement scoring. No like counts (calm-reader fit; can revisit if real demand surfaces).
 - **Follow:** In-app follows stored as `app.skyreader.social.follow` records (separate from Bluesky social graph follows)
-- No reposting, replying, or other interactions in v1
+- No likes, reposting, replying, or other outbound interactions in v1. Saving and Sharing (see `<saving-sharing>`) are the v1 reactions.
 
 ### UX Principle
 
