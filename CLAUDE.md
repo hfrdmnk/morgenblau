@@ -14,8 +14,11 @@ A calm content platform powered by RSS and ATProto — daily digests instead of 
 
 ## Database
 
-Postgres + **goose** (migrations) + **sqlc** (type-safe query codegen). No ORM.
+SQLite (pure-Go `modernc.org/sqlite`) + **goose** (migrations) + **sqlc** (type-safe query codegen). No ORM.
 
+- DB file: `./data/morgenblau.db` (override with `DB_PATH`). The dir is created on first open and gitignored.
+- Pragmas (set in DSN): `journal_mode=WAL`, `busy_timeout=5000`, `foreign_keys=on`, `synchronous=normal`.
+- Pure-Go driver so `make build-linux` (`CGO_ENABLED=0`) keeps working.
 - Migrations: `internal/database/migrations/` — plain SQL with `-- +goose Up` / `-- +goose Down` markers.
 - Queries: `internal/database/queries/` — handwritten SQL annotated with `-- name: FuncName :one|:many|:exec`.
 - Generated code: `internal/database/db/` — committed; regenerate with `make sqlc` after editing queries or schema.

@@ -49,10 +49,10 @@ clean:
 	@rm -f main main-linux-*
 
 # --- Database ---
-# Goose for migrations, sqlc for type-safe queries. Both source DB_* from .env.
+# Goose for migrations, sqlc for type-safe queries. SQLite file at $DB_PATH.
 
 GOOSE_DIR := internal/database/migrations
-GOOSE_RUN := set -a && . ./.env && set +a && goose -dir $(GOOSE_DIR) postgres "postgres://$$DB_USERNAME:$$DB_PASSWORD@$$DB_HOST:$$DB_PORT/$$DB_DATABASE?sslmode=disable"
+GOOSE_RUN := set -a && . ./.env && set +a && goose -dir $(GOOSE_DIR) sqlite3 "$${DB_PATH:-./data/morgenblau.db}"
 
 migrate-up:
 	@$(GOOSE_RUN) up

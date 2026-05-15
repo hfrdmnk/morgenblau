@@ -2,7 +2,7 @@
 
 A calm content platform powered by RSS and ATProto. See [SPEC.md](./SPEC.md) for the product vision and [CLAUDE.md](./CLAUDE.md) for stack conventions.
 
-> Stack: Go API (`cmd/api`) + React/Vite/Tailwind v4 frontend (`frontend/`), Postgres with goose migrations and sqlc-generated queries.
+> Stack: Go API (`cmd/api`) + React/Vite/Tailwind v4 frontend (`frontend/`), SQLite with goose migrations and sqlc-generated queries.
 
 ## Prerequisites
 
@@ -12,7 +12,6 @@ A calm content platform powered by RSS and ATProto. See [SPEC.md](./SPEC.md) for
 - [mprocs](https://github.com/pvolok/mprocs) — runs the dev processes side-by-side
 - [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) — public tunnel for OAuth metadata
 - [goose](https://github.com/pressly/goose) and [sqlc](https://sqlc.dev)
-- Postgres (e.g. [DBngin](https://dbngin.com))
 
 Install the Go CLIs once:
 
@@ -25,7 +24,7 @@ go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 ## Setup
 
 ```sh
-cp .env.example .env           # then fill in DB_* and BLUESKY_OAUTH_PRIVATE_KEY
+cp .env.example .env           # then fill in BLUESKY_OAUTH_PRIVATE_KEY (DB_PATH has a sane default)
 bun install --cwd ./frontend
 make migrate-up
 ```
@@ -100,7 +99,7 @@ The `Tunnel` process in `mprocs.yaml` takes no arguments — it reads `~/.cloudf
 
 ## Database
 
-Plain SQL, no ORM. Migrations live in `internal/database/migrations/`, handwritten queries in `internal/database/queries/`, generated code in `internal/database/db/`.
+SQLite via the pure-Go `modernc.org/sqlite` driver — the DB file lives at `$DB_PATH` (default `./data/morgenblau.db`) and is created on first open. WAL mode, foreign keys on, and a 5s busy timeout are set via DSN pragmas. Plain SQL, no ORM. Migrations live in `internal/database/migrations/`, handwritten queries in `internal/database/queries/`, generated code in `internal/database/db/`.
 
 ```sh
 make migrate-up                       # apply pending migrations
@@ -117,7 +116,6 @@ make build                          # build frontend + Go binary for the host OS
 make build-linux                    # cross-compile a static Linux binary for deploy → ./main-linux-amd64
 make build-linux GOARCH=arm64       # same, for ARM VPSes (Hetzner CAX, AWS Graviton, …)
 make test                           # go test ./... -v
-make itest                          # integration tests against testcontainers Postgres
 ```
 
 `build` and `build-linux` both run the frontend build first (`bun run build` in `frontend/`) and embed the resulting `frontend/dist/` into the binary via `//go:embed`. The deploy binary is fully self-contained — `scp main-linux-amd64` to the VPS, set env vars, and run.

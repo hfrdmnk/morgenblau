@@ -52,5 +52,8 @@ pnpm-lock.yaml
 *.sln
 *.sw?
 
+# SQLite data dir (DB file + WAL/SHM sidecars)
+/data/
+
 # Scratch
 .scratch/
