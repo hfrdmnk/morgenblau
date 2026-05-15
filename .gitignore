@@ -17,6 +17,7 @@ tmp/
 
 # Project build
 main
+main-linux-*
 *templ.go
 
 # Node / frontend (bun-only; foreign lockfiles must not appear)

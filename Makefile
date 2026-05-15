@@ -2,9 +2,21 @@
 
 all: build test
 
-build:
-	@echo "Building..."
+build: frontend-build
+	@echo "Building Go binary..."
 	@go build -o main cmd/api/main.go
+
+# Cross-compile a self-contained Linux binary for deploys.
+# Override arch with: make build-linux GOARCH=arm64
+GOARCH ?= amd64
+build-linux: frontend-build
+	@echo "Building Go binary for linux/$(GOARCH)..."
+	@CGO_ENABLED=0 GOOS=linux GOARCH=$(GOARCH) go build -ldflags="-s -w" -o main-linux-$(GOARCH) cmd/api/main.go
+
+frontend-build:
+	@echo "Building frontend..."
+	@bun install --cwd ./frontend --frozen-lockfile
+	@bun run --cwd ./frontend build
 
 # Run the Go server and Vite frontend together (no tunnel). Prefer `make dev`.
 run:
@@ -28,22 +40,6 @@ dev:
 	fi
 	@mprocs
 
-docker-run:
-	@if docker compose up --build 2>/dev/null; then \
-		: ; \
-	else \
-		echo "Falling back to Docker Compose V1"; \
-		docker-compose up --build; \
-	fi
-
-docker-down:
-	@if docker compose down 2>/dev/null; then \
-		: ; \
-	else \
-		echo "Falling back to Docker Compose V1"; \
-		docker-compose down; \
-	fi
-
 test:
 	@echo "Testing..."
 	@go test ./... -v
@@ -54,7 +50,7 @@ itest:
 
 clean:
 	@echo "Cleaning..."
-	@rm -f main
+	@rm -f main main-linux-*
 
 # --- Database ---
 # Goose for migrations, sqlc for type-safe queries. Both source DB_* from .env.
@@ -94,4 +90,4 @@ watch:
 		fi; \
 	fi
 
-.PHONY: all build run dev test itest clean watch docker-run docker-down migrate-up migrate-down migrate-status migrate-create sqlc
+.PHONY: all build build-linux frontend-build run dev test itest clean watch migrate-up migrate-down migrate-status migrate-create sqlc

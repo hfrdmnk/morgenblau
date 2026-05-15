@@ -113,10 +113,14 @@ make sqlc                             # regenerate queries after edits
 ## Build & test
 
 ```sh
-make build      # produces ./main (Go binary; in non-local env it serves embedded frontend/dist)
-make test       # go test ./... -v
-make itest      # integration tests against testcontainers Postgres
+make build                          # build frontend + Go binary for the host OS → ./main
+make build-linux                    # cross-compile a static Linux binary for deploy → ./main-linux-amd64
+make build-linux GOARCH=arm64       # same, for ARM VPSes (Hetzner CAX, AWS Graviton, …)
+make test                           # go test ./... -v
+make itest                          # integration tests against testcontainers Postgres
 ```
+
+`build` and `build-linux` both run the frontend build first (`bun run build` in `frontend/`) and embed the resulting `frontend/dist/` into the binary via `//go:embed`. The deploy binary is fully self-contained — `scp main-linux-amd64` to the VPS, set env vars, and run.
 
 ## Git & PRs
 
