@@ -56,6 +56,29 @@ clean:
 	@echo "Cleaning..."
 	@rm -f main
 
+# --- Database ---
+# Goose for migrations, sqlc for type-safe queries. Both source DB_* from .env.
+
+GOOSE_DIR := internal/database/migrations
+GOOSE_RUN := set -a && . ./.env && set +a && goose -dir $(GOOSE_DIR) postgres "postgres://$$DB_USERNAME:$$DB_PASSWORD@$$DB_HOST:$$DB_PORT/$$DB_DATABASE?sslmode=disable"
+
+migrate-up:
+	@$(GOOSE_RUN) up
+
+migrate-down:
+	@$(GOOSE_RUN) down
+
+migrate-status:
+	@$(GOOSE_RUN) status
+
+# Usage: make migrate-create NAME=add_users_table
+migrate-create:
+	@if [ -z "$(NAME)" ]; then echo "NAME is required: make migrate-create NAME=add_users_table"; exit 1; fi
+	@goose -dir $(GOOSE_DIR) create $(NAME) sql
+
+sqlc:
+	@sqlc generate
+
 # Live-reload Go only.
 watch:
 	@if command -v air > /dev/null; then \
@@ -71,4 +94,4 @@ watch:
 		fi; \
 	fi
 
-.PHONY: all build run dev test itest clean watch docker-run docker-down
+.PHONY: all build run dev test itest clean watch docker-run docker-down migrate-up migrate-down migrate-status migrate-create sqlc

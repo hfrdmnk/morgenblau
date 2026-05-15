@@ -12,6 +12,17 @@ A calm content platform powered by RSS and ATProto — daily digests instead of 
 
 `lexicons/` is reference, evolving toward a standardised RSS-reader lexicon for the AT atmosphere. `.json` files are read-only from this codebase. Only `lexicons/app/skyreader/IDEAS.md` is editable — record proposals there before changing schemas.
 
+## Database
+
+Postgres + **goose** (migrations) + **sqlc** (type-safe query codegen). No ORM.
+
+- Migrations: `internal/database/migrations/` — plain SQL with `-- +goose Up` / `-- +goose Down` markers.
+- Queries: `internal/database/queries/` — handwritten SQL annotated with `-- name: FuncName :one|:many|:exec`.
+- Generated code: `internal/database/db/` — committed; regenerate with `make sqlc` after editing queries or schema.
+- Make targets: `migrate-up`, `migrate-down`, `migrate-status`, `migrate-create NAME=...`, `sqlc`.
+
+Install CLIs once: `go install github.com/pressly/goose/v3/cmd/goose@latest && go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest`.
+
 ## Git & PRs
 
 - **Tangled is the source of truth, GitHub is a mirror.** `origin` points at `git@tangled.org:dominik.social/morgenblau`; `git push` auto-mirrors to GitHub via a second pushurl.
