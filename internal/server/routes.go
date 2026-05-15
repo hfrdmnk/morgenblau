@@ -6,15 +6,27 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"morgenblau/internal/api"
+	"morgenblau/internal/middleware/auth"
+	"morgenblau/internal/oauth/handler"
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/health", s.healthHandler)
+	mux.Handle("/oauth-client-metadata.json", handler.ClientMetadataHandler(s.oauthCfg))
+	mux.Handle("/oauth-jwks.json", handler.JWKSHandler(s.oauthCfg))
+	mux.Handle("POST /oauth/login", handler.LoginHandler(s.oauthApp))
+	mux.Handle("GET /oauth/callback", handler.CallbackHandler(s.oauthApp, s.sealer))
+	mux.Handle("POST /oauth/logout", handler.LogoutHandler(s.oauthApp, s.sealer))
+	mux.Handle("GET /api/me", api.MeHandler(s.oauthApp.Dir))
+	mux.Handle("GET /api/subscriptions", api.SubscriptionsHandler(api.PDSLister{}))
 	mux.Handle("/", spaHandler())
 
-	return s.corsMiddleware(mux)
+	gate := auth.New(s.oauthApp, s.sealer)
+	return s.corsMiddleware(gate(mux))
 }
 
 func (s *Server) corsMiddleware(next http.Handler) http.Handler {

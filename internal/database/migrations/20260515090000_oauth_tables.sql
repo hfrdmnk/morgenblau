@@ -1,0 +1,30 @@
+-- +goose Up
+-- +goose StatementBegin
+CREATE TABLE oauth_sessions (
+    did         TEXT NOT NULL,
+    session_id  TEXT NOT NULL,
+    -- TODO(P1): AEAD-encrypt before public deploy. Re-enables by wrapping the
+    -- store's serializer; no schema change needed.
+    data        BLOB NOT NULL,
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (did, session_id)
+);
+
+CREATE TABLE oauth_auth_requests (
+    state       TEXT PRIMARY KEY,
+    -- TODO(P1): AEAD-encrypt before public deploy.
+    data        BLOB NOT NULL,
+    created_at  TEXT NOT NULL,
+    expires_at  TEXT NOT NULL
+);
+
+CREATE INDEX oauth_auth_requests_expires_at_idx
+    ON oauth_auth_requests (expires_at);
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+DROP INDEX IF EXISTS oauth_auth_requests_expires_at_idx;
+DROP TABLE IF EXISTS oauth_auth_requests;
+DROP TABLE IF EXISTS oauth_sessions;
+-- +goose StatementEnd
