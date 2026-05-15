@@ -5,7 +5,7 @@ function App() {
   const [message, setMessage] = useState<string>('')
 
   const fetchData = () => {
-    fetch(`http://localhost:${import.meta.env.VITE_PORT}/`)
+    fetch('/api/health')
       .then(response => response.text())
       .then(data => setMessage(data))
       .catch(error => console.error('Error fetching data:', error))
