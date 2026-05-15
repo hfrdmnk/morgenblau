@@ -12,6 +12,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/oauth/cookie"
+	"morgenblau/internal/routes"
 )
 
 // fakeResumer satisfies the Resumer interface using a map.
@@ -40,6 +41,15 @@ func newSealer(t *testing.T) *cookie.Sealer {
 		t.Fatal(err)
 	}
 	return s
+}
+
+func loadRoutes(t *testing.T) []routes.Route {
+	t.Helper()
+	rs, err := routes.Load()
+	if err != nil {
+		t.Fatalf("routes.Load(): %v", err)
+	}
+	return rs
 }
 
 // passthroughNext records the request that reached it and returns 200.
@@ -84,7 +94,7 @@ func TestMiddleware_Table(t *testing.T) {
 	}
 
 	cases := []tcase{
-		// Allowlist — pass through, no auth required.
+		// Infra allowlist — pass through, no auth required.
 		{name: "api/health unauthed", path: "/api/health", method: "GET", wantCode: 200, wantNext: true},
 		{name: "oauth-client-metadata", path: "/oauth-client-metadata.json", method: "GET", wantCode: 200, wantNext: true},
 		{name: "oauth-jwks", path: "/oauth-jwks.json", method: "GET", wantCode: 200, wantNext: true},
@@ -94,31 +104,43 @@ func TestMiddleware_Table(t *testing.T) {
 		{name: "static asset", path: "/assets/index-abc.js", method: "GET", wantCode: 200, wantNext: true},
 		{name: "favicon", path: "/favicon.svg", method: "GET", wantCode: 200, wantNext: true},
 
-		// Login page — public when unauthed, redirects to / when authed.
+		// Public product routes — pass when anon.
+		{name: "root unauthed", path: "/", method: "GET", wantCode: 200, wantNext: true},
 		{name: "login unauthed", path: "/login", method: "GET", wantCode: 200, wantNext: true},
-		{name: "login authed", path: "/login", method: "GET", authed: true, wantCode: 302, wantNext: false, wantLoc: "/"},
 
-		// Gated SPA routes — 302 to /login when unauthed.
-		{name: "root unauthed", path: "/", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
+		// Public product routes with authedRedirect — 302 when authed.
+		{name: "root authed", path: "/", method: "GET", authed: true, wantCode: 302, wantNext: false, wantLoc: "/consume"},
+		{name: "login authed", path: "/login", method: "GET", authed: true, wantCode: 302, wantNext: false, wantLoc: "/consume"},
+
+		// Authed product routes — 302 /login when anon.
+		{name: "consume unauthed", path: "/consume", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
 		{name: "sources unauthed", path: "/sources", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
-		{name: "random unauthed", path: "/anything", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
+		{name: "entry unauthed", path: "/entry", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
+
+		// Authed product routes — pass when authed.
+		{name: "consume authed", path: "/consume", method: "GET", authed: true, wantCode: 200, wantNext: true},
+		{name: "sources authed", path: "/sources", method: "GET", authed: true, wantCode: 200, wantNext: true},
+		{name: "entry authed", path: "/entry", method: "GET", authed: true, wantCode: 200, wantNext: true},
+
+		// Unknown SPA path — gated by default. Anon → /login, authed → pass.
+		{name: "unknown unauthed", path: "/anything", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
+		{name: "unknown authed", path: "/anything", method: "GET", authed: true, wantCode: 200, wantNext: true},
 
 		// Gated API — 401 (frontend needs a status code, not a redirect).
 		{name: "api me unauthed", path: "/api/me", method: "GET", wantCode: 401, wantNext: false},
 		{name: "api subscriptions unauthed", path: "/api/subscriptions", method: "GET", wantCode: 401, wantNext: false},
 
-		// Authed access passes through.
-		{name: "root authed", path: "/", method: "GET", authed: true, wantCode: 200, wantNext: true},
-		{name: "sources authed", path: "/sources", method: "GET", authed: true, wantCode: 200, wantNext: true},
+		// Authed API — pass.
 		{name: "api me authed", path: "/api/me", method: "GET", authed: true, wantCode: 200, wantNext: true},
 	}
 
+	rs := loadRoutes(t)
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			sealer := newSealer(t)
 			resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
 			next := &passthroughNext{}
-			m := New(resumer, sealer)
+			m := New(resumer, sealer, rs)
 
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			if tc.authed {
@@ -147,8 +169,9 @@ func TestMiddleware_InjectsSessionIntoContext(t *testing.T) {
 	cookie := setSession(t, sealer, resumer, "did:plc:alice", "sid-1")
 
 	next := &passthroughNext{}
-	m := New(resumer, sealer)
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	m := New(resumer, sealer, loadRoutes(t))
+	// /consume is authed → authed user passes through.
+	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
 	req.AddCookie(cookie)
 	rr := httptest.NewRecorder()
 	m(next).ServeHTTP(rr, req)
@@ -169,9 +192,10 @@ func TestMiddleware_InvalidCookie_TreatedAsUnauthed(t *testing.T) {
 	sealer := newSealer(t)
 	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
 	next := &passthroughNext{}
-	m := New(resumer, sealer)
+	m := New(resumer, sealer, loadRoutes(t))
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	// Hit a gated path; a garbage cookie should be treated as anon and 302'd.
+	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
 	req.AddCookie(&http.Cookie{Name: "mb_session", Value: "garbage"})
 	rr := httptest.NewRecorder()
 	m(next).ServeHTTP(rr, req)
@@ -195,9 +219,9 @@ func TestMiddleware_ResumeFailure_RedirectsAndClearsCookie(t *testing.T) {
 	cookies := setRR.Result().Cookies()
 
 	next := &passthroughNext{}
-	m := New(resumer, sealer)
+	m := New(resumer, sealer, loadRoutes(t))
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
 	for _, c := range cookies {
 		req.AddCookie(c)
 	}

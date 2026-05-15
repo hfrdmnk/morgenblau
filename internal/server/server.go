@@ -19,6 +19,7 @@ import (
 	"morgenblau/internal/oauth/config"
 	"morgenblau/internal/oauth/cookie"
 	"morgenblau/internal/oauth/store"
+	"morgenblau/internal/routes"
 )
 
 type Server struct {
@@ -29,6 +30,7 @@ type Server struct {
 	oauthApp *oauth.ClientApp
 	store    *store.Store
 	sealer   *cookie.Sealer
+	routes   []routes.Route
 
 	gcCancel context.CancelFunc
 }
@@ -51,6 +53,11 @@ func NewServer() *http.Server {
 		panic(fmt.Errorf("load cookie sealer: %w", err))
 	}
 
+	rs, err := routes.Load()
+	if err != nil {
+		panic(fmt.Errorf("load routes: %w", err))
+	}
+
 	st := store.New(db)
 	oauthApp := oauth.NewClientApp(oauthCfg.Indigo, st)
 
@@ -64,6 +71,7 @@ func NewServer() *http.Server {
 		oauthApp: oauthApp,
 		store:    st,
 		sealer:   sealer,
+		routes:   rs,
 		gcCancel: gcCancel,
 	}
 

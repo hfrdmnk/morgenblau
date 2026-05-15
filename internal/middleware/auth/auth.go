@@ -1,9 +1,17 @@
-// Package auth wraps an http.Handler with session-cookie gating.
+// Package auth wraps an http.Handler with session-cookie gating driven by
+// the routes.json source-of-truth.
 //
-// Allowlisted paths (OAuth dance, public discovery, static assets, /api/health)
-// pass through. Gated SPA paths 302 to /login; gated /api/* paths return 401
-// (the FE needs a status code, not a redirect). Authed requests get the
-// *oauth.ClientSession injected into the request context.
+// Routing decisions per request:
+//   - Infrastructure paths (OAuth dance, /api/health, static assets) pass
+//     through regardless of auth state.
+//   - Public product routes: anon passes; authed → 302 to authedRedirect
+//     when set, else passes.
+//   - Authed product routes: anon → 302 /login; authed passes.
+//   - Unknown SPA paths: anon → 302 /login (matches authed-route gating).
+//   - Unknown /api/* paths gated and unauthed: 401 (FE needs a status code).
+//
+// Authed requests get the *oauth.ClientSession injected into the request
+// context for downstream handlers.
 package auth
 
 import (
@@ -15,6 +23,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/oauth/cookie"
+	"morgenblau/internal/routes"
 )
 
 // Resumer is the slice of *oauth.ClientApp the middleware depends on.
@@ -25,8 +34,21 @@ type Resumer interface {
 // Middleware returns an http.Handler middleware.
 type Middleware func(http.Handler) http.Handler
 
-// New builds the gating middleware.
-func New(resumer Resumer, sealer *cookie.Sealer) Middleware {
+// New builds the gating middleware. The routes table is the source of truth
+// for which SPA paths are public vs. authed and where authed users get
+// redirected from public landing pages (e.g. /login → /).
+func New(resumer Resumer, sealer *cookie.Sealer, rs []routes.Route) Middleware {
+	public := make(map[string]string, len(rs)) // path → authedRedirect ("" if none)
+	authed := make(map[string]struct{}, len(rs))
+	for _, r := range rs {
+		switch r.Auth {
+		case routes.AuthPublic:
+			public[r.Path] = r.AuthedRedirect
+		case routes.AuthAuthed:
+			authed[r.Path] = struct{}{}
+		}
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
@@ -49,23 +71,26 @@ func New(resumer Resumer, sealer *cookie.Sealer) Middleware {
 				}
 			}
 
-			// Authed user hitting /login → 302 / (no dead-end rule).
-			if path == "/login" && sess != nil {
-				http.Redirect(w, r, "/", http.StatusFound)
-				return
-			}
-
-			if isAllowlisted(path) {
-				if sess != nil {
-					next.ServeHTTP(w, r.WithContext(WithSession(r.Context(), sess)))
+			// Public product route: authed → maybe redirect, else pass.
+			if redirect, isPublic := public[path]; isPublic {
+				if sess != nil && redirect != "" {
+					http.Redirect(w, r, redirect, http.StatusFound)
 					return
 				}
-				next.ServeHTTP(w, r)
+				serve(next, w, r, sess)
 				return
 			}
 
+			// Infrastructure allowlist (OAuth dance, health, assets).
+			if isInfra(path) {
+				serve(next, w, r, sess)
+				return
+			}
+
+			// Everything else is gated by default — covers authed product
+			// routes from routes.json and unknown SPA paths alike.
 			if sess != nil {
-				next.ServeHTTP(w, r.WithContext(WithSession(r.Context(), sess)))
+				serve(next, w, r, sess)
 				return
 			}
 
@@ -79,29 +104,35 @@ func New(resumer Resumer, sealer *cookie.Sealer) Middleware {
 	}
 }
 
-// Exact-match allowlist of paths that bypass authentication entirely.
-var allowedExact = map[string]struct{}{
+func serve(next http.Handler, w http.ResponseWriter, r *http.Request, sess *oauth.ClientSession) {
+	if sess != nil {
+		next.ServeHTTP(w, r.WithContext(WithSession(r.Context(), sess)))
+		return
+	}
+	next.ServeHTTP(w, r)
+}
+
+// Infrastructure paths that bypass auth entirely. These are not product
+// routes and don't belong in routes.json.
+var infraExact = map[string]struct{}{
 	"/api/health":     {},
 	"/oauth/login":    {},
 	"/oauth/callback": {},
 	"/oauth/logout":   {},
-	"/login":          {},
 }
 
-// Allowlisted prefixes — covers Vite-internal asset paths in dev and the
-// embedded /assets/ directory in prod.
-var allowedPrefixes = []string{
+var infraPrefixes = []string{
 	"/assets/",
-	"/@",            // /@vite/, /@react-refresh, /@id, /@fs (Vite dev)
+	"/@",             // /@vite/, /@react-refresh, /@id, /@fs (Vite dev)
 	"/node_modules/", // Vite dev
 	"/src/",          // Vite dev
 }
 
-func isAllowlisted(path string) bool {
-	if _, ok := allowedExact[path]; ok {
+func isInfra(path string) bool {
+	if _, ok := infraExact[path]; ok {
 		return true
 	}
-	for _, p := range allowedPrefixes {
+	for _, p := range infraPrefixes {
 		if strings.HasPrefix(path, p) {
 			return true
 		}

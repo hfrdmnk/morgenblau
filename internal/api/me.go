@@ -24,6 +24,12 @@ type Resolver interface {
 // Resolution failures (DNS, bidirectional verification, missing PDS) all
 // collapse to 500 — the contract is "real handle present or fail", never
 // fall back to displaying the DID.
+//
+// TODO: extend the response with `{avatar, displayName}` from the user's
+// `app.bsky.actor.profile/self` record (com.atproto.repo.getRecord on the
+// resolved PDS). Both fields nullable; absent record collapses to null,
+// not an error. Avatar resolves through the PDS blob URL. Consumed by the
+// avatar dropdown in the frontend WindowChrome.
 func MeHandler(resolver Resolver) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := auth.SessionFromContext(r.Context())

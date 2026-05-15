@@ -25,7 +25,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("GET /api/subscriptions", api.SubscriptionsHandler(api.PDSLister{}))
 	mux.Handle("/", spaHandler())
 
-	gate := auth.New(s.oauthApp, s.sealer)
+	gate := auth.New(s.oauthApp, s.sealer, s.routes)
 	return s.corsMiddleware(gate(mux))
 }
 

@@ -1,0 +1,24 @@
+[
+    {
+        "path": "/",
+        "auth": "public",
+        "authedRedirect": "/consume"
+    },
+    {
+        "path": "/login",
+        "auth": "public",
+        "authedRedirect": "/consume"
+    },
+    {
+        "path": "/consume",
+        "auth": "authed"
+    },
+    {
+        "path": "/sources",
+        "auth": "authed"
+    },
+    {
+        "path": "/entry",
+        "auth": "authed"
+    }
+]
