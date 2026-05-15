@@ -1,6 +1,7 @@
 package server
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
@@ -15,18 +16,22 @@ import (
 type Server struct {
 	port int
 
-	db database.Service
+	db *sql.DB
 }
 
 func NewServer() *http.Server {
 	port, _ := strconv.Atoi(os.Getenv("PORT"))
-	NewServer := &Server{
-		port: port,
 
-		db: database.New(),
+	db, err := database.Open()
+	if err != nil {
+		panic(fmt.Errorf("open database: %w", err))
 	}
 
-	// Declare Server config
+	NewServer := &Server{
+		port: port,
+		db:   db,
+	}
+
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", NewServer.port),
 		Handler:      NewServer.RegisterRoutes(),

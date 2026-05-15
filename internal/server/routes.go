@@ -1,9 +1,11 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
@@ -32,13 +34,17 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 }
 
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
-	resp, err := json.Marshal(s.db.Health())
-	if err != nil {
-		http.Error(w, "Failed to marshal health check response", http.StatusInternalServerError)
-		return
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+	defer cancel()
+
+	status := map[string]string{"status": "up"}
+	if err := s.db.PingContext(ctx); err != nil {
+		status["status"] = "down"
+		status["error"] = err.Error()
 	}
+
 	w.Header().Set("Content-Type", "application/json")
-	if _, err := w.Write(resp); err != nil {
+	if err := json.NewEncoder(w).Encode(status); err != nil {
 		log.Printf("Failed to write response: %v", err)
 	}
 }

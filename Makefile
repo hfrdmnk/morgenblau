@@ -44,10 +44,6 @@ test:
 	@echo "Testing..."
 	@go test ./... -v
 
-itest:
-	@echo "Running integration tests..."
-	@go test ./internal/database -v
-
 clean:
 	@echo "Cleaning..."
 	@rm -f main main-linux-*
@@ -90,4 +86,4 @@ watch:
 		fi; \
 	fi
 
-.PHONY: all build build-linux frontend-build run dev test itest clean watch migrate-up migrate-down migrate-status migrate-create sqlc
+.PHONY: all build build-linux frontend-build run dev test clean watch migrate-up migrate-down migrate-status migrate-create sqlc
