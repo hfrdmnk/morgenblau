@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 
-type Record = {
+type Subscription = {
   uri: string
   cid: string
   value: {
@@ -13,10 +14,11 @@ type Record = {
 
 type State =
   | { kind: 'loading' }
-  | { kind: 'ok'; records: Record[] }
+  | { kind: 'ok'; records: Subscription[] }
   | { kind: 'error' }
 
 export function Sources() {
+  useDocumentTitle('Sources')
   const [state, setState] = useState<State>({ kind: 'loading' })
 
   useEffect(() => {
@@ -26,7 +28,7 @@ export function Sources() {
         if (!r.ok) throw new Error(String(r.status))
         return r.json()
       })
-      .then((records: Record[]) => {
+      .then((records: Subscription[]) => {
         if (!cancelled) setState({ kind: 'ok', records })
       })
       .catch(() => {
