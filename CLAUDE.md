@@ -8,6 +8,10 @@ A calm content platform powered by RSS and ATProto — daily digests instead of 
 
 [SPEC.md](./SPEC.md) is the source of truth for product vision, content model, and guardrails. All code must follow the spec.
 
+## Workflow
+
+Write all Go code with Red-Green-TDD. Leverage Go's phenomenal testing suite.
+
 ## Lexicons
 
 `lexicons/` is reference, evolving toward a standardised RSS-reader lexicon for the AT atmosphere. `.json` files are read-only from this codebase. Only `lexicons/app/skyreader/IDEAS.md` is editable — record proposals there before changing schemas.

@@ -56,11 +56,20 @@ A calm content platform powered by RSS and ATProto. Not a classic RSS reader —
 
 ## Authentication
 
-ATProto OAuth is the only auth mechanism — no passwords, email, or registration. The user row stores `did` (primary key), encrypted `refresh_token`, and `iss` (auth server URL). Handle is resolved at login and lives in the Laravel session, never the DB. Profile data (avatar, display name) is re-fetched live from the PDS when needed.
+ATProto OAuth is the only auth mechanism — no passwords, email, or registration. The Go server is a **confidential BFF client** (browsers never see access tokens) built on `indigo/atproto/auth/oauth`.
+
+Session state lives in two SQLite tables, both encrypted at rest before any public deploy:
+
+- `oauth_sessions(did, session_id, data BLOB)` — opaque indigo session blob (refresh token, DPoP key, granted scope, expiry, PDS+AS endpoints). Composite PK allows multiple concurrent sessions per DID (laptop + phone).
+- `oauth_auth_requests(state PK, data BLOB, expires_at)` — short-lived pre-callback state; cron-GC'd, never read in the hot path.
+
+Handle is never persisted in the DB. It's re-resolved on demand via indigo's cached identity directory (`identity.DefaultDirectory`), so handle changes at the PDS are reflected without migration. Profile data (avatar, display name) is re-fetched live from the PDS when needed.
+
+The browser session cookie carries `(did, session_id)` only (sealed, `HttpOnly; Secure; SameSite=Lax`) — all OAuth material stays server-side.
 
 Scopes: granular `repo:app.skyreader.*` per-collection, following [Dan Abramov's guidance](https://underreacted.leaflet.pub/3mjfozhlhys2z). Avoid `transition:generic`.
 
-Client metadata is served at `/oauth-client-metadata.json`, JWKS at `/oauth-jwks.json`, callback at `/oauth/callback` (route name `bluesky.oauth.redirect`, package convention).
+Public endpoints: `/oauth-client-metadata.json` (advertised `client_id` in prod), `/oauth-jwks.json` (public half of the P-256 client key), `/oauth/login` (POST), `/oauth/callback` (GET), `/oauth/logout` (POST).
 
 References:
 - [ATProto OAuth](https://atproto.com/specs/oauth), [ATProto permissions](https://atproto.com/specs/permission)
