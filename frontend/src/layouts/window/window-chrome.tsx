@@ -3,10 +3,8 @@ import {
     PlusSignIcon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { useState } from 'react';
 
-import { useAuthedMe } from '@/components/me-provider';
-import { AddSubscriptionDialog } from '@/components/subscriptions/add-dialog';
+import { useAuthedMe } from '@/hooks/use-authed-me';
 import {
     Avatar,
     AvatarFallback,
@@ -22,6 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { Me } from '@/hooks/use-me';
 import { initialsFromHandle, truncateDid } from '@/lib/handle';
+import { PATHS } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 
 type Tab = {
@@ -29,31 +28,23 @@ type Tab = {
     href: string;
 };
 
+// TODO: /discover and /create routes not registered yet (scaffold).
 const TABS: Tab[] = [
     { label: 'Discover', href: '/discover' },
-    { label: 'Consume', href: '/consume' },
+    { label: 'Consume', href: PATHS.consume },
     { label: 'Create', href: '/create' },
 ];
 
-export function WindowChrome() {
+type Props = {
+    onAddSourceClick: () => void;
+};
+
+export function WindowChrome({ onAddSourceClick }: Props) {
     const pathname = window.location.pathname;
     const me = useAuthedMe();
-    const [addSourceOpen, setAddSourceOpen] = useState(false);
-
-    const handleLogout = () => {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '/oauth/logout';
-        document.body.appendChild(form);
-        form.submit();
-    };
 
     return (
-        <header className="flex h-14 shrink-0 items-center justify-between px-20">
-            <AddSubscriptionDialog
-                open={addSourceOpen}
-                onOpenChange={setAddSourceOpen}
-            />
+        <header className="flex h-14 shrink-0 items-center justify-between px-4 sm:px-6 lg:px-20">
             <nav className="flex items-center gap-6">
                 {TABS.map((tab) => {
                     const isActive = pathname === tab.href;
@@ -62,6 +53,7 @@ export function WindowChrome() {
                         <a
                             key={tab.href}
                             href={tab.href}
+                            aria-current={isActive ? 'page' : undefined}
                             className={cn(
                                 'relative text-sm font-medium transition-colors outline-none focus-visible:outline-1 focus-visible:outline-offset-4 focus-visible:outline-ring focus-visible:outline-solid',
                                 isActive
@@ -86,7 +78,7 @@ export function WindowChrome() {
                     variant="ghost"
                     size="icon-sm"
                     aria-label="Add source"
-                    onClick={() => setAddSourceOpen(true)}
+                    onClick={onAddSourceClick}
                 >
                     <HugeiconsIcon icon={PlusSignIcon} className="size-5" />
                 </Button>
@@ -105,9 +97,21 @@ export function WindowChrome() {
                     <DropdownMenuContent align="end" className="w-56">
                         <UserHeader me={me} />
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={handleLogout}>
-                            <HugeiconsIcon icon={LogoutSquare01Icon} />
-                            Log out
+                        <DropdownMenuItem
+                            render={
+                                <form
+                                    method="POST"
+                                    action={PATHS.oauthLogout}
+                                />
+                            }
+                        >
+                            <button
+                                type="submit"
+                                className="flex w-full items-center gap-2"
+                            >
+                                <HugeiconsIcon icon={LogoutSquare01Icon} />
+                                Log out
+                            </button>
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
@@ -116,7 +120,6 @@ export function WindowChrome() {
     );
 }
 
-// Trigger avatar — kept tiny so it sits inside the 32px icon-sm button.
 function TriggerAvatar({ me }: { me: Me }) {
     return (
         <Avatar size="sm" className="size-5">

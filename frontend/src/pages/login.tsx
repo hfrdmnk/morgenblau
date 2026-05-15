@@ -1,8 +1,8 @@
 import { Loading03Icon, Login03Icon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { useState } from 'react';
-import AuthGoldenLayout from '@/layouts/auth-golden-layout';
-import InputError from '@/components/input-error';
+
+import { InputError } from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
     InputGroup,
@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/input-group';
 import { Label } from '@/components/ui/label';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { AuthGoldenLayout } from '@/layouts/auth-golden-layout';
+import { PATHS } from '@/lib/paths';
 
 // Native form submit — no fetch, no preventDefault. The browser must navigate
 // to follow the AS redirect that /oauth/login responds with.
@@ -33,7 +35,7 @@ export function Login() {
 
                 <form
                     method="POST"
-                    action="/oauth/login"
+                    action={PATHS.oauthLogin}
                     onSubmit={() => setPending(true)}
                     className="space-y-3"
                 >
@@ -50,10 +52,11 @@ export function Login() {
                                     id="handle"
                                     name="handle"
                                     type="text"
+                                    required
                                     autoComplete="username"
                                     autoFocus
                                     placeholder="alice.bsky.social"
-                                    inputMode="email"
+                                    inputMode="text"
                                     spellCheck={false}
                                     value={handle}
                                     onChange={(e) =>

@@ -9,6 +9,8 @@ import { HugeiconsIcon } from '@hugeicons/react';
 import type { IconSvgElement } from '@hugeicons/react';
 import { useEffect, useState } from 'react';
 
+import { cn, safeHref } from '@/lib/utils';
+
 export type ExtractedToggleState = 'inactive' | 'active' | 'loading';
 
 export type ExtractedToggle = {
@@ -22,6 +24,9 @@ type ReaderRailProps = {
     showProgress?: boolean;
 };
 
+const RAIL_BUTTON_BASE =
+    'inline-flex size-9 items-center justify-center rounded-xl transition-colors duration-200 ease-out outline-none focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid';
+
 export function ReaderRail({
     sourceUrl,
     extractedToggle,
@@ -32,7 +37,7 @@ export function ReaderRail({
     return (
         <>
             <aside
-                aria-label="Reader actions"
+                aria-label="Reader actions (sidebar)"
                 className="pointer-events-none fixed top-1/2 right-4 z-10 hidden -translate-y-1/2 sm:right-6 sm:block"
             >
                 <div className="pointer-events-auto flex flex-col items-center gap-3">
@@ -49,9 +54,8 @@ export function ReaderRail({
                 </div>
             </aside>
 
-            <div
-                aria-label="Reader actions"
-                role="toolbar"
+            <aside
+                aria-label="Reader actions (bottom bar)"
                 className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-card/95 backdrop-blur sm:hidden"
             >
                 {showProgress ? (
@@ -66,7 +70,7 @@ export function ReaderRail({
                         extractedToggle={extractedToggle}
                     />
                 </div>
-            </div>
+            </aside>
         </>
     );
 }
@@ -78,6 +82,8 @@ function RailIcons({
     sourceUrl: string | null;
     extractedToggle?: ExtractedToggle;
 }) {
+    const safeSource = safeHref(sourceUrl);
+
     return (
         <>
             <DisabledRailIcon icon={Bookmark01Icon} label="Save" />
@@ -88,13 +94,16 @@ function RailIcons({
                     onClick={extractedToggle.onClick}
                 />
             ) : null}
-            {sourceUrl ? (
+            {safeSource ? (
                 <a
-                    href={sourceUrl}
+                    href={safeSource}
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="Open original article"
-                    className="inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
+                    className={cn(
+                        RAIL_BUTTON_BASE,
+                        'text-muted-foreground hover:text-foreground',
+                    )}
                 >
                     <HugeiconsIcon
                         icon={LinkSquare01Icon}
@@ -126,19 +135,20 @@ function ExtractedToggleIcon({
                 isActive ? 'Show feed version' : 'Show extracted version'
             }
             aria-busy={isLoading || undefined}
-            className={
+            className={cn(
+                RAIL_BUTTON_BASE,
+                'disabled:cursor-wait',
                 isActive
-                    ? 'inline-flex size-9 items-center justify-center rounded-xl text-primary transition-colors duration-200 ease-out outline-none hover:text-primary focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid disabled:cursor-wait'
-                    : 'inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid disabled:cursor-wait'
-            }
+                    ? 'text-primary hover:text-primary'
+                    : 'text-muted-foreground hover:text-foreground',
+            )}
         >
             <HugeiconsIcon
                 icon={isLoading ? Loading03Icon : MagicWand01Icon}
-                className={
-                    isLoading
-                        ? 'size-[1.125rem] motion-safe:animate-spin'
-                        : 'size-[1.125rem]'
-                }
+                className={cn(
+                    'size-[1.125rem]',
+                    isLoading && 'motion-safe:animate-spin',
+                )}
             />
         </button>
     );
@@ -208,7 +218,7 @@ function ScrollProgressTrack({
                         strokeLinecap="round"
                         strokeDasharray={RING_CIRCUMFERENCE}
                         strokeDashoffset={RING_CIRCUMFERENCE * (1 - progress)}
-                        className="stroke-primary [transition:stroke-dashoffset_120ms_linear]"
+                        className="stroke-primary motion-safe:[transition:stroke-dashoffset_120ms_linear]"
                     />
                 </svg>
             </div>
@@ -225,7 +235,7 @@ function ScrollProgressTrack({
             className="h-px w-full overflow-hidden bg-border"
         >
             <div
-                className="h-full w-full origin-left bg-foreground transition-transform duration-[120ms] ease-linear"
+                className="h-full w-full origin-left bg-foreground motion-safe:transition-transform motion-safe:duration-[120ms] motion-safe:ease-linear"
                 style={{ transform: `scaleX(${progress})` }}
             />
         </div>

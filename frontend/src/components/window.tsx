@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { LevelContext } from '@/lib/level-context';
+import { LevelContext } from '@/hooks/use-surface-level';
 import { cn } from '@/lib/utils';
 
 type WindowVariant = 'plain' | 'sunrise';
@@ -25,7 +25,7 @@ export function Window({
             <div
                 data-slot="window"
                 className={cn(
-                    'overflow-hidden rounded-tl-[4rem] rounded-tr-[4rem] rounded-br-[0.5rem] rounded-bl-[0.5rem]',
+                    'overflow-hidden rounded-tl-[var(--radius-window-top)] rounded-tr-[var(--radius-window-top)] rounded-br-[var(--radius-window-bottom)] rounded-bl-[var(--radius-window-bottom)]',
                     VARIANT_STYLES[variant],
                     className,
                 )}

@@ -9,9 +9,9 @@ import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
 export type FeedCandidate = {
-    feed_url: string;
+    feedUrl: string;
     title: string | null;
-    site_url: string | null;
+    siteUrl: string | null;
 };
 
 type Selection = {
@@ -20,7 +20,7 @@ type Selection = {
 
 type Props = {
     candidates: FeedCandidate[];
-    existingByFeedUrl: Record<string, string | null>;
+    existingByFeedUrl: Map<string, string | null>;
     selected: Record<string, Selection>;
     onToggle: (candidate: FeedCandidate) => void;
     onTitleChange: (feedUrl: string, title: string) => void;
@@ -46,16 +46,16 @@ export function FeedCandidateList({
             className="flex flex-col gap-2"
         >
             {candidates.map((candidate, index) => {
-                const isExisting = candidate.feed_url in existingByFeedUrl;
+                const isExisting = existingByFeedUrl.has(candidate.feedUrl);
                 const savedTitle = isExisting
-                    ? existingByFeedUrl[candidate.feed_url]
+                    ? (existingByFeedUrl.get(candidate.feedUrl) ?? null)
                     : null;
-                const selection = selected[candidate.feed_url];
+                const selection = selected[candidate.feedUrl];
                 const isSelected = selection !== undefined;
 
                 return (
                     <FeedCandidateCard
-                        key={candidate.feed_url}
+                        key={candidate.feedUrl}
                         candidate={candidate}
                         isExisting={isExisting}
                         savedTitle={savedTitle}
@@ -108,7 +108,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                 isExisting ? 'existing' : isSelected ? 'selected' : 'idle'
             }
             className={cn(
-                'rounded-xl border border-border bg-gray-50 dark:bg-gray-900',
+                'rounded-xl border border-border bg-muted',
                 isExisting && 'opacity-60',
             )}
         >
@@ -143,7 +143,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                     <span className="flex min-w-0 items-center gap-2">
                         <span className="truncate text-sm font-medium">
                             {(isExisting ? savedTitle : candidate.title) ??
-                                candidate.feed_url}
+                                candidate.feedUrl}
                         </span>
                         {isExisting && (
                             <span className="text-xs font-light text-muted-foreground">
@@ -152,7 +152,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                         )}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">
-                        {candidate.feed_url}
+                        {candidate.feedUrl}
                     </span>
                 </div>
             </label>
@@ -171,7 +171,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                 value={selectedTitle}
                                 onChange={(event) =>
                                     onTitleChange(
-                                        candidate.feed_url,
+                                        candidate.feedUrl,
                                         event.target.value,
                                     )
                                 }

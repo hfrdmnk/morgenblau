@@ -1,13 +1,17 @@
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 
+import { AddSourceDialog } from '@/components/sources/add-dialog';
 import { Window } from '@/components/window';
-import { WindowChrome } from '@/components/window-chrome';
-import { WindowFooter } from '@/components/window-footer';
+import { WindowChrome } from '@/layouts/window/window-chrome';
+import { WindowFooter } from '@/layouts/window/window-footer';
 
-export default function WindowLayout({ children }: { children: ReactNode }) {
+export function WindowLayout({ children }: { children: ReactNode }) {
+    const [addSourceOpen, setAddSourceOpen] = useState(false);
+
     return (
         <div className="flex h-dvh flex-col">
-            <WindowChrome />
+            <WindowChrome onAddSourceClick={() => setAddSourceOpen(true)} />
             <main className="min-h-0 flex-1 px-4 pb-4">
                 <Window variant="plain" className="h-full">
                     <div className="h-full overflow-y-auto">
@@ -18,6 +22,7 @@ export default function WindowLayout({ children }: { children: ReactNode }) {
                     </div>
                 </Window>
             </main>
+            <AddSourceDialog open={addSourceOpen} onOpenChange={setAddSourceOpen} />
         </div>
     );
 }

@@ -3,11 +3,11 @@ import { HugeiconsIcon } from '@hugeicons/react';
 import type { FormEvent, KeyboardEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import InputError from '@/components/input-error';
 import {
     FeedCandidateList,
     type FeedCandidate,
-} from '@/components/subscriptions/feed-candidate-list';
+} from '@/components/sources/feed-candidate-list';
+import { InputError } from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -21,17 +21,18 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { isMacPlatform } from '@/lib/utils';
 
-type ExistingSubscription = { feed_url: string; title: string | null };
+type ExistingFeedSubscription = { feedUrl: string; title: string | null };
 
+// TODO(backend): expose /api/subscriptions/discover + /api/subscriptions (POST). See SPEC.md.
 type DiscoverResult = {
     candidates: FeedCandidate[];
-    existing_subscriptions: ExistingSubscription[];
+    existingSubscriptions: ExistingFeedSubscription[];
 };
 
 type SubscriptionItem = {
-    feed_url: string;
+    feedUrl: string;
     title: string;
-    site_url: string;
+    siteUrl: string;
 };
 
 type Props = {
@@ -41,14 +42,13 @@ type Props = {
 
 function toItem(candidate: FeedCandidate): SubscriptionItem {
     return {
-        feed_url: candidate.feed_url,
+        feedUrl: candidate.feedUrl,
         title: candidate.title ?? '',
-        site_url: candidate.site_url ?? '',
+        siteUrl: candidate.siteUrl ?? '',
     };
 }
 
-export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
-    // Discovery state.
+export function AddSourceDialog({ open, onOpenChange }: Props) {
     const [url, setUrl] = useState('');
     const [discovering, setDiscovering] = useState(false);
     const [discoverError, setDiscoverError] = useState<string | undefined>(
@@ -56,13 +56,11 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
     );
     const discoverAbortRef = useRef<AbortController | null>(null);
 
-    // Result state.
     const [candidates, setCandidates] = useState<FeedCandidate[] | null>(null);
     const [existingSubscriptions, setExistingSubscriptions] = useState<
-        ExistingSubscription[]
+        ExistingFeedSubscription[]
     >([]);
 
-    // Submit state.
     const [subscriptions, setSubscriptions] = useState<SubscriptionItem[]>([]);
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState<string | undefined>(
@@ -75,10 +73,6 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
     const previousCandidatesRef = useRef<FeedCandidate[] | null>(null);
 
     const isMac = useMemo(() => isMacPlatform(), []);
-
-    const close = () => {
-        onOpenChange(false);
-    };
 
     const resetState = useCallback(() => {
         discoverAbortRef.current?.abort();
@@ -126,11 +120,6 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         setDiscovering(true);
 
         try {
-            // TODO(backend): expose `POST /api/subscriptions/discover` accepting
-            // `{ url: string }` and returning
-            // `{ candidates: FeedCandidate[], existing_subscriptions: ExistingSubscription[] }`.
-            // Server resolves the URL, scrapes for feeds, and reports which are
-            // already in the user's atproto subscription set.
             const response = await fetch('/api/subscriptions/discover', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
@@ -153,13 +142,13 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
 
             const result = (await response.json()) as DiscoverResult;
             setCandidates(result.candidates);
-            setExistingSubscriptions(result.existing_subscriptions);
+            setExistingSubscriptions(result.existingSubscriptions);
 
             const existing = new Set(
-                result.existing_subscriptions.map((s) => s.feed_url),
+                result.existingSubscriptions.map((s) => s.feedUrl),
             );
             const fresh = result.candidates.filter(
-                (c) => !existing.has(c.feed_url),
+                (c) => !existing.has(c.feedUrl),
             );
 
             if (fresh.length === 1) {
@@ -221,7 +210,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         }
 
         if (target instanceof HTMLInputElement) {
-            const isUrlInput = target.id === 'subscription-url';
+            const isUrlInput = target.id === 'source-url';
             const isCheckbox = target.type === 'checkbox';
 
             if (isUrlInput || isCheckbox) {
@@ -256,17 +245,19 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         () =>
             Object.fromEntries(
                 subscriptions.map((item) => [
-                    item.feed_url,
+                    item.feedUrl,
                     { title: item.title },
                 ]),
             ),
         [subscriptions],
     );
 
-    const existingByFeedUrl: Record<string, string | null> = useMemo(
+    const existingByFeedUrl = useMemo(
         () =>
-            Object.fromEntries(
-                existingSubscriptions.map((s) => [s.feed_url, s.title]),
+            new Map(
+                existingSubscriptions.map(
+                    (s) => [s.feedUrl, s.title] as const,
+                ),
             ),
         [existingSubscriptions],
     );
@@ -274,12 +265,12 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
     const toggleCandidate = useCallback((candidate: FeedCandidate) => {
         setSubscriptions((current) => {
             const exists = current.some(
-                (item) => item.feed_url === candidate.feed_url,
+                (item) => item.feedUrl === candidate.feedUrl,
             );
 
             return exists
                 ? current.filter(
-                      (item) => item.feed_url !== candidate.feed_url,
+                      (item) => item.feedUrl !== candidate.feedUrl,
                   )
                 : [...current, toItem(candidate)];
         });
@@ -289,7 +280,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         (feedUrl: string, title: string) => {
             setSubscriptions((current) =>
                 current.map((item) =>
-                    item.feed_url === feedUrl ? { ...item, title } : item,
+                    item.feedUrl === feedUrl ? { ...item, title } : item,
                 ),
             );
         },
@@ -320,11 +311,6 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
         setFieldErrors({});
 
         try {
-            // TODO(backend): expose `POST /api/subscriptions` accepting
-            // `{ subscriptions: [{ feed_url, title, site_url }] }`.
-            // Server writes one `app.skyreader.subscription` record per item to
-            // the user's atproto repo. On 422, return
-            // `{ errors: { "subscriptions.0.title": "...", message?: "..." } }`.
             const response = await fetch('/api/subscriptions', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
@@ -349,7 +335,7 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
             }
 
             resetState();
-            close();
+            onOpenChange(false);
         } catch {
             setSubmitError('Couldn’t add those sources. Try again?');
         } finally {
@@ -383,12 +369,12 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                     className="flex min-h-0 min-w-0 flex-col gap-5"
                 >
                     <div className="space-y-2">
-                        <Label htmlFor="subscription-url" className="sr-only">
+                        <Label htmlFor="source-url" className="sr-only">
                             URL
                         </Label>
                         <div className="flex items-center gap-2">
                             <Input
-                                id="subscription-url"
+                                id="source-url"
                                 type="url"
                                 inputMode="url"
                                 autoFocus
@@ -423,19 +409,23 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                                         Finding…
                                     </>
                                 ) : (
-                                    'Find feeds'
+                                    'Find'
                                 )}
                             </Button>
                         </div>
                         {discoverError && (
                             <InputError message={discoverError} />
                         )}
+                        <p className="text-sm font-light text-muted-foreground">
+                            Your sources are currently all public.
+                            (Selective private sources are coming.)
+                        </p>
                     </div>
 
                     {hasCandidates && (
                         <>
                             <h2 id="candidate-list-heading" className="sr-only">
-                                Discovered feeds
+                                What we found
                             </h2>
                             <div className="-mx-6 min-h-0 flex-1 overflow-y-auto px-6">
                                 <FeedCandidateList
@@ -456,20 +446,24 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
                         subscriptions.map((item, index) => {
                             const indexedErrors = [
                                 fieldErrors[
-                                    `subscriptions.${index}.feed_url`
+                                    `subscriptions.${index}.feedUrl`
                                 ],
                                 fieldErrors[
                                     `subscriptions.${index}.title`
                                 ],
                             ].filter(Boolean) as string[];
 
-                            return indexedErrors.length === 0 ? null : (
+                            if (indexedErrors.length === 0) {
+                                return null;
+                            }
+
+                            return (
                                 <div
-                                    key={item.feed_url}
+                                    key={item.feedUrl}
                                     className="flex flex-col gap-1"
                                 >
                                     <p className="text-xs text-muted-foreground">
-                                        {item.title || item.feed_url}
+                                        {item.title || item.feedUrl}
                                     </p>
                                     {indexedErrors.map((message) => (
                                         <InputError
@@ -483,16 +477,11 @@ export function AddSubscriptionDialog({ open, onOpenChange }: Props) {
 
                     {topLevelError && <InputError message={topLevelError} />}
 
-                    <p className="text-sm font-light text-muted-foreground">
-                        Your subscriptions are currently all public. (Selective
-                        private subscriptions are coming.)
-                    </p>
-
                     <DialogFooter>
                         <Button
                             type="button"
                             variant="secondary"
-                            onClick={close}
+                            onClick={() => onOpenChange(false)}
                             disabled={submitting}
                         >
                             Cancel

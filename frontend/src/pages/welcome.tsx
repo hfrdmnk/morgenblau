@@ -1,36 +1,11 @@
-import { useEffect } from 'react';
-import AppLogoIcon from '@/components/app-logo-icon';
+import { AppLogoIcon } from '@/components/app-logo-icon';
 import { Button } from '@/components/ui/button';
 import { Window } from '@/components/window';
 import { useDocumentTitle } from '@/hooks/use-document-title';
-
-const target = '/login';
+import { PATHS } from '@/lib/paths';
 
 export function Welcome() {
     useDocumentTitle();
-
-    useEffect(() => {
-        const handler = (event: KeyboardEvent) => {
-            if (event.key !== 'Enter') {
-                return;
-            }
-
-            const eventTarget = event.target as HTMLElement | null;
-
-            if (
-                eventTarget &&
-                eventTarget.closest('input, textarea, [contenteditable]')
-            ) {
-                return;
-            }
-
-            event.preventDefault();
-            window.location.assign(target);
-        };
-        window.addEventListener('keydown', handler);
-
-        return () => window.removeEventListener('keydown', handler);
-    }, []);
 
     return (
         <div className="min-h-svh bg-background p-6">
@@ -51,7 +26,7 @@ export function Welcome() {
                     <Button
                         variant="ghost-on-gradient"
                         className="text-base"
-                        onClick={() => window.location.assign(target)}
+                        onClick={() => window.location.assign(PATHS.login)}
                     >
                         Begin
                     </Button>
