@@ -5,9 +5,6 @@ procs:
   Vite:
     shell: bun run --cwd ./frontend dev
     autostart: true
-  Tunnel:
-    shell: cloudflared tunnel run
-    autostart: true
   Tests:
     shell: go test ./...
     autostart: false

@@ -10,11 +10,23 @@
         "authedRedirect": "/consume"
     },
     {
+        "path": "/about",
+        "auth": "public"
+    },
+    {
         "path": "/consume",
         "auth": "authed"
     },
     {
         "path": "/sources",
+        "auth": "authed"
+    },
+    {
+        "path": "/discover",
+        "auth": "authed"
+    },
+    {
+        "path": "/create",
         "auth": "authed"
     },
     {

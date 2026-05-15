@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"morgenblau/internal/api"
+	"morgenblau/internal/atprepo"
 	"morgenblau/internal/middleware/auth"
 	"morgenblau/internal/oauth/handler"
 )
@@ -19,10 +20,33 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("/oauth-client-metadata.json", handler.ClientMetadataHandler(s.oauthCfg))
 	mux.Handle("/oauth-jwks.json", handler.JWKSHandler(s.oauthCfg))
 	mux.Handle("POST /oauth/login", handler.LoginHandler(s.oauthApp))
-	mux.Handle("GET /oauth/callback", handler.CallbackHandler(s.oauthApp, s.sealer))
+	mux.Handle("GET /oauth/callback", handler.CallbackHandler(s.oauthApp, s.sealer, s.sync))
 	mux.Handle("POST /oauth/logout", handler.LogoutHandler(s.oauthApp, s.sealer))
-	mux.Handle("GET /api/me", api.MeHandler(s.oauthApp.Dir))
-	mux.Handle("GET /api/subscriptions", api.SubscriptionsHandler(api.PDSLister{}))
+	mux.Handle("GET /api/profiles/me", api.MeProfileHandler(s.profiles))
+	mux.Handle("GET /api/profiles/{did}", api.ProfileByDIDHandler(s.profiles))
+
+	pdsWriter := atprepo.SessionWriter{}
+	mux.Handle("GET /api/subscriptions", api.SubscriptionsListHandler(s.queries))
+	mux.Handle("POST /api/subscriptions/resolve", api.SubscriptionsResolveHandler(s.queries, s.feedfinder))
+	mux.Handle("POST /api/subscriptions", api.SubscriptionsCreateHandler(s.queries, s.queries, pdsWriter, s.sync))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", api.SubscriptionsPatchHandler(s.queries, s.queries, pdsWriter))
+	mux.Handle("DELETE /api/subscriptions/{rkey}", api.SubscriptionsDeleteHandler(s.queries, s.queries, pdsWriter))
+
+	mux.Handle("GET /api/jobs/active", api.JobsActiveHandler(s.jobs))
+	mux.Handle("GET /api/jobs/{id}", api.JobsGetHandler(s.jobs))
+	mux.Handle("GET /api/digest", api.DigestHandler(s.queries, s.jobs))
+	mux.Handle("POST /api/digest/refresh", api.DigestRefreshHandler(s.sync))
+	mux.Handle("GET /api/entries/{id}", api.EntryHandler(s.queries))
+	mux.Handle("POST /api/entries/{id}/extract", api.EntryExtractHandler(s.queries, s.queries))
+
+	// v1-deferred endpoints: stubbed to 501 so frontend callers fail loudly.
+	stub := api.NotImplementedHandler()
+	mux.Handle("/api/saved", stub)
+	mux.Handle("/api/shares", stub)
+	mux.Handle("/api/follows", stub)
+	mux.Handle("/api/entries/{id}/social", stub)
+
+	mux.Handle("GET /about", api.AboutHandler())
 	mux.Handle("/", spaHandler())
 
 	gate := auth.New(s.oauthApp, s.sealer, s.routes)

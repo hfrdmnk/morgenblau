@@ -15,22 +15,34 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 
+	"morgenblau/internal/cache/profiles"
 	"morgenblau/internal/database"
+	dbqueries "morgenblau/internal/database/db"
+	"morgenblau/internal/feedfinder"
+	"morgenblau/internal/fetcher"
+	"morgenblau/internal/jobs"
 	"morgenblau/internal/oauth/config"
 	"morgenblau/internal/oauth/cookie"
 	"morgenblau/internal/oauth/store"
 	"morgenblau/internal/routes"
+	internalsync "morgenblau/internal/sync"
 )
 
 type Server struct {
 	port int
 
-	db       *sql.DB
-	oauthCfg *config.Config
-	oauthApp *oauth.ClientApp
-	store    *store.Store
-	sealer   *cookie.Sealer
-	routes   []routes.Route
+	db         *sql.DB
+	queries    *dbqueries.Queries
+	oauthCfg   *config.Config
+	oauthApp   *oauth.ClientApp
+	store      *store.Store
+	sealer     *cookie.Sealer
+	routes     []routes.Route
+	profiles   *profiles.Cache
+	jobs       *jobs.Tracker
+	sync       *internalsync.Orchestrator
+	fetcher    *fetcher.Fetcher
+	feedfinder *feedfinder.Finder
 
 	gcCancel context.CancelFunc
 }
@@ -64,15 +76,30 @@ func NewServer() *http.Server {
 	gcCtx, gcCancel := context.WithCancel(context.Background())
 	go runAuthRequestGC(gcCtx, st)
 
+	profileCache := profiles.New(oauthApp.Dir, profiles.PDSFetcher{})
+	tracker := jobs.New()
+	fetcherInst := fetcher.New()
+	finder := feedfinder.New(&http.Client{Timeout: 30 * time.Second})
+	queries := dbqueries.New(db)
+	pipeline := internalsync.NewFeedPipeline(fetcherInst, queries)
+	engine := internalsync.NewEngine(tracker, queries, internalsync.SessionPDSLister{}, pipeline, oauthApp)
+	orchestrator := internalsync.New(tracker).WithFetcher(pipeline).WithEngine(engine)
+
 	NewServer := &Server{
-		port:     port,
-		db:       db,
-		oauthCfg: oauthCfg,
-		oauthApp: oauthApp,
-		store:    st,
-		sealer:   sealer,
-		routes:   rs,
-		gcCancel: gcCancel,
+		port:       port,
+		db:         db,
+		queries:    queries,
+		oauthCfg:   oauthCfg,
+		oauthApp:   oauthApp,
+		store:      st,
+		sealer:     sealer,
+		routes:     rs,
+		profiles:   profileCache,
+		jobs:       tracker,
+		sync:       orchestrator,
+		fetcher:    fetcherInst,
+		feedfinder: finder,
+		gcCancel:   gcCancel,
 	}
 
 	server := &http.Server{

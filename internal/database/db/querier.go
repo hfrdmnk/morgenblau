@@ -12,10 +12,24 @@ type Querier interface {
 	DeleteAuthRequest(ctx context.Context, state string) error
 	DeleteExpiredAuthRequests(ctx context.Context, expiresAt string) (int64, error)
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
+	DeleteUserSubscription(ctx context.Context, arg DeleteUserSubscriptionParams) error
 	GetAuthRequest(ctx context.Context, state string) (GetAuthRequestRow, error)
+	GetFeed(ctx context.Context, feedUrl string) (Feed, error)
+	GetFeedEntry(ctx context.Context, id int64) (FeedEntry, error)
 	GetSession(ctx context.Context, arg GetSessionParams) ([]byte, error)
+	GetUserSubscription(ctx context.Context, arg GetUserSubscriptionParams) (UserSubscription, error)
+	GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserSubscriptionByFeedURLParams) (UserSubscription, error)
+	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
+	ListFeedURLsForUser(ctx context.Context, did string) ([]string, error)
+	ListUserSubscriptions(ctx context.Context, did string) ([]UserSubscription, error)
+	ListUserSubscriptionsForSync(ctx context.Context, did string) ([]ListUserSubscriptionsForSyncRow, error)
 	PutAuthRequest(ctx context.Context, arg PutAuthRequestParams) error
 	PutSession(ctx context.Context, arg PutSessionParams) error
+	UpdateFeedEntryExtractedBody(ctx context.Context, arg UpdateFeedEntryExtractedBodyParams) error
+	UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchStateParams) error
+	UpsertFeed(ctx context.Context, arg UpsertFeedParams) error
+	UpsertFeedEntry(ctx context.Context, arg UpsertFeedEntryParams) error
+	UpsertUserSubscription(ctx context.Context, arg UpsertUserSubscriptionParams) error
 }
 
 var _ Querier = (*Queries)(nil)

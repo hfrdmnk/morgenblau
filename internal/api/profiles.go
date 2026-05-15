@@ -1,0 +1,81 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+
+	"github.com/bluesky-social/indigo/atproto/syntax"
+
+	"morgenblau/internal/cache/profiles"
+	"morgenblau/internal/middleware/auth"
+)
+
+// ProfileSource is the slice of *profiles.Cache the handlers depend on.
+// Stubbed in tests; production wires the real cache.
+type ProfileSource interface {
+	Get(ctx context.Context, did syntax.DID) (profiles.Profile, error)
+	Refresh(ctx context.Context, did syntax.DID) (profiles.Profile, error)
+}
+
+// MeProfileHandler returns the session user's profile {did, handle,
+// displayName, avatar}. Self-bypass is implicit: always Refresh so user-driven
+// Bluesky profile edits surface immediately.
+func MeProfileHandler(src ProfileSource) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sess := auth.SessionFromContext(r.Context())
+		if sess == nil || sess.Data == nil {
+			slog.Error("/api/profiles/me: no session in context (middleware bypassed?)")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		p, err := src.Refresh(r.Context(), sess.Data.AccountDID)
+		if err != nil {
+			if errors.Is(err, profiles.ErrHandleInvalid) {
+				slog.Warn("/api/profiles/me: handle.invalid", "did", sess.Data.AccountDID)
+			} else {
+				slog.Warn("/api/profiles/me: profile load failed", "did", sess.Data.AccountDID, "err", err)
+			}
+			http.Error(w, "could not resolve identity", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, p)
+	})
+}
+
+// ProfileByDIDHandler resolves any DID through the cache. The session's own
+// DID transparently delegates to the self-bypass path so /api/profiles/{me}
+// stays consistent with /api/profiles/me.
+func ProfileByDIDHandler(src ProfileSource) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw := r.PathValue("did")
+		did, err := syntax.ParseDID(raw)
+		if err != nil {
+			http.Error(w, "invalid did", http.StatusBadRequest)
+			return
+		}
+
+		sess := auth.SessionFromContext(r.Context())
+		selfBypass := sess != nil && sess.Data != nil && sess.Data.AccountDID == did
+
+		var profile profiles.Profile
+		if selfBypass {
+			profile, err = src.Refresh(r.Context(), did)
+		} else {
+			profile, err = src.Get(r.Context(), did)
+		}
+		if err != nil {
+			slog.Warn("/api/profiles/{did}: profile load failed", "did", did, "err", err)
+			http.Error(w, "could not resolve identity", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, profile)
+	})
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v)
+}

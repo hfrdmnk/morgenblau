@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      allowedHosts: ['local.morgen.blue'],
+      host: '127.0.0.1',
       proxy: {
         '/api': `http://localhost:${apiPort}`,
       },

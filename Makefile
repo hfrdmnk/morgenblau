@@ -18,13 +18,13 @@ frontend-build:
 	@bun install --cwd ./frontend --frozen-lockfile
 	@bun run --cwd ./frontend build
 
-# Run the Go server and Vite frontend together (no tunnel). Prefer `make dev`.
+# Run the Go server and Vite frontend together. Prefer `make dev`.
 run:
 	@go run cmd/api/main.go &
 	@bun install --cwd ./frontend
 	@bun run --cwd ./frontend dev
 
-# One-command dev: Go (air) + Vite + cloudflared tunnel via mprocs.
+# One-command dev: Go (air) + Vite via mprocs.
 dev:
 	@if ! command -v mprocs > /dev/null; then \
 		echo "mprocs is required. Install with: brew install mprocs"; \
@@ -32,10 +32,6 @@ dev:
 	fi
 	@if ! command -v air > /dev/null; then \
 		echo "air is required. Install with: go install github.com/air-verse/air@latest"; \
-		exit 1; \
-	fi
-	@if ! command -v cloudflared > /dev/null; then \
-		echo "cloudflared is required. Install with: brew install cloudflared"; \
 		exit 1; \
 	fi
 	@mprocs

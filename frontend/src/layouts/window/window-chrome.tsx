@@ -28,11 +28,10 @@ type Tab = {
     href: string;
 };
 
-// TODO: /discover and /create routes not registered yet (scaffold).
 const TABS: Tab[] = [
-    { label: 'Discover', href: '/discover' },
+    { label: 'Discover', href: PATHS.discover },
     { label: 'Consume', href: PATHS.consume },
-    { label: 'Create', href: '/create' },
+    { label: 'Create', href: PATHS.create },
 ];
 
 type Props = {

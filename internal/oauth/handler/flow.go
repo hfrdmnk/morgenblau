@@ -23,6 +23,12 @@ type ClientApp interface {
 	Logout(ctx context.Context, did syntax.DID, sessionID string) error
 }
 
+// LoginSyncStarter fires a fire-and-forget refresh job after a successful
+// OAuth callback. Optional — when nil, the callback simply skips the sync.
+type LoginSyncStarter interface {
+	StartLoginRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error)
+}
+
 // LoginHandler reads the `handle` form field, kicks off the OAuth dance,
 // and redirects the user to the AS authorize URL.
 func LoginHandler(app ClientApp) http.Handler {
@@ -51,7 +57,9 @@ func LoginHandler(app ClientApp) http.Handler {
 }
 
 // CallbackHandler completes the OAuth dance and sets the session cookie.
-func CallbackHandler(app ClientApp, sealer *cookie.Sealer) http.Handler {
+// When a LoginSyncStarter is provided, the callback fires a sync_user job
+// (trigger=login) so the refresh pill on /consume picks it up immediately.
+func CallbackHandler(app ClientApp, sealer *cookie.Sealer, starter LoginSyncStarter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, err := app.ProcessCallback(r.Context(), r.URL.Query())
 		if err != nil {
@@ -65,12 +73,19 @@ func CallbackHandler(app ClientApp, sealer *cookie.Sealer) http.Handler {
 			return
 		}
 		sealer.Set(w, sess.AccountDID.String(), sess.SessionID)
+		if starter != nil {
+			// Fire-and-forget. Don't block the redirect on a network call.
+			if _, err := starter.StartLoginRefresh(r.Context(), sess.AccountDID, sess.SessionID); err != nil {
+				slog.Warn("login refresh dispatch failed", "err", err)
+			}
+		}
 		http.Redirect(w, r, "/", http.StatusFound)
 	})
 }
 
 // LogoutHandler revokes at the AS (best-effort), deletes the server-side
-// session, clears the cookie, and redirects to /login.
+// session, clears the cookie, and redirects to /. The public welcome lives
+// there; an authed user would be bounced from /login by the route table.
 func LogoutHandler(app ClientApp, sealer *cookie.Sealer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -87,6 +102,6 @@ func LogoutHandler(app ClientApp, sealer *cookie.Sealer) http.Handler {
 			}
 		}
 		sealer.Clear(w)
-		http.Redirect(w, r, "/login", http.StatusFound)
+		http.Redirect(w, r, "/", http.StatusFound)
 	})
 }

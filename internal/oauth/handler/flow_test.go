@@ -126,7 +126,7 @@ func TestCallback_HappyPath_SetsCookie_RedirectsHome(t *testing.T) {
 		SessionID:  "state-1",
 	}}
 	sealer := newSealer(t)
-	h := CallbackHandler(app, sealer)
+	h := CallbackHandler(app, sealer, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/callback?state=s&code=c&iss=https://as.example.com", nil)
 	rr := httptest.NewRecorder()
@@ -160,7 +160,7 @@ func TestCallback_HappyPath_SetsCookie_RedirectsHome(t *testing.T) {
 func TestCallback_ProcessError_400_NoCookie(t *testing.T) {
 	app := &fakeApp{callbackErr: fmt.Errorf("invalid state")}
 	sealer := newSealer(t)
-	h := CallbackHandler(app, sealer)
+	h := CallbackHandler(app, sealer, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/callback?state=bad", nil)
 	rr := httptest.NewRecorder()
@@ -174,7 +174,7 @@ func TestCallback_ProcessError_400_NoCookie(t *testing.T) {
 	}
 }
 
-func TestLogout_ClearsCookie_RedirectsToLogin(t *testing.T) {
+func TestLogout_ClearsCookie_RedirectsToRoot(t *testing.T) {
 	app := &fakeApp{}
 	sealer := newSealer(t)
 	h := LogoutHandler(app, sealer)
@@ -194,7 +194,7 @@ func TestLogout_ClearsCookie_RedirectsToLogin(t *testing.T) {
 	if rr.Code != http.StatusFound {
 		t.Fatalf("status = %d", rr.Code)
 	}
-	if loc := rr.Header().Get("Location"); loc != "/login" {
+	if loc := rr.Header().Get("Location"); loc != "/" {
 		t.Errorf("Location = %q", loc)
 	}
 	if app.logoutDID.String() != "did:plc:abc" {

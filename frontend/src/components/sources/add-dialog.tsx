@@ -23,7 +23,6 @@ import { isMacPlatform } from '@/lib/utils';
 
 type ExistingFeedSubscription = { feedUrl: string; title: string | null };
 
-// TODO(backend): expose /api/subscriptions/discover + /api/subscriptions (POST). See SPEC.md.
 type DiscoverResult = {
     candidates: FeedCandidate[];
     existingSubscriptions: ExistingFeedSubscription[];
@@ -120,7 +119,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         setDiscovering(true);
 
         try {
-            const response = await fetch('/api/subscriptions/discover', {
+            const response = await fetch('/api/subscriptions/resolve', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 credentials: 'same-origin',

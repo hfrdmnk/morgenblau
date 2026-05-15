@@ -14,8 +14,11 @@ func TestLoad_ParsesEmbeddedJSON(t *testing.T) {
 	want := []Route{
 		{Path: "/", Auth: AuthPublic, AuthedRedirect: "/consume"},
 		{Path: "/login", Auth: AuthPublic, AuthedRedirect: "/consume"},
+		{Path: "/about", Auth: AuthPublic},
 		{Path: "/consume", Auth: AuthAuthed},
 		{Path: "/sources", Auth: AuthAuthed},
+		{Path: "/discover", Auth: AuthAuthed},
+		{Path: "/create", Auth: AuthAuthed},
 		{Path: "/entry", Auth: AuthAuthed},
 	}
 

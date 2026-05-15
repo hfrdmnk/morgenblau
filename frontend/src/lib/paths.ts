@@ -3,6 +3,8 @@ export const PATHS = {
     login: '/login',
     consume: '/consume',
     sources: '/sources',
+    discover: '/discover',
+    create: '/create',
     entry: '/entry',
     oauthLogin: '/oauth/login',
     oauthLogout: '/oauth/logout',

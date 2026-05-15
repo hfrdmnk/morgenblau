@@ -10,7 +10,6 @@ A calm content platform powered by RSS and ATProto. See [SPEC.md](./SPEC.md) for
 - [bun](https://bun.sh) ≥ 1.3
 - [air](https://github.com/air-verse/air) — Go live-reload
 - [mprocs](https://github.com/pvolok/mprocs) — runs the dev processes side-by-side
-- [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) — public tunnel for OAuth metadata
 - [goose](https://github.com/pressly/goose) and [sqlc](https://sqlc.dev)
 
 Install the Go CLIs once:
@@ -41,61 +40,21 @@ openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl base64 
 make dev
 ```
 
-Starts four processes via `mprocs.yaml`:
+Starts processes via `mprocs.yaml`:
 
-- **Server** — `air` rebuilds and runs `cmd/api` on `$PORT` (default `:8000`).
-- **Vite** — `bun run --cwd ./frontend dev` on `:5173`.
-- **Tunnel** — `cloudflared tunnel run` (see below).
-- **Tests** — `go test ./...`, manual-start.
+- **Server** — `air` rebuilds and runs `cmd/api` on `$PORT` (default `:8000`). *Autostart.*
+- **Vite** — `bun run --cwd ./frontend dev` on `:5173`. *Autostart.*
+- **Tests** — `go test ./...`. *Manual-start.*
 
-In `APP_ENV=local`, the Go server reverse-proxies `/` to the Vite dev server (HMR works). In any other env it serves `frontend/dist` from the embedded FS (`frontend/embed.go`). Always hit the Go port — same origin keeps `/api/*` cookies and CSRF sane.
+In `APP_ENV=local`, the Go server reverse-proxies `/` to the Vite dev server (HMR works). In any other env it serves `frontend/dist` from the embedded FS (`frontend/embed.go`). Open **`http://127.0.0.1:8000`** — same origin keeps `/api/*` cookies and CSRF sane, and the loopback origin doubles as your OAuth `client_id`.
 
-If you don't need the tunnel, `make run` starts Go + Vite only.
+`make run` starts Go + Vite without `mprocs` if you'd rather use your own terminal layout.
 
-## Dev OAuth tunnel — one-time setup
+## OAuth
 
-Bluesky's authorization server fetches `/oauth-client-metadata.json` over public HTTPS during PAR. We expose `127.0.0.1:$PORT` to the internet via a Cloudflare named tunnel pinned to a stable `<subdomain>.morgen.blue` host.
+Local dev uses a **loopback client**: `client_id` is `http://localhost`, callback is `http://127.0.0.1:8000/oauth/callback`, and the AS skips the client-metadata fetch entirely. Leave `BLUESKY_CLIENT_ID` and `BLUESKY_REDIRECT` empty in `.env` and sign in straight from `http://127.0.0.1:8000` — no tunnel, no public hostname.
 
-1. **Install + authenticate** (browser; pick the `morgen.blue` zone):
-
-    ```sh
-    brew install cloudflared
-    cloudflared tunnel login
-    ```
-
-2. **Create a named tunnel** (writes credentials to `~/.cloudflared/<UUID>.json`):
-
-    ```sh
-    cloudflared tunnel create morgenblau-<subdomain>
-    ```
-
-3. **Route the subdomain** (creates a stable Cloudflare DNS `CNAME`):
-
-    ```sh
-    cloudflared tunnel route dns morgenblau-<subdomain> <subdomain>.morgen.blue
-    ```
-
-4. **Write `~/.cloudflared/config.yml`** (substitute the UUID from step 2):
-
-    ```yaml
-    tunnel: morgenblau-<subdomain>
-    credentials-file: /Users/<your-mac-user>/.cloudflared/<UUID>.json
-
-    ingress:
-        - hostname: <subdomain>.morgen.blue
-          service: http://localhost:8000
-        - service: http_status:404
-    ```
-
-5. **Set `.env`**:
-
-    ```dotenv
-    APP_URL=https://<subdomain>.morgen.blue
-    BLUESKY_CLIENT_ID=https://<subdomain>.morgen.blue/oauth-client-metadata.json
-    BLUESKY_REDIRECT=https://<subdomain>.morgen.blue/oauth/callback
-    ```
-
-The `Tunnel` process in `mprocs.yaml` takes no arguments — it reads `~/.cloudflared/config.yml`, which stays per-machine. The committed config stays dev-agnostic. (`morgen.blue` only has Universal SSL for single-level subdomains; use `<name>.morgen.blue`, not `<name>.<group>.morgen.blue`.)
+For prod, set both env vars to your public URLs and serve `oauth-client-metadata.json` + `jwks.json` from that origin.
 
 ## Database
 

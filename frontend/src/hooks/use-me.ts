@@ -26,7 +26,7 @@ export function useMe(): MeState {
 
     useEffect(() => {
         let cancelled = false;
-        fetch('/api/me')
+        fetch('/api/profiles/me')
             .then((r) => (r.ok ? (r.json() as Promise<MeResponse>) : null))
             .then((data) => {
                 if (cancelled) return;

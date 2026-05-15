@@ -4,6 +4,31 @@
 
 package db
 
+type Feed struct {
+	FeedUrl       string  `json:"feed_url"`
+	Title         *string `json:"title"`
+	SiteUrl       *string `json:"site_url"`
+	Etag          *string `json:"etag"`
+	LastModified  *string `json:"last_modified"`
+	LastFetchedAt *string `json:"last_fetched_at"`
+	CreatedAt     string  `json:"created_at"`
+	UpdatedAt     string  `json:"updated_at"`
+}
+
+type FeedEntry struct {
+	ID            int64   `json:"id"`
+	FeedUrl       string  `json:"feed_url"`
+	Guid          string  `json:"guid"`
+	Url           string  `json:"url"`
+	Title         *string `json:"title"`
+	ContentHtml   *string `json:"content_html"`
+	ContentType   string  `json:"content_type"`
+	PublishedAt   string  `json:"published_at"`
+	FetchedAt     string  `json:"fetched_at"`
+	Metadata      *string `json:"metadata"`
+	ExtractedBody *string `json:"extracted_body"`
+}
+
 type OauthAuthRequest struct {
 	State     string `json:"state"`
 	Data      []byte `json:"data"`
@@ -16,4 +41,16 @@ type OauthSession struct {
 	SessionID string `json:"session_id"`
 	Data      []byte `json:"data"`
 	UpdatedAt string `json:"updated_at"`
+}
+
+type UserSubscription struct {
+	Did           string  `json:"did"`
+	Rkey          string  `json:"rkey"`
+	AtUri         string  `json:"at_uri"`
+	FeedUrl       string  `json:"feed_url"`
+	Title         *string `json:"title"`
+	CustomTitle   *string `json:"custom_title"`
+	CustomIconUrl *string `json:"custom_icon_url"`
+	CreatedAt     string  `json:"created_at"`
+	UpdatedAt     string  `json:"updated_at"`
 }

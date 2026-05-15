@@ -1,0 +1,123 @@
+package api
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"github.com/bluesky-social/indigo/atproto/syntax"
+
+	"morgenblau/internal/database/db"
+	"morgenblau/internal/jobs"
+	"morgenblau/internal/middleware/auth"
+)
+
+// DigestReader is the slice of *db.Queries the digest handler depends on.
+type DigestReader interface {
+	ListDigestForUser(ctx context.Context, arg db.ListDigestForUserParams) ([]db.ListDigestForUserRow, error)
+}
+
+// EntryWire is the on-the-wire entry shape consumed by /consume and the entry
+// detail page. body is the sanitized HTML; the frontend treats it as trusted.
+type EntryWire struct {
+	ID           int64    `json:"id"`
+	Title        *string  `json:"title"`
+	URL          string   `json:"url"`
+	ContentType  string   `json:"contentType"`
+	PublishedAt  string   `json:"publishedAt"`
+	Source       SourceMeta `json:"source"`
+	Body         *string  `json:"body"`
+	Metadata     *string  `json:"metadata,omitempty"`
+}
+
+type SourceMeta struct {
+	FeedURL string  `json:"feedUrl"`
+	Title   *string `json:"title"`
+	SiteURL *string `json:"siteUrl"`
+}
+
+// DigestResponse adds in-flight metadata so the frontend can swap empty-state
+// copy without a second round-trip.
+type DigestResponse struct {
+	Date         string      `json:"date"`
+	Entries      []EntryWire `json:"entries"`
+	HasActiveJob bool        `json:"hasActiveJob"`
+}
+
+// JobsActiveProbe is the slice of jobs.Tracker the digest handler uses to
+// decide between in-flight and steady-state empty copy.
+type JobsActiveProbe interface {
+	ActiveForUser(did syntax.DID) *jobs.Job
+}
+
+// DigestHandler returns entries for ?date=YYYY-MM-DD (default: today UTC),
+// joined across the user's Tier-1 subscriptions.
+func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sess := auth.SessionFromContext(r.Context())
+		if sess == nil || sess.Data == nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		dateStr := r.URL.Query().Get("date")
+		var day time.Time
+		if dateStr == "" {
+			day = time.Now().UTC().Truncate(24 * time.Hour)
+		} else {
+			parsed, err := time.Parse("2006-01-02", dateStr)
+			if err != nil {
+				http.Error(w, "invalid date (want YYYY-MM-DD)", http.StatusBadRequest)
+				return
+			}
+			day = parsed.UTC()
+		}
+		next := day.Add(24 * time.Hour)
+
+		rows, err := reader.ListDigestForUser(r.Context(), db.ListDigestForUserParams{
+			Did:         sess.Data.AccountDID.String(),
+			PublishedAt: day.Format(time.RFC3339),
+			PublishedAt_2: next.Format(time.RFC3339),
+		})
+		if err != nil {
+			slog.Warn("/api/digest: list failed", "err", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		entries := make([]EntryWire, 0, len(rows))
+		for _, row := range rows {
+			entries = append(entries, digestRowToWire(row))
+		}
+
+		hasActive := false
+		if jobsSrc != nil && jobsSrc.ActiveForUser(sess.Data.AccountDID) != nil {
+			hasActive = true
+		}
+
+		writeJSON(w, DigestResponse{
+			Date:         day.Format("2006-01-02"),
+			Entries:      entries,
+			HasActiveJob: hasActive,
+		})
+	})
+}
+
+func digestRowToWire(row db.ListDigestForUserRow) EntryWire {
+	src := SourceMeta{
+		FeedURL: row.FeedUrl,
+		Title:   row.FeedTitle,
+		SiteURL: row.FeedSiteUrl,
+	}
+	return EntryWire{
+		ID:          row.ID,
+		Title:       row.Title,
+		URL:         row.Url,
+		ContentType: row.ContentType,
+		PublishedAt: row.PublishedAt,
+		Source:      src,
+		Body:        row.ContentHtml,
+		Metadata:    row.Metadata,
+	}
+}
