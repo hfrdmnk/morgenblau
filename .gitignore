@@ -1,13 +1,55 @@
-/node_modules
-.DS_Store
+# Go binaries / build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with "go test -c"
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+tmp/
+
+# Project build
+main
+*templ.go
+
+# Node / frontend (bun-only; foreign lockfiles must not appear)
+node_modules
+dist
+dist-ssr
+*.local
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Env
 .env
 .env.backup
 .env.production
-npm-debug.log
-yarn-error.log
-/.fleet
-/.idea
-/.nova
-/.vscode
-/.zed
+
+# OS
+.DS_Store
+
+# Editor / IDE
+.vscode
+.idea
+.fleet
+.nova
+.zed
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Scratch
 .scratch/

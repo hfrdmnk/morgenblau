@@ -1,9 +1,4 @@
 @import 'tailwindcss';
-@import 'tw-animate-css';
-@import 'shadcn/tailwind.css';
-
-@source '../views';
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -12,7 +7,7 @@
     font-style: normal;
     font-weight: 100 900;
     font-display: swap;
-    src: url('../fonts/GeistVF.woff2') format('woff2');
+    src: url('./fonts/GeistVF.woff2') format('woff2');
 }
 
 @font-face {
@@ -20,7 +15,7 @@
     font-style: italic;
     font-weight: 100 900;
     font-display: swap;
-    src: url('../fonts/GeistVF-Italic.woff2') format('woff2');
+    src: url('./fonts/GeistVF-Italic.woff2') format('woff2');
 }
 
 @font-face {
@@ -28,7 +23,7 @@
     font-style: normal;
     font-weight: 200 800;
     font-display: swap;
-    src: url('../fonts/NewsreaderVF.woff2') format('woff2-variations');
+    src: url('./fonts/NewsreaderVF.woff2') format('woff2-variations');
 }
 
 @font-face {
@@ -36,7 +31,7 @@
     font-style: italic;
     font-weight: 200 800;
     font-display: swap;
-    src: url('../fonts/NewsreaderVF-Italic.woff2') format('woff2-variations');
+    src: url('./fonts/NewsreaderVF-Italic.woff2') format('woff2-variations');
 }
 
 @theme {
@@ -272,11 +267,6 @@
     }
 }
 
-/*
- * View Transitions — digest ↔ reader. Blur-and-replace: nothing moves,
- * the outgoing page blurs out as the incoming page unblurs in. Durations
- * match the scene/exit tokens in morgenblau-designer.
- */
 @keyframes view-root-out {
     to {
         opacity: 0;
