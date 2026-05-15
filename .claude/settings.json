@@ -1,21 +1,19 @@
 {
     "permissions": {
         "allow": [
-            "Bash(php artisan test)",
-            "Bash(php artisan test:*)",
-            "Bash(php artisan wayfinder:generate)",
-            "Bash(php artisan route:list:*)",
-            "Bash(./vendor/bin/pint --dirty)",
             "Bash(git status)",
             "Bash(git diff:*)",
             "Bash(git log:*)",
-            "Bash(bun run build)",
-            "Bash(bun run types)",
-            "Bash(bun run lint)",
-            "Bash(bun run format:dirty)"
         ],
-        "deny": ["Read(.env)", "Bash(rm -rf :*)"],
-        "ask": ["Bash(git add:*)", "Bash(git commit:*)", "Bash(git push:*)"]
+        "deny": [
+            "Read(.env)",
+            "Bash(rm -rf :*)"
+        ],
+        "ask": [
+            "Bash(git add:*)",
+            "Bash(git commit:*)",
+            "Bash(git push:*)"
+        ]
     },
     "hooks": {
         "Notification": [
@@ -25,29 +23,6 @@
                     {
                         "type": "command",
                         "command": "notify-send 'Claude Code' 'Awaiting your input'"
-                    }
-                ]
-            }
-        ],
-        "PostToolUse": [
-            {
-                "matcher": "Edit|Write",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": "bun run lint"
-                    },
-                    {
-                        "type": "command",
-                        "command": "bun run types"
-                    },
-                    {
-                        "type": "command",
-                        "command": "./vendor/bin/pint --dirty"
-                    },
-                    {
-                        "type": "command",
-                        "command": "bun run format:dirty"
                     }
                 ]
             }
