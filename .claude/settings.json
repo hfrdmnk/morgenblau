@@ -3,10 +3,12 @@
         "allow": [
             "Bash(git status)",
             "Bash(git diff:*)",
-            "Bash(git log:*)",
+            "Bash(git log:*)"
         ],
         "deny": [
-            "Read(.env)",
+            "Read(**/.env)",
+            "Edit(**/.env)",
+            "Write(**/.env)",
             "Bash(rm -rf :*)"
         ],
         "ask": [
