@@ -8,6 +8,10 @@ import {
     type FeedCandidate,
 } from '@/components/sources/feed-candidate-list';
 import { InputError } from '@/components/input-error';
+import {
+    emitSubscriptionAdded,
+    type AddedSubscription,
+} from '@/lib/subscription-events';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -332,6 +336,15 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                 }
                 return;
             }
+
+            const body = (await response.json().catch(() => null)) as {
+                records?: AddedSubscription[];
+                jobIds?: string[];
+            } | null;
+            emitSubscriptionAdded({
+                records: body?.records ?? [],
+                jobIds: body?.jobIds ?? [],
+            });
 
             resetState();
             onOpenChange(false);

@@ -15,8 +15,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { useJobsPoll } from '@/hooks/use-jobs-poll';
 import { LevelContext } from '@/hooks/use-surface-level';
 import { entryHref } from '@/lib/paths';
+import { subscribeSubscriptionAdded } from '@/lib/subscription-events';
 import { cn, safeHref } from '@/lib/utils';
 
 type Source = {
@@ -61,19 +63,13 @@ const TYPE_ICONS: Record<ContentType, IconSvgElement> = {
 export function Consume() {
     useDocumentTitle('Consume');
     const [state, setState] = useState<State>({ kind: 'loading' });
-    const [refreshTick, setRefreshTick] = useState(0);
+    const [reloadTick, setReloadTick] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
         const load = async () => {
             try {
-                if (refreshTick > 0) {
-                    await fetch('/api/digest/refresh', {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                    });
-                }
                 const r = await fetch('/api/digest', {
                     credentials: 'same-origin',
                 });
@@ -95,14 +91,34 @@ export function Consume() {
         return () => {
             cancelled = true;
         };
-    }, [refreshTick]);
+    }, [reloadTick]);
 
-    const onRefresh = useCallback(() => {
+    const onRefresh = useCallback(async () => {
         setRefreshing(true);
-        setRefreshTick((tick) => tick + 1);
+        try {
+            await fetch('/api/digest/refresh', {
+                method: 'POST',
+                credentials: 'same-origin',
+            });
+        } catch {
+            // The poll/reload below will surface fetch outcomes; ignore here.
+        }
+        setReloadTick((tick) => tick + 1);
     }, []);
 
-    const isBusy = state.kind === 'loading' || refreshing;
+    useEffect(() => {
+        return subscribeSubscriptionAdded(() => {
+            setReloadTick((tick) => tick + 1);
+        });
+    }, []);
+
+    const hasActiveJob = state.kind === 'ok' && state.hasActiveJob;
+    const onQuiet = useCallback(() => {
+        setReloadTick((tick) => tick + 1);
+    }, []);
+    useJobsPoll(hasActiveJob, onQuiet);
+
+    const isBusy = state.kind === 'loading' || refreshing || hasActiveJob;
 
     return (
         <>

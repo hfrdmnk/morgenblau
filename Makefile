@@ -59,6 +59,11 @@ migrate-down:
 migrate-status:
 	@$(GOOSE_RUN) status
 
+# Drop the SQLite file (and WAL/SHM sidecars) and re-run all migrations.
+migrate-fresh:
+	@set -a && . ./.env && set +a && rm -f "$${DB_PATH:-./data/morgenblau.db}"*
+	@$(GOOSE_RUN) up
+
 # Usage: make migrate-create NAME=add_users_table
 migrate-create:
 	@if [ -z "$(NAME)" ]; then echo "NAME is required: make migrate-create NAME=add_users_table"; exit 1; fi

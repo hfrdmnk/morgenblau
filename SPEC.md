@@ -201,7 +201,7 @@ Refresh has **exactly three triggers**:
 
 Notably absent: refresh on digest visit. The window metaphor is "step away, come back, content has accumulated on its own clock" — opening the digest (without authenticating) does not trigger fetches.
 
-User-initiated refreshes (manual, add, login) dispatch asynchronously — controllers return immediately and a transient pill on `/consume` surfaces fetch progress. The pill is strictly action-scoped: it never appears for steady-state auto-refresh, never quantifies pending entries with a count, and never persists between sessions. This preserves the "no unread counts" anti-feature while still giving the user feedback that their own action is in flight.
+User-initiated refreshes (manual, add, login) dispatch asynchronously — controllers return immediately. While any job is in flight the digest renders its loading skeleton, and once the job goes quiet the digest re-fetches in place. No count, no badge, no persistent indicator — consistent with the "no unread counts" anti-feature.
 
 Architecture must permit evolving toward finer real-time refresh per feed (HTTP caching headers, per-feed `next_check_at`, exponential backoff on errors).
 

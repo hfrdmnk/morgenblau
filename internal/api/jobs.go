@@ -48,7 +48,7 @@ func JobsGetHandler(src JobSource) http.Handler {
 }
 
 // JobsActiveHandler returns the user's most recent in-flight job, or null.
-// Polled by the RefreshPill — keep the body tiny.
+// Polled by the digest skeleton on /consume — keep the body tiny.
 func JobsActiveHandler(src JobSource) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := auth.SessionFromContext(r.Context())

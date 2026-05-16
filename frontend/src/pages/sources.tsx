@@ -1,10 +1,15 @@
 import { Delete02Icon, Edit02Icon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import {
+    subscribeSubscriptionAdded,
+    type AddedSubscription,
+} from '@/lib/subscription-events';
+import { useJobsPoll } from '@/hooks/use-jobs-poll';
 
 type Subscription = {
     uri: string;
@@ -29,15 +34,17 @@ type State =
 export function Sources() {
     useDocumentTitle('Sources');
     const [state, setState] = useState<State>({ kind: 'loading' });
+    const [reloadTick, setReloadTick] = useState(0);
+    const [hasPendingJobs, setHasPendingJobs] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
-        fetch('/api/subscriptions')
+        fetch('/api/subscriptions', { credentials: 'same-origin' })
             .then((r) => {
                 if (!r.ok) throw new Error(String(r.status));
-                return r.json();
+                return r.json() as Promise<Subscription[]>;
             })
-            .then((records: Subscription[]) => {
+            .then((records) => {
                 if (!cancelled) setState({ kind: 'ok', records });
             })
             .catch(() => {
@@ -46,7 +53,29 @@ export function Sources() {
         return () => {
             cancelled = true;
         };
+    }, [reloadTick]);
+
+    useEffect(() => {
+        return subscribeSubscriptionAdded((event) => {
+            setState((cur) => {
+                if (cur.kind !== 'ok') return cur;
+                const byRkey = new Map(cur.records.map((r) => [r.rkey, r]));
+                for (const added of event.records) {
+                    byRkey.set(added.rkey, addedToSubscription(added));
+                }
+                return { kind: 'ok', records: Array.from(byRkey.values()) };
+            });
+            if (event.jobIds.length > 0) {
+                setHasPendingJobs(true);
+            }
+        });
     }, []);
+
+    const onJobsQuiet = useCallback(() => {
+        setHasPendingJobs(false);
+        setReloadTick((tick) => tick + 1);
+    }, []);
+    useJobsPoll(hasPendingJobs, onJobsQuiet);
 
     if (state.kind === 'loading') {
         return (
@@ -131,6 +160,22 @@ export function Sources() {
             </ul>
         </main>
     );
+}
+
+function addedToSubscription(added: AddedSubscription): Subscription {
+    return {
+        uri: added.uri,
+        cid: added.cid,
+        rkey: added.rkey,
+        feedUrl: added.feedUrl,
+        title: added.title,
+        value: {
+            ...added.value,
+            feedUrl: added.feedUrl,
+            title: added.title,
+            siteUrl: added.siteUrl,
+        },
+    };
 }
 
 function displayLabel(s: Subscription): string {
