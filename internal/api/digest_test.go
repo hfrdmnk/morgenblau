@@ -17,6 +17,9 @@ import (
 type fakeDigestReader struct {
 	gotParams db.ListDigestForUserParams
 	rows      []db.ListDigestForUserRow
+
+	gotAllDid string
+	allRows   []db.ListAllEntriesForUserRow
 }
 
 func (f *fakeDigestReader) ListDigestForUser(_ context.Context, arg db.ListDigestForUserParams) ([]db.ListDigestForUserRow, error) {
@@ -24,14 +27,19 @@ func (f *fakeDigestReader) ListDigestForUser(_ context.Context, arg db.ListDiges
 	return f.rows, nil
 }
 
+func (f *fakeDigestReader) ListAllEntriesForUser(_ context.Context, did string) ([]db.ListAllEntriesForUserRow, error) {
+	f.gotAllDid = did
+	return f.allRows, nil
+}
+
 type stubJobsProbe struct{ active *jobs.Job }
 
 func (s *stubJobsProbe) ActiveForUser(_ syntax.DID) *jobs.Job { return s.active }
 
-func TestDigest_HappyPath_DefaultsToToday(t *testing.T) {
+func TestDigest_NoDate_ReturnsAllEntries(t *testing.T) {
 	title := "Hello"
 	reader := &fakeDigestReader{
-		rows: []db.ListDigestForUserRow{
+		allRows: []db.ListAllEntriesForUserRow{
 			{
 				ID:          42,
 				FeedUrl:     "https://example.test/feed.xml",
@@ -49,6 +57,9 @@ func TestDigest_HappyPath_DefaultsToToday(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if reader.gotAllDid != "did:plc:alice" {
+		t.Errorf("ListAllEntriesForUser called with did = %q", reader.gotAllDid)
 	}
 	var got DigestResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {

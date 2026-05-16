@@ -33,6 +33,71 @@ func (q *Queries) GetFeedEntry(ctx context.Context, id int64) (FeedEntry, error)
 	return i, err
 }
 
+const listAllEntriesForUser = `-- name: ListAllEntriesForUser :many
+SELECT
+    e.id, e.feed_url, e.guid, e.url, e.title, e.content_html, e.content_type,
+    e.published_at, e.fetched_at, e.metadata, e.extracted_body,
+    f.title AS feed_title, f.site_url AS feed_site_url
+FROM feed_entries e
+JOIN feeds f ON f.feed_url = e.feed_url
+JOIN user_subscriptions us ON us.feed_url = e.feed_url
+WHERE us.did = ?
+ORDER BY e.published_at DESC, e.id DESC
+`
+
+type ListAllEntriesForUserRow struct {
+	ID            int64   `json:"id"`
+	FeedUrl       string  `json:"feed_url"`
+	Guid          string  `json:"guid"`
+	Url           string  `json:"url"`
+	Title         *string `json:"title"`
+	ContentHtml   *string `json:"content_html"`
+	ContentType   string  `json:"content_type"`
+	PublishedAt   string  `json:"published_at"`
+	FetchedAt     string  `json:"fetched_at"`
+	Metadata      *string `json:"metadata"`
+	ExtractedBody *string `json:"extracted_body"`
+	FeedTitle     *string `json:"feed_title"`
+	FeedSiteUrl   *string `json:"feed_site_url"`
+}
+
+func (q *Queries) ListAllEntriesForUser(ctx context.Context, did string) ([]ListAllEntriesForUserRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAllEntriesForUser, did)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllEntriesForUserRow
+	for rows.Next() {
+		var i ListAllEntriesForUserRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.FeedUrl,
+			&i.Guid,
+			&i.Url,
+			&i.Title,
+			&i.ContentHtml,
+			&i.ContentType,
+			&i.PublishedAt,
+			&i.FetchedAt,
+			&i.Metadata,
+			&i.ExtractedBody,
+			&i.FeedTitle,
+			&i.FeedSiteUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDigestForUser = `-- name: ListDigestForUser :many
 SELECT
     e.id, e.feed_url, e.guid, e.url, e.title, e.content_html, e.content_type,

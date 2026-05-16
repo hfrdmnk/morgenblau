@@ -16,6 +16,7 @@ import (
 // DigestReader is the slice of *db.Queries the digest handler depends on.
 type DigestReader interface {
 	ListDigestForUser(ctx context.Context, arg db.ListDigestForUserParams) ([]db.ListDigestForUserRow, error)
+	ListAllEntriesForUser(ctx context.Context, did string) ([]db.ListAllEntriesForUserRow, error)
 }
 
 // EntryWire is the on-the-wire entry shape consumed by /consume and the entry
@@ -62,33 +63,48 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe) http.Handler {
 		}
 
 		dateStr := r.URL.Query().Get("date")
-		var day time.Time
+		did := sess.Data.AccountDID.String()
+
+		var entries []EntryWire
+		var responseDate string
+
 		if dateStr == "" {
-			day = time.Now().UTC().Truncate(24 * time.Hour)
+			// Debug default: return every entry the user is subscribed to.
+			rows, err := reader.ListAllEntriesForUser(r.Context(), did)
+			if err != nil {
+				slog.Warn("/api/digest: list-all failed", "err", err)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			entries = make([]EntryWire, 0, len(rows))
+			for _, row := range rows {
+				entries = append(entries, allEntriesRowToWire(row))
+			}
+			responseDate = time.Now().UTC().Format("2006-01-02")
 		} else {
 			parsed, err := time.Parse("2006-01-02", dateStr)
 			if err != nil {
 				http.Error(w, "invalid date (want YYYY-MM-DD)", http.StatusBadRequest)
 				return
 			}
-			day = parsed.UTC()
-		}
-		next := day.Add(24 * time.Hour)
+			day := parsed.UTC()
+			next := day.Add(24 * time.Hour)
 
-		rows, err := reader.ListDigestForUser(r.Context(), db.ListDigestForUserParams{
-			Did:         sess.Data.AccountDID.String(),
-			PublishedAt: day.Format(time.RFC3339),
-			PublishedAt_2: next.Format(time.RFC3339),
-		})
-		if err != nil {
-			slog.Warn("/api/digest: list failed", "err", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-
-		entries := make([]EntryWire, 0, len(rows))
-		for _, row := range rows {
-			entries = append(entries, digestRowToWire(row))
+			rows, err := reader.ListDigestForUser(r.Context(), db.ListDigestForUserParams{
+				Did:           did,
+				PublishedAt:   day.Format(time.RFC3339),
+				PublishedAt_2: next.Format(time.RFC3339),
+			})
+			if err != nil {
+				slog.Warn("/api/digest: list failed", "err", err)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			entries = make([]EntryWire, 0, len(rows))
+			for _, row := range rows {
+				entries = append(entries, digestRowToWire(row))
+			}
+			responseDate = day.Format("2006-01-02")
 		}
 
 		hasActive := false
@@ -97,11 +113,28 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe) http.Handler {
 		}
 
 		writeJSON(w, DigestResponse{
-			Date:         day.Format("2006-01-02"),
+			Date:         responseDate,
 			Entries:      entries,
 			HasActiveJob: hasActive,
 		})
 	})
+}
+
+func allEntriesRowToWire(row db.ListAllEntriesForUserRow) EntryWire {
+	return EntryWire{
+		ID:          row.ID,
+		Title:       row.Title,
+		URL:         row.Url,
+		ContentType: row.ContentType,
+		PublishedAt: row.PublishedAt,
+		Source: SourceMeta{
+			FeedURL: row.FeedUrl,
+			Title:   row.FeedTitle,
+			SiteURL: row.FeedSiteUrl,
+		},
+		Body:     row.ContentHtml,
+		Metadata: row.Metadata,
+	}
 }
 
 func digestRowToWire(row db.ListDigestForUserRow) EntryWire {

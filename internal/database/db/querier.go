@@ -19,6 +19,7 @@ type Querier interface {
 	GetSession(ctx context.Context, arg GetSessionParams) ([]byte, error)
 	GetUserSubscription(ctx context.Context, arg GetUserSubscriptionParams) (UserSubscription, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserSubscriptionByFeedURLParams) (UserSubscription, error)
+	ListAllEntriesForUser(ctx context.Context, did string) ([]ListAllEntriesForUserRow, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
 	ListFeedURLsForUser(ctx context.Context, did string) ([]string, error)
 	ListUserSubscriptions(ctx context.Context, did string) ([]UserSubscription, error)
