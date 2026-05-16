@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -22,20 +23,22 @@ type DigestReader interface {
 // EntryWire is the on-the-wire entry shape consumed by /consume and the entry
 // detail page. body is the sanitized HTML; the frontend treats it as trusted.
 type EntryWire struct {
-	ID           int64    `json:"id"`
-	Title        *string  `json:"title"`
-	URL          string   `json:"url"`
-	ContentType  string   `json:"contentType"`
-	PublishedAt  string   `json:"publishedAt"`
-	Source       SourceMeta `json:"source"`
-	Body         *string  `json:"body"`
-	Metadata     *string  `json:"metadata,omitempty"`
+	ID          int64      `json:"id"`
+	EntrySlug   string     `json:"entrySlug"`
+	Title       *string    `json:"title"`
+	URL         string     `json:"url"`
+	ContentType string     `json:"contentType"`
+	PublishedAt string     `json:"publishedAt"`
+	Source      SourceMeta `json:"source"`
+	Body        *string    `json:"body"`
+	Metadata    *string    `json:"metadata,omitempty"`
 }
 
 type SourceMeta struct {
-	FeedURL string  `json:"feedUrl"`
-	Title   *string `json:"title"`
-	SiteURL *string `json:"siteUrl"`
+	FeedURL    string  `json:"feedUrl"`
+	Title      *string `json:"title"`
+	SiteURL    *string `json:"siteUrl"`
+	FaviconURL *string `json:"faviconUrl"`
 }
 
 // DigestResponse adds in-flight metadata so the frontend can swap empty-state
@@ -123,34 +126,47 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe) http.Handler {
 func allEntriesRowToWire(row db.ListAllEntriesForUserRow) EntryWire {
 	return EntryWire{
 		ID:          row.ID,
+		EntrySlug:   row.EntrySlug,
 		Title:       row.Title,
 		URL:         row.Url,
 		ContentType: row.ContentType,
 		PublishedAt: row.PublishedAt,
-		Source: SourceMeta{
-			FeedURL: row.FeedUrl,
-			Title:   row.FeedTitle,
-			SiteURL: row.FeedSiteUrl,
-		},
-		Body:     row.ContentHtml,
-		Metadata: row.Metadata,
+		Source:      buildSourceMeta(row.FeedUrl, row.FeedTitle, row.FeedSiteUrl),
+		Body:        row.ContentHtml,
+		Metadata:    row.Metadata,
 	}
 }
 
 func digestRowToWire(row db.ListDigestForUserRow) EntryWire {
-	src := SourceMeta{
-		FeedURL: row.FeedUrl,
-		Title:   row.FeedTitle,
-		SiteURL: row.FeedSiteUrl,
-	}
 	return EntryWire{
 		ID:          row.ID,
+		EntrySlug:   row.EntrySlug,
 		Title:       row.Title,
 		URL:         row.Url,
 		ContentType: row.ContentType,
 		PublishedAt: row.PublishedAt,
-		Source:      src,
+		Source:      buildSourceMeta(row.FeedUrl, row.FeedTitle, row.FeedSiteUrl),
 		Body:        row.ContentHtml,
 		Metadata:    row.Metadata,
 	}
+}
+
+// buildSourceMeta derives the favicon fallback from feed URL when the
+// upstream hasn't populated one. Mirrors Laravel's deriveFaviconUrl.
+func buildSourceMeta(feedURL string, title *string, siteURL *string) SourceMeta {
+	return SourceMeta{
+		FeedURL:    feedURL,
+		Title:      title,
+		SiteURL:    siteURL,
+		FaviconURL: deriveFaviconURL(feedURL),
+	}
+}
+
+func deriveFaviconURL(feedURL string) *string {
+	u, err := url.Parse(feedURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return nil
+	}
+	s := u.Scheme + "://" + u.Host + "/favicon.ico"
+	return &s
 }

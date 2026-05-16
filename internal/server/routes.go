@@ -36,15 +36,15 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("GET /api/jobs/{id}", api.JobsGetHandler(s.jobs))
 	mux.Handle("GET /api/digest", api.DigestHandler(s.queries, s.jobs))
 	mux.Handle("POST /api/digest/refresh", api.DigestRefreshHandler(s.sync))
-	mux.Handle("GET /api/entries/{id}", api.EntryHandler(s.queries))
-	mux.Handle("POST /api/entries/{id}/extract", api.EntryExtractHandler(s.queries, s.queries))
+	mux.Handle("GET /api/entries/{slug}", api.EntryHandler(s.queries))
+	mux.Handle("POST /api/entries/{slug}/extract", api.EntryExtractHandler(s.queries, s.queries))
 
 	// v1-deferred endpoints: stubbed to 501 so frontend callers fail loudly.
 	stub := api.NotImplementedHandler()
 	mux.Handle("/api/saved", stub)
 	mux.Handle("/api/shares", stub)
 	mux.Handle("/api/follows", stub)
-	mux.Handle("/api/entries/{id}/social", stub)
+	mux.Handle("/api/entries/{slug}/social", stub)
 
 	mux.Handle("GET /about", api.AboutHandler())
 	mux.Handle("/", spaHandler())

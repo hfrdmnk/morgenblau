@@ -11,9 +11,6 @@ import { Login } from '@/pages/login';
 import { Sources } from '@/pages/sources';
 import { Welcome } from '@/pages/welcome';
 
-// Path → component. Auth and authed-redirects are decided by the Go
-// middleware (see internal/routes/routes.json); the client only maps paths
-// to what gets rendered.
 type PageDef = { Component: FC; authed: boolean; chrome: boolean };
 
 const pages: Record<string, PageDef> = {
@@ -23,12 +20,18 @@ const pages: Record<string, PageDef> = {
     [PATHS.sources]: { Component: Sources, authed: true, chrome: true },
     [PATHS.discover]: { Component: Discover, authed: true, chrome: true },
     [PATHS.create]: { Component: Create, authed: true, chrome: true },
-    // TODO: switch to /entry/:slug when real data lands.
-    [PATHS.entry]: { Component: Entry, authed: true, chrome: false },
 };
 
+const entryDef: PageDef = { Component: Entry, authed: true, chrome: false };
+
+function resolvePage(pathname: string): PageDef | null {
+    if (pages[pathname]) return pages[pathname];
+    if (pathname.startsWith(`${PATHS.entry}/`)) return entryDef;
+    return null;
+}
+
 export default function App() {
-    const def = pages[window.location.pathname];
+    const def = resolvePage(window.location.pathname);
     if (!def) return null;
     const { Component, authed, chrome } = def;
     const inner: ReactNode = chrome ? (

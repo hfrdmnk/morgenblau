@@ -21,7 +21,7 @@ import (
 
 // EntryReader reads entries and verifies subscription ownership.
 type EntryReader interface {
-	GetFeedEntry(ctx context.Context, id int64) (db.FeedEntry, error)
+	GetFeedEntryBySlug(ctx context.Context, slug string) (db.FeedEntry, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error)
 }
 
@@ -79,7 +79,7 @@ func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter) http.Han
 	})
 }
 
-// loadAndAuthorize fetches the entry by id and verifies the session user is
+// loadAndAuthorize fetches the entry by slug and verifies the session user is
 // subscribed to its feed. Returns false (and writes the error) on any failure.
 func loadAndAuthorize(w http.ResponseWriter, r *http.Request, reader EntryReader) (db.FeedEntry, any, bool) {
 	sess := auth.SessionFromContext(r.Context())
@@ -87,13 +87,12 @@ func loadAndAuthorize(w http.ResponseWriter, r *http.Request, reader EntryReader
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return db.FeedEntry{}, nil, false
 	}
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+	slug := r.PathValue("slug")
+	if slug == "" {
+		http.Error(w, "invalid slug", http.StatusBadRequest)
 		return db.FeedEntry{}, nil, false
 	}
-	entry, err := reader.GetFeedEntry(r.Context(), id)
+	entry, err := reader.GetFeedEntryBySlug(r.Context(), slug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "not found", http.StatusNotFound)
@@ -119,14 +118,14 @@ func entryRowToWire(row db.FeedEntry) EntryWire {
 	if row.ExtractedBody != nil && *row.ExtractedBody != "" {
 		body = row.ExtractedBody
 	}
-	src := SourceMeta{FeedURL: row.FeedUrl}
 	return EntryWire{
 		ID:          row.ID,
+		EntrySlug:   row.EntrySlug,
 		Title:       row.Title,
 		URL:         row.Url,
 		ContentType: row.ContentType,
 		PublishedAt: row.PublishedAt,
-		Source:      src,
+		Source:      buildSourceMeta(row.FeedUrl, nil, nil),
 		Body:        body,
 		Metadata:    row.Metadata,
 	}

@@ -1,160 +1,393 @@
-import { Cancel01Icon } from '@hugeicons/core-free-icons';
+import {
+    Cancel01Icon,
+    Globe02Icon,
+    PlayIcon,
+} from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
 import DOMPurify from 'dompurify';
 import { useEffect, useMemo, useState } from 'react';
 
+import { ReaderRail } from '@/components/reader-rail';
+import type { ExtractedToggleState } from '@/components/reader-rail';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { PATHS } from '@/lib/paths';
-import { safeHref } from '@/lib/utils';
+import { cn, safeHref } from '@/lib/utils';
+
+type ContentType = 'blogpost' | 'microblog' | 'video' | 'podcast';
+
+type Source = {
+    feedUrl: string;
+    title: string | null;
+    siteUrl: string | null;
+    faviconUrl: string | null;
+};
 
 type Entry = {
     id: number;
+    entrySlug: string;
     title: string | null;
     url: string;
-    contentType: string;
+    contentType: ContentType;
     publishedAt: string;
-    source: {
-        feedUrl: string;
-        title: string | null;
-        siteUrl: string | null;
-    };
+    source: Source;
     body: string | null;
+    metadata?: string | null;
 };
 
 type State =
     | { kind: 'loading' }
     | { kind: 'ok'; entry: Entry }
-    | { kind: 'extracting'; entry: Entry }
-    | { kind: 'error'; entry: Entry | null };
+    | { kind: 'error' };
 
-function entryIDFromLocation(): string | null {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('id');
+type Override = 'auto' | 'feed' | 'extracted';
+
+function slugFromLocation(): string | null {
+    const path = window.location.pathname;
+    const prefix = `${PATHS.entry}/`;
+    if (!path.startsWith(prefix)) return null;
+    const slug = path.slice(prefix.length);
+    return slug.length > 0 ? slug : null;
 }
 
 export function Entry() {
-    const id = entryIDFromLocation();
-    const [state, setState] = useState<State>({ kind: 'loading' });
+    const slug = slugFromLocation();
+    const [state, setState] = useState<State>(
+        slug ? { kind: 'loading' } : { kind: 'error' },
+    );
 
     useDocumentTitle(
-        state.kind === 'ok' || state.kind === 'extracting'
-            ? state.entry.title ?? 'Reader'
-            : 'Reader',
+        state.kind === 'ok' ? state.entry.title ?? 'Reader' : 'Reader',
     );
 
     useEffect(() => {
-        if (!id) {
-            setState({ kind: 'error', entry: null });
-            return;
-        }
+        if (!slug) return;
         let cancelled = false;
         const load = async () => {
             try {
-                const r = await fetch(`/api/entries/${id}`, {
+                const r = await fetch(`/api/entries/${slug}`, {
                     credentials: 'same-origin',
                 });
                 if (!r.ok) throw new Error(String(r.status));
                 const entry = (await r.json()) as Entry;
-                if (cancelled) return;
-
-                if (entry.body) {
-                    setState({ kind: 'ok', entry });
-                    return;
-                }
-
-                // Lazy extract — body is null, fetch readability extraction.
-                setState({ kind: 'extracting', entry });
-                const ex = await fetch(`/api/entries/${id}/extract`, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                });
-                if (!ex.ok) {
-                    if (!cancelled) setState({ kind: 'error', entry });
-                    return;
-                }
-                const extracted = (await ex.json()) as Entry;
-                if (!cancelled) setState({ kind: 'ok', entry: extracted });
+                if (!cancelled) setState({ kind: 'ok', entry });
             } catch {
-                if (!cancelled) setState({ kind: 'error', entry: null });
+                if (!cancelled) setState({ kind: 'error' });
             }
         };
         load();
         return () => {
             cancelled = true;
         };
-    }, [id]);
+    }, [slug]);
 
+    if (state.kind === 'loading') {
+        return (
+            <Shell>
+                <p className="text-muted-foreground">Loading…</p>
+            </Shell>
+        );
+    }
+
+    if (state.kind === 'error') {
+        return (
+            <Shell>
+                <p className="text-muted-foreground">
+                    Couldn't open this entry.
+                </p>
+            </Shell>
+        );
+    }
+
+    if (state.entry.contentType === 'video') {
+        return <WatchView entry={state.entry} />;
+    }
+
+    return <ReaderView entry={state.entry} />;
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
     return (
         <div className="min-h-svh bg-card">
-            <header className="sticky top-0 z-10 flex h-14 items-center px-4 sm:px-6">
-                <a
-                    href={PATHS.consume}
-                    aria-label="Back to digest"
-                    className="inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
-                >
-                    <HugeiconsIcon icon={Cancel01Icon} className="size-5" />
-                </a>
-            </header>
-
+            <Header />
             <article className="mx-auto w-full max-w-2xl px-4 pt-8 pb-24 sm:px-6">
-                {state.kind === 'loading' && (
-                    <p className="text-muted-foreground">Loading…</p>
-                )}
-                {state.kind === 'extracting' && (
-                    <>
-                        <EntryHeader entry={state.entry} />
-                        <p className="text-muted-foreground">
-                            Loading article…
-                        </p>
-                    </>
-                )}
-                {state.kind === 'ok' && (
-                    <>
-                        <EntryHeader entry={state.entry} />
-                        {state.entry.body ? (
-                            <ReaderBody html={state.entry.body} />
-                        ) : (
-                            <OpenOriginal url={state.entry.url} />
-                        )}
-                    </>
-                )}
-                {state.kind === 'error' && (
-                    <>
-                        {state.entry && <EntryHeader entry={state.entry} />}
-                        <p className="text-muted-foreground">
-                            Couldn’t open this entry.
-                        </p>
-                        {state.entry && <OpenOriginal url={state.entry.url} />}
-                    </>
-                )}
+                {children}
             </article>
         </div>
     );
 }
 
-function EntryHeader({ entry }: { entry: Entry }) {
-    const source = entry.source.title ?? entry.source.feedUrl;
-    const date = formatDate(entry.publishedAt);
+function Header() {
     return (
-        <header className="mb-8 flex flex-col gap-4">
-            <p className="line-clamp-1 text-sm font-light text-muted-foreground">
-                {source}
-            </p>
-            {entry.title && (
-                <h1 className="text-balance text-foreground">{entry.title}</h1>
-            )}
-            <p className="font-sans text-sm font-light text-muted-foreground">
-                {date}
-            </p>
-            <OpenOriginal url={entry.url} compact />
+        <header className="sticky top-0 z-10 flex h-14 items-center px-4 sm:px-6">
+            <a
+                href={PATHS.consume}
+                aria-label="Back to digest"
+                className="inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
+            >
+                <HugeiconsIcon icon={Cancel01Icon} className="size-5" />
+            </a>
         </header>
     );
 }
 
-// Bodies are server-sanitized (bluemonday UGC policy) at write time per
-// SPEC <content-types>. Client also runs DOMPurify as defense-in-depth so the
-// render is safe even if a server-side sanitizer regression slips through.
+function ReaderView({ entry }: { entry: Entry }) {
+    const [override, setOverride] = useState<Override>('auto');
+    const [loading, setLoading] = useState(false);
+    const [manualFailed, setManualFailed] = useState(false);
+    const [extracted, setExtracted] = useState<string | null>(null);
+
+    const hasExtracted = extracted !== null && extracted !== '';
+
+    const toggleState: ExtractedToggleState = loading
+        ? 'loading'
+        : override === 'extracted'
+          ? 'active'
+          : 'inactive';
+
+    const onToggleClick = () => {
+        if (loading) return;
+
+        if (toggleState === 'active') {
+            setOverride('feed');
+            setManualFailed(false);
+            return;
+        }
+
+        if (hasExtracted) {
+            setOverride('extracted');
+            setManualFailed(false);
+            return;
+        }
+
+        setLoading(true);
+        fetch(`/api/entries/${entry.entrySlug}/extract`, {
+            method: 'POST',
+            credentials: 'same-origin',
+        })
+            .then(async (r) => {
+                if (!r.ok) throw new Error(String(r.status));
+                const next = (await r.json()) as Entry;
+                const nextBody = next.body ?? '';
+                if (nextBody !== '') {
+                    setExtracted(nextBody);
+                    setOverride('extracted');
+                    setManualFailed(false);
+                } else {
+                    setManualFailed(true);
+                }
+            })
+            .catch(() => setManualFailed(true))
+            .finally(() => setLoading(false));
+    };
+
+    const body = manualFailed
+        ? null
+        : override === 'extracted'
+          ? extracted ?? entry.body
+          : entry.body;
+
+    const sourceLink = safeHref(entry.url);
+
+    return (
+        <div className="min-h-svh bg-card">
+            <Header />
+            <ReaderRail
+                sourceUrl={sourceLink ?? null}
+                extractedToggle={{ state: toggleState, onClick: onToggleClick }}
+            />
+            <article className="mx-auto w-full max-w-2xl px-4 pt-8 pb-24 sm:px-6">
+                <header className="mb-8 flex flex-col gap-4">
+                    <FeedLine source={entry.source} link={sourceLink} />
+                    {entry.title ? (
+                        <h1 className="text-2xl font-medium tracking-tight text-balance text-foreground">
+                            {entry.title}
+                        </h1>
+                    ) : null}
+                    <Byline entry={entry} />
+                </header>
+
+                {manualFailed && sourceLink ? (
+                    <ManualFailureFallback sourceUrl={sourceLink} />
+                ) : body ? (
+                    <ReaderBody html={body} />
+                ) : null}
+            </article>
+        </div>
+    );
+}
+
+function WatchView({ entry }: { entry: Entry }) {
+    const embed = useMemo(() => resolveVideoEmbed(entry.url), [entry.url]);
+    const sourceLink = safeHref(entry.url);
+
+    return (
+        <div className="min-h-svh bg-card">
+            <Header />
+            <ReaderRail sourceUrl={sourceLink ?? null} showProgress={false} />
+            <article className="mx-auto w-full px-4 pt-8 pb-24 sm:px-6">
+                <header className="mx-auto mb-8 flex max-w-2xl flex-col gap-4">
+                    <FeedLine source={entry.source} link={sourceLink} />
+                    {entry.title ? (
+                        <h1 className="text-2xl font-medium tracking-tight text-balance text-foreground">
+                            {entry.title}
+                        </h1>
+                    ) : null}
+                    <Byline entry={entry} />
+                </header>
+
+                <div className="mx-auto mb-8 max-w-4xl">
+                    <VideoPlayer
+                        embedUrl={embed?.embedUrl ?? null}
+                        thumbnailUrl={embed?.thumbnailUrl ?? null}
+                        sourceUrl={sourceLink ?? null}
+                        title={entry.title}
+                    />
+                </div>
+
+                {entry.body ? (
+                    <div className="mx-auto max-w-2xl">
+                        <Description html={entry.body} />
+                    </div>
+                ) : null}
+            </article>
+        </div>
+    );
+}
+
+function VideoPlayer({
+    embedUrl,
+    thumbnailUrl,
+    sourceUrl,
+    title,
+}: {
+    embedUrl: string | null;
+    thumbnailUrl: string | null;
+    sourceUrl: string | null;
+    title: string | null;
+}) {
+    const [playing, setPlaying] = useState(false);
+    const surface =
+        'aspect-video w-full overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-900';
+
+    if (playing && embedUrl) {
+        return (
+            <div className={surface}>
+                <iframe
+                    src={embedUrl}
+                    title={title ?? 'Video player'}
+                    allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                    className="h-full w-full border-0"
+                />
+            </div>
+        );
+    }
+
+    if (!embedUrl) {
+        if (!thumbnailUrl || !sourceUrl) return null;
+        return (
+            <a
+                href={sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                    'group relative block outline-none focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid',
+                    surface,
+                )}
+            >
+                <Thumbnail src={thumbnailUrl} />
+            </a>
+        );
+    }
+
+    return (
+        <button
+            type="button"
+            onClick={() => setPlaying(true)}
+            aria-label="Play video"
+            className={cn(
+                'group relative block outline-none focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid',
+                surface,
+            )}
+        >
+            {thumbnailUrl ? <Thumbnail src={thumbnailUrl} /> : null}
+            <span
+                aria-hidden
+                className="absolute inset-0 flex items-center justify-center"
+            >
+                <span className="inline-flex size-16 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-lg transition-colors duration-200 ease-out group-hover:bg-black/50">
+                    <HugeiconsIcon
+                        icon={PlayIcon}
+                        className="size-7 translate-x-[1px]"
+                    />
+                </span>
+            </span>
+        </button>
+    );
+}
+
+function Thumbnail({ src }: { src: string }) {
+    return (
+        <img
+            src={src}
+            alt=""
+            loading="eager"
+            className="absolute inset-0 h-full w-full object-cover"
+        />
+    );
+}
+
+function FeedLine({
+    source,
+    link,
+}: {
+    source: Source;
+    link: string | undefined;
+}) {
+    const label = source.title ?? source.feedUrl;
+    const body = (
+        <span className="flex items-center gap-2">
+            <Favicon src={source.faviconUrl} />
+            <span className="line-clamp-1 text-sm font-light text-muted-foreground">
+                {label}
+            </span>
+        </span>
+    );
+
+    if (!link) {
+        return <div className="font-sans">{body}</div>;
+    }
+
+    return (
+        <a
+            href={link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-sans text-muted-foreground transition-colors duration-200 ease-out hover:text-foreground"
+        >
+            {body}
+        </a>
+    );
+}
+
+function Byline({ entry }: { entry: Entry }) {
+    const bits: string[] = [];
+    const author = readAuthor(entry.metadata);
+    if (author) bits.push(author);
+    if (entry.publishedAt) bits.push(formatDate(entry.publishedAt));
+    const host = hostnameOf(entry.url);
+    if (host) bits.push(host);
+    if (bits.length === 0) return null;
+    return (
+        <p className="font-sans text-sm font-light text-muted-foreground">
+            {bits.join(' · ')}
+        </p>
+    );
+}
+
+// Body is server-sanitized (bluemonday UGC) at ingest. DOMPurify runs as
+// client-side defense-in-depth so a server-side regression can't escape.
 function ReaderBody({ html }: { html: string }) {
     const clean = useMemo(() => DOMPurify.sanitize(html), [html]);
     return (
@@ -165,27 +398,71 @@ function ReaderBody({ html }: { html: string }) {
     );
 }
 
-function OpenOriginal({
-    url,
-    compact = false,
-}: {
-    url: string;
-    compact?: boolean;
-}) {
-    const href = safeHref(url);
-    if (!href) return null;
+function Description({ html }: { html: string }) {
+    const clean = useMemo(() => DOMPurify.sanitize(html), [html]);
     return (
-        <div className={compact ? '' : 'mt-6'}>
+        <div
+            className="text-base whitespace-pre-wrap text-foreground [&_a]:text-primary [&_a]:underline-offset-4 [&_a:hover]:underline"
+            dangerouslySetInnerHTML={{ __html: clean }}
+        />
+    );
+}
+
+function ManualFailureFallback({ sourceUrl }: { sourceUrl: string }) {
+    return (
+        <div className="flex justify-start">
             <a
-                href={href}
+                href={sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={buttonVariants({ variant: 'secondary' })}
             >
-                Open original
+                Open on original site
             </a>
         </div>
     );
+}
+
+function Favicon({ src }: { src: string | null }) {
+    const [errored, setErrored] = useState(false);
+
+    if (!src || errored) {
+        return (
+            <HugeiconsIcon
+                icon={Globe02Icon}
+                className="size-4 text-muted-foreground"
+            />
+        );
+    }
+
+    return (
+        <img
+            src={src}
+            alt=""
+            className="size-4 rounded-sm"
+            onError={() => setErrored(true)}
+            loading="lazy"
+        />
+    );
+}
+
+function readAuthor(metadata: string | null | undefined): string | null {
+    if (!metadata) return null;
+    try {
+        const parsed = JSON.parse(metadata) as { author?: unknown };
+        return typeof parsed.author === 'string' ? parsed.author : null;
+    } catch {
+        return null;
+    }
+}
+
+function hostnameOf(url: string): string | null {
+    try {
+        const u = new URL(url);
+        return u.hostname.replace(/^www\./, '');
+    } catch {
+        return null;
+    }
 }
 
 function formatDate(iso: string): string {
@@ -199,4 +476,45 @@ function formatDate(iso: string): string {
     } catch {
         return iso;
     }
+}
+
+// Mirrors VideoEmbed.php: resolves a YouTube URL to embed + thumbnail.
+function resolveVideoEmbed(
+    link: string,
+): { embedUrl: string; thumbnailUrl: string } | null {
+    if (!link) return null;
+    let parsed: URL;
+    try {
+        parsed = new URL(link);
+    } catch {
+        return null;
+    }
+
+    const host = parsed.hostname.toLowerCase();
+    const youtubeHosts = new Set([
+        'youtube.com',
+        'www.youtube.com',
+        'm.youtube.com',
+        'youtu.be',
+    ]);
+    if (!youtubeHosts.has(host)) return null;
+
+    let videoId: string | null = null;
+    const path = parsed.pathname;
+
+    if (host === 'youtu.be') {
+        videoId = path.replace(/^\//, '');
+    } else if (path === '/watch') {
+        videoId = parsed.searchParams.get('v');
+    } else {
+        const m = /^\/(?:embed|v|shorts)\/([^/?#]+)/.exec(path);
+        if (m) videoId = m[1];
+    }
+
+    if (!videoId || !/^[A-Za-z0-9_-]{11}$/.test(videoId)) return null;
+
+    return {
+        embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`,
+        thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    };
 }

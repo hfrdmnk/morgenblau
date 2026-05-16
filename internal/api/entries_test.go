@@ -20,7 +20,7 @@ type fakeEntryReader struct {
 	subscription db.UserSubscription
 }
 
-func (f *fakeEntryReader) GetFeedEntry(_ context.Context, _ int64) (db.FeedEntry, error) {
+func (f *fakeEntryReader) GetFeedEntryBySlug(_ context.Context, _ string) (db.FeedEntry, error) {
 	if f.getErr != nil {
 		return db.FeedEntry{}, f.getErr
 	}
@@ -57,9 +57,9 @@ func entryFixture() db.FeedEntry {
 func TestEntry_HappyPath(t *testing.T) {
 	r := &fakeEntryReader{entry: entryFixture(), subOK: true}
 	mux := http.NewServeMux()
-	mux.Handle("GET /api/entries/{id}", EntryHandler(r))
+	mux.Handle("GET /api/entries/{slug}", EntryHandler(r))
 
-	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/42", nil), "did:plc:alice", "sid-1")
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/abc1234567", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -77,9 +77,9 @@ func TestEntry_HappyPath(t *testing.T) {
 func TestEntry_NotSubscribed_403(t *testing.T) {
 	r := &fakeEntryReader{entry: entryFixture(), subOK: false}
 	mux := http.NewServeMux()
-	mux.Handle("GET /api/entries/{id}", EntryHandler(r))
+	mux.Handle("GET /api/entries/{slug}", EntryHandler(r))
 
-	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/42", nil), "did:plc:alice", "sid-1")
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/abc1234567", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusForbidden {
@@ -90,9 +90,9 @@ func TestEntry_NotSubscribed_403(t *testing.T) {
 func TestEntry_NotFound_404(t *testing.T) {
 	r := &fakeEntryReader{getErr: sql.ErrNoRows}
 	mux := http.NewServeMux()
-	mux.Handle("GET /api/entries/{id}", EntryHandler(r))
+	mux.Handle("GET /api/entries/{slug}", EntryHandler(r))
 
-	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/42", nil), "did:plc:alice", "sid-1")
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/abc1234567", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNotFound {
@@ -106,9 +106,9 @@ func TestEntryExtract_CachedReturn(t *testing.T) {
 	entry.ExtractedBody = &cached
 	r := &fakeEntryReader{entry: entry, subOK: true}
 	mux := http.NewServeMux()
-	mux.Handle("POST /api/entries/{id}/extract", EntryExtractHandler(r, r))
+	mux.Handle("POST /api/entries/{slug}/extract", EntryExtractHandler(r, r))
 
-	req := withSession(httptest.NewRequest(http.MethodPost, "/api/entries/42/extract", nil), "did:plc:alice", "sid-1")
+	req := withSession(httptest.NewRequest(http.MethodPost, "/api/entries/abc1234567/extract", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {

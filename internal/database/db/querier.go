@@ -15,7 +15,7 @@ type Querier interface {
 	DeleteUserSubscription(ctx context.Context, arg DeleteUserSubscriptionParams) error
 	GetAuthRequest(ctx context.Context, state string) (GetAuthRequestRow, error)
 	GetFeed(ctx context.Context, feedUrl string) (Feed, error)
-	GetFeedEntry(ctx context.Context, id int64) (FeedEntry, error)
+	GetFeedEntryBySlug(ctx context.Context, entrySlug string) (FeedEntry, error)
 	GetSession(ctx context.Context, arg GetSessionParams) ([]byte, error)
 	GetUserSubscription(ctx context.Context, arg GetUserSubscriptionParams) (UserSubscription, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserSubscriptionByFeedURLParams) (UserSubscription, error)

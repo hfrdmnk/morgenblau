@@ -106,6 +106,7 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 		if err := p.queries.UpsertFeedEntry(ctx, db.UpsertFeedEntryParams{
 			FeedUrl:     feedURL,
 			Guid:        guid,
+			EntrySlug:   EntrySlug(feedURL, guid),
 			Url:         item.Link,
 			Title:       nilIfEmpty(strings.TrimSpace(item.Title)),
 			ContentHtml: nilIfEmpty(sanitized),

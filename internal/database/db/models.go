@@ -19,6 +19,7 @@ type FeedEntry struct {
 	ID            int64   `json:"id"`
 	FeedUrl       string  `json:"feed_url"`
 	Guid          string  `json:"guid"`
+	EntrySlug     string  `json:"entry_slug"`
 	Url           string  `json:"url"`
 	Title         *string `json:"title"`
 	ContentHtml   *string `json:"content_html"`

@@ -1,24 +1,44 @@
-import { Refresh01Icon } from '@hugeicons/core-free-icons';
+import {
+    BubbleChatIcon,
+    Globe02Icon,
+    LinkSquare01Icon,
+    NewsIcon,
+    PodcastIcon,
+    RefreshIcon,
+    Video01Icon,
+} from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { useEffect, useState } from 'react';
+import type { IconSvgElement } from '@hugeicons/react';
+import DOMPurify from 'dompurify';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { RefreshPill } from '@/components/refresh-pill';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { LevelContext } from '@/hooks/use-surface-level';
+import { entryHref } from '@/lib/paths';
+import { cn, safeHref } from '@/lib/utils';
+
+type Source = {
+    feedUrl: string;
+    title: string | null;
+    siteUrl: string | null;
+    faviconUrl: string | null;
+};
 
 type Entry = {
     id: number;
+    entrySlug: string;
     title: string | null;
     url: string;
-    contentType: string;
+    contentType: ContentType;
     publishedAt: string;
-    source: {
-        feedUrl: string;
-        title: string | null;
-        siteUrl: string | null;
-    };
+    source: Source;
     body: string | null;
+    metadata?: string | null;
 };
+
+type ContentType = 'blogpost' | 'microblog' | 'video' | 'podcast';
 
 type DigestResponse = {
     date: string;
@@ -28,141 +48,409 @@ type DigestResponse = {
 
 type State =
     | { kind: 'loading' }
-    | { kind: 'ok'; data: DigestResponse }
+    | { kind: 'ok'; entries: Entry[]; hasActiveJob: boolean }
     | { kind: 'error' };
+
+const TYPE_ICONS: Record<ContentType, IconSvgElement> = {
+    blogpost: NewsIcon,
+    microblog: BubbleChatIcon,
+    video: Video01Icon,
+    podcast: PodcastIcon,
+};
 
 export function Consume() {
     useDocumentTitle('Consume');
-
     const [state, setState] = useState<State>({ kind: 'loading' });
-    const [triggerKey, setTriggerKey] = useState(0);
+    const [refreshTick, setRefreshTick] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
-    const [jobInFlight, setJobInFlight] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
         const load = async () => {
             try {
+                if (refreshTick > 0) {
+                    await fetch('/api/digest/refresh', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                    });
+                }
                 const r = await fetch('/api/digest', {
                     credentials: 'same-origin',
                 });
                 if (!r.ok) throw new Error(String(r.status));
                 const data = (await r.json()) as DigestResponse;
-                if (!cancelled) setState({ kind: 'ok', data });
+                if (cancelled) return;
+                setState({
+                    kind: 'ok',
+                    entries: data.entries,
+                    hasActiveJob: data.hasActiveJob,
+                });
             } catch {
                 if (!cancelled) setState({ kind: 'error' });
+            } finally {
+                if (!cancelled) setRefreshing(false);
             }
         };
         load();
         return () => {
             cancelled = true;
         };
-    }, [triggerKey, jobInFlight]);
+    }, [refreshTick]);
 
-    const onRefresh = async () => {
-        if (refreshing) return;
+    const onRefresh = useCallback(() => {
         setRefreshing(true);
-        try {
-            await fetch('/api/digest/refresh', {
-                method: 'POST',
-                credentials: 'same-origin',
-            });
-            setTriggerKey((k) => k + 1);
-        } catch {
-            // Pill stays silent — calm-brand promise.
-        } finally {
-            setRefreshing(false);
-        }
-    };
+        setRefreshTick((tick) => tick + 1);
+    }, []);
 
-    const hasEntries = state.kind === 'ok' && state.data.entries.length > 0;
-    const serverFlaggedActive =
-        state.kind === 'ok' && state.data.hasActiveJob;
-    const inFlight = jobInFlight || serverFlaggedActive;
+    const isBusy = state.kind === 'loading' || refreshing;
 
     return (
-        <main className="relative flex min-h-full flex-col">
-            <div className="flex items-center justify-end px-6 pt-4">
-                <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Refresh"
-                    onClick={onRefresh}
-                    disabled={refreshing}
-                >
-                    <HugeiconsIcon icon={Refresh01Icon} className="size-5" />
-                </Button>
-            </div>
-
-            <div className="flex-1 px-6 pb-12">
-                {state.kind === 'loading' && (
-                    <p className="pt-8 text-center text-muted-foreground">
-                        Loading…
-                    </p>
-                )}
-                {state.kind === 'error' && (
-                    <p className="pt-8 text-center text-muted-foreground">
-                        Couldn’t load the digest.
-                    </p>
-                )}
-                {state.kind === 'ok' && hasEntries && (
-                    <ul className="mx-auto flex max-w-2xl flex-col gap-4 pt-4">
-                        {state.data.entries.map((entry) => (
-                            <EntryCard key={entry.id} entry={entry} />
-                        ))}
-                    </ul>
-                )}
-                {state.kind === 'ok' && !hasEntries && (
-                    <div className="flex min-h-[40dvh] items-center justify-center">
-                        <p className="text-lg text-muted-foreground">
-                            {inFlight
+        <>
+            <RefreshSlot busy={isBusy} onRefresh={onRefresh} />
+            <div className="mx-auto w-full max-w-2xl px-4 pb-12 sm:px-6">
+                {isBusy ? (
+                    <DigestSkeleton />
+                ) : state.kind === 'error' ? (
+                    <EmptyMessage
+                        lead="Couldn't load the digest."
+                        detail="Try refreshing in a moment."
+                    />
+                ) : state.entries.length === 0 ? (
+                    <EmptyMessage
+                        lead={
+                            state.hasActiveJob
                                 ? 'Brewing your first edition…'
-                                : 'Nothing new this morning. Enjoy your coffee.'}
-                        </p>
-                    </div>
+                                : 'Nothing new this morning.'
+                        }
+                        detail={
+                            state.hasActiveJob
+                                ? "This won't take long."
+                                : 'Enjoy your coffee.'
+                        }
+                    />
+                ) : (
+                    <Newspaper entries={state.entries} />
                 )}
             </div>
-
-            <RefreshPill
-                triggerKey={triggerKey}
-                onActiveChange={setJobInFlight}
-            />
-        </main>
+        </>
     );
 }
 
-function EntryCard({ entry }: { entry: Entry }) {
-    const sourceTitle = entry.source.title ?? entry.source.feedUrl;
-    const published = formatDate(entry.publishedAt);
-    const readerHref = `/entry?id=${entry.id}`;
+// Right-edge aligned with the avatar in WindowChrome. Chrome padding is
+// px-4 / sm:px-6 / lg:px-20; window outer padding is px-4, so the inner
+// offset that matches the avatar is pr-0 / sm:pr-2 / lg:pr-16. Sticky to
+// the window's scrollable area so it stays in place while scrolling.
+function RefreshSlot({
+    busy,
+    onRefresh,
+}: {
+    busy: boolean;
+    onRefresh: () => void;
+}) {
+    return (
+        <div
+            className={cn(
+                'sticky top-0 z-10 flex justify-end pt-3 pb-2 sm:pr-2 lg:pr-16',
+                'text-muted-foreground',
+            )}
+        >
+            <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Refresh"
+                disabled={busy}
+                onClick={onRefresh}
+            >
+                <HugeiconsIcon icon={RefreshIcon} className="size-5" />
+            </Button>
+        </div>
+    );
+}
+
+function Newspaper({ entries }: { entries: Entry[] }) {
+    return (
+        <LevelContext.Provider value={2}>
+            <article className="overflow-hidden rounded-3xl border border-gray-100 bg-card dark:border-gray-700">
+                <ul className="flex flex-col">
+                    {entries.map((entry, index) => (
+                        <li key={entry.id}>
+                            {index > 0 ? (
+                                <div
+                                    aria-hidden
+                                    className="mx-6 border-t border-gray-100 dark:border-gray-700"
+                                />
+                            ) : null}
+                            {entry.contentType === 'microblog' ? (
+                                <InlineRow entry={entry} />
+                            ) : (
+                                <StandardRow entry={entry} />
+                            )}
+                        </li>
+                    ))}
+                </ul>
+            </article>
+        </LevelContext.Provider>
+    );
+}
+
+function DigestSkeleton() {
+    return (
+        <article
+            aria-busy
+            aria-label="Loading digest"
+            className="overflow-hidden rounded-3xl border border-gray-100 bg-card dark:border-gray-700"
+        >
+            <ul className="flex flex-col">
+                {Array.from({ length: 6 }).map((_, index) => (
+                    <li key={index}>
+                        {index > 0 ? (
+                            <div
+                                aria-hidden
+                                className="mx-6 border-t border-gray-100 dark:border-gray-700"
+                            />
+                        ) : null}
+                        <div className="flex flex-col gap-2 px-6 py-5">
+                            <div className="flex items-center gap-2">
+                                <Skeleton className="size-4 rounded-sm" />
+                                <Skeleton className="h-3 w-32" />
+                            </div>
+                            <Skeleton className="h-5 w-3/4" />
+                            <Skeleton className="h-3 w-11/12" />
+                            <Skeleton className="h-3 w-2/3" />
+                        </div>
+                    </li>
+                ))}
+            </ul>
+        </article>
+    );
+}
+
+function StandardRow({ entry }: { entry: Entry }) {
+    const cleanedSummary = entry.body
+        ? cleanSummary(entry.body, entry.title)
+        : null;
+    const byline = formatByline(entry);
+    const opensInReader =
+        entry.contentType === 'blogpost' || entry.contentType === 'video';
+
+    const content = (
+        <div className="flex flex-col gap-1.5">
+            <RowHeader
+                entry={entry}
+                lead={entry.source.title ?? entry.source.feedUrl}
+            />
+            <h3 className="line-clamp-3 text-lg font-medium tracking-tight text-foreground">
+                {entry.title ?? (
+                    <em className="text-muted-foreground">Untitled</em>
+                )}
+            </h3>
+            {cleanedSummary ? (
+                <p className="line-clamp-2 text-sm text-muted-foreground">
+                    {cleanedSummary}
+                </p>
+            ) : null}
+            {byline ? (
+                <p className="text-sm font-light text-muted-foreground">
+                    {byline}
+                </p>
+            ) : null}
+        </div>
+    );
+
+    if (opensInReader) {
+        return (
+            <a href={entryHref(entry.entrySlug)} className={ROW_CLICKABLE_CLASS}>
+                {content}
+            </a>
+        );
+    }
+
+    const link = safeHref(entry.url);
+    if (!link) {
+        return <div className="px-6 py-5">{content}</div>;
+    }
 
     return (
-        <li className="rounded-xl border border-border bg-card p-4 hover:bg-muted/40">
-            <a href={readerHref}>
-                <div className="flex items-baseline justify-between gap-3">
-                    <span className="truncate text-xs uppercase tracking-wide text-muted-foreground">
-                        {sourceTitle}
-                    </span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                        {published}
-                    </span>
-                </div>
-                <h2 className="mt-1 text-base font-medium text-foreground">
-                    {entry.title || entry.url}
-                </h2>
-            </a>
-        </li>
+        <a
+            href={link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={ROW_CLICKABLE_CLASS}
+        >
+            {content}
+        </a>
     );
 }
 
-function formatDate(iso: string): string {
-    try {
-        const d = new Date(iso);
-        return d.toLocaleTimeString(undefined, {
-            hour: '2-digit',
-            minute: '2-digit',
-        });
-    } catch {
-        return iso;
+function InlineRow({ entry }: { entry: Entry }) {
+    const meta = formatMicroblogMeta(entry);
+
+    return (
+        <div className="px-6 py-5">
+            <div className="flex flex-col gap-3">
+                <RowHeader
+                    entry={entry}
+                    lead={meta ?? entry.source.title ?? entry.source.feedUrl}
+                    linkHref={entry.url}
+                />
+                {entry.body ? <MicroblogBody html={entry.body} /> : null}
+            </div>
+        </div>
+    );
+}
+
+// Body is server-sanitized at ingest (bluemonday UGC). DOMPurify runs as
+// client-side defense-in-depth in case a sanitizer regression slips through.
+function MicroblogBody({ html }: { html: string }) {
+    const clean = useMemo(() => DOMPurify.sanitize(html), [html]);
+    return (
+        <div
+            className="text-base text-foreground [&_a]:text-primary [&_a]:underline-offset-4 [&_a:hover]:underline"
+            dangerouslySetInnerHTML={{ __html: clean }}
+        />
+    );
+}
+
+function RowHeader({
+    entry,
+    lead,
+    linkHref,
+}: {
+    entry: Entry;
+    lead: string;
+    linkHref?: string | null;
+}) {
+    const TypeIcon = TYPE_ICONS[entry.contentType] ?? NewsIcon;
+    const link = safeHref(linkHref);
+
+    return (
+        <div className="flex items-center gap-2">
+            <Favicon src={entry.source.faviconUrl} />
+            <p className="line-clamp-1 min-w-0 flex-1 text-sm font-light text-muted-foreground">
+                {lead}
+            </p>
+            {link ? (
+                <a
+                    href={link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Open source post"
+                    className="rounded-sm text-muted-foreground transition-colors duration-200 ease-out hover:text-foreground focus-visible:outline-1 focus-visible:outline-ring"
+                >
+                    <HugeiconsIcon
+                        icon={LinkSquare01Icon}
+                        className="size-[1.125rem] shrink-0"
+                    />
+                </a>
+            ) : null}
+            <HugeiconsIcon
+                icon={TypeIcon}
+                className="size-[1.125rem] shrink-0 text-muted-foreground"
+            />
+        </div>
+    );
+}
+
+function Favicon({ src }: { src: string | null }) {
+    const [errored, setErrored] = useState(false);
+
+    if (!src || errored) {
+        return (
+            <HugeiconsIcon
+                icon={Globe02Icon}
+                className="size-4 text-muted-foreground"
+            />
+        );
     }
+
+    return (
+        <img
+            src={src}
+            alt=""
+            className="size-4 rounded-sm"
+            onError={() => setErrored(true)}
+            loading="lazy"
+        />
+    );
+}
+
+function EmptyMessage({ lead, detail }: { lead: string; detail: string }) {
+    return (
+        <div className="flex flex-col gap-2">
+            <p>{lead}</p>
+            <p className="text-sm font-light text-muted-foreground">{detail}</p>
+        </div>
+    );
+}
+
+const ROW_CLICKABLE_BASE =
+    'cursor-pointer transition-colors duration-200 ease-out hover:bg-gray-50 focus-visible:outline-1 focus-visible:outline-offset-[-2px] focus-visible:outline-solid focus-visible:outline-ring dark:hover:bg-gray-900';
+
+const ROW_CLICKABLE_CLASS = `block px-6 py-5 outline-none ${ROW_CLICKABLE_BASE}`;
+
+function cleanSummary(summary: string, title: string | null): string | null {
+    const stripped = summary
+        .replace(/<[^>]*>/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (stripped === '') return null;
+
+    if (title) {
+        const t = title.toLowerCase();
+        const s = stripped.toLowerCase();
+        if (s === t) return null;
+        if (s.includes(t) || t.includes(s)) return null;
+    }
+
+    if (/^(read|continue|view|visit|see)\s+(more|the|on)\b/i.test(stripped)) {
+        return null;
+    }
+    if (/^read\s+full\b/i.test(stripped)) return null;
+    if (/^by\s+\S+/i.test(stripped) && stripped.length < 60) return null;
+    if (/^https?:\/\/\S+$/.test(stripped)) return null;
+    if (stripped.endsWith('…') && stripped.length < 30) return null;
+
+    return stripped;
+}
+
+function formatByline(entry: Entry): string | null {
+    const bits: string[] = [];
+    const author = readAuthor(entry.metadata);
+    if (author) bits.push(author);
+    if (entry.publishedAt) bits.push(formatRelative(entry.publishedAt));
+    return bits.length > 0 ? bits.join(' · ') : null;
+}
+
+function formatMicroblogMeta(entry: Entry): string | null {
+    const bits: string[] = [];
+    const source = entry.source.title;
+    const author = readAuthor(entry.metadata);
+    if (source) bits.push(source);
+    if (author && author !== source) bits.push(author);
+    if (entry.publishedAt) bits.push(formatRelative(entry.publishedAt));
+    return bits.length > 0 ? bits.join(' · ') : null;
+}
+
+function readAuthor(metadata: string | null | undefined): string | null {
+    if (!metadata) return null;
+    try {
+        const parsed = JSON.parse(metadata) as { author?: unknown };
+        return typeof parsed.author === 'string' ? parsed.author : null;
+    } catch {
+        return null;
+    }
+}
+
+function formatRelative(iso: string): string {
+    const then = new Date(iso);
+    const now = new Date();
+    const diffSeconds = Math.round((now.getTime() - then.getTime()) / 1000);
+
+    if (diffSeconds < 60) return 'just now';
+    if (diffSeconds < 3600) return `${Math.round(diffSeconds / 60)} min ago`;
+    if (diffSeconds < 86400) return `${Math.round(diffSeconds / 3600)} hr ago`;
+
+    const d = Math.round(diffSeconds / 86400);
+    return `${d} day${d === 1 ? '' : 's'} ago`;
 }

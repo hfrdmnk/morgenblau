@@ -11,3 +11,7 @@ export const PATHS = {
 } as const;
 
 export type AppPath = (typeof PATHS)[keyof typeof PATHS];
+
+export function entryHref(slug: string): string {
+    return `${PATHS.entry}/${slug}`;
+}

@@ -8,6 +8,7 @@ CREATE TABLE feed_entries (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     feed_url        TEXT NOT NULL,
     guid            TEXT NOT NULL,
+    entry_slug      TEXT NOT NULL,
     url             TEXT NOT NULL,
     title           TEXT,
     content_html    TEXT,
@@ -17,6 +18,7 @@ CREATE TABLE feed_entries (
     metadata        TEXT,
     extracted_body  TEXT,
     UNIQUE (feed_url, guid),
+    UNIQUE (entry_slug),
     FOREIGN KEY (feed_url) REFERENCES feeds(feed_url) ON DELETE CASCADE
 );
 

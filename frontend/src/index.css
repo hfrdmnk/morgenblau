@@ -270,6 +270,17 @@
     }
 }
 
+/*
+ * Cross-document View Transitions — digest ↔ reader. The app navigates
+ * between server-rendered routes, not within a client router, so we opt in
+ * to cross-document transitions and animate the root group on both sides.
+ * Browsers that don't support `@view-transition { navigation }` simply
+ * fall back to a normal navigation.
+ */
+@view-transition {
+    navigation: auto;
+}
+
 @keyframes view-root-out {
     to {
         opacity: 0;

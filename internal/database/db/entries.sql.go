@@ -9,18 +9,19 @@ import (
 	"context"
 )
 
-const getFeedEntry = `-- name: GetFeedEntry :one
-SELECT id, feed_url, guid, url, title, content_html, content_type, published_at, fetched_at, metadata, extracted_body
-FROM feed_entries WHERE id = ?
+const getFeedEntryBySlug = `-- name: GetFeedEntryBySlug :one
+SELECT id, feed_url, guid, entry_slug, url, title, content_html, content_type, published_at, fetched_at, metadata, extracted_body
+FROM feed_entries WHERE entry_slug = ?
 `
 
-func (q *Queries) GetFeedEntry(ctx context.Context, id int64) (FeedEntry, error) {
-	row := q.db.QueryRowContext(ctx, getFeedEntry, id)
+func (q *Queries) GetFeedEntryBySlug(ctx context.Context, entrySlug string) (FeedEntry, error) {
+	row := q.db.QueryRowContext(ctx, getFeedEntryBySlug, entrySlug)
 	var i FeedEntry
 	err := row.Scan(
 		&i.ID,
 		&i.FeedUrl,
 		&i.Guid,
+		&i.EntrySlug,
 		&i.Url,
 		&i.Title,
 		&i.ContentHtml,
@@ -35,7 +36,7 @@ func (q *Queries) GetFeedEntry(ctx context.Context, id int64) (FeedEntry, error)
 
 const listAllEntriesForUser = `-- name: ListAllEntriesForUser :many
 SELECT
-    e.id, e.feed_url, e.guid, e.url, e.title, e.content_html, e.content_type,
+    e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
     e.published_at, e.fetched_at, e.metadata, e.extracted_body,
     f.title AS feed_title, f.site_url AS feed_site_url
 FROM feed_entries e
@@ -49,6 +50,7 @@ type ListAllEntriesForUserRow struct {
 	ID            int64   `json:"id"`
 	FeedUrl       string  `json:"feed_url"`
 	Guid          string  `json:"guid"`
+	EntrySlug     string  `json:"entry_slug"`
 	Url           string  `json:"url"`
 	Title         *string `json:"title"`
 	ContentHtml   *string `json:"content_html"`
@@ -74,6 +76,7 @@ func (q *Queries) ListAllEntriesForUser(ctx context.Context, did string) ([]List
 			&i.ID,
 			&i.FeedUrl,
 			&i.Guid,
+			&i.EntrySlug,
 			&i.Url,
 			&i.Title,
 			&i.ContentHtml,
@@ -100,7 +103,7 @@ func (q *Queries) ListAllEntriesForUser(ctx context.Context, did string) ([]List
 
 const listDigestForUser = `-- name: ListDigestForUser :many
 SELECT
-    e.id, e.feed_url, e.guid, e.url, e.title, e.content_html, e.content_type,
+    e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
     e.published_at, e.fetched_at, e.metadata, e.extracted_body,
     f.title AS feed_title, f.site_url AS feed_site_url
 FROM feed_entries e
@@ -122,6 +125,7 @@ type ListDigestForUserRow struct {
 	ID            int64   `json:"id"`
 	FeedUrl       string  `json:"feed_url"`
 	Guid          string  `json:"guid"`
+	EntrySlug     string  `json:"entry_slug"`
 	Url           string  `json:"url"`
 	Title         *string `json:"title"`
 	ContentHtml   *string `json:"content_html"`
@@ -147,6 +151,7 @@ func (q *Queries) ListDigestForUser(ctx context.Context, arg ListDigestForUserPa
 			&i.ID,
 			&i.FeedUrl,
 			&i.Guid,
+			&i.EntrySlug,
 			&i.Url,
 			&i.Title,
 			&i.ContentHtml,
@@ -186,8 +191,8 @@ func (q *Queries) UpdateFeedEntryExtractedBody(ctx context.Context, arg UpdateFe
 }
 
 const upsertFeedEntry = `-- name: UpsertFeedEntry :exec
-INSERT INTO feed_entries (feed_url, guid, url, title, content_html, content_type, published_at, fetched_at, metadata)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO feed_entries (feed_url, guid, entry_slug, url, title, content_html, content_type, published_at, fetched_at, metadata)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (feed_url, guid) DO UPDATE SET
     url          = excluded.url,
     title        = excluded.title,
@@ -201,6 +206,7 @@ ON CONFLICT (feed_url, guid) DO UPDATE SET
 type UpsertFeedEntryParams struct {
 	FeedUrl     string  `json:"feed_url"`
 	Guid        string  `json:"guid"`
+	EntrySlug   string  `json:"entry_slug"`
 	Url         string  `json:"url"`
 	Title       *string `json:"title"`
 	ContentHtml *string `json:"content_html"`
@@ -214,6 +220,7 @@ func (q *Queries) UpsertFeedEntry(ctx context.Context, arg UpsertFeedEntryParams
 	_, err := q.db.ExecContext(ctx, upsertFeedEntry,
 		arg.FeedUrl,
 		arg.Guid,
+		arg.EntrySlug,
 		arg.Url,
 		arg.Title,
 		arg.ContentHtml,
