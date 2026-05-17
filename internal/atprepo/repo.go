@@ -5,10 +5,21 @@ package atprepo
 
 import (
 	"context"
+	"strings"
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 )
+
+// RkeyFromATURI extracts the rkey segment from an at-uri like
+// at://did:plc:alice/app.skyreader.feed.subscription/3la123.
+func RkeyFromATURI(uri string) string {
+	parts := strings.Split(uri, "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
 
 // RecordRef identifies a PDS-resident record by at-uri + CID.
 type RecordRef struct {

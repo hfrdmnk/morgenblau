@@ -2,10 +2,11 @@ package sync
 
 import (
 	"context"
-	"strings"
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+
+	"morgenblau/internal/atprepo"
 )
 
 const subscriptionCollection = "app.skyreader.feed.subscription"
@@ -72,17 +73,10 @@ func toPDSSubscription(r recordEntry) PDSSubscription {
 	customTitle, _ := r.Value["customTitle"].(string)
 	return PDSSubscription{
 		URI:         r.URI,
-		Rkey:        rkeyFromATURI(r.URI),
+		Rkey:        atprepo.RkeyFromATURI(r.URI),
 		FeedURL:     feedURL,
 		Title:       title,
 		CustomTitle: customTitle,
 	}
 }
 
-func rkeyFromATURI(uri string) string {
-	parts := strings.Split(uri, "/")
-	if len(parts) == 0 {
-		return ""
-	}
-	return parts[len(parts)-1]
-}

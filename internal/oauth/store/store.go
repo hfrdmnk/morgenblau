@@ -24,8 +24,7 @@ import (
 const authRequestTTL = 10 * time.Minute
 
 // Store is a SQLite-backed ClientAuthStore plus a per-(did, session_id)
-// mutex registry for the refresh-race path. The mutex is *advisory*: callers
-// must call LockSession around the GetSession → refresh → SaveSession cycle.
+// mutex registry serializing the GetSession → refresh → SaveSession cycle.
 type Store struct {
 	db *sql.DB
 	q  *db.Queries

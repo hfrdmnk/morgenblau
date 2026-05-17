@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -280,5 +279,3 @@ func (e *Engine) reconcileTier1(
 	return nil
 }
 
-// ErrNoLister is returned when the engine is misconfigured and asked to sync.
-var ErrNoLister = errors.New("sync: no PDS lister configured")

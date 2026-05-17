@@ -71,7 +71,10 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe) http.Handler {
 		var responseDate string
 
 		if dateStr == "" {
-			// Debug default: return every entry the user is subscribed to.
+			// TODO: when no ?date param is provided, this should default to
+			// date=today (UTC). Currently returns all entries unbounded for
+			// debugging; remove this branch + the ListAllEntriesForUser sqlc
+			// query before v1.
 			rows, err := reader.ListAllEntriesForUser(r.Context(), did)
 			if err != nil {
 				slog.Warn("/api/digest: list-all failed", "err", err)

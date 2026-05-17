@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bluesky-social/indigo/atproto/atclient"
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/atprepo"
@@ -265,7 +263,7 @@ func SubscriptionsCreateHandler(
 				http.Error(w, "upstream PDS error", http.StatusBadGateway)
 				return
 			}
-			rkey := rkeyFromATURI(ref.URI)
+			rkey := atprepo.RkeyFromATURI(ref.URI)
 
 			// Step 3: Tier-2 catalog upsert (dedup by canonical URL).
 			titlePtr := nilIfEmpty(item.Title)
@@ -363,62 +361,3 @@ func itoa(i int) string {
 	return string(buf[pos:])
 }
 
-// rkeyFromATURI extracts the rkey segment from an at-uri like
-// at://did:plc:alice/app.skyreader.feed.subscription/3la123.
-func rkeyFromATURI(uri string) string {
-	parts := strings.Split(uri, "/")
-	if len(parts) == 0 {
-		return ""
-	}
-	return parts[len(parts)-1]
-}
-
-// --- Legacy PDS pass-through retained for transition period only ---
-
-type Lister interface {
-	ListRecords(ctx context.Context, did syntax.DID, collection string, sess *oauth.ClientSession) ([]map[string]any, error)
-}
-
-func SubscriptionsHandler(lister Lister) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := auth.SessionFromContext(r.Context())
-		if sess == nil || sess.Data == nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-		records, err := lister.ListRecords(r.Context(), sess.Data.AccountDID, subscriptionCollection, sess)
-		if err != nil {
-			http.Error(w, "upstream PDS error", http.StatusBadGateway)
-			return
-		}
-		if records == nil {
-			records = []map[string]any{}
-		}
-		writeJSON(w, records)
-	})
-}
-
-type PDSLister struct{}
-
-type listRecordsResp struct {
-	Records []map[string]any `json:"records"`
-	Cursor  string           `json:"cursor"`
-}
-
-func (PDSLister) ListRecords(ctx context.Context, did syntax.DID, collection string, sess *oauth.ClientSession) ([]map[string]any, error) {
-	client := sess.APIClient()
-	var out listRecordsResp
-	params := map[string]any{
-		"repo":       did.String(),
-		"collection": collection,
-	}
-	if err := client.Get(ctx, syntax.NSID("com.atproto.repo.listRecords"), params, &out); err != nil {
-		return nil, err
-	}
-	return out.Records, nil
-}
-
-var (
-	_ Lister              = PDSLister{}
-	_ atclient.AuthMethod = (*oauth.ClientSession)(nil)
-)

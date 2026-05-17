@@ -19,39 +19,6 @@ import (
 	"morgenblau/internal/feedfinder"
 )
 
-// --- Legacy PDSLister handler (kept for parity with the old PDS pass-through path) ---
-
-type fakeLister struct {
-	got     syntax.DID
-	gotColl string
-	records []map[string]any
-	err     error
-}
-
-func (f *fakeLister) ListRecords(_ context.Context, did syntax.DID, coll string, _ *oauth.ClientSession) ([]map[string]any, error) {
-	f.got = did
-	f.gotColl = coll
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.records, nil
-}
-
-func TestSubscriptionsLegacyPassThrough_HappyPath(t *testing.T) {
-	lister := &fakeLister{
-		records: []map[string]any{
-			{"uri": "at://x", "cid": "bafy"},
-		},
-	}
-	h := SubscriptionsHandler(lister)
-	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1")
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d", rr.Code)
-	}
-}
-
 // --- Tier-1 index reader/writer test doubles ---
 
 type fakeIndex struct {
