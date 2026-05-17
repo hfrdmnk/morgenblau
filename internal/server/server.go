@@ -25,6 +25,7 @@ import (
 	"morgenblau/internal/oauth/cookie"
 	"morgenblau/internal/oauth/store"
 	"morgenblau/internal/routes"
+	"morgenblau/internal/safehttp"
 	internalsync "morgenblau/internal/sync"
 )
 
@@ -43,6 +44,7 @@ type Server struct {
 	sync       *internalsync.Orchestrator
 	fetcher    *fetcher.Fetcher
 	feedfinder *feedfinder.Finder
+	safeClient *http.Client
 
 	gcCancel context.CancelFunc
 }
@@ -79,7 +81,8 @@ func NewServer() *http.Server {
 	profileCache := profiles.New(oauthApp.Dir, profiles.PDSFetcher{})
 	tracker := jobs.New()
 	fetcherInst := fetcher.New()
-	finder := feedfinder.New(&http.Client{Timeout: 30 * time.Second})
+	safeClient := safehttp.NewClient(30*time.Second, 5)
+	finder := feedfinder.New(safeClient)
 	queries := dbqueries.New(db)
 	pipeline := internalsync.NewFeedPipeline(fetcherInst, queries)
 	engine := internalsync.NewEngine(tracker, queries, internalsync.SessionPDSLister{}, pipeline, oauthApp)
@@ -99,6 +102,7 @@ func NewServer() *http.Server {
 		sync:       orchestrator,
 		fetcher:    fetcherInst,
 		feedfinder: finder,
+		safeClient: safeClient,
 		gcCancel:   gcCancel,
 	}
 

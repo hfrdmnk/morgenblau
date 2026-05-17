@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	readability "github.com/go-shiori/go-readability"
 	"github.com/microcosm-cc/bluemonday"
@@ -47,9 +46,11 @@ func EntryHandler(reader EntryReader) http.Handler {
 // EntryExtractHandler runs readability on entry.url, sanitizes the result,
 // persists it on the row, and returns the freshly-extracted entry. Subsequent
 // calls return the cached extraction without re-fetching.
-func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter) http.Handler {
+//
+// httpClient must be a safehttp-built client so attacker-controlled entry
+// URLs can't pivot to internal-network hosts.
+func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter, httpClient *http.Client) http.Handler {
 	sanitizer := bluemonday.UGCPolicy()
-	httpClient := &http.Client{Timeout: 30 * time.Second}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		entry, sub, feed, ok := loadAndAuthorize(w, r, reader)
 		if !ok {

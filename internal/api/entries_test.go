@@ -198,7 +198,7 @@ func TestEntryExtract_CachedReturn(t *testing.T) {
 		feed:         feedFixture(),
 	}
 	mux := http.NewServeMux()
-	mux.Handle("POST /api/entries/{slug}/extract", EntryExtractHandler(r, r))
+	mux.Handle("POST /api/entries/{slug}/extract", EntryExtractHandler(r, r, http.DefaultClient))
 
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/entries/abc1234567/extract", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()

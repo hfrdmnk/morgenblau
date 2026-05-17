@@ -37,7 +37,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("GET /api/digest", api.DigestHandler(s.queries, s.jobs))
 	mux.Handle("POST /api/digest/refresh", api.DigestRefreshHandler(s.sync))
 	mux.Handle("GET /api/entries/{slug}", api.EntryHandler(s.queries))
-	mux.Handle("POST /api/entries/{slug}/extract", api.EntryExtractHandler(s.queries, s.queries))
+	mux.Handle("POST /api/entries/{slug}/extract", api.EntryExtractHandler(s.queries, s.queries, s.safeClient))
 
 	// v1-deferred endpoints: stubbed to 501 so frontend callers fail loudly.
 	stub := api.NotImplementedHandler()

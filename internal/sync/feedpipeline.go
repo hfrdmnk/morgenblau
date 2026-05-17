@@ -15,6 +15,7 @@ import (
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/favicon"
 	"morgenblau/internal/fetcher"
+	"morgenblau/internal/safehttp"
 )
 
 // iconRefreshAfter is how long an existing favicon URL stays trusted before
@@ -31,15 +32,7 @@ type FaviconDiscoverer interface {
 type faviconHTTPClient struct{ client *http.Client }
 
 func defaultFaviconDiscoverer() FaviconDiscoverer {
-	return &faviconHTTPClient{client: &http.Client{
-		Timeout: 10 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 5 {
-				return http.ErrUseLastResponse
-			}
-			return nil
-		},
-	}}
+	return &faviconHTTPClient{client: safehttp.NewClient(10*time.Second, 5)}
 }
 
 func (c *faviconHTTPClient) Discover(ctx context.Context, siteURL string) (string, error) {

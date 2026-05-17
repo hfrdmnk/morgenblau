@@ -11,7 +11,15 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"morgenblau/internal/safehttp"
 )
+
+// newTestFetcher returns a Fetcher whose transport permits 127.0.0.1 so
+// httptest.NewServer (which binds to loopback) is reachable.
+func newTestFetcher() *Fetcher {
+	return New(WithSafeHTTPOptions(safehttp.WithAllowLoopback()))
+}
 
 const rssBody = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
@@ -28,7 +36,7 @@ func TestFetch_HappyPathParses(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := New()
+	f := newTestFetcher()
 	out, err := f.Fetch(context.Background(), srv.URL+"/feed.xml", FeedState{})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
@@ -49,7 +57,7 @@ func TestFetch_SendsUserAgent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := New().Fetch(context.Background(), srv.URL, FeedState{}); err != nil {
+	if _, err := newTestFetcher().Fetch(context.Background(), srv.URL, FeedState{}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(gotUA, "Morgenblau") || !strings.Contains(gotUA, "morgen.blue/about") {
@@ -71,7 +79,7 @@ func TestFetch_ConditionalGET_304ReturnsNotModified(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := New()
+	f := newTestFetcher()
 	r1, err := f.Fetch(context.Background(), srv.URL, FeedState{})
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +120,7 @@ func TestFetch_RedirectCap(t *testing.T) {
 		http.Redirect(w, r, next, http.StatusFound)
 	}
 
-	_, err := New().Fetch(context.Background(), srv.URL+"/", FeedState{})
+	_, err := newTestFetcher().Fetch(context.Background(), srv.URL+"/", FeedState{})
 	if !errors.Is(err, ErrTooManyRedirects) {
 		t.Errorf("err = %v, want ErrTooManyRedirects", err)
 	}
@@ -126,7 +134,7 @@ func TestFetch_BodyCap(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := New().Fetch(context.Background(), srv.URL, FeedState{})
+	_, err := newTestFetcher().Fetch(context.Background(), srv.URL, FeedState{})
 	if !errors.Is(err, ErrBodyTooLarge) {
 		t.Errorf("err = %v, want ErrBodyTooLarge", err)
 	}
@@ -142,7 +150,7 @@ func TestFetch_Singleflight_CollapsesConcurrent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := New()
+	f := newTestFetcher()
 	var wg sync.WaitGroup
 	for i := 0; i < 4; i++ {
 		wg.Add(1)
@@ -174,7 +182,7 @@ func TestFetch_PerHostCap(t *testing.T) {
 	srv2 := httptest.NewServer(handler)
 	defer srv2.Close()
 
-	f := New()
+	f := newTestFetcher()
 
 	// Two parallel hosts — should finish within ~slow.
 	t0 := time.Now()
@@ -219,7 +227,7 @@ func TestFetch_TimeoutClassified(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f := New()
+	f := newTestFetcher()
 	// Cheap way to force timeout without rewriting the public client knob:
 	// give the request a 50ms context.
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)

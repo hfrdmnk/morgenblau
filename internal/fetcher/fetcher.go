@@ -19,6 +19,8 @@ import (
 	"github.com/mmcdole/gofeed"
 	"golang.org/x/net/publicsuffix"
 	"golang.org/x/sync/singleflight"
+
+	"morgenblau/internal/safehttp"
 )
 
 const (
@@ -92,26 +94,44 @@ func WithTransport(rt http.RoundTripper) Option {
 	}
 }
 
+// WithSafeHTTPOptions threads safehttp options (e.g. WithAllowLoopback) into
+// the underlying client. Test-only.
+func WithSafeHTTPOptions(opts ...safehttp.Option) Option {
+	return func(f *Fetcher) {
+		f.client = buildSafeClient(opts...)
+	}
+}
+
 // New builds a process-wide fetcher with default knobs.
 func New(opts ...Option) *Fetcher {
 	f := &Fetcher{
 		workers: make(chan struct{}, WorkerPoolSize),
 		hostSem: make(map[string]chan struct{}),
 		parser:  gofeed.NewParser(),
-	}
-	f.client = &http.Client{
-		Timeout: FetchTimeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= MaxRedirects {
-				return ErrTooManyRedirects
-			}
-			return nil
-		},
+		client:  buildSafeClient(),
 	}
 	for _, opt := range opts {
 		opt(f)
 	}
 	return f
+}
+
+// buildSafeClient wraps safehttp.NewClient and remaps the redirect-cap
+// sentinel onto this package's ErrTooManyRedirects so existing errors.Is
+// callers keep working.
+func buildSafeClient(opts ...safehttp.Option) *http.Client {
+	c := safehttp.NewClient(FetchTimeout, MaxRedirects, opts...)
+	inner := c.CheckRedirect
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if err := inner(req, via); err != nil {
+			if errors.Is(err, safehttp.ErrTooManyRedirects) {
+				return ErrTooManyRedirects
+			}
+			return err
+		}
+		return nil
+	}
+	return c
 }
 
 // Fetch issues a polite, conditional GET against rawURL and returns either
