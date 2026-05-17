@@ -15,10 +15,10 @@ import (
 // at://did:plc:alice/app.skyreader.feed.subscription/3la123.
 func RkeyFromATURI(uri string) string {
 	parts := strings.Split(uri, "/")
-	if len(parts) == 0 {
+	if len(parts) != 5 || parts[0] != "at:" || parts[1] != "" || parts[2] == "" || parts[3] == "" || parts[4] == "" {
 		return ""
 	}
-	return parts[len(parts)-1]
+	return parts[4]
 }
 
 // RecordRef identifies a PDS-resident record by at-uri + CID.

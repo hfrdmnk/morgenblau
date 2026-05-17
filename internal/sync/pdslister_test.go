@@ -110,3 +110,22 @@ func TestToPDSSubscription_Mapping(t *testing.T) {
 		t.Errorf("titles = %q / %q", got.Title, got.CustomTitle)
 	}
 }
+
+func TestToPDSSubscription_MissingOptionalFields(t *testing.T) {
+	got := toPDSSubscription(recordEntry{
+		URI: "at://did:plc:example/app.skyreader.feed.subscription/3la",
+		CID: "bafy",
+		Value: map[string]any{
+			"feedUrl": "https://example.com/feed",
+		},
+	})
+	if got.Rkey != "3la" {
+		t.Errorf("Rkey = %q", got.Rkey)
+	}
+	if got.FeedURL != "https://example.com/feed" {
+		t.Errorf("FeedURL = %q", got.FeedURL)
+	}
+	if got.Title != "" || got.CustomTitle != "" {
+		t.Errorf("optional titles = %q / %q, want empty", got.Title, got.CustomTitle)
+	}
+}
