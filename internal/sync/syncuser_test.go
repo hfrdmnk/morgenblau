@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -20,6 +21,7 @@ type fakeStore struct {
 	deletes  []string
 	upserts  int
 	feedUps  int
+	feedErr  func(feedURL string) error
 }
 
 func newFakeStore() *fakeStore {
@@ -63,10 +65,15 @@ func (s *fakeStore) DeleteUserSubscription(_ context.Context, arg db.DeleteUserS
 	return nil
 }
 
-func (s *fakeStore) UpsertFeed(_ context.Context, _ db.UpsertFeedParams) error {
+func (s *fakeStore) UpsertFeed(_ context.Context, arg db.UpsertFeedParams) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.feedUps++
+	if s.feedErr != nil {
+		if err := s.feedErr(arg.FeedUrl); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -192,6 +199,44 @@ func TestSyncUser_Phase2FetchesOnlyNewURLs(t *testing.T) {
 	}
 	if oldCount != 1 {
 		t.Errorf("old fetched %d times, want 1", oldCount)
+	}
+}
+
+func TestSyncUser_FK_NotCalledOnTier2Failure(t *testing.T) {
+	// When Tier-2 UpsertFeed fails for a newly-discovered URL, Phase 2 must
+	// NOT fetch (and downstream UpsertFeedEntry) — otherwise the FK
+	// feed_entries.feed_url → feeds.feed_url violates silently.
+	store := newFakeStore()
+	store.feedErr = func(url string) error {
+		if url == "https://broken/feed" {
+			return errors.New("tier-2 upsert failed")
+		}
+		return nil
+	}
+	lister := &fakeLister{subs: []PDSSubscription{
+		{URI: "at://x/a/ok", Rkey: "ok", FeedURL: "https://ok/feed"},
+		{URI: "at://x/a/broken", Rkey: "broken", FeedURL: "https://broken/feed"},
+	}}
+	fetcher := &countingFetcher{}
+	eng := NewEngine(jobs.New(), store, lister, fetcher, nil)
+	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, u := range fetcher.seen() {
+		if u == "https://broken/feed" {
+			t.Errorf("broken URL was fetched: would have hit FK violation; fetched = %v", fetcher.seen())
+		}
+	}
+	// The good URL should still be fetched via Phase 2.
+	found := false
+	for _, u := range fetcher.seen() {
+		if u == "https://ok/feed" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ok URL was not fetched: %v", fetcher.seen())
 	}
 }
 

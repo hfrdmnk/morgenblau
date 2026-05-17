@@ -25,8 +25,17 @@ type recordEntry struct {
 	Value map[string]any `json:"value"`
 }
 
+// listRecordsClient is the slice of *atclient.APIClient pageSubscriptions uses
+// — a tiny seam so tests can swap in an httptest-backed fake.
+type listRecordsClient interface {
+	Get(ctx context.Context, endpoint syntax.NSID, params map[string]any, out any) error
+}
+
 func (SessionPDSLister) ListSubscriptions(ctx context.Context, sess *oauth.ClientSession) ([]PDSSubscription, error) {
-	client := sess.APIClient()
+	return pageSubscriptions(ctx, sess.APIClient(), sess.Data.AccountDID.String())
+}
+
+func pageSubscriptions(ctx context.Context, client listRecordsClient, repo string) ([]PDSSubscription, error) {
 	var (
 		out    []PDSSubscription
 		cursor string
@@ -34,7 +43,7 @@ func (SessionPDSLister) ListSubscriptions(ctx context.Context, sess *oauth.Clien
 	for {
 		var resp listRecordsResp
 		params := map[string]any{
-			"repo":       sess.Data.AccountDID.String(),
+			"repo":       repo,
 			"collection": subscriptionCollection,
 			"limit":      100,
 		}
@@ -47,7 +56,10 @@ func (SessionPDSLister) ListSubscriptions(ctx context.Context, sess *oauth.Clien
 		for _, r := range resp.Records {
 			out = append(out, toPDSSubscription(r))
 		}
-		if resp.Cursor == "" || len(resp.Records) == 0 {
+		// Terminate only on empty cursor — an empty page with a non-empty
+		// cursor is still a valid continuation, and stopping early would let
+		// reconcile delete every local row not in the partial snapshot.
+		if resp.Cursor == "" {
 			return out, nil
 		}
 		cursor = resp.Cursor

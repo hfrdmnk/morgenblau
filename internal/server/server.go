@@ -87,6 +87,7 @@ func NewServer() (*http.Server, error) {
 
 	profileCache := profiles.New(oauthApp.Dir, profiles.PDSFetcher{})
 	tracker := jobs.New()
+	go runJobsGC(gcCtx, tracker)
 	fetcherInst := fetcher.New()
 	safeClient := safehttp.NewClient(30*time.Second, 5)
 	finder := feedfinder.New(safeClient)
@@ -142,6 +143,21 @@ func loadCookieSealer() (*cookie.Sealer, error) {
 		return nil, fmt.Errorf("SESSION_COOKIE_KEY base64 decode: %w", err)
 	}
 	return cookie.New(key)
+}
+
+// runJobsGC sweeps finished jobs past the retention window every minute so
+// users who never poll /api/jobs/active don't leave ghosts behind.
+func runJobsGC(ctx context.Context, tracker *jobs.Tracker) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			tracker.GC()
+		}
+	}
 }
 
 // runAuthRequestGC sweeps stale oauth_auth_requests rows every 5 minutes.

@@ -101,10 +101,10 @@ func NewEngine(
 // Returns the created job's id. The 5-minute in-flight guard coalesces repeat
 // triggers — a second call within the guard window returns the existing id.
 func (e *Engine) SyncUser(ctx context.Context, did syntax.DID, sessionID string, trigger jobs.Trigger) (string, error) {
-	if existing := e.jobs.ExistingInFlight(jobs.KindSyncUser, did, guardWindow); existing != nil {
-		return existing.ID, nil
+	j, existed := e.jobs.CreateOrReturnExisting(jobs.KindSyncUser, did, trigger, guardWindow)
+	if existed {
+		return j.ID, nil
 	}
-	j := e.jobs.Create(jobs.KindSyncUser, did, trigger)
 	if e.wg != nil {
 		e.wg.Add(1)
 	}
@@ -238,15 +238,18 @@ func (e *Engine) reconcileTier1(
 	// Inserts + updates from remote.
 	for rkey, r := range remoteByRkey {
 		_, existed := localByRkey[rkey]
-		if !existed {
-			onAdded(r.FeedURL)
-		}
+		// Tier-2 first; only on success can the FK from feed_entries.feed_url
+		// be satisfied — so onAdded (Phase 2 fetch trigger) is gated on it.
 		if err := e.store.UpsertFeed(ctx, db.UpsertFeedParams{
 			FeedUrl:   r.FeedURL,
 			CreatedAt: now,
 			UpdatedAt: now,
 		}); err != nil {
-			slog.Warn("reconcile: Tier-2 upsert failed", "err", err)
+			slog.Warn("reconcile: Tier-2 upsert failed", "feedUrl", r.FeedURL, "err", err)
+			continue
+		}
+		if !existed {
+			onAdded(r.FeedURL)
 		}
 		if err := e.store.UpsertUserSubscription(ctx, db.UpsertUserSubscriptionParams{
 			Did:         didStr,

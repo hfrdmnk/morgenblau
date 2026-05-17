@@ -53,10 +53,13 @@ type FeedFinder interface {
 	Resolve(ctx context.Context, url string) ([]feedfinder.Candidate, error)
 }
 
-// FetchDispatcher fires off a fetch_one_feed job per added subscription. The
-// returned id surfaces back to the client so the RefreshPill can poll.
+// FetchDispatcher fires off a fetch_one_feed job per added subscription, and
+// can promote a full sync_user when local writes diverge from PDS (PDS is the
+// source of truth, so the next reconcile must converge). The returned id
+// surfaces back to the client so the RefreshPill can poll.
 type FetchDispatcher interface {
 	StartFetchOneFeed(ctx context.Context, did syntax.DID, feedURL string) string
+	StartManualRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error)
 }
 
 // SubscriptionsListHandler returns the user's Tier-1 index entries as a
@@ -288,7 +291,10 @@ func SubscriptionsCreateHandler(
 				CreatedAt:   now,
 				UpdatedAt:   now,
 			}); err != nil {
-				slog.Error("/api/subscriptions: Tier-1 upsert failed (PDS write already succeeded — next sync_user will reconcile)", "err", err)
+				slog.Error("/api/subscriptions: Tier-1 upsert failed; dispatching sync_user to reconcile from PDS", "err", err)
+				if _, derr := disp.StartManualRefresh(r.Context(), sess.Data.AccountDID, sess.Data.SessionID); derr != nil {
+					slog.Warn("/api/subscriptions: sync_user dispatch failed", "err", derr)
+				}
 			}
 
 			value := map[string]any{

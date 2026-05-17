@@ -145,9 +145,10 @@ func (p *fakePDS) DeleteRecord(_ context.Context, _ *oauth.ClientSession, _ synt
 }
 
 type fakeDispatcher struct {
-	mu      sync.Mutex
+	mu         sync.Mutex
 	dispatched []string
-	next    int
+	manualSync int
+	next       int
 }
 
 func (d *fakeDispatcher) StartFetchOneFeed(_ context.Context, _ syntax.DID, feedURL string) string {
@@ -157,6 +158,14 @@ func (d *fakeDispatcher) StartFetchOneFeed(_ context.Context, _ syntax.DID, feed
 	id := "job-" + itoa(d.next)
 	d.dispatched = append(d.dispatched, feedURL)
 	return id
+}
+
+func (d *fakeDispatcher) StartManualRefresh(_ context.Context, _ syntax.DID, _ string) (string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.manualSync++
+	d.next++
+	return "sync-" + itoa(d.next), nil
 }
 
 // --- List handler ---
@@ -320,6 +329,34 @@ func TestSubscriptionsCreate_PDSFailure_502(t *testing.T) {
 
 	if rr.Code != http.StatusBadGateway {
 		t.Errorf("status = %d, want 502", rr.Code)
+	}
+}
+
+// upsertErrIndex is a fakeIndex variant that errors from UpsertUserSubscription.
+// Used to exercise the Tier-1-failure → sync_user dispatch recovery path.
+type upsertErrIndex struct{ *fakeIndex }
+
+func (e upsertErrIndex) UpsertUserSubscription(_ context.Context, _ db.UpsertUserSubscriptionParams) error {
+	return errors.New("tier-1 down")
+}
+
+func TestSubscriptionsCreate_Tier1Failure_DispatchesSyncUser(t *testing.T) {
+	idx := newFakeIndex()
+	writer := upsertErrIndex{idx}
+	pds := &fakePDS{}
+	disp := &fakeDispatcher{}
+	h := SubscriptionsCreateHandler(idx, writer, pds, disp)
+
+	body := `{"subscriptions":[{"feedUrl":"https://example.test/feed.xml","title":"Example"}]}`
+	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (PDS succeeded, tier-1 fallback should still return success): body = %s", rr.Code, rr.Body.String())
+	}
+	if disp.manualSync != 1 {
+		t.Errorf("manual sync dispatches = %d, want 1", disp.manualSync)
 	}
 }
 

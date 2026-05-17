@@ -7,6 +7,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
@@ -93,7 +94,10 @@ func (o *Orchestrator) StartManualRefresh(ctx context.Context, did syntax.DID, s
 	if o.engine != nil {
 		return o.engine.SyncUser(ctx, did, sessionID, jobs.TriggerManual)
 	}
-	j := o.jobs.Create(jobs.KindSyncUser, did, jobs.TriggerManual)
+	j, existed := o.jobs.CreateOrReturnExisting(jobs.KindSyncUser, did, jobs.TriggerManual, 5*time.Minute)
+	if existed {
+		return j.ID, nil
+	}
 	o.wg.Add(1)
 	go func() {
 		defer o.wg.Done()
@@ -108,7 +112,10 @@ func (o *Orchestrator) StartLoginRefresh(ctx context.Context, did syntax.DID, se
 	if o.engine != nil {
 		return o.engine.SyncUser(ctx, did, sessionID, jobs.TriggerLogin)
 	}
-	j := o.jobs.Create(jobs.KindSyncUser, did, jobs.TriggerLogin)
+	j, existed := o.jobs.CreateOrReturnExisting(jobs.KindSyncUser, did, jobs.TriggerLogin, 5*time.Minute)
+	if existed {
+		return j.ID, nil
+	}
 	o.wg.Add(1)
 	go func() {
 		defer o.wg.Done()

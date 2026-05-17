@@ -136,6 +136,64 @@ func TestGC_RetentionWindow(t *testing.T) {
 	}
 }
 
+func TestCreateOrReturnExisting_RacesCoalesce(t *testing.T) {
+	tr := New()
+	alice := didFor(t, "did:plc:alice")
+	const n = 200
+	var wg sync.WaitGroup
+	ids := make([]string, n)
+	existed := make([]bool, n)
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		i := i
+		go func() {
+			defer wg.Done()
+			<-start
+			j, ex := tr.CreateOrReturnExisting(KindSyncUser, alice, TriggerLogin, 5*time.Minute)
+			ids[i] = j.ID
+			existed[i] = ex
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	created := 0
+	for _, ex := range existed {
+		if !ex {
+			created++
+		}
+	}
+	if created != 1 {
+		t.Fatalf("created = %d, want exactly 1", created)
+	}
+	first := ids[0]
+	for _, id := range ids {
+		if id != first {
+			t.Fatalf("ids diverged: got %q vs %q", first, id)
+		}
+	}
+}
+
+func TestCreateOrReturnExisting_ExpiredJobsNotReturned(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	tr := NewWithOptions(DefaultRetention, func() time.Time { return now })
+	alice := didFor(t, "did:plc:alice")
+	j1, ex := tr.CreateOrReturnExisting(KindSyncUser, alice, TriggerLogin, 5*time.Minute)
+	if ex {
+		t.Fatalf("first call should not see existing")
+	}
+	tr.SetRunning(j1.ID)
+	now = now.Add(6 * time.Minute)
+	j2, ex := tr.CreateOrReturnExisting(KindSyncUser, alice, TriggerLogin, 5*time.Minute)
+	if ex {
+		t.Errorf("expired job should not coalesce, got existed=true")
+	}
+	if j2.ID == j1.ID {
+		t.Errorf("expired job re-used id %s", j1.ID)
+	}
+}
+
 func TestExistingInFlight_Guard(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	tr := NewWithOptions(DefaultRetention, func() time.Time { return now })

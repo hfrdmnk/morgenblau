@@ -106,6 +106,38 @@ func (t *Tracker) Create(kind Kind, userDID syntax.DID, trigger Trigger) *Job {
 	return j
 }
 
+// CreateOrReturnExisting atomically returns the in-flight (kind, did) job
+// within the guard window if one exists, otherwise creates a new pending job
+// and returns it. The boolean is true when an existing job was returned.
+func (t *Tracker) CreateOrReturnExisting(kind Kind, userDID syntax.DID, trigger Trigger, guard time.Duration) (*Job, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	did := userDID.String()
+	cutoff := t.now().Add(-guard)
+	for _, j := range t.jobs {
+		if j.UserDID != did || j.Kind != kind {
+			continue
+		}
+		if j.Status == StatusDone || j.Status == StatusFailed {
+			continue
+		}
+		if j.StartedAt.After(cutoff) {
+			return cloneJob(j), true
+		}
+	}
+	id := ulid.MustNew(ulid.Timestamp(t.now()), t.entropy).String()
+	j := &Job{
+		ID:        id,
+		Kind:      kind,
+		Trigger:   trigger,
+		UserDID:   did,
+		Status:    StatusPending,
+		StartedAt: t.now(),
+	}
+	t.jobs[id] = j
+	return cloneJob(j), false
+}
+
 // SetRunning marks the job as running. Idempotent.
 func (t *Tracker) SetRunning(id string) {
 	t.mu.Lock()
