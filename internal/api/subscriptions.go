@@ -95,9 +95,6 @@ func rowToWire(row db.UserSubscription) SubscriptionWire {
 	if row.CustomTitle != nil {
 		value["customTitle"] = *row.CustomTitle
 	}
-	if row.CustomIconUrl != nil {
-		value["customIconUrl"] = *row.CustomIconUrl
-	}
 	return SubscriptionWire{
 		URI:     row.AtUri,
 		Value:   value,

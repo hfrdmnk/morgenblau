@@ -26,6 +26,7 @@ type Querier interface {
 	ListUserSubscriptionsForSync(ctx context.Context, did string) ([]ListUserSubscriptionsForSyncRow, error)
 	PutAuthRequest(ctx context.Context, arg PutAuthRequestParams) error
 	PutSession(ctx context.Context, arg PutSessionParams) error
+	SetFeedIconURL(ctx context.Context, arg SetFeedIconURLParams) error
 	UpdateFeedEntryExtractedBody(ctx context.Context, arg UpdateFeedEntryExtractedBodyParams) error
 	UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchStateParams) error
 	UpdateUserSubscriptionsTitleByFeedURL(ctx context.Context, arg UpdateUserSubscriptionsTitleByFeedURLParams) error

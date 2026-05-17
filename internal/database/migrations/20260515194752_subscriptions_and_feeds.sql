@@ -10,6 +10,8 @@ CREATE TABLE feeds (
     etag             TEXT,
     last_modified    TEXT,
     last_fetched_at  TEXT,
+    icon_url         TEXT,
+    icon_fetched_at  TEXT,
     created_at       TEXT NOT NULL,
     updated_at       TEXT NOT NULL
 );
@@ -23,7 +25,6 @@ CREATE TABLE user_subscriptions (
     feed_url         TEXT NOT NULL,
     title            TEXT,
     custom_title     TEXT,
-    custom_icon_url  TEXT,
     created_at       TEXT NOT NULL,
     updated_at       TEXT NOT NULL,
     PRIMARY KEY (did, rkey),

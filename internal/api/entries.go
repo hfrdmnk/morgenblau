@@ -125,7 +125,7 @@ func entryRowToWire(row db.FeedEntry) EntryWire {
 		URL:         row.Url,
 		ContentType: row.ContentType,
 		PublishedAt: row.PublishedAt,
-		Source:      buildSourceMeta(row.FeedUrl, nil, nil),
+		Source:      buildSourceMeta(row.FeedUrl, nil, nil, nil),
 		Body:        body,
 		Metadata:    row.Metadata,
 	}

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -30,9 +29,8 @@ type IndexDeleter interface {
 }
 
 type patchRequest struct {
-	Title         *string `json:"title"`
-	CustomTitle   *string `json:"customTitle"`
-	CustomIconURL *string `json:"customIconUrl"`
+	Title       *string `json:"title"`
+	CustomTitle *string `json:"customTitle"`
 }
 
 // SubscriptionsPatchHandler updates metadata on the user's subscription via
@@ -74,7 +72,6 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		changed := false
 		newTitle := row.Title
 		newCustomTitle := row.CustomTitle
-		newCustomIcon := row.CustomIconUrl
 		if body.Title != nil {
 			if changedString(row.Title, *body.Title) {
 				newTitle = nilIfEmpty(*body.Title)
@@ -84,12 +81,6 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		if body.CustomTitle != nil {
 			if changedString(row.CustomTitle, *body.CustomTitle) {
 				newCustomTitle = nilIfEmpty(*body.CustomTitle)
-				changed = true
-			}
-		}
-		if body.CustomIconURL != nil {
-			if changedString(row.CustomIconUrl, *body.CustomIconURL) {
-				newCustomIcon = nilIfEmpty(strings.TrimSpace(*body.CustomIconURL))
 				changed = true
 			}
 		}
@@ -112,9 +103,6 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		if newCustomTitle != nil {
 			record["customTitle"] = *newCustomTitle
 		}
-		if newCustomIcon != nil {
-			record["customIconUrl"] = *newCustomIcon
-		}
 
 		ref, err := pds.PutRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), rkey, record)
 		if err != nil {
@@ -124,21 +112,19 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
 		if err := writer.UpsertUserSubscription(r.Context(), db.UpsertUserSubscriptionParams{
-			Did:           didStr,
-			Rkey:          rkey,
-			AtUri:         ref.URI,
-			FeedUrl:       row.FeedUrl,
-			Title:         newTitle,
-			CustomTitle:   newCustomTitle,
-			CustomIconUrl: newCustomIcon,
-			CreatedAt:     row.CreatedAt,
-			UpdatedAt:     now,
+			Did:         didStr,
+			Rkey:        rkey,
+			AtUri:       ref.URI,
+			FeedUrl:     row.FeedUrl,
+			Title:       newTitle,
+			CustomTitle: newCustomTitle,
+			CreatedAt:   row.CreatedAt,
+			UpdatedAt:   now,
 		}); err != nil {
 			slog.Warn("/api/subscriptions PATCH: Tier-1 upsert failed", "err", err)
 		}
 		row.Title = newTitle
 		row.CustomTitle = newCustomTitle
-		row.CustomIconUrl = newCustomIcon
 		row.UpdatedAt = now
 		row.AtUri = ref.URI
 		writeJSON(w, rowToWire(row))

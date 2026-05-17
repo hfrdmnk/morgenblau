@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -131,7 +130,7 @@ func allEntriesRowToWire(row db.ListAllEntriesForUserRow) EntryWire {
 		URL:         row.Url,
 		ContentType: row.ContentType,
 		PublishedAt: row.PublishedAt,
-		Source:      buildSourceMeta(row.FeedUrl, row.FeedTitle, row.FeedSiteUrl),
+		Source:      buildSourceMeta(row.FeedUrl, row.FeedTitle, row.FeedSiteUrl, row.FeedIconUrl),
 		Body:        row.ContentHtml,
 		Metadata:    row.Metadata,
 	}
@@ -145,28 +144,24 @@ func digestRowToWire(row db.ListDigestForUserRow) EntryWire {
 		URL:         row.Url,
 		ContentType: row.ContentType,
 		PublishedAt: row.PublishedAt,
-		Source:      buildSourceMeta(row.FeedUrl, row.FeedTitle, row.FeedSiteUrl),
+		Source:      buildSourceMeta(row.FeedUrl, row.FeedTitle, row.FeedSiteUrl, row.FeedIconUrl),
 		Body:        row.ContentHtml,
 		Metadata:    row.Metadata,
 	}
 }
 
-// buildSourceMeta derives the favicon fallback from feed URL when the
-// upstream hasn't populated one. Mirrors Laravel's deriveFaviconUrl.
-func buildSourceMeta(feedURL string, title *string, siteURL *string) SourceMeta {
+// buildSourceMeta returns the canonical favicon resolved by the sync pipeline,
+// or nil when discovery hasn't (or couldn't) populate one — the frontend
+// renders a placeholder in that case.
+func buildSourceMeta(feedURL string, title, siteURL, feedIconURL *string) SourceMeta {
+	var favicon *string
+	if feedIconURL != nil && *feedIconURL != "" {
+		favicon = feedIconURL
+	}
 	return SourceMeta{
 		FeedURL:    feedURL,
 		Title:      title,
 		SiteURL:    siteURL,
-		FaviconURL: deriveFaviconURL(feedURL),
+		FaviconURL: favicon,
 	}
-}
-
-func deriveFaviconURL(feedURL string) *string {
-	u, err := url.Parse(feedURL)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return nil
-	}
-	s := u.Scheme + "://" + u.Host + "/favicon.ico"
-	return &s
 }

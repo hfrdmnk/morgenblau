@@ -10,6 +10,8 @@ type Feed struct {
 	Etag          *string `json:"etag"`
 	LastModified  *string `json:"last_modified"`
 	LastFetchedAt *string `json:"last_fetched_at"`
+	IconUrl       *string `json:"icon_url"`
+	IconFetchedAt *string `json:"icon_fetched_at"`
 	CreatedAt     string  `json:"created_at"`
 	UpdatedAt     string  `json:"updated_at"`
 }
@@ -44,13 +46,12 @@ type OauthSession struct {
 }
 
 type UserSubscription struct {
-	Did           string  `json:"did"`
-	Rkey          string  `json:"rkey"`
-	AtUri         string  `json:"at_uri"`
-	FeedUrl       string  `json:"feed_url"`
-	Title         *string `json:"title"`
-	CustomTitle   *string `json:"custom_title"`
-	CustomIconUrl *string `json:"custom_icon_url"`
-	CreatedAt     string  `json:"created_at"`
-	UpdatedAt     string  `json:"updated_at"`
+	Did         string  `json:"did"`
+	Rkey        string  `json:"rkey"`
+	AtUri       string  `json:"at_uri"`
+	FeedUrl     string  `json:"feed_url"`
+	Title       *string `json:"title"`
+	CustomTitle *string `json:"custom_title"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
 }

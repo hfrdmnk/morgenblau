@@ -38,7 +38,9 @@ const listAllEntriesForUser = `-- name: ListAllEntriesForUser :many
 SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
     e.published_at, e.fetched_at, e.metadata, e.extracted_body,
-    COALESCE(us.custom_title, us.title) AS feed_title, f.site_url AS feed_site_url
+    COALESCE(us.custom_title, us.title) AS feed_title,
+    f.site_url AS feed_site_url,
+    f.icon_url AS feed_icon_url
 FROM feed_entries e
 JOIN feeds f ON f.feed_url = e.feed_url
 JOIN user_subscriptions us ON us.feed_url = e.feed_url
@@ -61,6 +63,7 @@ type ListAllEntriesForUserRow struct {
 	ExtractedBody *string `json:"extracted_body"`
 	FeedTitle     *string `json:"feed_title"`
 	FeedSiteUrl   *string `json:"feed_site_url"`
+	FeedIconUrl   *string `json:"feed_icon_url"`
 }
 
 func (q *Queries) ListAllEntriesForUser(ctx context.Context, did string) ([]ListAllEntriesForUserRow, error) {
@@ -87,6 +90,7 @@ func (q *Queries) ListAllEntriesForUser(ctx context.Context, did string) ([]List
 			&i.ExtractedBody,
 			&i.FeedTitle,
 			&i.FeedSiteUrl,
+			&i.FeedIconUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -105,7 +109,9 @@ const listDigestForUser = `-- name: ListDigestForUser :many
 SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
     e.published_at, e.fetched_at, e.metadata, e.extracted_body,
-    COALESCE(us.custom_title, us.title) AS feed_title, f.site_url AS feed_site_url
+    COALESCE(us.custom_title, us.title) AS feed_title,
+    f.site_url AS feed_site_url,
+    f.icon_url AS feed_icon_url
 FROM feed_entries e
 JOIN feeds f ON f.feed_url = e.feed_url
 JOIN user_subscriptions us ON us.feed_url = e.feed_url
@@ -136,6 +142,7 @@ type ListDigestForUserRow struct {
 	ExtractedBody *string `json:"extracted_body"`
 	FeedTitle     *string `json:"feed_title"`
 	FeedSiteUrl   *string `json:"feed_site_url"`
+	FeedIconUrl   *string `json:"feed_icon_url"`
 }
 
 func (q *Queries) ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error) {
@@ -162,6 +169,7 @@ func (q *Queries) ListDigestForUser(ctx context.Context, arg ListDigestForUserPa
 			&i.ExtractedBody,
 			&i.FeedTitle,
 			&i.FeedSiteUrl,
+			&i.FeedIconUrl,
 		); err != nil {
 			return nil, err
 		}

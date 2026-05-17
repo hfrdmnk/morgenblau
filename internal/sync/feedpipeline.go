@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -12,8 +13,38 @@ import (
 	"github.com/mmcdole/gofeed"
 
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/favicon"
 	"morgenblau/internal/fetcher"
 )
+
+// iconRefreshAfter is how long an existing favicon URL stays trusted before
+// the pipeline re-discovers. Long enough to avoid hammering, short enough to
+// pick up site redesigns within a month.
+const iconRefreshAfter = 30 * 24 * time.Hour
+
+// FaviconDiscoverer is the single-method surface the pipeline uses. The
+// default impl wraps the favicon package; tests can stub it directly.
+type FaviconDiscoverer interface {
+	Discover(ctx context.Context, siteURL string) (string, error)
+}
+
+type faviconHTTPClient struct{ client *http.Client }
+
+func defaultFaviconDiscoverer() FaviconDiscoverer {
+	return &faviconHTTPClient{client: &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}}
+}
+
+func (c *faviconHTTPClient) Discover(ctx context.Context, siteURL string) (string, error) {
+	return favicon.Discover(ctx, c.client, siteURL)
+}
 
 // FeedPipeline implements FeedFetcher: pulls the feed, sanitizes entry HTML,
 // classifies content type, and persists everything (Tier-2 state + entries).
@@ -22,6 +53,7 @@ type FeedPipeline struct {
 	queries   pipelineQueries
 	sanitizer *bluemonday.Policy
 	now       func() time.Time
+	favicon   FaviconDiscoverer
 }
 
 type pipelineQueries interface {
@@ -30,6 +62,7 @@ type pipelineQueries interface {
 	UpsertFeed(ctx context.Context, arg db.UpsertFeedParams) error
 	UpsertFeedEntry(ctx context.Context, arg db.UpsertFeedEntryParams) error
 	UpdateUserSubscriptionsTitleByFeedURL(ctx context.Context, arg db.UpdateUserSubscriptionsTitleByFeedURLParams) error
+	SetFeedIconURL(ctx context.Context, arg db.SetFeedIconURLParams) error
 }
 
 func NewFeedPipeline(f *fetcher.Fetcher, q pipelineQueries) *FeedPipeline {
@@ -38,12 +71,21 @@ func NewFeedPipeline(f *fetcher.Fetcher, q pipelineQueries) *FeedPipeline {
 		queries:   q,
 		sanitizer: bluemonday.UGCPolicy(),
 		now:       time.Now,
+		favicon:   defaultFaviconDiscoverer(),
 	}
+}
+
+// WithFaviconDiscoverer swaps the favicon discoverer — for tests.
+func (p *FeedPipeline) WithFaviconDiscoverer(d FaviconDiscoverer) *FeedPipeline {
+	p.favicon = d
+	return p
 }
 
 func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error {
 	state := fetcher.FeedState{}
+	var existing db.Feed
 	if row, err := p.queries.GetFeed(ctx, feedURL); err == nil {
+		existing = row
 		if row.Etag != nil {
 			state.ETag = *row.Etag
 		}
@@ -75,6 +117,13 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 	// Refresh feed-level metadata opportunistically.
 	feedTitle := strings.TrimSpace(res.Feed.Title)
 	feedSite := strings.TrimSpace(res.Feed.Link)
+	if feedSite == "" {
+		// Fall back to the feed URL's origin so favicon discovery still has
+		// somewhere to look when the feed XML doesn't carry a <link>.
+		if u, err := url.Parse(feedURL); err == nil && u.Scheme != "" && u.Host != "" {
+			feedSite = u.Scheme + "://" + u.Host
+		}
+	}
 	if err := p.queries.UpsertFeed(ctx, db.UpsertFeedParams{
 		FeedUrl:   feedURL,
 		SiteUrl:   nilIfEmpty(feedSite),
@@ -82,6 +131,22 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 		UpdatedAt: nowStr,
 	}); err != nil {
 		slog.Warn("feedpipeline: feed upsert failed", "url", feedURL, "err", err)
+	}
+
+	if feedSite != "" && shouldDiscoverIcon(existing, p.now()) {
+		if iconURL, err := p.favicon.Discover(ctx, feedSite); err == nil && iconURL != "" {
+			fetchedAt := nowStr
+			if err := p.queries.SetFeedIconURL(ctx, db.SetFeedIconURLParams{
+				IconUrl:       &iconURL,
+				IconFetchedAt: &fetchedAt,
+				UpdatedAt:     nowStr,
+				FeedUrl:       feedURL,
+			}); err != nil {
+				slog.Warn("feedpipeline: icon persist failed", "url", feedURL, "err", err)
+			}
+		} else if err != nil {
+			slog.Warn("feedpipeline: favicon discovery failed", "site", feedSite, "err", err)
+		}
 	}
 
 	// Push the canonical title down to every subscriber's Tier-1 row.
@@ -202,6 +267,23 @@ func buildMetadata(item *gofeed.Item) map[string]any {
 		}
 	}
 	return out
+}
+
+// shouldDiscoverIcon returns true when the feed's stored icon is missing or
+// older than iconRefreshAfter. A missing/unparseable icon_fetched_at is
+// treated as stale so partial state always re-resolves.
+func shouldDiscoverIcon(f db.Feed, now time.Time) bool {
+	if f.IconUrl == nil || *f.IconUrl == "" {
+		return true
+	}
+	if f.IconFetchedAt == nil {
+		return true
+	}
+	fetched, err := time.Parse(time.RFC3339, *f.IconFetchedAt)
+	if err != nil {
+		return true
+	}
+	return now.Sub(fetched) > iconRefreshAfter
 }
 
 func nilIfEmpty(s string) *string {
