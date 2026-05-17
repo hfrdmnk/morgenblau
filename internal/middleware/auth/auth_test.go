@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -14,6 +17,35 @@ import (
 	"morgenblau/internal/oauth/cookie"
 	"morgenblau/internal/routes"
 )
+
+// memoryLocker is a small in-memory SessionLocker keyed by (did, sid).
+type memoryLocker struct {
+	mu    sync.Mutex
+	locks map[string]*sync.Mutex
+}
+
+func newMemoryLocker() *memoryLocker {
+	return &memoryLocker{locks: make(map[string]*sync.Mutex)}
+}
+
+func (l *memoryLocker) LockSession(did syntax.DID, sid string) func() {
+	key := did.String() + "|" + sid
+	l.mu.Lock()
+	m, ok := l.locks[key]
+	if !ok {
+		m = &sync.Mutex{}
+		l.locks[key] = m
+	}
+	l.mu.Unlock()
+	m.Lock()
+	return m.Unlock
+}
+
+// noopLocker satisfies SessionLocker without serialising — for tests that
+// don't care about concurrency.
+type noopLocker struct{}
+
+func (noopLocker) LockSession(syntax.DID, string) func() { return func() {} }
 
 // fakeResumer satisfies the Resumer interface using a map.
 type fakeResumer struct {
@@ -140,7 +172,7 @@ func TestMiddleware_Table(t *testing.T) {
 			sealer := newSealer(t)
 			resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
 			next := &passthroughNext{}
-			m := New(resumer, sealer, rs)
+			m := New(resumer, noopLocker{}, sealer, rs)
 
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			if tc.authed {
@@ -169,7 +201,7 @@ func TestMiddleware_InjectsSessionIntoContext(t *testing.T) {
 	cookie := setSession(t, sealer, resumer, "did:plc:alice", "sid-1")
 
 	next := &passthroughNext{}
-	m := New(resumer, sealer, loadRoutes(t))
+	m := New(resumer, noopLocker{}, sealer, loadRoutes(t))
 	// /consume is authed → authed user passes through.
 	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
 	req.AddCookie(cookie)
@@ -192,7 +224,7 @@ func TestMiddleware_InvalidCookie_TreatedAsUnauthed(t *testing.T) {
 	sealer := newSealer(t)
 	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
 	next := &passthroughNext{}
-	m := New(resumer, sealer, loadRoutes(t))
+	m := New(resumer, noopLocker{}, sealer, loadRoutes(t))
 
 	// Hit a gated path; a garbage cookie should be treated as anon and 302'd.
 	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
@@ -219,7 +251,7 @@ func TestMiddleware_ResumeFailure_RedirectsAndClearsCookie(t *testing.T) {
 	cookies := setRR.Result().Cookies()
 
 	next := &passthroughNext{}
-	m := New(resumer, sealer, loadRoutes(t))
+	m := New(resumer, noopLocker{}, sealer, loadRoutes(t))
 
 	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
 	for _, c := range cookies {
@@ -242,5 +274,109 @@ func TestMiddleware_ResumeFailure_RedirectsAndClearsCookie(t *testing.T) {
 	}
 	if !cleared {
 		t.Error("stale cookie not cleared on resume failure")
+	}
+}
+
+// blockingResumer simulates a slow refresh — first caller blocks on a channel
+// until released. Tracks max concurrent in-flight resumes for assertion.
+type blockingResumer struct {
+	mu              sync.Mutex
+	inFlight        int32
+	maxInFlight     int32
+	release         chan struct{}
+	session         *oauth.ClientSession
+	totalInvocations int32
+}
+
+func (b *blockingResumer) ResumeSession(_ context.Context, _ syntax.DID, _ string) (*oauth.ClientSession, error) {
+	atomic.AddInt32(&b.totalInvocations, 1)
+	now := atomic.AddInt32(&b.inFlight, 1)
+	b.mu.Lock()
+	if now > b.maxInFlight {
+		b.maxInFlight = now
+	}
+	b.mu.Unlock()
+	<-b.release
+	atomic.AddInt32(&b.inFlight, -1)
+	return b.session, nil
+}
+
+func TestMiddleware_LockSerializesRefresh(t *testing.T) {
+	sealer := newSealer(t)
+	did, _ := syntax.ParseDID("did:plc:alice")
+	resumer := &blockingResumer{
+		release: make(chan struct{}),
+		session: &oauth.ClientSession{Data: &oauth.ClientSessionData{AccountDID: did, SessionID: "sid-1"}},
+	}
+	locker := newMemoryLocker()
+	m := New(resumer, locker, sealer, loadRoutes(t))
+
+	setRR := httptest.NewRecorder()
+	sealer.Set(setRR, "did:plc:alice", "sid-1")
+	cookies := setRR.Result().Cookies()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := httptest.NewRequest(http.MethodGet, "/consume", nil)
+			for _, c := range cookies {
+				req.AddCookie(c)
+			}
+			m(&passthroughNext{}).ServeHTTP(httptest.NewRecorder(), req)
+		}()
+	}
+
+	// Give goroutines time to enter — the lock should keep only one in resumer.
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if atomic.LoadInt32(&resumer.inFlight) == 1 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := atomic.LoadInt32(&resumer.inFlight); got != 1 {
+		t.Fatalf("expected exactly 1 concurrent resume, got %d", got)
+	}
+
+	// Release both in turn.
+	resumer.release <- struct{}{}
+	resumer.release <- struct{}{}
+	wg.Wait()
+
+	resumer.mu.Lock()
+	defer resumer.mu.Unlock()
+	if resumer.maxInFlight != 1 {
+		t.Errorf("maxInFlight = %d, want 1 (lock didn't serialise)", resumer.maxInFlight)
+	}
+	if got := atomic.LoadInt32(&resumer.totalInvocations); got != 2 {
+		t.Errorf("totalInvocations = %d, want 2", got)
+	}
+}
+
+// On a transient (ctx.Canceled / DeadlineExceeded) error, the cookie must
+// stay intact so the next request can retry.
+func TestMiddleware_TransientErrorKeepsCookie(t *testing.T) {
+	sealer := newSealer(t)
+	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}, err: context.Canceled}
+	setRR := httptest.NewRecorder()
+	sealer.Set(setRR, "did:plc:alice", "sid-1")
+	cookies := setRR.Result().Cookies()
+
+	next := &passthroughNext{}
+	m := New(resumer, noopLocker{}, sealer, loadRoutes(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	rr := httptest.NewRecorder()
+	m(next).ServeHTTP(rr, req)
+
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == "mb_session" && c.MaxAge < 0 {
+			t.Error("cookie cleared on transient (ctx.Canceled) error")
+		}
 	}
 }

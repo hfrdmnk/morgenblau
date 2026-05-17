@@ -49,27 +49,34 @@ type Server struct {
 	gcCancel context.CancelFunc
 }
 
-func NewServer() *http.Server {
-	port, _ := strconv.Atoi(os.Getenv("PORT"))
+func NewServer() (*http.Server, error) {
+	port := 8000
+	if raw := os.Getenv("PORT"); raw != "" {
+		p, err := strconv.Atoi(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid PORT %q: %w", raw, err)
+		}
+		port = p
+	}
 
 	db, err := database.Open()
 	if err != nil {
-		panic(fmt.Errorf("open database: %w", err))
+		return nil, fmt.Errorf("open database: %w", err)
 	}
 
 	oauthCfg, err := config.FromOS()
 	if err != nil {
-		panic(fmt.Errorf("load oauth config: %w", err))
+		return nil, fmt.Errorf("load oauth config: %w", err)
 	}
 
 	sealer, err := loadCookieSealer()
 	if err != nil {
-		panic(fmt.Errorf("load cookie sealer: %w", err))
+		return nil, fmt.Errorf("load cookie sealer: %w", err)
 	}
 
 	rs, err := routes.Load()
 	if err != nil {
-		panic(fmt.Errorf("load routes: %w", err))
+		return nil, fmt.Errorf("load routes: %w", err)
 	}
 
 	st := store.New(db)
@@ -122,7 +129,7 @@ func NewServer() *http.Server {
 		}
 	})
 
-	return server
+	return server, nil
 }
 
 func loadCookieSealer() (*cookie.Sealer, error) {

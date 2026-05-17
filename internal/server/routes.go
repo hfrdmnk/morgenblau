@@ -49,7 +49,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("GET /about", api.AboutHandler())
 	mux.Handle("/", spaHandler())
 
-	gate := auth.New(s.oauthApp, s.sealer, s.routes)
+	gate := auth.New(s.oauthApp, s.store, s.sealer, s.routes)
 	return s.corsMiddleware(gate(mux))
 }
 

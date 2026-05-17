@@ -16,6 +16,8 @@ package auth
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -31,13 +33,21 @@ type Resumer interface {
 	ResumeSession(ctx context.Context, did syntax.DID, sessionID string) (*oauth.ClientSession, error)
 }
 
+// SessionLocker serialises GetSession → refresh → SaveSession for a single
+// (did, sid). Required because indigo doesn't coalesce refreshes internally —
+// two concurrent expired-session requests can both refresh, and the loser's
+// invalid_grant boots a still-valid user.
+type SessionLocker interface {
+	LockSession(did syntax.DID, sid string) func()
+}
+
 // Middleware returns an http.Handler middleware.
 type Middleware func(http.Handler) http.Handler
 
 // New builds the gating middleware. The routes table is the source of truth
 // for which SPA paths are public vs. authed and where authed users get
 // redirected from public landing pages (e.g. /login → /).
-func New(resumer Resumer, sealer *cookie.Sealer, rs []routes.Route) Middleware {
+func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, rs []routes.Route) Middleware {
 	public := make(map[string]string, len(rs)) // path → authedRedirect ("" if none)
 	authed := make(map[string]struct{}, len(rs))
 	for _, r := range rs {
@@ -61,9 +71,18 @@ func New(resumer Resumer, sealer *cookie.Sealer, rs []routes.Route) Middleware {
 			didStr, sid, ok := sealer.Get(r)
 			if ok {
 				if did, err := syntax.ParseDID(didStr); err == nil {
-					if s, err := resumer.ResumeSession(r.Context(), did, sid); err == nil {
+					// Serialise concurrent refreshes for the same (did, sid) so
+					// the loser of a race doesn't see invalid_grant.
+					unlock := locker.LockSession(did, sid)
+					s, err := resumer.ResumeSession(r.Context(), did, sid)
+					unlock()
+					switch {
+					case err == nil:
 						sess = s
-					} else {
+					case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+						// Client went away mid-resume; keep the cookie so the next request can retry.
+						slog.Debug("resume session transient", "err", err)
+					default:
 						sealer.Clear(w)
 					}
 				} else {

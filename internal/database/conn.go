@@ -25,5 +25,11 @@ func Open() (*sql.DB, error) {
 		"file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)&_pragma=synchronous(normal)",
 		path,
 	)
-	return sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, err
+	}
+	// SQLite serialises writes; cap at one conn so upsert-heavy fan-out can't race into SQLITE_BUSY.
+	db.SetMaxOpenConns(1)
+	return db, nil
 }
