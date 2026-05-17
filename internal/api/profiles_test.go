@@ -14,14 +14,12 @@ import (
 )
 
 type fakeProfileSource struct {
-	getCalls     int
-	refreshCalls int
-	profiles     map[syntax.DID]profiles.Profile
-	err          error
+	profiles        map[syntax.DID]profiles.Profile
+	refreshProfiles map[syntax.DID]profiles.Profile
+	err             error
 }
 
 func (f *fakeProfileSource) Get(_ context.Context, did syntax.DID) (profiles.Profile, error) {
-	f.getCalls++
 	if f.err != nil {
 		return profiles.Profile{}, f.err
 	}
@@ -32,9 +30,11 @@ func (f *fakeProfileSource) Get(_ context.Context, did syntax.DID) (profiles.Pro
 }
 
 func (f *fakeProfileSource) Refresh(_ context.Context, did syntax.DID) (profiles.Profile, error) {
-	f.refreshCalls++
 	if f.err != nil {
 		return profiles.Profile{}, f.err
+	}
+	if p, ok := f.refreshProfiles[did]; ok {
+		return p, nil
 	}
 	if p, ok := f.profiles[did]; ok {
 		return p, nil
@@ -47,7 +47,9 @@ func sptr(s string) *string { return &s }
 func TestMeProfile_HappyPath(t *testing.T) {
 	did, _ := syntax.ParseDID("did:plc:alice")
 	src := &fakeProfileSource{profiles: map[syntax.DID]profiles.Profile{
-		did: {DID: "did:plc:alice", Handle: "alice.example", DisplayName: sptr("Alice")},
+		did: {DID: "did:plc:alice", Handle: "user.example.com", DisplayName: sptr("Alice")},
+	}, refreshProfiles: map[syntax.DID]profiles.Profile{
+		did: {DID: "did:plc:alice", Handle: "user.example.com", DisplayName: sptr("Alice Fresh")},
 	}}
 	h := MeProfileHandler(src)
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), "did:plc:alice", "sid-1")
@@ -57,18 +59,15 @@ func TestMeProfile_HappyPath(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
-	if src.refreshCalls != 1 {
-		t.Errorf("Refresh calls = %d, want 1 (self-bypass)", src.refreshCalls)
-	}
-	if src.getCalls != 0 {
-		t.Errorf("Get calls = %d, want 0", src.getCalls)
-	}
 	var got profiles.Profile
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.DID != "did:plc:alice" || got.Handle != "alice.example" {
+	if got.DID != "did:plc:alice" || got.Handle != "user.example.com" {
 		t.Errorf("got = %+v", got)
+	}
+	if got.DisplayName == nil || *got.DisplayName != "Alice Fresh" {
+		t.Errorf("DisplayName = %v, want fresh profile", got.DisplayName)
 	}
 }
 
@@ -84,7 +83,9 @@ func TestMeProfile_NoSession_500(t *testing.T) {
 func TestProfileByDID_OtherUser_UsesCache(t *testing.T) {
 	otherDID, _ := syntax.ParseDID("did:plc:bob")
 	src := &fakeProfileSource{profiles: map[syntax.DID]profiles.Profile{
-		otherDID: {DID: "did:plc:bob", Handle: "bob.example"},
+		otherDID: {DID: "did:plc:bob", Handle: "other-user.example.com", DisplayName: sptr("Bob Cached")},
+	}, refreshProfiles: map[syntax.DID]profiles.Profile{
+		otherDID: {DID: "did:plc:bob", Handle: "other-user.example.com", DisplayName: sptr("Bob Fresh")},
 	}}
 	h := ProfileByDIDHandler(src)
 
@@ -98,15 +99,21 @@ func TestProfileByDID_OtherUser_UsesCache(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
-	if src.getCalls != 1 || src.refreshCalls != 0 {
-		t.Errorf("get=%d refresh=%d, want get=1 refresh=0", src.getCalls, src.refreshCalls)
+	var got profiles.Profile
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.DisplayName == nil || *got.DisplayName != "Bob Cached" {
+		t.Errorf("DisplayName = %v, want cached profile", got.DisplayName)
 	}
 }
 
 func TestProfileByDID_SelfDID_TakesBypass(t *testing.T) {
 	did, _ := syntax.ParseDID("did:plc:alice")
 	src := &fakeProfileSource{profiles: map[syntax.DID]profiles.Profile{
-		did: {DID: "did:plc:alice", Handle: "alice.example"},
+		did: {DID: "did:plc:alice", Handle: "user.example.com", DisplayName: sptr("Alice Cached")},
+	}, refreshProfiles: map[syntax.DID]profiles.Profile{
+		did: {DID: "did:plc:alice", Handle: "user.example.com", DisplayName: sptr("Alice Fresh")},
 	}}
 	h := ProfileByDIDHandler(src)
 
@@ -120,8 +127,12 @@ func TestProfileByDID_SelfDID_TakesBypass(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d", rr.Code)
 	}
-	if src.refreshCalls != 1 || src.getCalls != 0 {
-		t.Errorf("refresh=%d get=%d, want refresh=1 get=0", src.refreshCalls, src.getCalls)
+	var got profiles.Profile
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.DisplayName == nil || *got.DisplayName != "Alice Fresh" {
+		t.Errorf("DisplayName = %v, want fresh profile", got.DisplayName)
 	}
 }
 

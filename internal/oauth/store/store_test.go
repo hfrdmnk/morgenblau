@@ -4,8 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"fmt"
-	"strings"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -40,16 +39,12 @@ CREATE INDEX oauth_auth_requests_expires_at_idx
 
 func newMemDB(t *testing.T) *sql.DB {
 	t.Helper()
-	// Each test gets a fresh unique cache name so they don't share state.
-	dsn := fmt.Sprintf("file:store_test_%s?mode=memory&cache=shared&_pragma=foreign_keys(on)", t.Name())
-	dsn = strings.ReplaceAll(dsn, "/", "_")
+	dsn := "file:" + filepath.Join(t.TempDir(), "store.db") + "?_pragma=foreign_keys(on)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
-	// Limit to 1 conn so :memory: tables persist across pooled queries.
-	db.SetMaxOpenConns(1)
 
 	if _, err := db.ExecContext(context.Background(), schemaSQL); err != nil {
 		t.Fatalf("schema: %v", err)
@@ -62,7 +57,7 @@ func sampleSession(did string, sid string) oauth.ClientSessionData {
 	return oauth.ClientSessionData{
 		AccountDID:              d,
 		SessionID:               sid,
-		HostURL:                 "https://pds.example.com",
+		HostURL:                 "https://service.example.com",
 		AuthServerURL:           "https://as.example.com",
 		AuthServerTokenEndpoint: "https://as.example.com/oauth/token",
 		Scopes:                  []string{"atproto"},

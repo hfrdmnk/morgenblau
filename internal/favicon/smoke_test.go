@@ -1,24 +1,29 @@
-//go:build smoke
-
 package favicon
 
 import (
 	"context"
-	"net/http"
+	"os"
 	"testing"
-	"time"
 )
 
-// TestDiscoverDominikHoferMe is a live network smoke test for the specific
-// site that motivated this feature. Skipped unless `go test -tags=smoke`.
-func TestDiscoverDominikHoferMe(t *testing.T) {
-	client := &http.Client{Timeout: 10 * time.Second}
-	got, err := Discover(context.Background(), client, "https://dominikhofer.me")
+func TestDiscoverFixtureSite(t *testing.T) {
+	body, err := os.ReadFile("testdata/sample-site.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	site := newFakeSite(map[string]route{
+		"/":                {contentType: "text/html; charset=utf-8", body: string(body)},
+		"/assets/icon.svg": {contentType: "image/svg+xml", body: "<svg/>"},
+		"/favicon.ico":     {status: 404},
+	})
+	defer site.Close()
+
+	got, err := Discover(context.Background(), site.Client(), site.URL)
 	if err != nil {
 		t.Fatalf("discover: %v", err)
 	}
-	t.Logf("dominikhofer.me favicon: %s", got)
-	if got == "" {
-		t.Fatal("empty URL")
+	want := site.URL + "/assets/icon.svg"
+	if got != want {
+		t.Fatalf("icon = %q, want %q", got, want)
 	}
 }

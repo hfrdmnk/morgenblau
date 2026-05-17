@@ -59,10 +59,10 @@ func newSealer(t *testing.T) *cookie.Sealer {
 }
 
 func TestLogin_HappyPath_RedirectsToAS(t *testing.T) {
-	app := &fakeApp{startURL: "https://pds.example.com/oauth/authorize?request_uri=urn:foo"}
+	app := &fakeApp{startURL: "https://service.example.com/oauth/authorize?request_uri=urn:foo"}
 	h := LoginHandler(app)
 
-	form := url.Values{"handle": {"alice.bsky.social"}}
+	form := url.Values{"handle": {"user.example.com"}}
 	req := httptest.NewRequest(http.MethodPost, "/oauth/login", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rr := httptest.NewRecorder()
@@ -74,7 +74,7 @@ func TestLogin_HappyPath_RedirectsToAS(t *testing.T) {
 	if rr.Header().Get("Location") != app.startURL {
 		t.Errorf("Location = %q", rr.Header().Get("Location"))
 	}
-	if app.startedWith != "alice.bsky.social" {
+	if app.startedWith != "user.example.com" {
 		t.Errorf("StartAuthFlow called with %q", app.startedWith)
 	}
 }

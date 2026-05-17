@@ -88,7 +88,7 @@ func TestEntry_HappyPath(t *testing.T) {
 	r := &fakeEntryReader{
 		entry:        entryFixture(),
 		subOK:        true,
-		subscription: subscriptionFixture(strPtr("Cool Supply"), nil),
+		subscription: subscriptionFixture(strPtr("Example Source"), nil),
 		feed:         feedFixture(),
 	}
 	mux := http.NewServeMux()
@@ -107,8 +107,8 @@ func TestEntry_HappyPath(t *testing.T) {
 	if got.ID != 42 {
 		t.Errorf("ID = %d", got.ID)
 	}
-	if got.Source.Title == nil || *got.Source.Title != "Cool Supply" {
-		t.Errorf("Source.Title = %v, want Cool Supply", got.Source.Title)
+	if got.Source.Title == nil || *got.Source.Title != "Example Source" {
+		t.Errorf("Source.Title = %v, want Example Source", got.Source.Title)
 	}
 	if got.Source.FaviconURL == nil || *got.Source.FaviconURL != "https://example.test/favicon.ico" {
 		t.Errorf("Source.FaviconURL = %v, want favicon URL", got.Source.FaviconURL)
@@ -122,7 +122,7 @@ func TestEntry_SourceTitle_CustomOverridesCanonical(t *testing.T) {
 	r := &fakeEntryReader{
 		entry:        entryFixture(),
 		subOK:        true,
-		subscription: subscriptionFixture(strPtr("Cool Supply"), strPtr("My Cool Supply")),
+		subscription: subscriptionFixture(strPtr("Example Source"), strPtr("My Example Source")),
 		feed:         feedFixture(),
 	}
 	mux := http.NewServeMux()
@@ -136,7 +136,7 @@ func TestEntry_SourceTitle_CustomOverridesCanonical(t *testing.T) {
 	}
 	var got EntryWire
 	_ = json.Unmarshal(rr.Body.Bytes(), &got)
-	if got.Source.Title == nil || *got.Source.Title != "My Cool Supply" {
+	if got.Source.Title == nil || *got.Source.Title != "My Example Source" {
 		t.Errorf("Source.Title = %v, want custom title", got.Source.Title)
 	}
 }
@@ -145,7 +145,7 @@ func TestEntry_SourceTitle_EmptyCustomFallsBackToCanonical(t *testing.T) {
 	r := &fakeEntryReader{
 		entry:        entryFixture(),
 		subOK:        true,
-		subscription: subscriptionFixture(strPtr("Cool Supply"), strPtr("")),
+		subscription: subscriptionFixture(strPtr("Example Source"), strPtr("")),
 		feed:         feedFixture(),
 	}
 	mux := http.NewServeMux()
@@ -156,7 +156,7 @@ func TestEntry_SourceTitle_EmptyCustomFallsBackToCanonical(t *testing.T) {
 	mux.ServeHTTP(rr, req)
 	var got EntryWire
 	_ = json.Unmarshal(rr.Body.Bytes(), &got)
-	if got.Source.Title == nil || *got.Source.Title != "Cool Supply" {
+	if got.Source.Title == nil || *got.Source.Title != "Example Source" {
 		t.Errorf("Source.Title = %v, want canonical title when custom is empty", got.Source.Title)
 	}
 }
@@ -194,7 +194,7 @@ func TestEntryExtract_CachedReturn(t *testing.T) {
 	r := &fakeEntryReader{
 		entry:        entry,
 		subOK:        true,
-		subscription: subscriptionFixture(strPtr("Cool Supply"), nil),
+		subscription: subscriptionFixture(strPtr("Example Source"), nil),
 		feed:         feedFixture(),
 	}
 	mux := http.NewServeMux()

@@ -27,7 +27,7 @@ func resp(body, contentType string) *http.Response {
 const htmlWithFeeds = `<!doctype html><html><head>
 <link rel="alternate" type="application/rss+xml" title="Posts" href="/feed.xml">
 <link rel="alternate" type="application/atom+xml" title="Comments" href="/comments.atom">
-<link rel="alternate" type="application/json" href="https://other.example/feed.json">
+<link rel="alternate" type="application/json" href="https://alternate.example.com/feed.json">
 </head><body></body></html>`
 
 func TestResolve_LinkRelAlternate_MultipleCandidates(t *testing.T) {
@@ -52,7 +52,7 @@ func TestResolve_LinkRelAlternate_MultipleCandidates(t *testing.T) {
 	if cands[1].FeedURL != "https://example.test/comments.atom" {
 		t.Errorf("cand1.FeedURL = %q", cands[1].FeedURL)
 	}
-	if cands[2].FeedURL != "https://other.example/feed.json" {
+	if cands[2].FeedURL != "https://alternate.example.com/feed.json" {
 		t.Errorf("cand2.FeedURL = %q", cands[2].FeedURL)
 	}
 }
@@ -62,11 +62,11 @@ func TestResolve_PassthroughDirectFeedURL(t *testing.T) {
 		return resp(`<?xml version="1.0"?><rss></rss>`, "application/rss+xml")
 	})})
 
-	cands, err := finder.Resolve(context.Background(), "https://lobste.rs/rss")
+	cands, err := finder.Resolve(context.Background(), "https://example.com/rss")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if len(cands) != 1 || cands[0].FeedURL != "https://lobste.rs/rss" {
+	if len(cands) != 1 || cands[0].FeedURL != "https://example.com/rss" {
 		t.Errorf("passthrough mis-resolved: %+v", cands)
 	}
 }
@@ -76,8 +76,8 @@ func TestResolve_PassthroughExtractsCanonicalTitle(t *testing.T) {
 	const body = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
-    <title>dominikhofer</title>
-    <link>https://social.lol/@dominikhofer</link>
+    <title>Example Author</title>
+    <link>https://social.example.com/@example-user</link>
     <description>Posts</description>
   </channel>
 </rss>`
@@ -85,15 +85,15 @@ func TestResolve_PassthroughExtractsCanonicalTitle(t *testing.T) {
 		return resp(body, "application/rss+xml")
 	})})
 
-	cands, err := finder.Resolve(context.Background(), "https://social.lol/@dominikhofer.rss")
+	cands, err := finder.Resolve(context.Background(), "https://social.example.com/@example-user.rss")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if len(cands) != 1 {
 		t.Fatalf("len = %d", len(cands))
 	}
-	if cands[0].Title != "dominikhofer" {
-		t.Errorf("Title = %q, want %q", cands[0].Title, "dominikhofer")
+	if cands[0].Title != "Example Author" {
+		t.Errorf("Title = %q, want %q", cands[0].Title, "Example Author")
 	}
 }
 
@@ -120,7 +120,7 @@ func TestResolve_YouTube_HandlePath(t *testing.T) {
 		// Real YouTube pages embed channelId in JSON; mimic that.
 		return resp(`<html><body><script>var x = {"channelId":"UCwxyzABCDEFGHIJKLMNopq","other":1}</script></body></html>`, "text/html")
 	})})
-	cands, err := finder.Resolve(context.Background(), "https://www.youtube.com/@somecreator")
+	cands, err := finder.Resolve(context.Background(), "https://www.youtube.com/@example-creator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,23 +136,23 @@ func TestResolve_ApplePodcasts(t *testing.T) {
 			t.Errorf("id = %q", r.URL.Query().Get("id"))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"results":[{"feedUrl":"https://feeds.example/show.rss","collectionName":"Some Show"}]}`))
+		_, _ = w.Write([]byte(`{"results":[{"feedUrl":"https://feeds.example.com/show.rss","collectionName":"Example Show"}]}`))
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
 	finder := New(http.DefaultClient).WithITunesBase(srv.URL + "/lookup")
-	cands, err := finder.Resolve(context.Background(), "https://podcasts.apple.com/us/podcast/some-show/id1234567")
+	cands, err := finder.Resolve(context.Background(), "https://podcasts.apple.com/us/podcast/example-show/id1234567")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(cands) != 1 {
 		t.Fatalf("len = %d", len(cands))
 	}
-	if cands[0].FeedURL != "https://feeds.example/show.rss" {
+	if cands[0].FeedURL != "https://feeds.example.com/show.rss" {
 		t.Errorf("FeedURL = %q", cands[0].FeedURL)
 	}
-	if cands[0].Title != "Some Show" {
+	if cands[0].Title != "Example Show" {
 		t.Errorf("Title = %q", cands[0].Title)
 	}
 }
@@ -161,7 +161,7 @@ func TestResolve_NoFeedsFound_EmptyList(t *testing.T) {
 	finder := New(&http.Client{Transport: roundTripperFunc(func(_ *http.Request) *http.Response {
 		return resp(`<html><head></head><body>no feeds here</body></html>`, "text/html")
 	})})
-	cands, err := finder.Resolve(context.Background(), "https://barren.example")
+	cands, err := finder.Resolve(context.Background(), "https://empty.example.com")
 	if err != nil {
 		t.Fatal(err)
 	}

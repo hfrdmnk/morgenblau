@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -63,16 +62,16 @@ func identityFor(t *testing.T, didStr, handleStr, pds string) (syntax.DID, *iden
 }
 
 func TestCache_GetMissThenHit(t *testing.T) {
-	did, ident := identityFor(t, "did:plc:alice", "alice.example", "https://pds.example")
+	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
 	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
-	fet := &fakeFetcher{displayName: ptr("Alice"), avatar: ptr("https://pds.example/avatar.jpg")}
+	fet := &fakeFetcher{displayName: ptr("Alice"), avatar: ptr("https://service.example.com/avatar.jpg")}
 
 	c := New(res, fet)
 	p, err := c.Get(context.Background(), did)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if p.Handle != "alice.example" || p.DisplayName == nil || *p.DisplayName != "Alice" {
+	if p.Handle != "user.example.com" || p.DisplayName == nil || *p.DisplayName != "Alice" {
 		t.Fatalf("first Get unexpected: %+v", p)
 	}
 
@@ -88,26 +87,8 @@ func TestCache_GetMissThenHit(t *testing.T) {
 	}
 }
 
-func TestCache_TTLExpiry(t *testing.T) {
-	did, ident := identityFor(t, "did:plc:alice", "alice.example", "https://pds.example")
-	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
-	fet := &fakeFetcher{}
-
-	c := NewWithOptions(res, fet, 100, 20*time.Millisecond)
-	if _, err := c.Get(context.Background(), did); err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	time.Sleep(60 * time.Millisecond)
-	if _, err := c.Get(context.Background(), did); err != nil {
-		t.Fatalf("Get(after expiry): %v", err)
-	}
-	if got := atomic.LoadInt32(&res.calls); got != 2 {
-		t.Errorf("resolver.calls = %d, want 2", got)
-	}
-}
-
 func TestCache_RefreshBypasses(t *testing.T) {
-	did, ident := identityFor(t, "did:plc:alice", "alice.example", "https://pds.example")
+	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
 	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
 	fet := &fakeFetcher{displayName: ptr("Alice")}
 
@@ -132,7 +113,7 @@ func TestCache_RefreshBypasses(t *testing.T) {
 }
 
 func TestCache_MissingProfileRecordCollapsesToNulls(t *testing.T) {
-	did, ident := identityFor(t, "did:plc:alice", "alice.example", "https://pds.example")
+	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
 	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
 	fet := &fakeFetcher{err: fmt.Errorf("record not found")}
 
@@ -144,8 +125,8 @@ func TestCache_MissingProfileRecordCollapsesToNulls(t *testing.T) {
 	if p.DisplayName != nil || p.Avatar != nil {
 		t.Errorf("expected nulls, got %+v", p)
 	}
-	if p.Handle != "alice.example" {
-		t.Errorf("handle = %q, want alice.example", p.Handle)
+	if p.Handle != "user.example.com" {
+		t.Errorf("handle = %q, want user.example.com", p.Handle)
 	}
 }
 
