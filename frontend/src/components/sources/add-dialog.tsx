@@ -34,7 +34,12 @@ type DiscoverResult = {
 
 type SubscriptionItem = {
     feedUrl: string;
+    // Canonical feed title from the resolver. Frozen — user edits go to customTitle.
     title: string;
+    // What the user typed. Prefilled with the canonical title; on submit, any
+    // value that differs from the canonical (after trim) is persisted as the
+    // per-user override.
+    customTitle: string;
     siteUrl: string;
 };
 
@@ -44,9 +49,11 @@ type Props = {
 };
 
 function toItem(candidate: FeedCandidate): SubscriptionItem {
+    const canonical = candidate.title ?? '';
     return {
         feedUrl: candidate.feedUrl,
-        title: candidate.title ?? '',
+        title: canonical,
+        customTitle: canonical,
         siteUrl: candidate.siteUrl ?? '',
     };
 }
@@ -249,7 +256,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
             Object.fromEntries(
                 subscriptions.map((item) => [
                     item.feedUrl,
-                    { title: item.title },
+                    { customTitle: item.customTitle },
                 ]),
             ),
         [subscriptions],
@@ -279,11 +286,13 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         });
     }, []);
 
-    const handleTitleChange = useCallback(
-        (feedUrl: string, title: string) => {
+    const handleCustomTitleChange = useCallback(
+        (feedUrl: string, customTitle: string) => {
             setSubscriptions((current) =>
                 current.map((item) =>
-                    item.feedUrl === feedUrl ? { ...item, title } : item,
+                    item.feedUrl === feedUrl
+                        ? { ...item, customTitle }
+                        : item,
                 ),
             );
         },
@@ -313,12 +322,27 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         setSubmitError(undefined);
         setFieldErrors({});
 
+        // Trim-exact match against canonical = no override. Case and internal
+        // whitespace differences persist as customTitle.
+        const payload = subscriptions.map((item) => {
+            const typed = item.customTitle.trim();
+            const canonical = item.title.trim();
+            const customTitleOut =
+                typed.length > 0 && typed !== canonical ? typed : '';
+            return {
+                feedUrl: item.feedUrl,
+                title: item.title,
+                customTitle: customTitleOut,
+                siteUrl: item.siteUrl,
+            };
+        });
+
         try {
             const response = await fetch('/api/subscriptions', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 credentials: 'same-origin',
-                body: JSON.stringify({ subscriptions }),
+                body: JSON.stringify({ subscriptions: payload }),
             });
 
             if (!response.ok) {
@@ -446,7 +470,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                                     existingByFeedUrl={existingByFeedUrl}
                                     selected={selectedMap}
                                     onToggle={toggleCandidate}
-                                    onTitleChange={handleTitleChange}
+                                    onCustomTitleChange={handleCustomTitleChange}
                                     firstCheckboxRef={firstCheckboxRef}
                                     firstTitleInputRef={firstTitleInputRef}
                                 />

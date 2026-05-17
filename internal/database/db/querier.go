@@ -28,6 +28,7 @@ type Querier interface {
 	PutSession(ctx context.Context, arg PutSessionParams) error
 	UpdateFeedEntryExtractedBody(ctx context.Context, arg UpdateFeedEntryExtractedBodyParams) error
 	UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchStateParams) error
+	UpdateUserSubscriptionsTitleByFeedURL(ctx context.Context, arg UpdateUserSubscriptionsTitleByFeedURLParams) error
 	UpsertFeed(ctx context.Context, arg UpsertFeedParams) error
 	UpsertFeedEntry(ctx context.Context, arg UpsertFeedEntryParams) error
 	UpsertUserSubscription(ctx context.Context, arg UpsertUserSubscriptionParams) error

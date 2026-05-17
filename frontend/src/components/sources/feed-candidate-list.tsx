@@ -15,7 +15,7 @@ export type FeedCandidate = {
 };
 
 type Selection = {
-    title: string;
+    customTitle: string;
 };
 
 type Props = {
@@ -23,7 +23,7 @@ type Props = {
     existingByFeedUrl: Map<string, string | null>;
     selected: Record<string, Selection>;
     onToggle: (candidate: FeedCandidate) => void;
-    onTitleChange: (feedUrl: string, title: string) => void;
+    onCustomTitleChange: (feedUrl: string, customTitle: string) => void;
     firstCheckboxRef?: Ref<HTMLInputElement>;
     firstTitleInputRef?: Ref<HTMLInputElement>;
     'aria-labelledby'?: string;
@@ -34,7 +34,7 @@ export function FeedCandidateList({
     existingByFeedUrl,
     selected,
     onToggle,
-    onTitleChange,
+    onCustomTitleChange,
     firstCheckboxRef,
     firstTitleInputRef,
     'aria-labelledby': ariaLabelledBy,
@@ -60,9 +60,9 @@ export function FeedCandidateList({
                         isExisting={isExisting}
                         savedTitle={savedTitle}
                         isSelected={isSelected}
-                        selectedTitle={selection?.title ?? ''}
+                        selectedCustomTitle={selection?.customTitle ?? ''}
                         onToggle={onToggle}
-                        onTitleChange={onTitleChange}
+                        onCustomTitleChange={onCustomTitleChange}
                         firstCheckboxRef={
                             index === 0 ? firstCheckboxRef : undefined
                         }
@@ -81,9 +81,9 @@ type CardProps = {
     isExisting: boolean;
     savedTitle: string | null;
     isSelected: boolean;
-    selectedTitle: string;
+    selectedCustomTitle: string;
     onToggle: (candidate: FeedCandidate) => void;
-    onTitleChange: (feedUrl: string, title: string) => void;
+    onCustomTitleChange: (feedUrl: string, customTitle: string) => void;
     firstCheckboxRef?: Ref<HTMLInputElement>;
     firstTitleInputRef?: Ref<HTMLInputElement>;
 };
@@ -93,9 +93,9 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
     isExisting,
     savedTitle,
     isSelected,
-    selectedTitle,
+    selectedCustomTitle,
     onToggle,
-    onTitleChange,
+    onCustomTitleChange,
     firstCheckboxRef,
     firstTitleInputRef,
 }: CardProps) {
@@ -168,9 +168,9 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                 ref={firstTitleInputRef}
                                 id={titleId}
                                 type="text"
-                                value={selectedTitle}
+                                value={selectedCustomTitle}
                                 onChange={(event) =>
-                                    onTitleChange(
+                                    onCustomTitleChange(
                                         candidate.feedUrl,
                                         event.target.value,
                                     )

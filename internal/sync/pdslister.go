@@ -57,11 +57,13 @@ func (SessionPDSLister) ListSubscriptions(ctx context.Context, sess *oauth.Clien
 func toPDSSubscription(r recordEntry) PDSSubscription {
 	feedURL, _ := r.Value["feedUrl"].(string)
 	title, _ := r.Value["title"].(string)
+	customTitle, _ := r.Value["customTitle"].(string)
 	return PDSSubscription{
-		URI:     r.URI,
-		Rkey:    rkeyFromATURI(r.URI),
-		FeedURL: feedURL,
-		Title:   title,
+		URI:         r.URI,
+		Rkey:        rkeyFromATURI(r.URI),
+		FeedURL:     feedURL,
+		Title:       title,
+		CustomTitle: customTitle,
 	}
 }
 

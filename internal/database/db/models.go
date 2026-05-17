@@ -6,7 +6,6 @@ package db
 
 type Feed struct {
 	FeedUrl       string  `json:"feed_url"`
-	Title         *string `json:"title"`
 	SiteUrl       *string `json:"site_url"`
 	Etag          *string `json:"etag"`
 	LastModified  *string `json:"last_modified"`

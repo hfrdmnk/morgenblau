@@ -29,10 +29,11 @@ type PDSLister interface {
 // PDSSubscription is the trimmed shape we care about — at-uri, rkey, feedUrl,
 // plus optional metadata that lands on the Tier-1 row.
 type PDSSubscription struct {
-	URI     string
-	Rkey    string
-	FeedURL string
-	Title   string
+	URI         string
+	Rkey        string
+	FeedURL     string
+	Title       string
+	CustomTitle string
 }
 
 // SyncStore is the slice of *db.Queries SyncUser depends on. Defined here so
@@ -223,20 +224,20 @@ func (e *Engine) reconcileTier1(
 		}
 		if err := e.store.UpsertFeed(ctx, db.UpsertFeedParams{
 			FeedUrl:   r.FeedURL,
-			Title:     nilIfEmpty(r.Title),
 			CreatedAt: now,
 			UpdatedAt: now,
 		}); err != nil {
 			slog.Warn("reconcile: Tier-2 upsert failed", "err", err)
 		}
 		if err := e.store.UpsertUserSubscription(ctx, db.UpsertUserSubscriptionParams{
-			Did:       didStr,
-			Rkey:      rkey,
-			AtUri:     r.URI,
-			FeedUrl:   r.FeedURL,
-			Title:     nilIfEmpty(r.Title),
-			CreatedAt: now,
-			UpdatedAt: now,
+			Did:         didStr,
+			Rkey:        rkey,
+			AtUri:       r.URI,
+			FeedUrl:     r.FeedURL,
+			Title:       nilIfEmpty(r.Title),
+			CustomTitle: nilIfEmpty(r.CustomTitle),
+			CreatedAt:   now,
+			UpdatedAt:   now,
 		}); err != nil {
 			slog.Warn("reconcile: Tier-1 upsert failed", "err", err)
 		}

@@ -179,9 +179,10 @@ type addRequest struct {
 }
 
 type addItem struct {
-	FeedURL string `json:"feedUrl"`
-	Title   string `json:"title"`
-	SiteURL string `json:"siteUrl"`
+	FeedURL     string `json:"feedUrl"`
+	Title       string `json:"title"`
+	CustomTitle string `json:"customTitle"`
+	SiteURL     string `json:"siteUrl"`
 }
 
 type addResponse struct {
@@ -244,13 +245,16 @@ func SubscriptionsCreateHandler(
 				return
 			}
 
-			// Step 2: PDS write.
+			// Step 2: PDS write. title = canonical (from resolver), customTitle = user override.
 			record := map[string]any{
 				"feedUrl":   item.FeedURL,
 				"createdAt": now,
 			}
 			if item.Title != "" {
 				record["title"] = item.Title
+			}
+			if item.CustomTitle != "" {
+				record["customTitle"] = item.CustomTitle
 			}
 			if item.SiteURL != "" {
 				record["siteUrl"] = item.SiteURL
@@ -265,10 +269,10 @@ func SubscriptionsCreateHandler(
 
 			// Step 3: Tier-2 catalog upsert (dedup by canonical URL).
 			titlePtr := nilIfEmpty(item.Title)
+			customTitlePtr := nilIfEmpty(item.CustomTitle)
 			siteURLPtr := nilIfEmpty(item.SiteURL)
 			if err := writer.UpsertFeed(r.Context(), db.UpsertFeedParams{
 				FeedUrl:   item.FeedURL,
-				Title:     titlePtr,
 				SiteUrl:   siteURLPtr,
 				CreatedAt: now,
 				UpdatedAt: now,
@@ -278,17 +282,29 @@ func SubscriptionsCreateHandler(
 
 			// Step 4: Tier-1 index upsert.
 			if err := writer.UpsertUserSubscription(r.Context(), db.UpsertUserSubscriptionParams{
-				Did:       didStr,
-				Rkey:      rkey,
-				AtUri:     ref.URI,
-				FeedUrl:   item.FeedURL,
-				Title:     titlePtr,
-				CreatedAt: now,
-				UpdatedAt: now,
+				Did:         didStr,
+				Rkey:        rkey,
+				AtUri:       ref.URI,
+				FeedUrl:     item.FeedURL,
+				Title:       titlePtr,
+				CustomTitle: customTitlePtr,
+				CreatedAt:   now,
+				UpdatedAt:   now,
 			}); err != nil {
 				slog.Error("/api/subscriptions: Tier-1 upsert failed (PDS write already succeeded — next sync_user will reconcile)", "err", err)
 			}
 
+			value := map[string]any{
+				"feedUrl":   item.FeedURL,
+				"siteUrl":   item.SiteURL,
+				"createdAt": now,
+			}
+			if item.Title != "" {
+				value["title"] = item.Title
+			}
+			if item.CustomTitle != "" {
+				value["customTitle"] = item.CustomTitle
+			}
 			out.Records = append(out.Records, SubscriptionWire{
 				URI:     ref.URI,
 				CID:     ref.CID,
@@ -296,12 +312,7 @@ func SubscriptionsCreateHandler(
 				FeedURL: item.FeedURL,
 				Title:   item.Title,
 				SiteURL: item.SiteURL,
-				Value: map[string]any{
-					"feedUrl":   item.FeedURL,
-					"title":     item.Title,
-					"siteUrl":   item.SiteURL,
-					"createdAt": now,
-				},
+				Value:   value,
 			})
 
 			// Step 5: dispatch fetch_one_feed (async).

@@ -29,6 +29,7 @@ type pipelineQueries interface {
 	UpdateFeedFetchState(ctx context.Context, arg db.UpdateFeedFetchStateParams) error
 	UpsertFeed(ctx context.Context, arg db.UpsertFeedParams) error
 	UpsertFeedEntry(ctx context.Context, arg db.UpsertFeedEntryParams) error
+	UpdateUserSubscriptionsTitleByFeedURL(ctx context.Context, arg db.UpdateUserSubscriptionsTitleByFeedURLParams) error
 }
 
 func NewFeedPipeline(f *fetcher.Fetcher, q pipelineQueries) *FeedPipeline {
@@ -76,12 +77,21 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 	feedSite := strings.TrimSpace(res.Feed.Link)
 	if err := p.queries.UpsertFeed(ctx, db.UpsertFeedParams{
 		FeedUrl:   feedURL,
-		Title:     nilIfEmpty(feedTitle),
 		SiteUrl:   nilIfEmpty(feedSite),
 		CreatedAt: nowStr,
 		UpdatedAt: nowStr,
 	}); err != nil {
 		slog.Warn("feedpipeline: feed upsert failed", "url", feedURL, "err", err)
+	}
+
+	// Push the canonical title down to every subscriber's Tier-1 row.
+	// custom_title is left untouched.
+	if err := p.queries.UpdateUserSubscriptionsTitleByFeedURL(ctx, db.UpdateUserSubscriptionsTitleByFeedURLParams{
+		Title:     nilIfEmpty(feedTitle),
+		UpdatedAt: nowStr,
+		FeedUrl:   feedURL,
+	}); err != nil {
+		slog.Warn("feedpipeline: Tier-1 title refresh failed", "url", feedURL, "err", err)
 	}
 
 	for _, item := range res.Feed.Items {

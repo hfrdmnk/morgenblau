@@ -24,7 +24,7 @@ func (q *Queries) DeleteUserSubscription(ctx context.Context, arg DeleteUserSubs
 }
 
 const getFeed = `-- name: GetFeed :one
-SELECT feed_url, title, site_url, etag, last_modified, last_fetched_at, created_at, updated_at
+SELECT feed_url, site_url, etag, last_modified, last_fetched_at, created_at, updated_at
 FROM feeds WHERE feed_url = ?
 `
 
@@ -33,7 +33,6 @@ func (q *Queries) GetFeed(ctx context.Context, feedUrl string) (Feed, error) {
 	var i Feed
 	err := row.Scan(
 		&i.FeedUrl,
-		&i.Title,
 		&i.SiteUrl,
 		&i.Etag,
 		&i.LastModified,
@@ -162,18 +161,33 @@ func (q *Queries) UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchS
 	return err
 }
 
+const updateUserSubscriptionsTitleByFeedURL = `-- name: UpdateUserSubscriptionsTitleByFeedURL :exec
+UPDATE user_subscriptions
+SET title = ?, updated_at = ?
+WHERE feed_url = ?
+`
+
+type UpdateUserSubscriptionsTitleByFeedURLParams struct {
+	Title     *string `json:"title"`
+	UpdatedAt string  `json:"updated_at"`
+	FeedUrl   string  `json:"feed_url"`
+}
+
+func (q *Queries) UpdateUserSubscriptionsTitleByFeedURL(ctx context.Context, arg UpdateUserSubscriptionsTitleByFeedURLParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserSubscriptionsTitleByFeedURL, arg.Title, arg.UpdatedAt, arg.FeedUrl)
+	return err
+}
+
 const upsertFeed = `-- name: UpsertFeed :exec
-INSERT INTO feeds (feed_url, title, site_url, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO feeds (feed_url, site_url, created_at, updated_at)
+VALUES (?, ?, ?, ?)
 ON CONFLICT (feed_url) DO UPDATE SET
-    title    = COALESCE(NULLIF(excluded.title, ''), feeds.title),
     site_url = COALESCE(NULLIF(excluded.site_url, ''), feeds.site_url),
     updated_at = excluded.updated_at
 `
 
 type UpsertFeedParams struct {
 	FeedUrl   string  `json:"feed_url"`
-	Title     *string `json:"title"`
 	SiteUrl   *string `json:"site_url"`
 	CreatedAt string  `json:"created_at"`
 	UpdatedAt string  `json:"updated_at"`
@@ -182,7 +196,6 @@ type UpsertFeedParams struct {
 func (q *Queries) UpsertFeed(ctx context.Context, arg UpsertFeedParams) error {
 	_, err := q.db.ExecContext(ctx, upsertFeed,
 		arg.FeedUrl,
-		arg.Title,
 		arg.SiteUrl,
 		arg.CreatedAt,
 		arg.UpdatedAt,

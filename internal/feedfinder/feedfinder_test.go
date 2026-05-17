@@ -71,6 +71,32 @@ func TestResolve_PassthroughDirectFeedURL(t *testing.T) {
 	}
 }
 
+func TestResolve_PassthroughExtractsCanonicalTitle(t *testing.T) {
+	// Mastodon-style direct RSS feed — body parse should yield <channel><title>.
+	const body = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>dominikhofer</title>
+    <link>https://social.lol/@dominikhofer</link>
+    <description>Posts</description>
+  </channel>
+</rss>`
+	finder := New(&http.Client{Transport: roundTripperFunc(func(_ *http.Request) *http.Response {
+		return resp(body, "application/rss+xml")
+	})})
+
+	cands, err := finder.Resolve(context.Background(), "https://social.lol/@dominikhofer.rss")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(cands) != 1 {
+		t.Fatalf("len = %d", len(cands))
+	}
+	if cands[0].Title != "dominikhofer" {
+		t.Errorf("Title = %q, want %q", cands[0].Title, "dominikhofer")
+	}
+}
+
 func TestResolve_YouTube_ChannelDirect(t *testing.T) {
 	// /channel/UC... should resolve WITHOUT hitting HTTP.
 	finder := New(&http.Client{Transport: roundTripperFunc(func(_ *http.Request) *http.Response {

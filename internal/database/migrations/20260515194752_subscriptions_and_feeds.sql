@@ -6,7 +6,6 @@
 -- here. Local is canonical (no PDS path for entries).
 CREATE TABLE feeds (
     feed_url         TEXT PRIMARY KEY,
-    title            TEXT,
     site_url         TEXT,
     etag             TEXT,
     last_modified    TEXT,

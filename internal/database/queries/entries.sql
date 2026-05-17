@@ -21,7 +21,7 @@ UPDATE feed_entries SET extracted_body = ? WHERE id = ?;
 SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
     e.published_at, e.fetched_at, e.metadata, e.extracted_body,
-    f.title AS feed_title, f.site_url AS feed_site_url
+    COALESCE(us.custom_title, us.title) AS feed_title, f.site_url AS feed_site_url
 FROM feed_entries e
 JOIN feeds f ON f.feed_url = e.feed_url
 JOIN user_subscriptions us ON us.feed_url = e.feed_url
@@ -34,7 +34,7 @@ ORDER BY e.published_at DESC, e.id DESC;
 SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
     e.published_at, e.fetched_at, e.metadata, e.extracted_body,
-    f.title AS feed_title, f.site_url AS feed_site_url
+    COALESCE(us.custom_title, us.title) AS feed_title, f.site_url AS feed_site_url
 FROM feed_entries e
 JOIN feeds f ON f.feed_url = e.feed_url
 JOIN user_subscriptions us ON us.feed_url = e.feed_url

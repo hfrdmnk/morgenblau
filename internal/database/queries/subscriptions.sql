@@ -1,14 +1,18 @@
 -- name: UpsertFeed :exec
-INSERT INTO feeds (feed_url, title, site_url, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO feeds (feed_url, site_url, created_at, updated_at)
+VALUES (?, ?, ?, ?)
 ON CONFLICT (feed_url) DO UPDATE SET
-    title    = COALESCE(NULLIF(excluded.title, ''), feeds.title),
     site_url = COALESCE(NULLIF(excluded.site_url, ''), feeds.site_url),
     updated_at = excluded.updated_at;
 
 -- name: GetFeed :one
-SELECT feed_url, title, site_url, etag, last_modified, last_fetched_at, created_at, updated_at
+SELECT feed_url, site_url, etag, last_modified, last_fetched_at, created_at, updated_at
 FROM feeds WHERE feed_url = ?;
+
+-- name: UpdateUserSubscriptionsTitleByFeedURL :exec
+UPDATE user_subscriptions
+SET title = ?, updated_at = ?
+WHERE feed_url = ?;
 
 -- name: UpdateFeedFetchState :exec
 UPDATE feeds

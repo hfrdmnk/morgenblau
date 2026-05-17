@@ -5,6 +5,7 @@
 package feedfinder
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,7 +16,12 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/mmcdole/gofeed"
 )
+
+// maxFeedSniffBytes caps body reads on the direct-feed passthrough path so a
+// hostile or huge feed can't blow up resolve.
+const maxFeedSniffBytes = 4 << 20
 
 // Candidate is one feed the user could subscribe to. All fields are best-
 // effort; only FeedURL is guaranteed non-empty.
@@ -112,8 +118,9 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 
 	ct := strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0])
 	if _, isFeed := feedContentTypes[strings.ToLower(ct)]; isFeed {
-		// Passthrough — user pasted a direct feed URL.
-		return []Candidate{{FeedURL: raw, ContentType: ct, SiteURL: raw}}, nil
+		// Passthrough — user pasted a direct feed URL. Parse the body to
+		// pull the canonical <title> so the dialog can prefill.
+		return []Candidate{{FeedURL: raw, ContentType: ct, SiteURL: raw, Title: sniffFeedTitle(resp.Body)}}, nil
 	}
 
 	base := u
@@ -121,6 +128,21 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 		base = resp.Request.URL
 	}
 	return f.extractLinkRels(resp.Body, base)
+}
+
+// sniffFeedTitle reads up to maxFeedSniffBytes from a direct-feed response
+// body and returns the parsed canonical title. Returns "" if the body can't
+// be read or parsed — caller falls back to an empty title.
+func sniffFeedTitle(body io.Reader) string {
+	buf, err := io.ReadAll(io.LimitReader(body, maxFeedSniffBytes))
+	if err != nil {
+		return ""
+	}
+	parsed, err := gofeed.NewParser().Parse(bytes.NewReader(buf))
+	if err != nil || parsed == nil {
+		return ""
+	}
+	return strings.TrimSpace(parsed.Title)
 }
 
 func (f *Finder) extractLinkRels(body io.Reader, base *url.URL) ([]Candidate, error) {
