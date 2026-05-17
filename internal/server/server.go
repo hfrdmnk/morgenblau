@@ -24,7 +24,6 @@ import (
 	"morgenblau/internal/oauth/config"
 	"morgenblau/internal/oauth/cookie"
 	"morgenblau/internal/oauth/store"
-	"morgenblau/internal/routes"
 	"morgenblau/internal/safehttp"
 	internalsync "morgenblau/internal/sync"
 )
@@ -38,7 +37,6 @@ type Server struct {
 	oauthApp   *oauth.ClientApp
 	store      *store.Store
 	sealer     *cookie.Sealer
-	routes     []routes.Route
 	profiles   *profiles.Cache
 	jobs       *jobs.Tracker
 	sync       *internalsync.Orchestrator
@@ -74,11 +72,6 @@ func NewServer() (*http.Server, error) {
 		return nil, fmt.Errorf("load cookie sealer: %w", err)
 	}
 
-	rs, err := routes.Load()
-	if err != nil {
-		return nil, fmt.Errorf("load routes: %w", err)
-	}
-
 	st := store.New(db)
 	oauthApp := oauth.NewClientApp(oauthCfg.Indigo, st)
 
@@ -94,7 +87,7 @@ func NewServer() (*http.Server, error) {
 	queries := dbqueries.New(db)
 	pipeline := internalsync.NewFeedPipeline(fetcherInst, queries)
 	engine := internalsync.NewEngine(tracker, queries, internalsync.SessionPDSLister{}, pipeline, oauthApp)
-	orchestrator := internalsync.New(tracker).WithFetcher(pipeline).WithEngine(engine)
+	orchestrator := internalsync.New(tracker, pipeline, engine)
 
 	NewServer := &Server{
 		port:       port,
@@ -104,7 +97,6 @@ func NewServer() (*http.Server, error) {
 		oauthApp:   oauthApp,
 		store:      st,
 		sealer:     sealer,
-		routes:     rs,
 		profiles:   profileCache,
 		jobs:       tracker,
 		sync:       orchestrator,

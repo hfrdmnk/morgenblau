@@ -1,5 +1,4 @@
-// Package auth wraps an http.Handler with session-cookie gating driven by
-// the routes.json source-of-truth.
+// Package auth wraps an http.Handler with session-cookie gating.
 //
 // Routing decisions per request:
 //   - Infrastructure paths (OAuth dance, /api/health, static assets) pass
@@ -25,7 +24,6 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/oauth/cookie"
-	"morgenblau/internal/routes"
 )
 
 // Resumer is the slice of *oauth.ClientApp the middleware depends on.
@@ -44,21 +42,9 @@ type SessionLocker interface {
 // Middleware returns an http.Handler middleware.
 type Middleware func(http.Handler) http.Handler
 
-// New builds the gating middleware. The routes table is the source of truth
-// for which SPA paths are public vs. authed and where authed users get
-// redirected from public landing pages (e.g. /login → /).
-func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, rs []routes.Route) Middleware {
-	public := make(map[string]string, len(rs)) // path → authedRedirect ("" if none)
-	authed := make(map[string]struct{}, len(rs))
-	for _, r := range rs {
-		switch r.Auth {
-		case routes.AuthPublic:
-			public[r.Path] = r.AuthedRedirect
-		case routes.AuthAuthed:
-			authed[r.Path] = struct{}{}
-		}
-	}
-
+// New builds the gating middleware. Only public SPA paths are named here;
+// every other product path is authed by default.
+func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
@@ -91,7 +77,7 @@ func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, rs []rout
 			}
 
 			// Public product route: authed → maybe redirect, else pass.
-			if redirect, isPublic := public[path]; isPublic {
+			if redirect, isPublic := publicRoutes[path]; isPublic {
 				if sess != nil && redirect != "" {
 					http.Redirect(w, r, redirect, http.StatusFound)
 					return
@@ -107,7 +93,7 @@ func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, rs []rout
 			}
 
 			// Everything else is gated by default — covers authed product
-			// routes from routes.json and unknown SPA paths alike.
+			// routes and unknown SPA paths alike.
 			if sess != nil {
 				serve(next, w, r, sess)
 				return
@@ -131,8 +117,13 @@ func serve(next http.Handler, w http.ResponseWriter, r *http.Request, sess *oaut
 	next.ServeHTTP(w, r)
 }
 
-// Infrastructure paths that bypass auth entirely. These are not product
-// routes and don't belong in routes.json.
+var publicRoutes = map[string]string{
+	"/":      "/consume",
+	"/login": "/consume",
+	"/about": "",
+}
+
+// Infrastructure paths that bypass auth entirely. These are not product routes.
 var infraExact = map[string]struct{}{
 	"/api/health":     {},
 	"/oauth/login":    {},

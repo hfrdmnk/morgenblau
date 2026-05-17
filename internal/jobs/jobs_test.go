@@ -193,20 +193,3 @@ func TestCreateOrReturnExisting_ExpiredJobsNotReturned(t *testing.T) {
 		t.Errorf("expired job re-used id %s", j1.ID)
 	}
 }
-
-func TestExistingInFlight_Guard(t *testing.T) {
-	now := time.Unix(1_700_000_000, 0)
-	tr := NewWithOptions(DefaultRetention, func() time.Time { return now })
-	alice := didFor(t, "did:plc:alice")
-	j := tr.Create(KindSyncUser, alice, TriggerLogin)
-	tr.SetRunning(j.ID)
-	if got := tr.ExistingInFlight(KindSyncUser, alice, 5*time.Minute); got == nil || got.ID != j.ID {
-		t.Errorf("guard miss: got %+v", got)
-	}
-
-	// After advancing past guard, the job should no longer match.
-	now = now.Add(6 * time.Minute)
-	if got := tr.ExistingInFlight(KindSyncUser, alice, 5*time.Minute); got != nil {
-		t.Errorf("guard should expire, got %+v", got)
-	}
-}

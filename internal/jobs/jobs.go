@@ -29,8 +29,8 @@ const (
 type Kind string
 
 const (
-	KindSyncUser      Kind = "sync_user"
-	KindFetchOneFeed  Kind = "fetch_one_feed"
+	KindSyncUser     Kind = "sync_user"
+	KindFetchOneFeed Kind = "fetch_one_feed"
 )
 
 // Trigger is metadata-only telemetry; the work the job does is identical.
@@ -204,28 +204,6 @@ func (t *Tracker) ActiveForUser(userDID syntax.DID) *Job {
 		return nil
 	}
 	return cloneJob(best)
-}
-
-// ExistingInFlight returns an in-flight sync_user job for userDID whose
-// StartedAt is within the SPEC <feed-sources> guard window. Used by
-// SyncUser to coalesce duplicate login/manual refreshes without re-fetching.
-func (t *Tracker) ExistingInFlight(kind Kind, userDID syntax.DID, guard time.Duration) *Job {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	did := userDID.String()
-	cutoff := t.now().Add(-guard)
-	for _, j := range t.jobs {
-		if j.UserDID != did || j.Kind != kind {
-			continue
-		}
-		if j.Status == StatusDone || j.Status == StatusFailed {
-			continue
-		}
-		if j.StartedAt.After(cutoff) {
-			return cloneJob(j)
-		}
-	}
-	return nil
 }
 
 // GC sweeps finished jobs older than the retention window. Called

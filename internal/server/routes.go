@@ -39,17 +39,12 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("GET /api/entries/{slug}", api.EntryHandler(s.queries))
 	mux.Handle("POST /api/entries/{slug}/extract", api.EntryExtractHandler(s.queries, s.queries, s.safeClient))
 
-	// v1-deferred endpoints: stubbed to 501 so frontend callers fail loudly.
-	stub := api.NotImplementedHandler()
-	mux.Handle("/api/saved", stub)
-	mux.Handle("/api/shares", stub)
-	mux.Handle("/api/follows", stub)
-	mux.Handle("/api/entries/{slug}/social", stub)
+	mux.HandleFunc("/api/", http.NotFound)
 
 	mux.Handle("GET /about", api.AboutHandler())
 	mux.Handle("/", spaHandler())
 
-	gate := auth.New(s.oauthApp, s.store, s.sealer, s.routes)
+	gate := auth.New(s.oauthApp, s.store, s.sealer)
 	return s.corsMiddleware(gate(mux))
 }
 

@@ -1,36 +1,26 @@
 // Package sync orchestrates the dual-track refresh: PDS reconcile + fan-out
-// fetch. This slice ships the no-op skeleton so the route + pill mechanic can
-// be wired end-to-end; Issue 07 fills in the real errgroup + fetcher fan-out.
+// fetch.
 package sync
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/jobs"
 )
 
-// FeedFetcher is the slice of internal/fetcher the orchestrator uses for
-// single-feed pulls. Wired in Issue 06 so the add-source path can dispatch a
-// concrete fetch job; Issue 07 reuses it during sync_user.
+// FeedFetcher is the slice of internal/fetcher the orchestrator uses.
 type FeedFetcher interface {
 	FetchAndStore(ctx context.Context, feedURL string) error
 }
 
-// noopFeedFetcher does nothing — used when the slice that wires fetcher
-// → storage isn't loaded yet (e.g. unit tests, early bootstrap).
-type noopFeedFetcher struct{}
-
-func (noopFeedFetcher) FetchAndStore(_ context.Context, _ string) error { return nil }
+var ErrNoEngine = errors.New("sync: engine not configured")
 
 // Orchestrator owns the job tracker, the feed pipeline, and the sync engine.
-// When an engine is attached, manual + login refresh dispatch real dual-track
-// sync; otherwise they fall back to the no-op transition used during the
-// early bootstrap (Issue 03).
 type Orchestrator struct {
 	jobs    *jobs.Tracker
 	fetcher FeedFetcher
@@ -41,31 +31,18 @@ type Orchestrator struct {
 	wg     sync.WaitGroup
 }
 
-// New returns a no-op orchestrator backed by the given tracker.
-func New(tracker *jobs.Tracker) *Orchestrator {
+func New(tracker *jobs.Tracker, fetcher FeedFetcher, engine *Engine) *Orchestrator {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Orchestrator{
+	o := &Orchestrator{
 		jobs:    tracker,
-		fetcher: noopFeedFetcher{},
+		fetcher: fetcher,
+		engine:  engine,
 		ctx:     ctx,
 		cancel:  cancel,
 	}
-}
-
-// WithFetcher attaches a fetch+store implementation. Called from the server
-// once the feed pipeline (fetcher + Tier-2 storage) is constructed.
-func (o *Orchestrator) WithFetcher(f FeedFetcher) *Orchestrator {
-	o.fetcher = f
-	return o
-}
-
-// WithEngine attaches the real dual-track sync engine. Once attached, the
-// orchestrator's StartManualRefresh / StartLoginRefresh entrypoints route
-// through the engine rather than the no-op fallback. The engine inherits the
-// orchestrator's parent ctx + WaitGroup so Shutdown drains its goroutines too.
-func (o *Orchestrator) WithEngine(e *Engine) *Orchestrator {
-	o.engine = e
-	e.attachLifecycle(o.ctx, &o.wg)
+	if engine != nil {
+		engine.attachLifecycle(o.ctx, &o.wg)
+	}
 	return o
 }
 
@@ -87,52 +64,27 @@ func (o *Orchestrator) Shutdown(ctx context.Context) error {
 	}
 }
 
-// StartManualRefresh creates a sync_user job for (did, sessionID). When an
-// engine is attached the real dual-track sync runs; otherwise the orchestrator
-// transitions the job through pending → done synchronously.
+// StartManualRefresh creates a sync_user job for (did, sessionID).
 func (o *Orchestrator) StartManualRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error) {
-	if o.engine != nil {
-		return o.engine.SyncUser(ctx, did, sessionID, jobs.TriggerManual)
+	if o.engine == nil {
+		return "", ErrNoEngine
 	}
-	j, existed := o.jobs.CreateOrReturnExisting(jobs.KindSyncUser, did, jobs.TriggerManual, 5*time.Minute)
-	if existed {
-		return j.ID, nil
-	}
-	o.wg.Add(1)
-	go func() {
-		defer o.wg.Done()
-		o.runNoop(j.ID)
-	}()
-	return j.ID, nil
+	return o.engine.SyncUser(ctx, did, sessionID, jobs.TriggerManual)
 }
 
 // StartLoginRefresh is the entrypoint OAuth callback uses. Same code path as
 // manual; trigger metadata differs.
 func (o *Orchestrator) StartLoginRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error) {
-	if o.engine != nil {
-		return o.engine.SyncUser(ctx, did, sessionID, jobs.TriggerLogin)
+	if o.engine == nil {
+		return "", ErrNoEngine
 	}
-	j, existed := o.jobs.CreateOrReturnExisting(jobs.KindSyncUser, did, jobs.TriggerLogin, 5*time.Minute)
-	if existed {
-		return j.ID, nil
-	}
-	o.wg.Add(1)
-	go func() {
-		defer o.wg.Done()
-		o.runNoop(j.ID)
-	}()
-	return j.ID, nil
-}
-
-func (o *Orchestrator) runNoop(id string) {
-	o.jobs.SetRunning(id)
-	o.jobs.SetDone(id)
+	return o.engine.SyncUser(ctx, did, sessionID, jobs.TriggerLogin)
 }
 
 // StartFetchOneFeed creates a fetch_one_feed job for feedURL and dispatches
 // it through the configured FeedFetcher. Used by the add-source path so the
 // refresh pill activates the moment a user adds a source.
-func (o *Orchestrator) StartFetchOneFeed(ctx context.Context, did syntax.DID, feedURL string) string {
+func (o *Orchestrator) StartFetchOneFeed(did syntax.DID, feedURL string) string {
 	j := o.jobs.Create(jobs.KindFetchOneFeed, did, jobs.TriggerAddFeed)
 	o.wg.Add(1)
 	go func(id, url string) {
@@ -145,6 +97,5 @@ func (o *Orchestrator) StartFetchOneFeed(ctx context.Context, did syntax.DID, fe
 		}
 		o.jobs.SetDone(id)
 	}(j.ID, feedURL)
-	_ = ctx
 	return j.ID
 }

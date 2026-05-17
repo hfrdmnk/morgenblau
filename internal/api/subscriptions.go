@@ -56,7 +56,7 @@ type FeedFinder interface {
 // source of truth, so the next reconcile must converge). The returned id
 // surfaces back to the client so the RefreshPill can poll.
 type FetchDispatcher interface {
-	StartFetchOneFeed(ctx context.Context, did syntax.DID, feedURL string) string
+	StartFetchOneFeed(did syntax.DID, feedURL string) string
 	StartManualRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error)
 }
 
@@ -317,7 +317,7 @@ func SubscriptionsCreateHandler(
 			})
 
 			// Step 5: dispatch fetch_one_feed (async).
-			jobID := disp.StartFetchOneFeed(r.Context(), sess.Data.AccountDID, item.FeedURL)
+			jobID := disp.StartFetchOneFeed(sess.Data.AccountDID, item.FeedURL)
 			out.JobIDs = append(out.JobIDs, jobID)
 		}
 
@@ -360,4 +360,3 @@ func itoa(i int) string {
 	}
 	return string(buf[pos:])
 }
-

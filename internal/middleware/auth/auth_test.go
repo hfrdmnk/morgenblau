@@ -15,7 +15,6 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/oauth/cookie"
-	"morgenblau/internal/routes"
 )
 
 // memoryLocker is a small in-memory SessionLocker keyed by (did, sid).
@@ -73,15 +72,6 @@ func newSealer(t *testing.T) *cookie.Sealer {
 		t.Fatal(err)
 	}
 	return s
-}
-
-func loadRoutes(t *testing.T) []routes.Route {
-	t.Helper()
-	rs, err := routes.Load()
-	if err != nil {
-		t.Fatalf("routes.Load(): %v", err)
-	}
-	return rs
 }
 
 // passthroughNext records the request that reached it and returns 200.
@@ -166,13 +156,12 @@ func TestMiddleware_Table(t *testing.T) {
 		{name: "api me authed", path: "/api/me", method: "GET", authed: true, wantCode: 200, wantNext: true},
 	}
 
-	rs := loadRoutes(t)
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			sealer := newSealer(t)
 			resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
 			next := &passthroughNext{}
-			m := New(resumer, noopLocker{}, sealer, rs)
+			m := New(resumer, noopLocker{}, sealer)
 
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			if tc.authed {
@@ -201,7 +190,7 @@ func TestMiddleware_InjectsSessionIntoContext(t *testing.T) {
 	cookie := setSession(t, sealer, resumer, "did:plc:alice", "sid-1")
 
 	next := &passthroughNext{}
-	m := New(resumer, noopLocker{}, sealer, loadRoutes(t))
+	m := New(resumer, noopLocker{}, sealer)
 	// /consume is authed → authed user passes through.
 	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
 	req.AddCookie(cookie)
@@ -224,7 +213,7 @@ func TestMiddleware_InvalidCookie_TreatedAsUnauthed(t *testing.T) {
 	sealer := newSealer(t)
 	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
 	next := &passthroughNext{}
-	m := New(resumer, noopLocker{}, sealer, loadRoutes(t))
+	m := New(resumer, noopLocker{}, sealer)
 
 	// Hit a gated path; a garbage cookie should be treated as anon and 302'd.
 	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
@@ -251,7 +240,7 @@ func TestMiddleware_ResumeFailure_RedirectsAndClearsCookie(t *testing.T) {
 	cookies := setRR.Result().Cookies()
 
 	next := &passthroughNext{}
-	m := New(resumer, noopLocker{}, sealer, loadRoutes(t))
+	m := New(resumer, noopLocker{}, sealer)
 
 	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
 	for _, c := range cookies {
@@ -280,11 +269,11 @@ func TestMiddleware_ResumeFailure_RedirectsAndClearsCookie(t *testing.T) {
 // blockingResumer simulates a slow refresh — first caller blocks on a channel
 // until released. Tracks max concurrent in-flight resumes for assertion.
 type blockingResumer struct {
-	mu              sync.Mutex
-	inFlight        int32
-	maxInFlight     int32
-	release         chan struct{}
-	session         *oauth.ClientSession
+	mu               sync.Mutex
+	inFlight         int32
+	maxInFlight      int32
+	release          chan struct{}
+	session          *oauth.ClientSession
 	totalInvocations int32
 }
 
@@ -309,7 +298,7 @@ func TestMiddleware_LockSerializesRefresh(t *testing.T) {
 		session: &oauth.ClientSession{Data: &oauth.ClientSessionData{AccountDID: did, SessionID: "sid-1"}},
 	}
 	locker := newMemoryLocker()
-	m := New(resumer, locker, sealer, loadRoutes(t))
+	m := New(resumer, locker, sealer)
 
 	setRR := httptest.NewRecorder()
 	sealer.Set(setRR, "did:plc:alice", "sid-1")
@@ -365,7 +354,7 @@ func TestMiddleware_TransientErrorKeepsCookie(t *testing.T) {
 	cookies := setRR.Result().Cookies()
 
 	next := &passthroughNext{}
-	m := New(resumer, noopLocker{}, sealer, loadRoutes(t))
+	m := New(resumer, noopLocker{}, sealer)
 
 	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
 	for _, c := range cookies {

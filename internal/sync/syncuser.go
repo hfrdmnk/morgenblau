@@ -66,15 +66,14 @@ type Engine struct {
 }
 
 // attachLifecycle binds the engine to a parent ctx + WaitGroup so its goroutines
-// participate in graceful shutdown. Called by Orchestrator.WithEngine.
+// participate in graceful shutdown.
 func (e *Engine) attachLifecycle(ctx context.Context, wg *sync.WaitGroup) {
 	e.parentCtx = ctx
 	e.wg = wg
 }
 
-// NewEngine wires the dependencies. nil-safe for the fetcher and resumer —
-// missing pieces collapse to a no-op so unit tests can run sync_user end to
-// end without a real upstream.
+// NewEngine wires the dependencies. resumer may be nil for tests that call
+// runDualTrack directly.
 func NewEngine(
 	tracker *jobs.Tracker,
 	store SyncStore,
@@ -82,9 +81,6 @@ func NewEngine(
 	fetcher FeedFetcher,
 	resumer SessionResumer,
 ) *Engine {
-	if fetcher == nil {
-		fetcher = noopFeedFetcher{}
-	}
 	return &Engine{
 		jobs:      tracker,
 		store:     store,
@@ -151,7 +147,7 @@ func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *oauth.C
 
 	// addedFeedURLs is populated by Phase 1A; Phase 2 reads it after fan-in.
 	var (
-		addedMu      sync.Mutex
+		addedMu       sync.Mutex
 		addedFeedURLs []string
 	)
 
@@ -278,4 +274,3 @@ func (e *Engine) reconcileTier1(
 	}
 	return nil
 }
-

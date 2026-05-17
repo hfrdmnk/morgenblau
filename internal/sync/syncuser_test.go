@@ -16,12 +16,12 @@ import (
 )
 
 type fakeStore struct {
-	mu       sync.Mutex
-	rows     map[string]map[string]db.ListUserSubscriptionsForSyncRow // did -> rkey -> row
-	deletes  []string
-	upserts  int
-	feedUps  int
-	feedErr  func(feedURL string) error
+	mu      sync.Mutex
+	rows    map[string]map[string]db.ListUserSubscriptionsForSyncRow // did -> rkey -> row
+	deletes []string
+	upserts int
+	feedUps int
+	feedErr func(feedURL string) error
 }
 
 func newFakeStore() *fakeStore {
@@ -78,9 +78,9 @@ func (s *fakeStore) UpsertFeed(_ context.Context, arg db.UpsertFeedParams) error
 }
 
 type fakeLister struct {
-	calls    int32
-	delay    time.Duration
-	subs     []PDSSubscription
+	calls int32
+	delay time.Duration
+	subs  []PDSSubscription
 }
 
 func (f *fakeLister) ListSubscriptions(_ context.Context, _ *oauth.ClientSession) ([]PDSSubscription, error) {
@@ -92,9 +92,9 @@ func (f *fakeLister) ListSubscriptions(_ context.Context, _ *oauth.ClientSession
 }
 
 type countingFetcher struct {
-	mu       sync.Mutex
-	delay    time.Duration
-	fetched  []string
+	mu      sync.Mutex
+	delay   time.Duration
+	fetched []string
 }
 
 func (f *countingFetcher) FetchAndStore(_ context.Context, url string) error {
@@ -266,7 +266,7 @@ func TestSyncUser_ShutdownWaitsForRun(t *testing.T) {
 	fetcher := &countingFetcher{}
 	tracker := jobs.New()
 	eng := NewEngine(tracker, store, lister, fetcher, &nopResumer{})
-	orch := New(tracker).WithFetcher(fetcher).WithEngine(eng)
+	orch := New(tracker, fetcher, eng)
 
 	id, err := orch.StartLoginRefresh(context.Background(), mustDID("did:plc:alice"), "sid-1")
 	if err != nil {
@@ -302,8 +302,9 @@ func TestOrchestrator_ShutdownDeadlineExceeded(t *testing.T) {
 		{URI: "at://x/a/k1", Rkey: "k1", FeedURL: "https://example.com/feed"},
 	}}
 	tracker := jobs.New()
-	eng := NewEngine(tracker, store, lister, &countingFetcher{}, &nopResumer{})
-	orch := New(tracker).WithFetcher(&countingFetcher{}).WithEngine(eng)
+	fetcher := &countingFetcher{}
+	eng := NewEngine(tracker, store, lister, fetcher, &nopResumer{})
+	orch := New(tracker, fetcher, eng)
 
 	if _, err := orch.StartLoginRefresh(context.Background(), mustDID("did:plc:alice"), "sid-1"); err != nil {
 		t.Fatalf("StartLoginRefresh: %v", err)

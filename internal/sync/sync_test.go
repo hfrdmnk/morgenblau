@@ -47,10 +47,10 @@ func (e errFetcher) FetchAndStore(_ context.Context, _ string) error { return e.
 func TestStartFetchOneFeed_HappyPath(t *testing.T) {
 	tracker := jobs.New()
 	cf := &countingFetcher{}
-	orch := New(tracker).WithFetcher(cf)
+	orch := New(tracker, cf, nil)
 
 	did := mustDID("did:plc:alice")
-	id := orch.StartFetchOneFeed(context.Background(), did, "https://example.com/feed")
+	id := orch.StartFetchOneFeed(did, "https://example.com/feed")
 
 	// Drain via Shutdown — guarantees the goroutine completed.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -73,10 +73,10 @@ func TestStartFetchOneFeed_HappyPath(t *testing.T) {
 
 func TestStartFetchOneFeed_FetchErrorMarksFailed(t *testing.T) {
 	tracker := jobs.New()
-	orch := New(tracker).WithFetcher(errFetcher{err: errors.New("boom")})
+	orch := New(tracker, errFetcher{err: errors.New("boom")}, nil)
 
 	did := mustDID("did:plc:alice")
-	id := orch.StartFetchOneFeed(context.Background(), did, "https://example.com/feed")
+	id := orch.StartFetchOneFeed(did, "https://example.com/feed")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -96,10 +96,10 @@ func TestStartFetchOneFeed_FetchErrorMarksFailed(t *testing.T) {
 func TestStartFetchOneFeed_ShutdownDrains(t *testing.T) {
 	tracker := jobs.New()
 	bf := newBlockingFetcher()
-	orch := New(tracker).WithFetcher(bf)
+	orch := New(tracker, bf, nil)
 
 	did := mustDID("did:plc:alice")
-	orch.StartFetchOneFeed(context.Background(), did, "https://example.com/feed")
+	orch.StartFetchOneFeed(did, "https://example.com/feed")
 
 	// Wait until the fetcher entered FetchAndStore so we know the goroutine
 	// is actually mid-flight when Shutdown fires.
@@ -128,10 +128,10 @@ func TestStartFetchOneFeed_ShutdownDeadlineExceeded(t *testing.T) {
 	tracker := jobs.New()
 	bf := newBlockingFetcher()
 	defer bf.Release()
-	orch := New(tracker).WithFetcher(stubbornFetcher{bf: bf})
+	orch := New(tracker, stubbornFetcher{bf: bf}, nil)
 
 	did := mustDID("did:plc:alice")
-	orch.StartFetchOneFeed(context.Background(), did, "https://example.com/feed")
+	orch.StartFetchOneFeed(did, "https://example.com/feed")
 
 	// Wait until in-flight.
 	deadline := time.Now().Add(time.Second)

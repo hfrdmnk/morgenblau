@@ -118,7 +118,7 @@ type fakeDispatcher struct {
 	next       int
 }
 
-func (d *fakeDispatcher) StartFetchOneFeed(_ context.Context, _ syntax.DID, feedURL string) string {
+func (d *fakeDispatcher) StartFetchOneFeed(_ syntax.DID, feedURL string) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.next++
