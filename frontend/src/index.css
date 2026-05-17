@@ -1,8 +1,6 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
-@custom-variant dark (&:is(.dark *));
-
 @font-face {
     font-family: 'Geist';
     font-style: normal;
@@ -42,6 +40,18 @@
     --font-serif:
         'Newsreader', ui-serif, Georgia, Cambria, 'Times New Roman', Times,
         serif;
+
+    --color-gray-50: oklch(0.985 0 0);
+    --color-gray-100: oklch(0.97 0 0);
+    --color-gray-200: oklch(0.925 0 0);
+    --color-gray-300: oklch(0.876 0 0);
+    --color-gray-400: oklch(0.722 0 0);
+    --color-gray-500: oklch(0.566 0 0);
+    --color-gray-600: oklch(0.457 0 0);
+    --color-gray-700: oklch(0.383 0 0);
+    --color-gray-800: oklch(0.281 0 0);
+    --color-gray-900: oklch(0.218 0 0);
+    --color-gray-950: oklch(0 0 0);
 
     --color-atmosphere-blue: oklch(0.5721 0.2508 256.1);
     --color-leaf-green: oklch(0.7856 0.1479 139.64);
@@ -95,6 +105,8 @@
 }
 
 :root {
+    color-scheme: light dark;
+
     --background: var(--color-gray-100);
     --foreground: var(--color-gray-950);
     --card: oklch(1 0 0);
@@ -131,7 +143,8 @@
     --sidebar-ring: var(--color-atmosphere-blue);
 }
 
-.dark {
+@media (prefers-color-scheme: dark) {
+    :root {
     --background: var(--color-gray-950);
     --foreground: var(--color-gray-50);
     --card: var(--color-gray-800);
@@ -163,6 +176,7 @@
     --sidebar-accent-foreground: var(--color-gray-50);
     --sidebar-border: var(--color-gray-800);
     --sidebar-ring: var(--color-atmosphere-blue);
+    }
 }
 
 @layer base {
@@ -240,8 +254,10 @@
     animation: fresh-highlight 2s cubic-bezier(0.23, 1, 0.32, 1) forwards;
 }
 
-.dark .animate-fresh-highlight {
-    animation-name: fresh-highlight-dark;
+@media (prefers-color-scheme: dark) {
+    .animate-fresh-highlight {
+        animation-name: fresh-highlight-dark;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
