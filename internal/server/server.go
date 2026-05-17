@@ -114,6 +114,13 @@ func NewServer() *http.Server {
 		WriteTimeout: 30 * time.Second,
 	}
 	server.RegisterOnShutdown(gcCancel)
+	server.RegisterOnShutdown(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		if err := orchestrator.Shutdown(shutdownCtx); err != nil {
+			slog.Warn("sync orchestrator shutdown", "err", err)
+		}
+	})
 
 	return server
 }

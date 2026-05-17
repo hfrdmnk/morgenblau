@@ -212,6 +212,65 @@ func TestSyncUser_InFlightGuard_Coalesces(t *testing.T) {
 	}
 }
 
+func TestSyncUser_ShutdownWaitsForRun(t *testing.T) {
+	store := newFakeStore()
+	// Slow lister so the run goroutine is still in flight when Shutdown fires.
+	lister := &fakeLister{delay: 200 * time.Millisecond, subs: []PDSSubscription{
+		{URI: "at://x/a/k1", Rkey: "k1", FeedURL: "https://example.com/feed"},
+	}}
+	fetcher := &countingFetcher{}
+	tracker := jobs.New()
+	eng := NewEngine(tracker, store, lister, fetcher, &nopResumer{})
+	orch := New(tracker).WithFetcher(fetcher).WithEngine(eng)
+
+	id, err := orch.StartLoginRefresh(context.Background(), mustDID("did:plc:alice"), "sid-1")
+	if err != nil {
+		t.Fatalf("StartLoginRefresh: %v", err)
+	}
+
+	t0 := time.Now()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := orch.Shutdown(shutdownCtx); err != nil {
+		t.Fatalf("Shutdown returned %v, want nil", err)
+	}
+	elapsed := time.Since(t0)
+
+	if elapsed < lister.delay {
+		t.Errorf("Shutdown returned in %v; expected to block at least %v", elapsed, lister.delay)
+	}
+	// After Shutdown returns, the job must be in a terminal state — the run
+	// goroutine has had its chance to update the tracker.
+	j, err := tracker.Get(id, mustDID("did:plc:alice"))
+	if err != nil {
+		t.Fatalf("tracker.Get: %v", err)
+	}
+	if j.Status != jobs.StatusDone && j.Status != jobs.StatusFailed {
+		t.Errorf("job status = %v; want done or failed", j.Status)
+	}
+}
+
+func TestOrchestrator_ShutdownDeadlineExceeded(t *testing.T) {
+	store := newFakeStore()
+	// Lister that blocks longer than the Shutdown deadline.
+	lister := &fakeLister{delay: 500 * time.Millisecond, subs: []PDSSubscription{
+		{URI: "at://x/a/k1", Rkey: "k1", FeedURL: "https://example.com/feed"},
+	}}
+	tracker := jobs.New()
+	eng := NewEngine(tracker, store, lister, &countingFetcher{}, &nopResumer{})
+	orch := New(tracker).WithFetcher(&countingFetcher{}).WithEngine(eng)
+
+	if _, err := orch.StartLoginRefresh(context.Background(), mustDID("did:plc:alice"), "sid-1"); err != nil {
+		t.Fatalf("StartLoginRefresh: %v", err)
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := orch.Shutdown(shutdownCtx); err == nil {
+		t.Fatal("Shutdown returned nil; want ctx error")
+	}
+}
+
 type nopResumer struct{}
 
 func (nopResumer) ResumeSession(_ context.Context, did syntax.DID, sid string) (*oauth.ClientSession, error) {

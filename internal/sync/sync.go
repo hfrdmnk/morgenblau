@@ -6,6 +6,7 @@ package sync
 import (
 	"context"
 	"log/slog"
+	"sync"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
@@ -34,14 +35,20 @@ type Orchestrator struct {
 	fetcher FeedFetcher
 	engine  *Engine
 
-	// resumeSessionID is set per-request so the orchestrator can spawn a
-	// SyncUser without re-deriving the cookie. Per-request handlers thread
-	// the value through context (see WithSessionID).
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 // New returns a no-op orchestrator backed by the given tracker.
 func New(tracker *jobs.Tracker) *Orchestrator {
-	return &Orchestrator{jobs: tracker, fetcher: noopFeedFetcher{}}
+	ctx, cancel := context.WithCancel(context.Background())
+	return &Orchestrator{
+		jobs:    tracker,
+		fetcher: noopFeedFetcher{},
+		ctx:     ctx,
+		cancel:  cancel,
+	}
 }
 
 // WithFetcher attaches a fetch+store implementation. Called from the server
@@ -53,10 +60,30 @@ func (o *Orchestrator) WithFetcher(f FeedFetcher) *Orchestrator {
 
 // WithEngine attaches the real dual-track sync engine. Once attached, the
 // orchestrator's StartManualRefresh / StartLoginRefresh entrypoints route
-// through the engine rather than the no-op fallback.
+// through the engine rather than the no-op fallback. The engine inherits the
+// orchestrator's parent ctx + WaitGroup so Shutdown drains its goroutines too.
 func (o *Orchestrator) WithEngine(e *Engine) *Orchestrator {
 	o.engine = e
+	e.attachLifecycle(o.ctx, &o.wg)
 	return o
+}
+
+// Shutdown cancels the orchestrator's parent ctx and waits for in-flight
+// goroutines to finish. Returns ctx.Err() if the wait deadline trips before
+// the WaitGroup drains.
+func (o *Orchestrator) Shutdown(ctx context.Context) error {
+	o.cancel()
+	done := make(chan struct{})
+	go func() {
+		o.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // StartManualRefresh creates a sync_user job for (did, sessionID). When an
@@ -67,7 +94,11 @@ func (o *Orchestrator) StartManualRefresh(ctx context.Context, did syntax.DID, s
 		return o.engine.SyncUser(ctx, did, sessionID, jobs.TriggerManual)
 	}
 	j := o.jobs.Create(jobs.KindSyncUser, did, jobs.TriggerManual)
-	go o.runNoop(j.ID)
+	o.wg.Add(1)
+	go func() {
+		defer o.wg.Done()
+		o.runNoop(j.ID)
+	}()
 	return j.ID, nil
 }
 
@@ -78,7 +109,11 @@ func (o *Orchestrator) StartLoginRefresh(ctx context.Context, did syntax.DID, se
 		return o.engine.SyncUser(ctx, did, sessionID, jobs.TriggerLogin)
 	}
 	j := o.jobs.Create(jobs.KindSyncUser, did, jobs.TriggerLogin)
-	go o.runNoop(j.ID)
+	o.wg.Add(1)
+	go func() {
+		defer o.wg.Done()
+		o.runNoop(j.ID)
+	}()
 	return j.ID, nil
 }
 
@@ -92,9 +127,11 @@ func (o *Orchestrator) runNoop(id string) {
 // refresh pill activates the moment a user adds a source.
 func (o *Orchestrator) StartFetchOneFeed(ctx context.Context, did syntax.DID, feedURL string) string {
 	j := o.jobs.Create(jobs.KindFetchOneFeed, did, jobs.TriggerAddFeed)
+	o.wg.Add(1)
 	go func(id, url string) {
+		defer o.wg.Done()
 		o.jobs.SetRunning(id)
-		if err := o.fetcher.FetchAndStore(context.Background(), url); err != nil {
+		if err := o.fetcher.FetchAndStore(o.ctx, url); err != nil {
 			slog.Warn("fetch_one_feed failed", "url", url, "err", err)
 			o.jobs.SetFailed(id)
 			return

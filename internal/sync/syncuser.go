@@ -61,6 +61,16 @@ type Engine struct {
 	fetcher FeedFetcher
 	resumer SessionResumer
 	now     func() time.Time
+
+	parentCtx context.Context
+	wg        *sync.WaitGroup
+}
+
+// attachLifecycle binds the engine to a parent ctx + WaitGroup so its goroutines
+// participate in graceful shutdown. Called by Orchestrator.WithEngine.
+func (e *Engine) attachLifecycle(ctx context.Context, wg *sync.WaitGroup) {
+	e.parentCtx = ctx
+	e.wg = wg
 }
 
 // NewEngine wires the dependencies. nil-safe for the fetcher and resumer —
@@ -77,12 +87,13 @@ func NewEngine(
 		fetcher = noopFeedFetcher{}
 	}
 	return &Engine{
-		jobs:    tracker,
-		store:   store,
-		lister:  lister,
-		fetcher: fetcher,
-		resumer: resumer,
-		now:     time.Now,
+		jobs:      tracker,
+		store:     store,
+		lister:    lister,
+		fetcher:   fetcher,
+		resumer:   resumer,
+		now:       time.Now,
+		parentCtx: context.Background(),
 	}
 }
 
@@ -94,13 +105,21 @@ func (e *Engine) SyncUser(ctx context.Context, did syntax.DID, sessionID string,
 		return existing.ID, nil
 	}
 	j := e.jobs.Create(jobs.KindSyncUser, did, trigger)
-	go e.run(j.ID, did, sessionID)
+	if e.wg != nil {
+		e.wg.Add(1)
+	}
+	go func() {
+		if e.wg != nil {
+			defer e.wg.Done()
+		}
+		e.run(j.ID, did, sessionID)
+	}()
 	return j.ID, nil
 }
 
 func (e *Engine) run(id string, did syntax.DID, sessionID string) {
 	e.jobs.SetRunning(id)
-	bg, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	bg, cancel := context.WithTimeout(e.parentCtx, 5*time.Minute)
 	defer cancel()
 
 	sess, err := e.resumer.ResumeSession(bg, did, sessionID)
