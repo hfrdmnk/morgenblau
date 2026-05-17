@@ -22,8 +22,9 @@ import (
 // --- Tier-1 index reader/writer test doubles ---
 
 type fakeIndex struct {
-	mu   sync.Mutex
-	rows map[string]map[string]db.UserSubscription // did → feedURL → row
+	mu         sync.Mutex
+	rows       map[string]map[string]db.UserSubscription // did → feedURL → row
+	getFeedErr error
 }
 
 func newFakeIndex() *fakeIndex {
@@ -43,6 +44,9 @@ func (f *fakeIndex) ListUserSubscriptions(_ context.Context, did string) ([]db.U
 func (f *fakeIndex) GetUserSubscriptionByFeedURL(_ context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.getFeedErr != nil {
+		return db.UserSubscription{}, f.getFeedErr
+	}
 	byFeed, ok := f.rows[arg.Did]
 	if !ok {
 		return db.UserSubscription{}, sql.ErrNoRows
@@ -63,13 +67,14 @@ func (f *fakeIndex) UpsertUserSubscription(_ context.Context, arg db.UpsertUserS
 		f.rows[arg.Did] = map[string]db.UserSubscription{}
 	}
 	f.rows[arg.Did][arg.FeedUrl] = db.UserSubscription{
-		Did:       arg.Did,
-		Rkey:      arg.Rkey,
-		AtUri:     arg.AtUri,
-		FeedUrl:   arg.FeedUrl,
-		Title:     arg.Title,
-		CreatedAt: arg.CreatedAt,
-		UpdatedAt: arg.UpdatedAt,
+		Did:         arg.Did,
+		Rkey:        arg.Rkey,
+		AtUri:       arg.AtUri,
+		FeedUrl:     arg.FeedUrl,
+		Title:       arg.Title,
+		CustomTitle: arg.CustomTitle,
+		CreatedAt:   arg.CreatedAt,
+		UpdatedAt:   arg.UpdatedAt,
 	}
 	return nil
 }
@@ -211,6 +216,32 @@ func TestSubscriptionsResolve_FlagsExisting(t *testing.T) {
 	}
 }
 
+func TestSubscriptionsResolve_Errors(t *testing.T) {
+	t.Run("finder error", func(t *testing.T) {
+		h := SubscriptionsResolveHandler(newFakeIndex(), &fakeFinder{err: errors.New("upstream down")})
+		req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions/resolve",
+			strings.NewReader(`{"url":"https://example.test"}`)), "did:plc:alice", "sid-1")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusBadGateway {
+			t.Errorf("status = %d, want 502", rr.Code)
+		}
+	})
+
+	t.Run("empty url", func(t *testing.T) {
+		h := SubscriptionsResolveHandler(newFakeIndex(), &fakeFinder{})
+		req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions/resolve",
+			strings.NewReader(`{"url":"   "}`)), "did:plc:alice", "sid-1")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", rr.Code)
+		}
+	})
+}
+
 // --- Create handler ---
 
 func TestSubscriptionsCreate_HappyPath_FullChoiceA(t *testing.T) {
@@ -296,6 +327,49 @@ func TestSubscriptionsCreate_PDSFailure_502(t *testing.T) {
 
 	if rr.Code != http.StatusBadGateway {
 		t.Errorf("status = %d, want 502", rr.Code)
+	}
+}
+
+func TestSubscriptionsCreate_Validation(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "empty list", body: `{"subscriptions":[]}`, want: "no subscriptions submitted"},
+		{name: "missing feed URL", body: `{"subscriptions":[{"title":"Example"}]}`, want: "subscriptions.0.feedUrl"},
+		{name: "malformed JSON", body: `{"subscriptions":[`, want: "invalid json"},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			h := SubscriptionsCreateHandler(newFakeIndex(), newFakeIndex(), &fakePDS{}, &fakeDispatcher{})
+			req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(tt.body)), "did:plc:alice", "sid-1")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body = %s", rr.Code, rr.Body.String())
+			}
+			if !strings.Contains(rr.Body.String(), tt.want) {
+				t.Errorf("body = %q, want substring %q", rr.Body.String(), tt.want)
+			}
+		})
+	}
+}
+
+func TestSubscriptionsCreate_DedupeProbeError_500(t *testing.T) {
+	idx := newFakeIndex()
+	idx.getFeedErr = errors.New("database unavailable")
+	h := SubscriptionsCreateHandler(idx, idx, &fakePDS{}, &fakeDispatcher{})
+
+	body := `{"subscriptions":[{"feedUrl":"https://example.test/feed.xml"}]}`
+	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", rr.Code)
 	}
 }
 

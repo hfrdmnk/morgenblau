@@ -109,6 +109,10 @@ func loadAndAuthorize(w http.ResponseWriter, r *http.Request, reader EntryReader
 		FeedUrl: entry.FeedUrl,
 	})
 	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
+		}
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 	}
