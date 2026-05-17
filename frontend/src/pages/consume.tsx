@@ -405,10 +405,10 @@ const ROW_CLICKABLE_BASE =
 const ROW_CLICKABLE_CLASS = `block px-6 py-5 outline-none ${ROW_CLICKABLE_BASE}`;
 
 function cleanSummary(summary: string, title: string | null): string | null {
-    const stripped = summary
-        .replace(/<[^>]*>/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+    // Parse as HTML so the browser decodes entities (&#39; → ') and strips
+    // tags in one pass. textContent yields safe plain text.
+    const doc = new DOMParser().parseFromString(summary, 'text/html');
+    const stripped = (doc.body.textContent ?? '').replace(/\s+/g, ' ').trim();
 
     if (stripped === '') return null;
 

@@ -23,6 +23,7 @@ import (
 type EntryReader interface {
 	GetFeedEntryBySlug(ctx context.Context, slug string) (db.FeedEntry, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error)
+	GetFeed(ctx context.Context, feedURL string) (db.Feed, error)
 }
 
 // EntryExtractWriter persists readability-extracted bodies.
@@ -35,12 +36,11 @@ type EntryExtractWriter interface {
 // need a second round-trip.
 func EntryHandler(reader EntryReader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		entry, sess, ok := loadAndAuthorize(w, r, reader)
+		entry, sub, feed, ok := loadAndAuthorize(w, r, reader)
 		if !ok {
 			return
 		}
-		_ = sess
-		writeJSON(w, entryRowToWire(entry))
+		writeJSON(w, entryRowToWire(entry, sub, feed))
 	})
 }
 
@@ -51,13 +51,13 @@ func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter) http.Han
 	sanitizer := bluemonday.UGCPolicy()
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		entry, _, ok := loadAndAuthorize(w, r, reader)
+		entry, sub, feed, ok := loadAndAuthorize(w, r, reader)
 		if !ok {
 			return
 		}
 
 		if entry.ExtractedBody != nil && *entry.ExtractedBody != "" {
-			writeJSON(w, entryRowToWire(entry))
+			writeJSON(w, entryRowToWire(entry, sub, feed))
 			return
 		}
 
@@ -75,48 +75,61 @@ func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter) http.Han
 			slog.Warn("/api/entries/{id}/extract: persist failed", "err", err)
 		}
 		entry.ExtractedBody = &extracted
-		writeJSON(w, entryRowToWire(entry))
+		writeJSON(w, entryRowToWire(entry, sub, feed))
 	})
 }
 
-// loadAndAuthorize fetches the entry by slug and verifies the session user is
-// subscribed to its feed. Returns false (and writes the error) on any failure.
-func loadAndAuthorize(w http.ResponseWriter, r *http.Request, reader EntryReader) (db.FeedEntry, any, bool) {
+// loadAndAuthorize fetches the entry by slug, verifies the session user is
+// subscribed to its feed, and resolves feed metadata for the wire response.
+// Returns false (and writes the error) on any failure.
+func loadAndAuthorize(w http.ResponseWriter, r *http.Request, reader EntryReader) (db.FeedEntry, db.UserSubscription, db.Feed, bool) {
 	sess := auth.SessionFromContext(r.Context())
 	if sess == nil || sess.Data == nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
-		return db.FeedEntry{}, nil, false
+		return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 	}
 	slug := r.PathValue("slug")
 	if slug == "" {
 		http.Error(w, "invalid slug", http.StatusBadRequest)
-		return db.FeedEntry{}, nil, false
+		return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 	}
 	entry, err := reader.GetFeedEntryBySlug(r.Context(), slug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "not found", http.StatusNotFound)
-			return db.FeedEntry{}, nil, false
+			return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 		}
 		http.Error(w, "internal error", http.StatusInternalServerError)
-		return db.FeedEntry{}, nil, false
+		return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 	}
 	// Authorization: the requester must subscribe to this entry's feed.
-	_, err = reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
+	sub, err := reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
 		Did:     sess.Data.AccountDID.String(),
 		FeedUrl: entry.FeedUrl,
 	})
 	if err != nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
-		return db.FeedEntry{}, nil, false
+		return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 	}
-	return entry, sess, true
+	// Feed lookup populates favicon + site URL for the reader header. A missing
+	// row is unexpected here (a subscription implies a feed row), but we don't
+	// fail the request — the frontend renders fallbacks.
+	feed, err := reader.GetFeed(r.Context(), entry.FeedUrl)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
+	}
+	return entry, sub, feed, true
 }
 
-func entryRowToWire(row db.FeedEntry) EntryWire {
+func entryRowToWire(row db.FeedEntry, sub db.UserSubscription, feed db.Feed) EntryWire {
 	body := row.ContentHtml
 	if row.ExtractedBody != nil && *row.ExtractedBody != "" {
 		body = row.ExtractedBody
+	}
+	title := sub.Title
+	if sub.CustomTitle != nil && *sub.CustomTitle != "" {
+		title = sub.CustomTitle
 	}
 	return EntryWire{
 		ID:          row.ID,
@@ -125,7 +138,7 @@ func entryRowToWire(row db.FeedEntry) EntryWire {
 		URL:         row.Url,
 		ContentType: row.ContentType,
 		PublishedAt: row.PublishedAt,
-		Source:      buildSourceMeta(row.FeedUrl, nil, nil, nil),
+		Source:      buildSourceMeta(row.FeedUrl, title, feed.SiteUrl, feed.IconUrl),
 		Body:        body,
 		Metadata:    row.Metadata,
 	}

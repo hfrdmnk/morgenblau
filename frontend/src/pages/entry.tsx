@@ -198,7 +198,7 @@ function ReaderView({ entry }: { entry: Entry }) {
             />
             <article className="mx-auto w-full max-w-2xl px-4 pt-8 pb-24 sm:px-6">
                 <header className="mb-8 flex flex-col gap-4">
-                    <FeedLine source={entry.source} link={sourceLink} />
+                    <FeedLine source={entry.source} />
                     {entry.title ? (
                         <h1 className="text-2xl font-medium tracking-tight text-balance text-foreground">
                             {entry.title}
@@ -227,7 +227,7 @@ function WatchView({ entry }: { entry: Entry }) {
             <ReaderRail sourceUrl={sourceLink ?? null} showProgress={false} />
             <article className="mx-auto w-full px-4 pt-8 pb-24 sm:px-6">
                 <header className="mx-auto mb-8 flex max-w-2xl flex-col gap-4">
-                    <FeedLine source={entry.source} link={sourceLink} />
+                    <FeedLine source={entry.source} />
                     {entry.title ? (
                         <h1 className="text-2xl font-medium tracking-tight text-balance text-foreground">
                             {entry.title}
@@ -338,36 +338,15 @@ function Thumbnail({ src }: { src: string }) {
     );
 }
 
-function FeedLine({
-    source,
-    link,
-}: {
-    source: Source;
-    link: string | undefined;
-}) {
+function FeedLine({ source }: { source: Source }) {
     const label = source.title ?? source.feedUrl;
-    const body = (
-        <span className="flex items-center gap-2">
+    return (
+        <div className="flex items-center gap-2 font-sans">
             <Favicon src={source.faviconUrl} />
             <span className="line-clamp-1 text-sm font-light text-muted-foreground">
                 {label}
             </span>
-        </span>
-    );
-
-    if (!link) {
-        return <div className="font-sans">{body}</div>;
-    }
-
-    return (
-        <a
-            href={link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-sans text-muted-foreground transition-colors duration-200 ease-out hover:text-foreground"
-        >
-            {body}
-        </a>
+        </div>
     );
 }
 
