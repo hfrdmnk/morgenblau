@@ -1,6 +1,8 @@
 import {
+    LibraryIcon,
     LogoutSquare01Icon,
     PlusSignIcon,
+    Refresh04Icon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
 
@@ -18,6 +20,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useChromeRefresh } from '@/hooks/use-chrome-refresh';
 import type { Me } from '@/hooks/use-me';
 import { initialsFromHandle, truncateDid } from '@/lib/handle';
 import { PATHS } from '@/lib/paths';
@@ -38,9 +41,16 @@ type Props = {
     onAddSourceClick: () => void;
 };
 
+const ICON_ACTION_CLASS = 'hover:bg-transparent hover:text-primary';
+
 export function WindowChrome({ onAddSourceClick }: Props) {
     const pathname = window.location.pathname;
     const me = useAuthedMe();
+    const refresh = useChromeRefresh();
+
+    const showAddSource =
+        pathname === PATHS.discover || pathname === PATHS.sources;
+    const showRefresh = pathname === PATHS.consume;
 
     return (
         <header className="flex h-14 shrink-0 items-center justify-between px-4 sm:px-6 lg:px-20">
@@ -73,14 +83,35 @@ export function WindowChrome({ onAddSourceClick }: Props) {
             </nav>
 
             <div className="flex items-center gap-2 text-muted-foreground">
-                <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Add source"
-                    onClick={onAddSourceClick}
-                >
-                    <HugeiconsIcon icon={PlusSignIcon} className="size-5" />
-                </Button>
+                {showAddSource && (
+                    <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className={ICON_ACTION_CLASS}
+                        aria-label="Add source"
+                        onClick={onAddSourceClick}
+                    >
+                        <HugeiconsIcon icon={PlusSignIcon} className="size-5" />
+                    </Button>
+                )}
+                {showRefresh && (
+                    <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className={ICON_ACTION_CLASS}
+                        aria-label="Refresh"
+                        disabled={!refresh || refresh.busy}
+                        onClick={() => refresh?.onRefresh()}
+                    >
+                        <HugeiconsIcon
+                            icon={Refresh04Icon}
+                            className={cn(
+                                'size-5',
+                                refresh?.busy && 'motion-safe:animate-spin',
+                            )}
+                        />
+                    </Button>
+                )}
                 <DropdownMenu>
                     <DropdownMenuTrigger
                         render={
@@ -95,6 +126,11 @@ export function WindowChrome({ onAddSourceClick }: Props) {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">
                         <UserHeader me={me} />
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem render={<a href={PATHS.sources} />}>
+                            <HugeiconsIcon icon={LibraryIcon} />
+                            Manage sources
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                             render={

@@ -4,7 +4,6 @@ import {
     LinkSquare01Icon,
     NewsIcon,
     PodcastIcon,
-    RefreshIcon,
     Video01Icon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
@@ -12,14 +11,14 @@ import type { IconSvgElement } from '@hugeicons/react';
 import DOMPurify from 'dompurify';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRegisterChromeRefresh } from '@/hooks/use-chrome-refresh';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useJobsPoll } from '@/hooks/use-jobs-poll';
 import { LevelContext } from '@/hooks/use-surface-level';
 import { entryHref } from '@/lib/paths';
 import { subscribeSubscriptionAdded } from '@/lib/subscription-events';
-import { cn, safeHref } from '@/lib/utils';
+import { safeHref } from '@/lib/utils';
 
 type Source = {
     feedUrl: string;
@@ -119,66 +118,33 @@ export function Consume() {
     useJobsPoll(hasActiveJob, onQuiet);
 
     const isBusy = state.kind === 'loading' || refreshing || hasActiveJob;
+    useRegisterChromeRefresh(onRefresh, isBusy);
 
     return (
-        <>
-            <RefreshSlot busy={isBusy} onRefresh={onRefresh} />
-            <div className="mx-auto w-full max-w-2xl px-4 pb-12 sm:px-6">
-                {isBusy ? (
-                    <DigestSkeleton />
-                ) : state.kind === 'error' ? (
-                    <EmptyMessage
-                        lead="Couldn't load the digest."
-                        detail="Try refreshing in a moment."
-                    />
-                ) : state.entries.length === 0 ? (
-                    <EmptyMessage
-                        lead={
-                            state.hasActiveJob
-                                ? 'Brewing your first edition…'
-                                : 'Nothing new this morning.'
-                        }
-                        detail={
-                            state.hasActiveJob
-                                ? "This won't take long."
-                                : 'Enjoy your coffee.'
-                        }
-                    />
-                ) : (
-                    <Newspaper entries={state.entries} />
-                )}
-            </div>
-        </>
-    );
-}
-
-// Right-edge aligned with the avatar in WindowChrome. Chrome padding is
-// px-4 / sm:px-6 / lg:px-20; window outer padding is px-4, so the inner
-// offset that matches the avatar is pr-0 / sm:pr-2 / lg:pr-16. Sticky to
-// the window's scrollable area so it stays in place while scrolling.
-function RefreshSlot({
-    busy,
-    onRefresh,
-}: {
-    busy: boolean;
-    onRefresh: () => void;
-}) {
-    return (
-        <div
-            className={cn(
-                'sticky top-0 z-10 flex justify-end pt-3 pb-2 sm:pr-2 lg:pr-16',
-                'text-muted-foreground',
+        <div className="mx-auto w-full max-w-2xl px-4 pt-6 pb-12 sm:px-6">
+            {isBusy ? (
+                <DigestSkeleton />
+            ) : state.kind === 'error' ? (
+                <EmptyMessage
+                    lead="Couldn't load the digest."
+                    detail="Try refreshing in a moment."
+                />
+            ) : state.entries.length === 0 ? (
+                <EmptyMessage
+                    lead={
+                        state.hasActiveJob
+                            ? 'Brewing your first edition…'
+                            : 'Nothing new this morning.'
+                    }
+                    detail={
+                        state.hasActiveJob
+                            ? "This won't take long."
+                            : 'Enjoy your coffee.'
+                    }
+                />
+            ) : (
+                <Newspaper entries={state.entries} />
             )}
-        >
-            <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Refresh"
-                disabled={busy}
-                onClick={onRefresh}
-            >
-                <HugeiconsIcon icon={RefreshIcon} className="size-5" />
-            </Button>
         </div>
     );
 }
