@@ -97,10 +97,21 @@ func TestResolve_PassthroughExtractsCanonicalTitle(t *testing.T) {
 	}
 }
 
+const ytAtomFeed = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Vollmar Cant</title>
+  <link href="https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv"/>
+</feed>`
+
 func TestResolve_YouTube_ChannelDirect(t *testing.T) {
-	// /channel/UC... should resolve WITHOUT hitting HTTP.
-	finder := New(&http.Client{Transport: roundTripperFunc(func(_ *http.Request) *http.Response {
-		t.Fatal("HTTP should not be called for /channel/<id>")
+	// /channel/<id> skips the HTML scrape but still fetches the feed to fill in the title.
+	var feedHits int
+	finder := New(&http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
+		if strings.Contains(r.URL.RawQuery, "channel_id=UCabcdefghijklmnopqrstuv") {
+			feedHits++
+			return resp(ytAtomFeed, "application/atom+xml")
+		}
+		t.Fatalf("unexpected request: %s", r.URL.String())
 		return nil
 	})})
 	cands, err := finder.Resolve(context.Background(), "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")
@@ -113,12 +124,52 @@ func TestResolve_YouTube_ChannelDirect(t *testing.T) {
 	if !strings.Contains(cands[0].FeedURL, "channel_id=UCabcdefghijklmnopqrstuv") {
 		t.Errorf("FeedURL = %q", cands[0].FeedURL)
 	}
+	if cands[0].Title != "Vollmar Cant" {
+		t.Errorf("Title = %q, want %q", cands[0].Title, "Vollmar Cant")
+	}
+	if feedHits != 1 {
+		t.Errorf("feed fetches = %d, want 1", feedHits)
+	}
+}
+
+func TestResolve_YouTube_HandlePath_ConsentBypass(t *testing.T) {
+	// YouTube redirects un-cookied requests to a consent-bypass page that
+	// only embeds the channel ID in canonical / og:url / feed link attrs,
+	// not in the `"channelId":"..."` JS blob.
+	const channelHTML = `<html><head>
+<link rel="canonical" href="https://www.youtube.com/channel/UCwxyzABCDEFGHIJKLMNopq">
+<link rel="alternate" type="application/rss+xml" title="RSS" href="https://www.youtube.com/feeds/videos.xml?channel_id=UCwxyzABCDEFGHIJKLMNopq">
+</head></html>`
+	const feedXML = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Aaron Francis</title></feed>`
+	finder := New(&http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
+		if strings.HasPrefix(r.URL.Path, "/feeds/videos.xml") {
+			return resp(feedXML, "application/atom+xml")
+		}
+		return resp(channelHTML, "text/html")
+	})})
+	cands, err := finder.Resolve(context.Background(), "https://www.youtube.com/@aarondfrancis")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cands) != 1 || !strings.Contains(cands[0].FeedURL, "channel_id=UCwxyzABCDEFGHIJKLMNopq") {
+		t.Fatalf("cands = %+v", cands)
+	}
+	if cands[0].Title != "Aaron Francis" {
+		t.Errorf("Title = %q, want %q", cands[0].Title, "Aaron Francis")
+	}
 }
 
 func TestResolve_YouTube_HandlePath(t *testing.T) {
-	finder := New(&http.Client{Transport: roundTripperFunc(func(_ *http.Request) *http.Response {
+	const channelHTML = `<html><body><script>var x = {"channelId":"UCwxyzABCDEFGHIJKLMNopq","other":1}</script></body></html>`
+	const feedXML = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>example creator</title></feed>`
+	finder := New(&http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
+		if strings.HasPrefix(r.URL.Path, "/feeds/videos.xml") {
+			return resp(feedXML, "application/atom+xml")
+		}
 		// Real YouTube pages embed channelId in JSON; mimic that.
-		return resp(`<html><body><script>var x = {"channelId":"UCwxyzABCDEFGHIJKLMNopq","other":1}</script></body></html>`, "text/html")
+		return resp(channelHTML, "text/html")
 	})})
 	cands, err := finder.Resolve(context.Background(), "https://www.youtube.com/@example-creator")
 	if err != nil {
@@ -126,6 +177,9 @@ func TestResolve_YouTube_HandlePath(t *testing.T) {
 	}
 	if len(cands) != 1 || !strings.Contains(cands[0].FeedURL, "channel_id=UCwxyzABCDEFGHIJKLMNopq") {
 		t.Errorf("cands = %+v", cands)
+	}
+	if cands[0].Title != "example creator" {
+		t.Errorf("Title = %q, want %q", cands[0].Title, "example creator")
 	}
 }
 

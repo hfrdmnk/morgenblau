@@ -181,17 +181,20 @@ func (f *Finder) extractLinkRels(body io.Reader, base *url.URL) ([]Candidate, er
 
 // channelIDRe matches the `?channel_id=...` query feed shape we emit.
 var ytChannelPath = regexp.MustCompile(`^/channel/([A-Za-z0-9_-]+)$`)
-var ytChannelIDInHTML = regexp.MustCompile(`"channelId":"(UC[A-Za-z0-9_-]{20,})"`)
+
+// ytChannelIDInHTML matches the three places YouTube embeds the channel ID
+// on a channel page: the `"channelId":"UC..."` JS blob (full page render),
+// `/channel/UC...` (canonical link, og:url, …), and `channel_id=UC...` (the
+// RSS feed link). The consent-bypass landing page we get without cookies
+// only has the latter two, so all three forms are needed.
+var ytChannelIDInHTML = regexp.MustCompile(`(?:"channelId":"|/channel/|channel_id=)(UC[A-Za-z0-9_-]{20,})`)
 
 func (f *Finder) resolveYouTube(ctx context.Context, u *url.URL) (*Candidate, error) {
+	var channelID string
 	path := u.Path
-	// Direct /channel/<id> — no fetch required.
-	if m := ytChannelPath.FindStringSubmatch(path); m != nil {
-		return ytFeedCandidate(m[1], u), nil
-	}
-
-	// /@handle, /c/<name>, /user/<name> — pull the page and grep for channelId.
 	switch {
+	case ytChannelPath.MatchString(path):
+		channelID = ytChannelPath.FindStringSubmatch(path)[1]
 	case strings.HasPrefix(path, "/@"),
 		strings.HasPrefix(path, "/c/"),
 		strings.HasPrefix(path, "/user/"):
@@ -209,10 +212,30 @@ func (f *Finder) resolveYouTube(ctx context.Context, u *url.URL) (*Candidate, er
 			return nil, err
 		}
 		if m := ytChannelIDInHTML.FindSubmatch(body); m != nil {
-			return ytFeedCandidate(string(m[1]), u), nil
+			channelID = string(m[1])
 		}
 	}
-	return nil, nil
+	if channelID == "" {
+		return nil, nil
+	}
+	cand := ytFeedCandidate(channelID, u)
+	cand.Title = f.fetchYTFeedTitle(ctx, cand.FeedURL)
+	return cand, nil
+}
+
+// fetchYTFeedTitle pulls the Atom feed and returns its <title>. Best-effort —
+// any error yields an empty string and the dialog falls back to the feed URL.
+func (f *Finder) fetchYTFeedTitle(ctx context.Context, feedURL string) string {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := f.client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	return sniffFeedTitle(resp.Body)
 }
 
 func ytFeedCandidate(channelID string, u *url.URL) *Candidate {
@@ -220,7 +243,6 @@ func ytFeedCandidate(channelID string, u *url.URL) *Candidate {
 		FeedURL:     "https://www.youtube.com/feeds/videos.xml?channel_id=" + channelID,
 		ContentType: "application/atom+xml",
 		SiteURL:     u.String(),
-		Title:       "",
 	}
 }
 
