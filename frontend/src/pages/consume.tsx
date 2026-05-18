@@ -11,11 +11,18 @@ import type { IconSvgElement } from '@hugeicons/react';
 import DOMPurify from 'dompurify';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { CalendarStrip } from '@/components/calendar-strip';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRegisterChromeRefresh } from '@/hooks/use-chrome-refresh';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useJobsPoll } from '@/hooks/use-jobs-poll';
 import { LevelContext } from '@/hooks/use-surface-level';
+import {
+    formatISODate,
+    isSameDay,
+    parseISODate,
+    startOfLocalDay,
+} from '@/lib/date';
 import { entryHref } from '@/lib/paths';
 import { subscribeSubscriptionAdded } from '@/lib/subscription-events';
 import { safeHref } from '@/lib/utils';
@@ -61,17 +68,40 @@ const TYPE_ICONS: Record<ContentType, IconSvgElement> = {
 
 export function Consume() {
     useDocumentTitle('Consume');
+    const today = useMemo(() => startOfLocalDay(new Date()), []);
+    const [selectedDate, setSelectedDate] = useState<Date>(() =>
+        readDateFromURL(today),
+    );
     const [state, setState] = useState<State>({ kind: 'loading' });
     const [reloadTick, setReloadTick] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
+
+    // Clean up the URL once on mount if the inbound date param was invalid
+    // or in the future. readDateFromURL already clamped to today.
+    useEffect(() => {
+        const raw = new URLSearchParams(window.location.search).get('date');
+        if (raw === null) return;
+        const parsed = parseISODate(raw);
+        if (parsed && parsed.getTime() <= today.getTime()) return;
+        const url = new URL(window.location.href);
+        url.searchParams.delete('date');
+        window.history.replaceState(null, '', url.toString());
+    }, [today]);
+
+    useEffect(() => {
+        const onPopState = () => {
+            setSelectedDate(readDateFromURL(today));
+        };
+        window.addEventListener('popstate', onPopState);
+        return () => window.removeEventListener('popstate', onPopState);
+    }, [today]);
 
     useEffect(() => {
         let cancelled = false;
         const load = async () => {
             try {
-                const r = await fetch('/api/digest', {
-                    credentials: 'same-origin',
-                });
+                const url = `/api/digest?date=${encodeURIComponent(formatISODate(selectedDate))}`;
+                const r = await fetch(url, { credentials: 'same-origin' });
                 if (!r.ok) throw new Error(String(r.status));
                 const data = (await r.json()) as DigestResponse;
                 if (cancelled) return;
@@ -90,7 +120,21 @@ export function Consume() {
         return () => {
             cancelled = true;
         };
-    }, [reloadTick]);
+    }, [reloadTick, selectedDate]);
+
+    const handleSelectDate = useCallback(
+        (date: Date) => {
+            setSelectedDate(date);
+            const url = new URL(window.location.href);
+            if (isSameDay(date, today)) {
+                url.searchParams.delete('date');
+            } else {
+                url.searchParams.set('date', formatISODate(date));
+            }
+            window.history.pushState(null, '', url.toString());
+        },
+        [today],
+    );
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -121,32 +165,48 @@ export function Consume() {
     useRegisterChromeRefresh(onRefresh, isBusy);
 
     return (
-        <div className="mx-auto w-full max-w-2xl px-4 pt-6 pb-12 sm:px-6">
-            {isBusy ? (
-                <DigestSkeleton />
-            ) : state.kind === 'error' ? (
-                <EmptyMessage
-                    lead="Couldn't load the digest."
-                    detail="Try refreshing in a moment."
-                />
-            ) : state.entries.length === 0 ? (
-                <EmptyMessage
-                    lead={
-                        state.hasActiveJob
-                            ? 'Brewing your first edition…'
-                            : 'Nothing new this morning.'
-                    }
-                    detail={
-                        state.hasActiveJob
-                            ? "This won't take long."
-                            : 'Enjoy your coffee.'
-                    }
-                />
-            ) : (
-                <Newspaper entries={state.entries} />
-            )}
-        </div>
+        <>
+            <CalendarStrip
+                selected={selectedDate}
+                today={today}
+                onSelect={handleSelectDate}
+            />
+            <div className="mx-auto w-full max-w-2xl px-4 pb-12 sm:px-6">
+                {isBusy ? (
+                    <DigestSkeleton />
+                ) : state.kind === 'error' ? (
+                    <EmptyMessage
+                        lead="Couldn't load the digest."
+                        detail="Try refreshing in a moment."
+                    />
+                ) : state.entries.length === 0 ? (
+                    <EmptyMessage
+                        lead={
+                            state.hasActiveJob
+                                ? 'Brewing your first edition…'
+                                : 'Nothing new this morning.'
+                        }
+                        detail={
+                            state.hasActiveJob
+                                ? "This won't take long."
+                                : 'Enjoy your coffee.'
+                        }
+                    />
+                ) : (
+                    <Newspaper entries={state.entries} />
+                )}
+            </div>
+        </>
     );
+}
+
+function readDateFromURL(today: Date): Date {
+    const raw = new URLSearchParams(window.location.search).get('date');
+    if (!raw) return today;
+    const parsed = parseISODate(raw);
+    if (!parsed) return today;
+    if (parsed.getTime() > today.getTime()) return today;
+    return parsed;
 }
 
 function Newspaper({ entries }: { entries: Entry[] }) {
