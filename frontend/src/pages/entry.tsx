@@ -11,7 +11,7 @@ import { ReaderRail } from '@/components/reader-rail';
 import type { ExtractedToggleState } from '@/components/reader-rail';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { useDocumentTitle } from '@/hooks/use-document-title';
-import { PATHS } from '@/lib/paths';
+import { consumeHref, PATHS } from '@/lib/paths';
 import { cn, safeHref } from '@/lib/utils';
 
 type ContentType = 'blogpost' | 'microblog' | 'video' | 'podcast';
@@ -48,6 +48,12 @@ function slugFromLocation(): string | null {
     if (!path.startsWith(prefix)) return null;
     const slug = path.slice(prefix.length);
     return slug.length > 0 ? slug : null;
+}
+
+function fromDateFromLocation(): string | null {
+    const raw = new URLSearchParams(window.location.search).get('from');
+    if (!raw) return null;
+    return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
 }
 
 export function Entry() {
@@ -118,10 +124,11 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function Header() {
+    const back = consumeHref(fromDateFromLocation() ?? undefined);
     return (
         <header className="sticky top-0 z-10 flex h-14 items-center px-4 sm:px-6">
             <a
-                href={PATHS.consume}
+                href={back}
                 aria-label="Back to digest"
                 className="inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
             >

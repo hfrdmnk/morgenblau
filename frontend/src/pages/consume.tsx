@@ -193,7 +193,14 @@ export function Consume() {
                         }
                     />
                 ) : (
-                    <Newspaper entries={state.entries} />
+                    <Newspaper
+                        entries={state.entries}
+                        fromDate={
+                            isSameDay(selectedDate, today)
+                                ? undefined
+                                : formatISODate(selectedDate)
+                        }
+                    />
                 )}
             </div>
         </>
@@ -209,7 +216,13 @@ function readDateFromURL(today: Date): Date {
     return parsed;
 }
 
-function Newspaper({ entries }: { entries: Entry[] }) {
+function Newspaper({
+    entries,
+    fromDate,
+}: {
+    entries: Entry[];
+    fromDate?: string;
+}) {
     return (
         <LevelContext.Provider value={2}>
             <article className="overflow-hidden rounded-3xl border border-gray-100 bg-card dark:border-gray-700">
@@ -225,7 +238,10 @@ function Newspaper({ entries }: { entries: Entry[] }) {
                             {entry.contentType === 'microblog' ? (
                                 <InlineRow entry={entry} />
                             ) : (
-                                <StandardRow entry={entry} />
+                                <StandardRow
+                                    entry={entry}
+                                    fromDate={fromDate}
+                                />
                             )}
                         </li>
                     ))}
@@ -267,7 +283,13 @@ function DigestSkeleton() {
     );
 }
 
-function StandardRow({ entry }: { entry: Entry }) {
+function StandardRow({
+    entry,
+    fromDate,
+}: {
+    entry: Entry;
+    fromDate?: string;
+}) {
     const cleanedSummary = entry.body
         ? cleanSummary(entry.body, entry.title)
         : null;
@@ -301,7 +323,10 @@ function StandardRow({ entry }: { entry: Entry }) {
 
     if (opensInReader) {
         return (
-            <a href={entryHref(entry.entrySlug)} className={ROW_CLICKABLE_CLASS}>
+            <a
+                href={entryHref(entry.entrySlug, fromDate)}
+                className={ROW_CLICKABLE_CLASS}
+            >
                 {content}
             </a>
         );

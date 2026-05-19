@@ -73,10 +73,10 @@ export function CalendarStrip({ selected, today, onSelect }: Props) {
 
     return (
         <div className="mx-auto w-full max-w-2xl px-4 pt-10 pb-12 sm:px-6">
-            <div className="group/strip flex items-baseline gap-3">
+            <div className="group/strip relative">
                 <div
                     ref={daysAreaRef}
-                    className="flex flex-1 items-baseline justify-center"
+                    className="flex w-full items-baseline justify-center"
                 >
                     {Array.from({ length: slotCount }, (_, i) => {
                         const offset = i - centerIndex;
@@ -224,15 +224,27 @@ function TodayAnchor({
             aria-hidden={hidden}
             tabIndex={hidden ? -1 : 0}
             className={cn(
-                'inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-sm text-sm font-normal text-muted-foreground opacity-50',
+                'absolute top-0 right-0',
+                'inline-flex cursor-pointer items-center gap-1 rounded-sm pr-1 pl-12 text-sm font-normal text-muted-foreground',
+                'bg-linear-to-r from-transparent to-gray-50 to-[2rem] dark:to-gray-900',
                 'transition duration-200 ease-out',
-                'hover:text-atmosphere-blue group-hover/strip:opacity-100',
                 'focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring',
                 hidden && 'pointer-events-none opacity-0!',
             )}
         >
-            <HugeiconsIcon icon={ArrowRight02Icon} className="size-3.5" />
-            today
+            <span
+                aria-hidden
+                className="invisible -mr-1 w-0 text-lg leading-none"
+            >
+                0
+            </span>
+            <span className={cn(
+                'inline-flex items-center gap-1 opacity-50 transition duration-200',
+                'hover:text-atmosphere-blue group-hover/strip:opacity-100',
+            )}>
+                <HugeiconsIcon icon={ArrowRight02Icon} className="size-3.5" />
+                <span className="leading-none">today</span>
+            </span>
         </button>
     );
 }

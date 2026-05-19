@@ -12,6 +12,11 @@ export const PATHS = {
 
 export type AppPath = (typeof PATHS)[keyof typeof PATHS];
 
-export function entryHref(slug: string): string {
-    return `${PATHS.entry}/${slug}`;
+export function entryHref(slug: string, fromDate?: string): string {
+    const base = `${PATHS.entry}/${slug}`;
+    return fromDate ? `${base}?from=${encodeURIComponent(fromDate)}` : base;
+}
+
+export function consumeHref(date?: string): string {
+    return date ? `${PATHS.consume}?date=${encodeURIComponent(date)}` : PATHS.consume;
 }
