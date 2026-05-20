@@ -11,7 +11,7 @@ import { ReaderRail } from '@/components/reader-rail';
 import type { ExtractedToggleState } from '@/components/reader-rail';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { useDocumentTitle } from '@/hooks/use-document-title';
-import { consumeHref, PATHS } from '@/lib/paths';
+import { digestHref, PATHS } from '@/lib/paths';
 import { cn, safeHref } from '@/lib/utils';
 
 type ContentType = 'blogpost' | 'microblog' | 'video' | 'podcast';
@@ -124,7 +124,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function Header() {
-    const back = consumeHref(fromDateFromLocation() ?? undefined);
+    const back = digestHref(fromDateFromLocation() ?? undefined);
     return (
         <header className="sticky top-0 z-10 flex h-14 items-center px-4 sm:px-6">
             <a

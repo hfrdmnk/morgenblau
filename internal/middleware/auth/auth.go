@@ -118,8 +118,8 @@ func serve(next http.Handler, w http.ResponseWriter, r *http.Request, sess *oaut
 }
 
 var publicRoutes = map[string]string{
-	"/":      "/consume",
-	"/login": "/consume",
+	"/":      "/digest",
+	"/login": "/digest",
 	"/about": "",
 }
 

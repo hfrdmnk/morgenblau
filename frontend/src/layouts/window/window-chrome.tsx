@@ -1,5 +1,4 @@
 import {
-    LibraryIcon,
     LogoutSquare01Icon,
     PlusSignIcon,
     Refresh04Icon,
@@ -33,8 +32,9 @@ type Tab = {
 
 const TABS: Tab[] = [
     { label: 'Discover', href: PATHS.discover },
-    { label: 'Consume', href: PATHS.consume },
-    { label: 'Create', href: PATHS.create },
+    { label: 'Sources', href: PATHS.sources },
+    { label: 'Library', href: PATHS.library },
+    { label: 'Digest', href: PATHS.digest },
 ];
 
 type Props = {
@@ -50,7 +50,7 @@ export function WindowChrome({ onAddSourceClick }: Props) {
 
     const showAddSource =
         pathname === PATHS.discover || pathname === PATHS.sources;
-    const showRefresh = pathname === PATHS.consume;
+    const showRefresh = pathname === PATHS.digest;
 
     return (
         <header className="flex h-14 shrink-0 items-center justify-between px-4 sm:px-6 lg:px-20">
@@ -126,11 +126,6 @@ export function WindowChrome({ onAddSourceClick }: Props) {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">
                         <UserHeader me={me} />
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem render={<a href={PATHS.sources} />}>
-                            <HugeiconsIcon icon={LibraryIcon} />
-                            Manage sources
-                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                             render={

@@ -131,16 +131,16 @@ func TestMiddleware_Table(t *testing.T) {
 		{name: "login unauthed", path: "/login", method: "GET", wantCode: 200, wantNext: true},
 
 		// Public product routes with authedRedirect — 302 when authed.
-		{name: "root authed", path: "/", method: "GET", authed: true, wantCode: 302, wantNext: false, wantLoc: "/consume"},
-		{name: "login authed", path: "/login", method: "GET", authed: true, wantCode: 302, wantNext: false, wantLoc: "/consume"},
+		{name: "root authed", path: "/", method: "GET", authed: true, wantCode: 302, wantNext: false, wantLoc: "/digest"},
+		{name: "login authed", path: "/login", method: "GET", authed: true, wantCode: 302, wantNext: false, wantLoc: "/digest"},
 
 		// Authed product routes — 302 /login when anon.
-		{name: "consume unauthed", path: "/consume", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
+		{name: "digest unauthed", path: "/digest", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
 		{name: "sources unauthed", path: "/sources", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
 		{name: "entry unauthed", path: "/entry", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
 
 		// Authed product routes — pass when authed.
-		{name: "consume authed", path: "/consume", method: "GET", authed: true, wantCode: 200, wantNext: true},
+		{name: "digest authed", path: "/digest", method: "GET", authed: true, wantCode: 200, wantNext: true},
 		{name: "sources authed", path: "/sources", method: "GET", authed: true, wantCode: 200, wantNext: true},
 		{name: "entry authed", path: "/entry", method: "GET", authed: true, wantCode: 200, wantNext: true},
 
@@ -191,8 +191,8 @@ func TestMiddleware_InjectsSessionIntoContext(t *testing.T) {
 
 	next := &passthroughNext{}
 	m := New(resumer, noopLocker{}, sealer)
-	// /consume is authed → authed user passes through.
-	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
+	// /digest is authed → authed user passes through.
+	req := httptest.NewRequest(http.MethodGet, "/digest", nil)
 	req.AddCookie(cookie)
 	rr := httptest.NewRecorder()
 	m(next).ServeHTTP(rr, req)
@@ -216,7 +216,7 @@ func TestMiddleware_InvalidCookie_TreatedAsUnauthed(t *testing.T) {
 	m := New(resumer, noopLocker{}, sealer)
 
 	// Hit a gated path; a garbage cookie should be treated as anon and 302'd.
-	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
+	req := httptest.NewRequest(http.MethodGet, "/digest", nil)
 	req.AddCookie(&http.Cookie{Name: "mb_session", Value: "garbage"})
 	rr := httptest.NewRecorder()
 	m(next).ServeHTTP(rr, req)
@@ -242,7 +242,7 @@ func TestMiddleware_ResumeFailure_RedirectsAndClearsCookie(t *testing.T) {
 	next := &passthroughNext{}
 	m := New(resumer, noopLocker{}, sealer)
 
-	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
+	req := httptest.NewRequest(http.MethodGet, "/digest", nil)
 	for _, c := range cookies {
 		req.AddCookie(c)
 	}
@@ -309,7 +309,7 @@ func TestMiddleware_LockSerializesRefresh(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req := httptest.NewRequest(http.MethodGet, "/consume", nil)
+			req := httptest.NewRequest(http.MethodGet, "/digest", nil)
 			for _, c := range cookies {
 				req.AddCookie(c)
 			}
@@ -356,7 +356,7 @@ func TestMiddleware_TransientErrorKeepsCookie(t *testing.T) {
 	next := &passthroughNext{}
 	m := New(resumer, noopLocker{}, sealer)
 
-	req := httptest.NewRequest(http.MethodGet, "/consume", nil)
+	req := httptest.NewRequest(http.MethodGet, "/digest", nil)
 	for _, c := range cookies {
 		req.AddCookie(c)
 	}

@@ -1,10 +1,10 @@
 export const PATHS = {
     welcome: '/',
     login: '/login',
-    consume: '/consume',
+    digest: '/digest',
+    library: '/library',
     sources: '/sources',
     discover: '/discover',
-    create: '/create',
     entry: '/entry',
     oauthLogin: '/oauth/login',
     oauthLogout: '/oauth/logout',
@@ -17,6 +17,6 @@ export function entryHref(slug: string, fromDate?: string): string {
     return fromDate ? `${base}?from=${encodeURIComponent(fromDate)}` : base;
 }
 
-export function consumeHref(date?: string): string {
-    return date ? `${PATHS.consume}?date=${encodeURIComponent(date)}` : PATHS.consume;
+export function digestHref(date?: string): string {
+    return date ? `${PATHS.digest}?date=${encodeURIComponent(date)}` : PATHS.digest;
 }

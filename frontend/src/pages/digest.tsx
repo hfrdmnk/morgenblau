@@ -66,8 +66,8 @@ const TYPE_ICONS: Record<ContentType, IconSvgElement> = {
     podcast: PodcastIcon,
 };
 
-export function Consume() {
-    useDocumentTitle('Consume');
+export function Digest() {
+    useDocumentTitle('Digest');
     const today = useMemo(() => startOfLocalDay(new Date()), []);
     const [selectedDate, setSelectedDate] = useState<Date>(() =>
         readDateFromURL(today),
