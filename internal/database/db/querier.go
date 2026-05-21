@@ -22,6 +22,10 @@ type Querier interface {
 	ListAllEntriesForUser(ctx context.Context, did string) ([]ListAllEntriesForUserRow, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
 	ListFeedURLsForUser(ctx context.Context, did string) ([]string, error)
+	// One row per subscription with feed metadata and windowed entry stats. The
+	// four window cutoffs (7d, 28d, 56d, 84d as ISO timestamps) and "now" are
+	// passed in by the handler so all rows share a single clock.
+	ListUserSourcesWithStats(ctx context.Context, arg ListUserSourcesWithStatsParams) ([]ListUserSourcesWithStatsRow, error)
 	ListUserSubscriptions(ctx context.Context, did string) ([]UserSubscription, error)
 	ListUserSubscriptionsForSync(ctx context.Context, did string) ([]ListUserSubscriptionsForSyncRow, error)
 	PutAuthRequest(ctx context.Context, arg PutAuthRequestParams) error

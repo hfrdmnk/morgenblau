@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -37,6 +38,25 @@ func (f *fakeIndex) ListUserSubscriptions(_ context.Context, did string) ([]db.U
 	out := make([]db.UserSubscription, 0)
 	for _, r := range f.rows[did] {
 		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (f *fakeIndex) ListUserSourcesWithStats(_ context.Context, arg db.ListUserSourcesWithStatsParams) ([]db.ListUserSourcesWithStatsRow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]db.ListUserSourcesWithStatsRow, 0)
+	for _, r := range f.rows[arg.Did] {
+		out = append(out, db.ListUserSourcesWithStatsRow{
+			Did:         r.Did,
+			Rkey:        r.Rkey,
+			AtUri:       r.AtUri,
+			FeedUrl:     r.FeedUrl,
+			Title:       r.Title,
+			CustomTitle: r.CustomTitle,
+			CreatedAt:   r.CreatedAt,
+			UpdatedAt:   r.UpdatedAt,
+		})
 	}
 	return out, nil
 }
@@ -138,6 +158,47 @@ func (d *fakeDispatcher) StartManualRefresh(_ context.Context, _ syntax.DID, _ s
 	d.manualSync++
 	d.next++
 	return "sync-" + itoa(d.next), nil
+}
+
+// --- Frequency bucket ---
+
+func TestFrequencyBucket(t *testing.T) {
+	now := mustParseTime(t, "2026-05-21T12:00:00Z")
+	long := now.AddDate(-1, 0, 0).Format(time.RFC3339) // first post a year ago — "New" doesn't apply
+	young := now.AddDate(0, 0, -10).Format(time.RFC3339)
+
+	cases := []struct {
+		name                       string
+		first                      string
+		c7, c28, c56, c84          int64
+		want                       string
+	}{
+		{"no posts at all", "", 0, 0, 0, 0, "noPosts"},
+		{"new overrides everything", young, 99, 99, 99, 99, "new"},
+		{"daily ≥5/7d", long, 5, 5, 5, 5, "daily"},
+		{"weekly ≥3/28d", long, 0, 3, 3, 3, "weekly"},
+		{"biweekly ≥3/56d", long, 0, 0, 3, 3, "biweekly"},
+		{"monthly ≥2/84d", long, 0, 0, 0, 2, "monthly"},
+		{"irregular below every threshold", long, 0, 0, 0, 1, "irregular"},
+		{"highest-cadence bucket wins", long, 5, 1, 1, 1, "daily"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := frequencyBucket(c.first, c.c7, c.c28, c.c56, c.c84, now)
+			if got != c.want {
+				t.Errorf("frequencyBucket = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+func mustParseTime(t *testing.T, s string) time.Time {
+	t.Helper()
+	ts, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ts
 }
 
 // --- List handler ---

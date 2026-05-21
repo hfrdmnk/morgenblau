@@ -48,5 +48,24 @@ SELECT did, rkey, at_uri, feed_url, title, custom_title, created_at, updated_at
 FROM user_subscriptions WHERE did = ?
 ORDER BY COALESCE(NULLIF(custom_title, ''), title, feed_url) COLLATE NOCASE ASC;
 
+-- name: ListUserSourcesWithStats :many
+-- One row per subscription with feed metadata and windowed entry stats. The
+-- four window cutoffs (7d, 28d, 56d, 84d as ISO timestamps) and "now" are
+-- passed in by the handler so all rows share a single clock.
+SELECT
+    us.did, us.rkey, us.at_uri, us.feed_url, us.title, us.custom_title,
+    us.created_at, us.updated_at,
+    f.site_url, f.icon_url,
+    COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
+    COALESCE((SELECT MIN(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_7d) AND fe.published_at < sqlc.arg(now)) AS count_7d,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_28d) AND fe.published_at < sqlc.arg(now)) AS count_28d,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_56d) AND fe.published_at < sqlc.arg(now)) AS count_56d,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_84d) AND fe.published_at < sqlc.arg(now)) AS count_84d
+FROM user_subscriptions us
+LEFT JOIN feeds f ON f.feed_url = us.feed_url
+WHERE us.did = sqlc.arg(did)
+ORDER BY COALESCE(NULLIF(us.custom_title, ''), us.title, us.feed_url) COLLATE NOCASE ASC;
+
 -- name: DeleteUserSubscription :exec
 DELETE FROM user_subscriptions WHERE did = ? AND rkey = ?;

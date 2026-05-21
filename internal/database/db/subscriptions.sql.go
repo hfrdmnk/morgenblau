@@ -97,6 +97,101 @@ func (q *Queries) GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserS
 	return i, err
 }
 
+const listUserSourcesWithStats = `-- name: ListUserSourcesWithStats :many
+SELECT
+    us.did, us.rkey, us.at_uri, us.feed_url, us.title, us.custom_title,
+    us.created_at, us.updated_at,
+    f.site_url, f.icon_url,
+    COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
+    COALESCE((SELECT MIN(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?1 AND fe.published_at < ?2) AS count_7d,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?3 AND fe.published_at < ?2) AS count_28d,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?4 AND fe.published_at < ?2) AS count_56d,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?5 AND fe.published_at < ?2) AS count_84d
+FROM user_subscriptions us
+LEFT JOIN feeds f ON f.feed_url = us.feed_url
+WHERE us.did = ?6
+ORDER BY COALESCE(NULLIF(us.custom_title, ''), us.title, us.feed_url) COLLATE NOCASE ASC
+`
+
+type ListUserSourcesWithStatsParams struct {
+	Cutoff7d  string `json:"cutoff_7d"`
+	Now       string `json:"now"`
+	Cutoff28d string `json:"cutoff_28d"`
+	Cutoff56d string `json:"cutoff_56d"`
+	Cutoff84d string `json:"cutoff_84d"`
+	Did       string `json:"did"`
+}
+
+type ListUserSourcesWithStatsRow struct {
+	Did              string      `json:"did"`
+	Rkey             string      `json:"rkey"`
+	AtUri            string      `json:"at_uri"`
+	FeedUrl          string      `json:"feed_url"`
+	Title            *string     `json:"title"`
+	CustomTitle      *string     `json:"custom_title"`
+	CreatedAt        string      `json:"created_at"`
+	UpdatedAt        string      `json:"updated_at"`
+	SiteUrl          *string     `json:"site_url"`
+	IconUrl          *string     `json:"icon_url"`
+	LastPublishedAt  interface{} `json:"last_published_at"`
+	FirstPublishedAt interface{} `json:"first_published_at"`
+	Count7d          int64       `json:"count_7d"`
+	Count28d         int64       `json:"count_28d"`
+	Count56d         int64       `json:"count_56d"`
+	Count84d         int64       `json:"count_84d"`
+}
+
+// One row per subscription with feed metadata and windowed entry stats. The
+// four window cutoffs (7d, 28d, 56d, 84d as ISO timestamps) and "now" are
+// passed in by the handler so all rows share a single clock.
+func (q *Queries) ListUserSourcesWithStats(ctx context.Context, arg ListUserSourcesWithStatsParams) ([]ListUserSourcesWithStatsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUserSourcesWithStats,
+		arg.Cutoff7d,
+		arg.Now,
+		arg.Cutoff28d,
+		arg.Cutoff56d,
+		arg.Cutoff84d,
+		arg.Did,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUserSourcesWithStatsRow
+	for rows.Next() {
+		var i ListUserSourcesWithStatsRow
+		if err := rows.Scan(
+			&i.Did,
+			&i.Rkey,
+			&i.AtUri,
+			&i.FeedUrl,
+			&i.Title,
+			&i.CustomTitle,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SiteUrl,
+			&i.IconUrl,
+			&i.LastPublishedAt,
+			&i.FirstPublishedAt,
+			&i.Count7d,
+			&i.Count28d,
+			&i.Count56d,
+			&i.Count84d,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserSubscriptions = `-- name: ListUserSubscriptions :many
 SELECT did, rkey, at_uri, feed_url, title, custom_title, created_at, updated_at
 FROM user_subscriptions WHERE did = ?

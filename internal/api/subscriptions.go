@@ -20,16 +20,22 @@ import (
 
 const subscriptionCollection = "app.skyreader.feed.subscription"
 
-// SubscriptionWire is the on-the-wire shape returned by GET / POST.
+// SubscriptionWire is the on-the-wire shape returned by GET / POST. The list
+// endpoint additionally fills FaviconURL, Frequency, and LastPublishedAt;
+// POST leaves those empty (the caller polls /api/subscriptions to pick them
+// up after the first fetch lands).
 type SubscriptionWire struct {
 	URI   string         `json:"uri"`
 	CID   string         `json:"cid,omitempty"`
 	Value map[string]any `json:"value"`
 	// Embedded sugar for the frontend so callers don't dig into Value.
-	Rkey    string `json:"rkey"`
-	FeedURL string `json:"feedUrl"`
-	Title   string `json:"title,omitempty"`
-	SiteURL string `json:"siteUrl,omitempty"`
+	Rkey            string `json:"rkey"`
+	FeedURL         string `json:"feedUrl"`
+	Title           string `json:"title,omitempty"`
+	SiteURL         string `json:"siteUrl,omitempty"`
+	FaviconURL      string `json:"faviconUrl,omitempty"`
+	Frequency       string `json:"frequency,omitempty"`
+	LastPublishedAt string `json:"lastPublishedAt,omitempty"`
 }
 
 // IndexReader is the slice of *db.Queries we use for reads. Defined so handler
@@ -37,6 +43,12 @@ type SubscriptionWire struct {
 type IndexReader interface {
 	ListUserSubscriptions(ctx context.Context, did string) ([]db.UserSubscription, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error)
+}
+
+// SourcesReader is the narrow read used by the list endpoint — it carries the
+// per-feed entry stats the sources card renders.
+type SourcesReader interface {
+	ListUserSourcesWithStats(ctx context.Context, arg db.ListUserSourcesWithStatsParams) ([]db.ListUserSourcesWithStatsRow, error)
 }
 
 // IndexWriter is the slice used for writes. Same store, distinct interface so
@@ -60,17 +72,26 @@ type FetchDispatcher interface {
 	StartManualRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error)
 }
 
-// SubscriptionsListHandler returns the user's Tier-1 index entries as a
-// flat list matching the legacy PDS-pass-through shape — frontend code
-// doesn't need to change shape, only source.
-func SubscriptionsListHandler(reader IndexReader) http.Handler {
+// SubscriptionsListHandler returns the user's subscriptions joined with feed
+// metadata and a derived frequency bucket. The bucket is computed here (not
+// in SQL) so the rule lives in one place.
+func SubscriptionsListHandler(reader SourcesReader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := auth.SessionFromContext(r.Context())
 		if sess == nil || sess.Data == nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		rows, err := reader.ListUserSubscriptions(r.Context(), sess.Data.AccountDID.String())
+		now := time.Now().UTC()
+		params := db.ListUserSourcesWithStatsParams{
+			Did:       sess.Data.AccountDID.String(),
+			Now:       now.Format(time.RFC3339),
+			Cutoff7d:  now.AddDate(0, 0, -7).Format(time.RFC3339),
+			Cutoff28d: now.AddDate(0, 0, -28).Format(time.RFC3339),
+			Cutoff56d: now.AddDate(0, 0, -56).Format(time.RFC3339),
+			Cutoff84d: now.AddDate(0, 0, -84).Format(time.RFC3339),
+		}
+		rows, err := reader.ListUserSourcesWithStats(r.Context(), params)
 		if err != nil {
 			slog.Warn("/api/subscriptions: list failed", "err", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -78,7 +99,7 @@ func SubscriptionsListHandler(reader IndexReader) http.Handler {
 		}
 		out := make([]SubscriptionWire, 0, len(rows))
 		for _, row := range rows {
-			out = append(out, rowToWire(row))
+			out = append(out, sourceRowToWire(row, now))
 		}
 		writeJSON(w, out)
 	})
@@ -102,6 +123,84 @@ func rowToWire(row db.UserSubscription) SubscriptionWire {
 		Rkey:    row.Rkey,
 		FeedURL: row.FeedUrl,
 		Title:   title,
+	}
+}
+
+func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) SubscriptionWire {
+	value := map[string]any{"feedUrl": row.FeedUrl}
+	title := ""
+	if row.Title != nil {
+		value["title"] = *row.Title
+		title = *row.Title
+	}
+	if row.CustomTitle != nil {
+		value["customTitle"] = *row.CustomTitle
+	}
+	siteURL := ""
+	if row.SiteUrl != nil {
+		value["siteUrl"] = *row.SiteUrl
+		siteURL = *row.SiteUrl
+	}
+	faviconURL := ""
+	if row.IconUrl != nil {
+		faviconURL = *row.IconUrl
+	}
+	lastPublished := asString(row.LastPublishedAt)
+	firstPublished := asString(row.FirstPublishedAt)
+	return SubscriptionWire{
+		URI:             row.AtUri,
+		Value:           value,
+		Rkey:            row.Rkey,
+		FeedURL:         row.FeedUrl,
+		Title:           title,
+		SiteURL:         siteURL,
+		FaviconURL:      faviconURL,
+		Frequency:       frequencyBucket(firstPublished, row.Count7d, row.Count28d, row.Count56d, row.Count84d, now),
+		LastPublishedAt: lastPublished,
+	}
+}
+
+// frequencyBucket implements the cadence rule:
+//   - noPosts   — no entries at all
+//   - new       — first-ever post is within 30 days (and ≥1 post exists)
+//   - daily     — ≥5 posts in last 7 days
+//   - weekly    — ≥3 posts in last 28 days
+//   - biweekly  — ≥3 posts in last 56 days
+//   - monthly   — ≥2 posts in last 84 days
+//   - irregular — anything else
+//
+// Highest-cadence bucket wins. "New" overrides everything else when applicable.
+func frequencyBucket(firstPublishedAt string, c7, c28, c56, c84 int64, now time.Time) string {
+	if firstPublishedAt == "" {
+		return "noPosts"
+	}
+	if t, err := time.Parse(time.RFC3339, firstPublishedAt); err == nil {
+		if now.Sub(t) <= 30*24*time.Hour {
+			return "new"
+		}
+	}
+	switch {
+	case c7 >= 5:
+		return "daily"
+	case c28 >= 3:
+		return "weekly"
+	case c56 >= 3:
+		return "biweekly"
+	case c84 >= 2:
+		return "monthly"
+	default:
+		return "irregular"
+	}
+}
+
+func asString(v any) string {
+	switch s := v.(type) {
+	case string:
+		return s
+	case []byte:
+		return string(s)
+	default:
+		return ""
 	}
 }
 
