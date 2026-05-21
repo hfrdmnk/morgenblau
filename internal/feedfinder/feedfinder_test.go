@@ -183,6 +183,83 @@ func TestResolve_YouTube_HandlePath(t *testing.T) {
 	}
 }
 
+func TestResolve_YouTube_FeedFetchFailure_StillReturnsCandidate(t *testing.T) {
+	// fetchYTFeedTitle is best-effort: if the feed fetch errors or returns
+	// a non-2xx, the candidate is still returned with an empty title.
+	finder := New(&http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
+		if strings.HasPrefix(r.URL.Path, "/feeds/videos.xml") {
+			return &http.Response{StatusCode: 500, Body: io.NopCloser(strings.NewReader("boom"))}
+		}
+		t.Fatalf("unexpected request: %s", r.URL.String())
+		return nil
+	})})
+	cands, err := finder.Resolve(context.Background(), "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cands) != 1 {
+		t.Fatalf("len = %d", len(cands))
+	}
+	if !strings.Contains(cands[0].FeedURL, "channel_id=UCabcdefghijklmnopqrstuv") {
+		t.Errorf("FeedURL = %q", cands[0].FeedURL)
+	}
+	if cands[0].Title != "" {
+		t.Errorf("Title = %q, want empty", cands[0].Title)
+	}
+}
+
+func TestResolve_YouTube_HandlePath_FirstMatchWins(t *testing.T) {
+	// Pins the regex contract: the first UC… in document order is chosen.
+	// On every YouTube page shape, the canonical <link> / og:url / feed
+	// link precede any user-generated content that might also contain a
+	// /channel/UC… (e.g. an embed pointing at another channel).
+	const channelHTML = `<html><head>
+<link rel="canonical" href="https://www.youtube.com/channel/UCcanonicalAAAAAAAAAAAA">
+<link rel="alternate" type="application/rss+xml" href="https://www.youtube.com/feeds/videos.xml?channel_id=UCcanonicalAAAAAAAAAAAA">
+</head><body>
+<a href="/channel/UCotherChannelBBBBBBBBBB">someone else</a>
+</body></html>`
+	const feedXML = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Canonical Channel</title></feed>`
+	finder := New(&http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
+		if strings.HasPrefix(r.URL.Path, "/feeds/videos.xml") {
+			if !strings.Contains(r.URL.RawQuery, "channel_id=UCcanonicalAAAAAAAAAAAA") {
+				t.Fatalf("wrong channel picked: %s", r.URL.RawQuery)
+			}
+			return resp(feedXML, "application/atom+xml")
+		}
+		return resp(channelHTML, "text/html")
+	})})
+	cands, err := finder.Resolve(context.Background(), "https://www.youtube.com/@someone")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cands) != 1 || !strings.Contains(cands[0].FeedURL, "channel_id=UCcanonicalAAAAAAAAAAAA") {
+		t.Fatalf("cands = %+v", cands)
+	}
+}
+
+func TestResolve_YouTube_HandlePath_NonOK_NoCandidate(t *testing.T) {
+	// A non-2xx response on the channel page must not feed the regex; the
+	// resolver returns no YouTube candidate and falls through to generic.
+	finder := New(&http.Client{Transport: roundTripperFunc(func(_ *http.Request) *http.Response {
+		// Error page that happens to mention a UC… string — must be ignored.
+		return &http.Response{
+			StatusCode: 404,
+			Header:     http.Header{"Content-Type": []string{"text/html"}},
+			Body:       io.NopCloser(strings.NewReader(`<html>not found /channel/UCshouldNotBePickedXXXXX</html>`)),
+		}
+	})})
+	cands, err := finder.Resolve(context.Background(), "https://www.youtube.com/@nope")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Falls through to generic link-rel-alternate path, which finds nothing.
+	if len(cands) != 0 {
+		t.Errorf("expected 0 candidates, got %+v", cands)
+	}
+}
+
 func TestResolve_ApplePodcasts(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/lookup", func(w http.ResponseWriter, r *http.Request) {

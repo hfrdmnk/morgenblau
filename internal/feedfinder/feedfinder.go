@@ -207,10 +207,19 @@ func (f *Finder) resolveYouTube(ctx context.Context, u *url.URL) (*Candidate, er
 			return nil, err
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			// Error pages can incidentally contain UC… strings; don't sniff them.
+			_, _ = io.Copy(io.Discard, resp.Body)
+			return nil, nil
+		}
 		body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 		if err != nil {
 			return nil, err
 		}
+		// First match wins; the canonical <link> / og:url / feed link all
+		// precede user-generated content (titles, descriptions, comments)
+		// on every YouTube page shape we've seen, so the channel's own ID
+		// is matched before any embedded third-party UC… string.
 		if m := ytChannelIDInHTML.FindSubmatch(body); m != nil {
 			channelID = string(m[1])
 		}
@@ -235,6 +244,10 @@ func (f *Finder) fetchYTFeedTitle(ctx context.Context, feedURL string) string {
 		return ""
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return ""
+	}
 	return sniffFeedTitle(resp.Body)
 }
 
