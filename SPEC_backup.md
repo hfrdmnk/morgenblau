@@ -9,55 +9,36 @@
 
 ## What is Morgenblau?
 
-A calm content platform powered by RSS and ATproto. A window into the Atmosphere that organizes content into finite daily digests instead of infinite feeds.
-
-ATproto is just a means to an end. We're not advertising as "RSS on ATproto" but as a Social RSS reader (what Google Reader could have been).
+A calm content platform powered by RSS and ATProto. Not a classic RSS reader — a window into the Atmosphere that organizes content into finite daily digests instead of infinite feeds.
 
 **Core emotional promise:** Intentionality without deprivation. You still get the good stuff, but on your terms.
 
-**Target users:** People who want to consume content (blogs, microblogs, videos) without the anxiety of unread counts or the pull of endless scrolling. They value the open (social) web.
+**Target users:** People who want to consume content (blogs, microblogs, videos, podcasts) without the anxiety of unread counts or the pull of endless scrolling. They value the open web and the ATProto ecosystem.
 
 **What makes it different:**
 
 - Daily digests instead of an unread inbox
-- Social layer via ATProto backlinks
-- Three first-class content types with dedicated UIs
-- The "editor of your own publication" identity: you curate the sources you value
+- Social layer via ATProto backlinks — RSS becomes interactive
+- Four first-class content types with dedicated UIs
+- The "editor of your own publication" identity — you curate sources, not manage subscriptions
 
 </vision>
 
 ---
 
-<stack>
+<modes>
 
-## Tech Stack
+## Three Modes (Product Roadmap)
 
-### Backend
-- Go
-- Indigo
-- SQLite (via modernc)
+| Mode     | Status | Description                                                    |
+| -------- | ------ | -------------------------------------------------------------- |
+| Consume  | v1     | Daily digests, four content types, social layer, custom player |
+| Discover | Future | Find new sources via ATProto social graph, link extraction     |
+| Create   | Future | Post to Bluesky (and later long-form via standard.site)        |
 
-### Frontend
-- React 19
-- Tailwind CSS 4
-- Base UI
+**v1 is Consume only.** Discovery and Creation are future modes.
 
-</stack>
-
----
-
-<routes>
-
-## Main Routes
-
-| Route | Description |
-|:--|:--|
-| Discover | Find new people (to get their recommendations) and sources to follow. |
-| Sources | Managing subscribed sources. |
-| Library | Saved entries by the current user. Shared entries by their network. |
-| Digest | RSS-feed entries, grouped by day. The core of Morgenblau. |
-
-</routes>
+</modes>
 
 ---
 
@@ -81,11 +62,13 @@ Avoid: "manage subscriptions" in user copy (per `<brand>` — they're editors, n
 
 ---
 
-<lexicons>
+<platform>
 
-tbd
+## Platform
 
-</lexicons>
+**v1 is web-only.** No native apps, no PWA. Browser-first experience.
+
+</platform>
 
 ---
 
@@ -115,9 +98,31 @@ References:
 
 ---
 
+<daily-digests>
+
+## Daily Digests
+
+The core consumption model. Content is **grouped by day** into daily editions rather than presented as a continuous feed. "Daily" describes the *grouping*, not the *fetch cadence* — fetch cadence is governed by [Refresh Cadence](#refresh-cadence) under Feed Sources.
+
+### Empty Editions
+
+An empty edition is a feature, not a bug. Display a simple, calm message — _"Nothing new this morning. Enjoy your coffee."_ in the steady state; in-flight copy (e.g. _"Brewing your first edition…"_) when a refresh job is still running, so the empty state never reads as broken. No nudges, no guilt.
+
+### History
+
+Rolling window of past digests (exact retention TBD, roughly 30 days). Older content fades away — reinforces the daily mindset.
+
+### No Read Tracking
+
+No read state. No progress indicators. No "you've seen 8 of 12." Each edition simply exists. Content is not marked, dimmed, or tracked.
+
+</daily-digests>
+
+---
+
 <content-types>
 
-## Three Content Types
+## Four Content Types
 
 All four are first-class citizens in v1, each with a UI optimized for its format.
 
@@ -125,11 +130,16 @@ All four are first-class citizens in v1, each with a UI optimized for its format
 | --------- | ---------------------------------- | ------------------------ |
 | Blogpost  | Articles with titles and body text | In-app reader + link out |
 | Microblog | Short posts without a title        | Inline in digest         |
-| Video     | YouTube              | Video player in in-app reader            |
+| Video     | YouTube, Vimeo, etc.               | Custom player            |
+| Podcast   | Audio feeds                        | Custom player            |
 
 ### Reading Mode
 
 In-app reader by default — fetch and render article content directly. Users can always open the original URL. Both options available.
+
+### Media Playback
+
+The page around any player is Morgenblau's — our header, byline, source attribution, social backlinks. For audio, we render our own player rather than a bare HTML `<audio>` element. For provider-locked video, we use a **facade-then-iframe** pattern where the provider supports it: thumbnail and play button in Morgenblau chrome, swap in the provider's official embed only on click.
 
 ### Classification & Sanitization
 
@@ -137,7 +147,7 @@ Content type is **classified at fetch time and persisted** — entries land in s
 
 Documented exception: when the RSS feed only ships a summary, the reader **lazily** runs readability extraction against the source URL on first open and caches the sanitized result on the entry row. Eager sanitize-at-fetch still governs the feed-shipped body; the lazy path applies only to the readability-extracted body.
 
-Type-specific metadata (reading-time, YouTube video id, etc.) lives in a `metadata` JSON column on `feed_entries`. Fields get promoted to typed columns only when their content-type UI ships and the access patterns are known.
+Type-specific metadata (reading-time, YouTube video id, podcast enclosure + duration, etc.) lives in a `metadata` JSON column on `feed_entries`. Fields get promoted to typed columns only when their content-type UI ships and the access patterns are known.
 
 </content-types>
 
@@ -151,7 +161,7 @@ Views are filters of content, different lenses to look through.
 
 ### Default Views (Predefined)
 
-The app provides default views based on content type (e.g., Blogposts, Videos, Microblogs).
+The app provides default views based on content type (e.g., Blogposts, Videos, Podcasts, Microblogs).
 
 ### Custom Views (User-Created)
 
@@ -171,7 +181,7 @@ When a user opens Morgenblau, they land on **today's digest** — a unified view
 
 ### Adding Sources
 
-Users add sources by pasting a URL. Morgenblau resolves the URL into one or more feeds: it follows `<link rel="alternate" type="application/rss+xml">` (and Atom equivalents) on HTML pages, and maps YouTube channel / `@handle` / `/c/` / `/user/` URLs to the corresponding `feeds/videos.xml`. Each subscription is stored as an `app.skyreader.feed.subscription` record in the user's ATProto repo.
+Users add sources by pasting a URL. Morgenblau resolves the URL into one or more feeds: it follows `<link rel="alternate" type="application/rss+xml">` (and Atom equivalents) on HTML pages, maps YouTube channel / `@handle` / `/c/` / `/user/` URLs to the corresponding `feeds/videos.xml`, and resolves Apple Podcasts URLs to the show's RSS feed via the iTunes lookup API. Each subscription is stored as an `app.skyreader.feed.subscription` record in the user's ATProto repo.
 
 ### Organization
 
@@ -189,15 +199,17 @@ Refresh has **exactly three triggers**:
 - **On subscription add**, the new subscription is fetched immediately (only that feed, not the whole set).
 - **On login**, all of the user's subscriptions are refreshed (behaves like manual refresh), subject to a 5-minute in-flight guard so repeated logins don't thrash upstream feeds.
 
-User-initiated refreshes (manual, add, login) dispatch asynchronously, controllers return immediately. While any job is in flight the digest renders its loading skeleton, and once the job goes quiet the digest re-fetches in place. No count, no badge, no persistent indicator. Consistent with the "no unread counts" anti-feature.
+Notably absent: refresh on digest visit. The window metaphor is "step away, come back, content has accumulated on its own clock" — opening the digest (without authenticating) does not trigger fetches.
+
+User-initiated refreshes (manual, add, login) dispatch asynchronously — controllers return immediately. While any job is in flight the digest renders its loading skeleton, and once the job goes quiet the digest re-fetches in place. No count, no badge, no persistent indicator — consistent with the "no unread counts" anti-feature.
 
 Architecture must permit evolving toward finer real-time refresh per feed (HTTP caching headers, per-feed `next_check_at`, exponential backoff on errors).
 
 ### Failure Handling
 
-Failed fetches back off exponentially (5min → 15min → 1h → 6h → 24h cap) until success or auto-disable. After **20 consecutive failures** the feed is silently muted. Muted feeds still auto-retry once per day. On the first success they silently re-enable, no user action required.
+Failed fetches back off exponentially (5min → 15min → 1h → 6h → 24h cap) until success or auto-disable. After **20 consecutive failures** the feed is silently muted — no toasts, no banners, no digest-side nudges. Muted feeds still auto-retry once per day; on the first success they silently re-enable, no user action required.
 
-Failure state is **visible only in the sources list** as quiet metadata (last successful fetch time, muted state). The digest itself never surfaces feed errors — the calm-brand promise extends to "no apologies for missing content."
+Failure state is **visible only in the subscription list** as quiet metadata (last successful fetch time, muted state). The digest itself never surfaces feed errors — the calm-brand promise extends to "no apologies for missing content."
 
 </feed-sources>
 
@@ -209,10 +221,11 @@ Failure state is **visible only in the sources list** as quiet metadata (last su
 
 The core differentiator. For each piece of content, the app checks for ATProto backlinks and displays social context alongside it.
 
-### Scope
+### v1 Scope
 
-- **Read:** Show shares, Bluesky reposts and margin.at annotations. No like counts, shares are higher signal.
-- **Follow:** In-app follows stored as `app.skyreader.social.follow` records (separate from Bluesky social graph follows).
+- **Read:** Show Bluesky reposts and reply threads found via backlinks — social context, not engagement scoring. No like counts (calm-reader fit; can revisit if real demand surfaces).
+- **Follow:** In-app follows stored as `app.skyreader.social.follow` records (separate from Bluesky social graph follows)
+- No likes, reposting, replying, or other outbound interactions in v1. Saving and Sharing (see `<saving-sharing>`) are the v1 reactions.
 
 ### UX Principle
 
@@ -281,6 +294,22 @@ Simple and minimal.
 
 ---
 
+<navigation>
+
+## Navigation
+
+### Day Navigation
+
+**Calendar strip** — horizontal strip of days. Tap a day to see its digest.
+
+### Digest Layout
+
+**Vertical feed** — simple top-to-bottom scroll of cards. Clean and predictable. Primary sources may receive larger or more prominent cards.
+
+</navigation>
+
+---
+
 <anti-features>
 
 ## Anti-Features
@@ -301,11 +330,15 @@ Things Morgenblau will never do.
 
 ### Texture
 
-**Crisp morning.** Clear, sharp, awake, not warm and cozy. The terrace on a clear morning, not the candlelit cafe.
+**Crisp morning.** Clear, sharp, awake — not warm and cozy. The terrace on a clear morning, not the candlelit cafe.
 
 ### Core Metaphors
 
-- **The window**: something you choose to look through, then step away from. It never follows you around. What you see through it is finite and tied to today.
-- **The newspaper**: not the layout, but the feeling. A finite object with a clear start and end. A ritual, not a habit.
+- **The window** — something you choose to look through, then step away from. It never follows you around. What you see through it is finite and tied to today.
+- **The newspaper** — not the layout, but the feeling. A finite object with a clear start and end. A ritual, not a habit.
+
+### Identity
+
+Users aren't "managing subscriptions." They're the **editor of their own daily publication** — choosing sources, deciding who gets the front page.
 
 </brand>
