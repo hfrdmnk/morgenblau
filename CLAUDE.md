@@ -14,7 +14,7 @@ Write all Go code with Red-Green-TDD. Leverage Go's phenomenal testing suite.
 
 ## Lexicons
 
-`lexicons/` is reference, evolving toward a standardised RSS-reader lexicon for the AT atmosphere. `.json` files are read-only from this codebase. Only `lexicons/app/skyreader/IDEAS.md` is editable — record proposals there before changing schemas.
+Lexicon schemas live in `SPEC.md` under `<lexicons>`. Morgenblau owns `blue.morgen.*`; external lexicons we interoperate with (Bluesky, margin.at, Glean, Skyreader) are listed in the same section.
 
 ## Database
 

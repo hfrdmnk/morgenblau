@@ -70,7 +70,7 @@ Three near-synonyms with disciplined assignments to keep the codebase coherent.
 | Term             | Where it lives                                                                  | Refers to                                                |
 | ---------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | **Source**       | User-facing copy, routes (`/sources`), page labels                              | What the user *chooses* — their curated input list       |
-| **Subscription** | API (`/api/subscriptions`), Go entity, lexicon (`app.skyreader.feed.subscription`) | The PDS record representing one source                   |
+| **Subscription** | API (`/api/subscriptions`), Go entity, lexicon (`blue.morgen.feed.subscription`) | The PDS record representing one source                   |
 | **Feed**         | Internal/technical (RSS/Atom mechanics, fetch pipeline)                         | The underlying RSS/Atom URL the subscription points at   |
 
 A user **adds a source** → the app **creates a subscription record** → the fetcher **polls the feed**.
@@ -83,7 +83,223 @@ Avoid: "manage subscriptions" in user copy (per `<brand>` — they're editors, n
 
 <lexicons>
 
-tbd
+## Lexicons
+
+### Why Our Own Lexicon
+
+Morgenblau writes all user-owned records under `blue.morgen.*`. Skyreader's schemas are too verbose for our purpose: they denormalize metadata like `author`, `excerpt`, `image`, and `wordCount` that we'd rather look up from our Tier-2 cache. Glean's overlap is narrow: no share concept, plus `rating` and `quote` dimensions on annotations that we don't model.
+
+Owning the schema lets us stay minimal and move fast while still interoperating where it earns its keep. We import existing subscriptions and saves from other readers (user can choose to do so), and count cross-reader signals in discovery. The end goal is a shared standard between RSS readers in the atmosphere. Until that exists, `blue.morgen.*` is our contribution to the conversation.
+
+### Why a Separate Follow Graph
+
+A Bluesky follow means "I want this person's posts in my timeline." A Morgenblau follow means "I trust this person's reading taste." Morgenblau leans slower and more curatorial than Bluesky's fast-paced feed, so the same word carries different intent in each app.
+
+Bluesky follows are never auto-mirrored as Morgenblau follows. They surface only as discovery suggestions ("people you know from Bluesky") on the Discover route, which solves cold start without conflating the two signals.
+
+Skyreader's follow records are importable. The user's own `blue.morgen.graph.follow` records remain authoritative for their personal follow graph.
+
+### Our Records
+
+| NSID | Purpose |
+|:--|:--|
+| `blue.morgen.feed.subscription` | A user's curated feed source |
+| `blue.morgen.feed.save` | Saved item for later reading (private) |
+| `blue.morgen.feed.share` | Broadcast item (public "I like this") |
+| `blue.morgen.graph.follow` | In-app follow, distinct from Bluesky's |
+
+All four use `tid` rkeys, and all require `createdAt`. Every other field is optional. The record carries identity and intent. The Tier-2 cache renders the rest (see `<sync-architecture>`).
+
+#### `blue.morgen.feed.subscription`
+
+```json
+{
+  "lexicon": 1,
+  "id": "blue.morgen.feed.subscription",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A subscription to an RSS/Atom feed.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["feedUrl", "createdAt"],
+        "properties": {
+          "feedUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "URL of the RSS/Atom feed."
+          },
+          "title": {
+            "type": "string",
+            "maxGraphemes": 512,
+            "description": "Display title. Auto-prefilled from the feed, user-editable."
+          },
+          "siteUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "Human-facing site URL associated with the feed."
+          },
+          "tags": {
+            "type": "array",
+            "maxLength": 10,
+            "items": { "type": "string", "maxGraphemes": 64 },
+            "description": "User-defined tags."
+          },
+          "primary": {
+            "type": "boolean",
+            "description": "Whether the feed receives special treatment in the digest."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### `blue.morgen.feed.save`
+
+```json
+{
+  "lexicon": 1,
+  "id": "blue.morgen.feed.save",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A saved feed item for later reading.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["itemUrl", "createdAt"],
+        "properties": {
+          "itemUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "URL of the saved item."
+          },
+          "feedUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "URL of the source feed (optional provenance)."
+          },
+          "comment": {
+            "type": "string",
+            "maxGraphemes": 3000,
+            "description": "User's note on why they saved it."
+          },
+          "tags": {
+            "type": "array",
+            "maxLength": 10,
+            "items": { "type": "string", "maxGraphemes": 64 },
+            "description": "User-defined tags (e.g. 'read-later', 'favorite')."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### `blue.morgen.feed.share`
+
+```json
+{
+  "lexicon": 1,
+  "id": "blue.morgen.feed.share",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A shared feed item. Broadcasts 'I like this' with optional commentary.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["itemUrl", "createdAt"],
+        "properties": {
+          "itemUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "URL of the shared item."
+          },
+          "feedUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "URL of the source feed (optional provenance)."
+          },
+          "comment": {
+            "type": "string",
+            "maxGraphemes": 3000,
+            "description": "User's commentary on the share."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### `blue.morgen.graph.follow`
+
+```json
+{
+  "lexicon": 1,
+  "id": "blue.morgen.graph.follow",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "An in-app follow of another Morgenblau user. Distinct from a Bluesky follow.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["subject", "createdAt"],
+        "properties": {
+          "subject": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the user being followed."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### External Lexicons We Read
+
+| NSID | Source | How we use it |
+|:--|:--|:--|
+| `app.bsky.graph.follow` | Bluesky | Suggestions only ("people you know from Bluesky"); never auto-mirrored |
+| `at.margin.note` | margin.at | Margin annotations rendered alongside articles |
+| `at.glean.like` | Glean | Popularity signal (1×); importable as `blue.morgen.feed.save` |
+| `at.glean.subscription` | Glean | Importable as `blue.morgen.feed.subscription` |
+| `app.skyreader.feed.subscription` | Skyreader | Importable; respected in discovery |
+| `app.skyreader.feed.saved` | Skyreader | Popularity signal (1×); importable as `blue.morgen.feed.save` |
+| `app.skyreader.social.share` | Skyreader | Popularity signal (1.5×); importable as `blue.morgen.feed.share` |
+| `app.skyreader.social.follow` | Skyreader | Importable, never auto-mirrored |
+
+**Popularity weighting:** saves count 1×, shares 1.5×. Equivalent records on Skyreader and Glean are counted at the same weights. Glean's `annotation` (note, quote, rating) is not consumed. Annotations are delegated to margin.at.
 
 </lexicons>
 
@@ -104,7 +320,7 @@ Handle is never persisted in the DB. It's re-resolved on demand via indigo's cac
 
 The browser session cookie carries `(did, session_id)` only (sealed, `HttpOnly; Secure; SameSite=Lax`) — all OAuth material stays server-side.
 
-Scopes: granular `repo:app.skyreader.*` per-collection, following [Dan Abramov's guidance](https://underreacted.leaflet.pub/3mjfozhlhys2z). Avoid `transition:generic`.
+Scopes: granular `repo:blue.morgen.*` per-collection, following [Dan Abramov's guidance](https://underreacted.leaflet.pub/3mjfozhlhys2z). Avoid `transition:generic`.
 
 Public endpoints: `/oauth-client-metadata.json` (advertised `client_id` in prod), `/oauth-jwks.json` (public half of the P-256 client key), `/oauth/login` (POST), `/oauth/callback` (GET), `/oauth/logout` (POST).
 
@@ -171,7 +387,7 @@ When a user opens Morgenblau, they land on **today's digest** — a unified view
 
 ### Adding Sources
 
-Users add sources by pasting a URL. Morgenblau resolves the URL into one or more feeds: it follows `<link rel="alternate" type="application/rss+xml">` (and Atom equivalents) on HTML pages, and maps YouTube channel / `@handle` / `/c/` / `/user/` URLs to the corresponding `feeds/videos.xml`. Each subscription is stored as an `app.skyreader.feed.subscription` record in the user's ATProto repo.
+Users add sources by pasting a URL. Morgenblau resolves the URL into one or more feeds: it follows `<link rel="alternate" type="application/rss+xml">` (and Atom equivalents) on HTML pages, and maps YouTube channel / `@handle` / `/c/` / `/user/` URLs to the corresponding `feeds/videos.xml`. Each subscription is stored as a `blue.morgen.feed.subscription` record in the user's ATProto repo.
 
 ### Organization
 
@@ -212,34 +428,13 @@ The core differentiator. For each piece of content, the app checks for ATProto b
 ### Scope
 
 - **Read:** Show shares, Bluesky reposts and margin.at annotations. No like counts, shares are higher signal.
-- **Follow:** In-app follows stored as `app.skyreader.social.follow` records (separate from Bluesky social graph follows).
+- **Follow:** In-app follows stored as `blue.morgen.graph.follow` records (separate from Bluesky social graph follows).
 
 ### UX Principle
 
 Social context is available but not forced. The reading experience comes first. Reactions are opt-in per article — shown only if the user wants to see them.
 
 </social-layer>
-
----
-
-<atproto-lexicons>
-
-## ATProto Lexicons
-
-Morgenblau uses [Skyreader's](https://github.com/disnet/skyreader) lexicons (`app.skyreader.*`) for all user data stored in ATProto repos. This enables interoperability — data written by Morgenblau can be read by Skyreader and vice versa.
-
-Vendored lexicon schemas live in `lexicons/app/skyreader/`.
-
-Any local database tables that mirror PDS-resident data (e.g. a local `subscriptions` index for fast joins) are **derived indexes only** — reconciled from PDS reads, never authoritative. User-owned state always belongs in a lexicon record, not a local column.
-
-| Feature            | NSID                              | Schema                                          |
-| ------------------ | --------------------------------- | ----------------------------------------------- |
-| Feed subscriptions | `app.skyreader.feed.subscription` | `lexicons/app/skyreader/feed/subscription.json` |
-| Saved articles     | `app.skyreader.feed.saved`        | `lexicons/app/skyreader/feed/saved.json`        |
-| Shared articles    | `app.skyreader.social.share`      | `lexicons/app/skyreader/social/share.json`      |
-| In-app follows     | `app.skyreader.social.follow`     | `lexicons/app/skyreader/social/follow.json`     |
-
-</atproto-lexicons>
 
 ---
 
@@ -251,7 +446,7 @@ Two-tier storage with different authority and sharing models.
 
 ### Tier 1 — PDS-mirrored (per-user)
 
-User-owned records (`app.skyreader.feed.subscription`, `feed.saved`, `social.follow`, `social.share`) live authoritatively on the user's PDS. Local SQLite tables holding the same data are **derived indexes only** (per `<atproto-lexicons>`). Reconciliation: `listRecords` against PDS, diff against local index, apply changes. Reconciliation triggers are the same as fetch triggers in `<feed-sources>` (login, manual refresh, add).
+User-owned records (`blue.morgen.feed.subscription`, `feed.save`, `feed.share`, `graph.follow`) live authoritatively on the user's PDS. Local SQLite tables holding the same data are **derived indexes only** (per `<lexicons>`). Reconciliation: `listRecords` against PDS, diff against local index, apply changes. Reconciliation triggers are the same as fetch triggers in `<feed-sources>` (login, manual refresh, add).
 
 ### Tier 2 — Upstream cache (shared, global)
 
@@ -273,8 +468,8 @@ Cross-user dedup means *the existence of a feed URL in our cache* implies "at le
 
 Simple and minimal.
 
-- Users can **save** individual articles to a separate saved-items view — stored as `app.skyreader.feed.saved` records
-- Users can **share** articles with optional commentary — stored as `app.skyreader.social.share` records
+- Users can **save** individual articles to a separate saved-items view — stored as `blue.morgen.feed.save` records
+- Users can **share** articles with optional commentary — stored as `blue.morgen.feed.share` records
 - No folders, tags, or organization for saved content — just a list
 
 </saving-sharing>
