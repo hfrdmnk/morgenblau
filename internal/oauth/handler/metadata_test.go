@@ -31,7 +31,7 @@ func keyB64PEM(t *testing.T) string {
 func loopbackCfg(t *testing.T) *config.Config {
 	cfg, err := config.Load(map[string]string{
 		"BLUESKY_OAUTH_PRIVATE_KEY": keyB64PEM(t),
-		"BLUESKY_OAUTH_SCOPE":       "atproto repo:app.skyreader.feed.subscription",
+		"BLUESKY_OAUTH_SCOPE":       "atproto repo:blue.morgen.feed.subscription repo:blue.morgen.feed.save repo:blue.morgen.feed.share repo:blue.morgen.graph.follow",
 		"BLUESKY_OAUTH_CLIENT_NAME": "Morgenblau",
 		"BLUESKY_OAUTH_CLIENT_URI":  "http://localhost:8000",
 	})
@@ -44,7 +44,7 @@ func loopbackCfg(t *testing.T) *config.Config {
 func publishedCfg(t *testing.T) *config.Config {
 	cfg, err := config.Load(map[string]string{
 		"BLUESKY_OAUTH_PRIVATE_KEY": keyB64PEM(t),
-		"BLUESKY_OAUTH_SCOPE":       "atproto repo:app.skyreader.feed.subscription",
+		"BLUESKY_OAUTH_SCOPE":       "atproto repo:blue.morgen.feed.subscription repo:blue.morgen.feed.save repo:blue.morgen.feed.share repo:blue.morgen.graph.follow",
 		"BLUESKY_OAUTH_CLIENT_NAME": "Morgenblau",
 		"BLUESKY_OAUTH_CLIENT_URI":  "https://app.example.com",
 		"BLUESKY_CLIENT_ID":         "https://app.example.com/oauth-client-metadata.json",

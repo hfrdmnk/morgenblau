@@ -133,9 +133,6 @@ func entryRowToWire(row db.FeedEntry, sub db.UserSubscription, feed db.Feed) Ent
 		body = row.ExtractedBody
 	}
 	title := sub.Title
-	if sub.CustomTitle != nil && *sub.CustomTitle != "" {
-		title = sub.CustomTitle
-	}
 	return EntryWire{
 		ID:          row.ID,
 		EntrySlug:   row.EntrySlug,

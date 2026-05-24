@@ -91,12 +91,11 @@ func TestListSubscriptions_StopsOnEmptyCursor(t *testing.T) {
 
 func TestToPDSSubscription_Mapping(t *testing.T) {
 	r := recordEntry{
-		URI: "at://did:plc:alice/app.skyreader.feed.subscription/3la",
+		URI: "at://did:plc:alice/blue.morgen.feed.subscription/3la",
 		CID: "bafy",
 		Value: map[string]any{
-			"feedUrl":     "https://example.com/feed",
-			"title":       "Example",
-			"customTitle": "My Example",
+			"feedUrl": "https://example.com/feed",
+			"title":   "Example",
 		},
 	}
 	got := toPDSSubscription(r)
@@ -106,14 +105,14 @@ func TestToPDSSubscription_Mapping(t *testing.T) {
 	if got.FeedURL != "https://example.com/feed" {
 		t.Errorf("FeedURL = %q", got.FeedURL)
 	}
-	if got.Title != "Example" || got.CustomTitle != "My Example" {
-		t.Errorf("titles = %q / %q", got.Title, got.CustomTitle)
+	if got.Title != "Example" {
+		t.Errorf("title = %q", got.Title)
 	}
 }
 
 func TestToPDSSubscription_MissingOptionalFields(t *testing.T) {
 	got := toPDSSubscription(recordEntry{
-		URI: "at://did:plc:example/app.skyreader.feed.subscription/3la",
+		URI: "at://did:plc:example/blue.morgen.feed.subscription/3la",
 		CID: "bafy",
 		Value: map[string]any{
 			"feedUrl": "https://example.com/feed",
@@ -125,7 +124,7 @@ func TestToPDSSubscription_MissingOptionalFields(t *testing.T) {
 	if got.FeedURL != "https://example.com/feed" {
 		t.Errorf("FeedURL = %q", got.FeedURL)
 	}
-	if got.Title != "" || got.CustomTitle != "" {
-		t.Errorf("optional titles = %q / %q, want empty", got.Title, got.CustomTitle)
+	if got.Title != "" {
+		t.Errorf("optional title = %q, want empty", got.Title)
 	}
 }

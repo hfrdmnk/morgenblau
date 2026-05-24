@@ -9,7 +9,7 @@ import (
 	"morgenblau/internal/atprepo"
 )
 
-const subscriptionCollection = "app.skyreader.feed.subscription"
+const subscriptionCollection = "blue.morgen.feed.subscription"
 
 // SessionPDSLister calls com.atproto.repo.listRecords against the session's
 // PDS, paging through cursors until exhausted.
@@ -68,15 +68,16 @@ func pageSubscriptions(ctx context.Context, client listRecordsClient, repo strin
 }
 
 func toPDSSubscription(r recordEntry) PDSSubscription {
+	// TODO(blue.morgen lexicon): once published, validate r.Value against
+	// blue.morgen.feed.subscription with lexicon.LenientMode (read-path
+	// tolerates unknown fields from older producers). Reject malformed records.
 	feedURL, _ := r.Value["feedUrl"].(string)
 	title, _ := r.Value["title"].(string)
-	customTitle, _ := r.Value["customTitle"].(string)
 	return PDSSubscription{
-		URI:         r.URI,
-		Rkey:        atprepo.RkeyFromATURI(r.URI),
-		FeedURL:     feedURL,
-		Title:       title,
-		CustomTitle: customTitle,
+		URI:     r.URI,
+		Rkey:    atprepo.RkeyFromATURI(r.URI),
+		FeedURL: feedURL,
+		Title:   title,
 	}
 }
 

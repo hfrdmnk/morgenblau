@@ -12,7 +12,7 @@ import (
 )
 
 // RkeyFromATURI extracts the rkey segment from an at-uri like
-// at://did:plc:alice/app.skyreader.feed.subscription/3la123.
+// at://did:plc:alice/blue.morgen.feed.subscription/3la123.
 func RkeyFromATURI(uri string) string {
 	parts := strings.Split(uri, "/")
 	if len(parts) != 5 || parts[0] != "at:" || parts[1] != "" || parts[2] == "" || parts[3] == "" || parts[4] == "" {

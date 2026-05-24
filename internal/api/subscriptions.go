@@ -18,7 +18,7 @@ import (
 	"morgenblau/internal/middleware/auth"
 )
 
-const subscriptionCollection = "app.skyreader.feed.subscription"
+const subscriptionCollection = "blue.morgen.feed.subscription"
 
 // SubscriptionWire is the on-the-wire shape returned by GET / POST. The list
 // endpoint additionally fills FaviconURL, Frequency, and LastPublishedAt;
@@ -114,9 +114,6 @@ func rowToWire(row db.UserSubscription) SubscriptionWire {
 		value["title"] = *row.Title
 		title = *row.Title
 	}
-	if row.CustomTitle != nil {
-		value["customTitle"] = *row.CustomTitle
-	}
 	return SubscriptionWire{
 		URI:     row.AtUri,
 		Value:   value,
@@ -132,9 +129,6 @@ func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) Subscrip
 	if row.Title != nil {
 		value["title"] = *row.Title
 		title = *row.Title
-	}
-	if row.CustomTitle != nil {
-		value["customTitle"] = *row.CustomTitle
 	}
 	siteURL := ""
 	if row.SiteUrl != nil {
@@ -276,10 +270,9 @@ type addRequest struct {
 }
 
 type addItem struct {
-	FeedURL     string `json:"feedUrl"`
-	Title       string `json:"title"`
-	CustomTitle string `json:"customTitle"`
-	SiteURL     string `json:"siteUrl"`
+	FeedURL string `json:"feedUrl"`
+	Title   string `json:"title"`
+	SiteURL string `json:"siteUrl"`
 }
 
 type addResponse struct {
@@ -342,7 +335,8 @@ func SubscriptionsCreateHandler(
 				return
 			}
 
-			// Step 2: PDS write. title = canonical (from resolver), customTitle = user override.
+			// Step 2: PDS write. Single user-editable title; the resolver
+			// prefilled it client-side, the user may have overridden before submit.
 			record := map[string]any{
 				"feedUrl":   item.FeedURL,
 				"createdAt": now,
@@ -350,12 +344,14 @@ func SubscriptionsCreateHandler(
 			if item.Title != "" {
 				record["title"] = item.Title
 			}
-			if item.CustomTitle != "" {
-				record["customTitle"] = item.CustomTitle
-			}
 			if item.SiteURL != "" {
 				record["siteUrl"] = item.SiteURL
 			}
+			// TODO(blue.morgen lexicon): once the blue.morgen.feed.subscription
+			// lexicon is published as a com.atproto.lexicon.schema record and
+			// resolvable on the network, validate `record` before write. Use
+			// lexicon.ValidateRecord(&catalog, obj, "blue.morgen.feed.subscription", 0)
+			// after decoding with data.UnmarshalJSON. See SPEC.md <lexicons>.
 			ref, err := pds.CreateRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), record)
 			if err != nil {
 				slog.Warn("/api/subscriptions: PDS create failed", "err", err)
@@ -366,7 +362,6 @@ func SubscriptionsCreateHandler(
 
 			// Step 3: Tier-2 catalog upsert (dedup by canonical URL).
 			titlePtr := nilIfEmpty(item.Title)
-			customTitlePtr := nilIfEmpty(item.CustomTitle)
 			siteURLPtr := nilIfEmpty(item.SiteURL)
 			if err := writer.UpsertFeed(r.Context(), db.UpsertFeedParams{
 				FeedUrl:   item.FeedURL,
@@ -379,14 +374,13 @@ func SubscriptionsCreateHandler(
 
 			// Step 4: Tier-1 index upsert.
 			if err := writer.UpsertUserSubscription(r.Context(), db.UpsertUserSubscriptionParams{
-				Did:         didStr,
-				Rkey:        rkey,
-				AtUri:       ref.URI,
-				FeedUrl:     item.FeedURL,
-				Title:       titlePtr,
-				CustomTitle: customTitlePtr,
-				CreatedAt:   now,
-				UpdatedAt:   now,
+				Did:       didStr,
+				Rkey:      rkey,
+				AtUri:     ref.URI,
+				FeedUrl:   item.FeedURL,
+				Title:     titlePtr,
+				CreatedAt: now,
+				UpdatedAt: now,
 			}); err != nil {
 				slog.Error("/api/subscriptions: Tier-1 upsert failed; dispatching sync_user to reconcile from PDS", "err", err)
 				if _, derr := disp.StartManualRefresh(r.Context(), sess.Data.AccountDID, sess.Data.SessionID); derr != nil {
@@ -401,9 +395,6 @@ func SubscriptionsCreateHandler(
 			}
 			if item.Title != "" {
 				value["title"] = item.Title
-			}
-			if item.CustomTitle != "" {
-				value["customTitle"] = item.CustomTitle
 			}
 			out.Records = append(out.Records, SubscriptionWire{
 				URI:     ref.URI,

@@ -46,12 +46,11 @@ type OauthSession struct {
 }
 
 type UserSubscription struct {
-	Did         string  `json:"did"`
-	Rkey        string  `json:"rkey"`
-	AtUri       string  `json:"at_uri"`
-	FeedUrl     string  `json:"feed_url"`
-	Title       *string `json:"title"`
-	CustomTitle *string `json:"custom_title"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
+	Did       string  `json:"did"`
+	Rkey      string  `json:"rkey"`
+	AtUri     string  `json:"at_uri"`
+	FeedUrl   string  `json:"feed_url"`
+	Title     *string `json:"title"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
 }

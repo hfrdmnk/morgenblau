@@ -20,7 +20,6 @@ type fakePipelineQueries struct {
 	fetchStates    []db.UpdateFeedFetchStateParams
 	feeds          []db.UpsertFeedParams
 	entries        []db.UpsertFeedEntryParams
-	titleUpdates   []db.UpdateUserSubscriptionsTitleByFeedURLParams
 	iconUpdates    []db.SetFeedIconURLParams
 	upsertFeedErr  error
 	upsertEntryErr error
@@ -46,11 +45,6 @@ func (f *fakePipelineQueries) UpsertFeed(_ context.Context, arg db.UpsertFeedPar
 func (f *fakePipelineQueries) UpsertFeedEntry(_ context.Context, arg db.UpsertFeedEntryParams) error {
 	f.entries = append(f.entries, arg)
 	return f.upsertEntryErr
-}
-
-func (f *fakePipelineQueries) UpdateUserSubscriptionsTitleByFeedURL(_ context.Context, arg db.UpdateUserSubscriptionsTitleByFeedURLParams) error {
-	f.titleUpdates = append(f.titleUpdates, arg)
-	return nil
 }
 
 func (f *fakePipelineQueries) SetFeedIconURL(_ context.Context, arg db.SetFeedIconURLParams) error {
@@ -147,9 +141,6 @@ func TestFeedPipeline_FetchAndStore_HappyPath(t *testing.T) {
 	}
 	if q.entries[0].ContentHtml == nil || strings.Contains(*q.entries[0].ContentHtml, "<script") {
 		t.Errorf("first body was not sanitized: %v", q.entries[0].ContentHtml)
-	}
-	if len(q.titleUpdates) != 1 || q.titleUpdates[0].Title == nil || *q.titleUpdates[0].Title != "Example Feed" {
-		t.Errorf("title updates = %+v", q.titleUpdates)
 	}
 	if len(fav.sites) != 1 || fav.sites[0] != "https://site.example.com/" {
 		t.Errorf("favicon sites = %v", fav.sites)

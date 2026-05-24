@@ -69,12 +69,11 @@ func entryFixture() db.FeedEntry {
 	}
 }
 
-func subscriptionFixture(canonical, custom *string) db.UserSubscription {
+func subscriptionFixture(title *string) db.UserSubscription {
 	return db.UserSubscription{
-		Did:         "did:plc:alice",
-		FeedUrl:     "https://example.test/feed.xml",
-		Title:       canonical,
-		CustomTitle: custom,
+		Did:     "did:plc:alice",
+		FeedUrl: "https://example.test/feed.xml",
+		Title:   title,
 	}
 }
 
@@ -94,7 +93,7 @@ func TestEntry_HappyPath(t *testing.T) {
 	r := &fakeEntryReader{
 		entry:        entryFixture(),
 		subOK:        true,
-		subscription: subscriptionFixture(strPtr("Example Source"), nil),
+		subscription: subscriptionFixture(strPtr("Example Source")),
 		feed:         feedFixture(),
 	}
 	mux := http.NewServeMux()
@@ -121,49 +120,6 @@ func TestEntry_HappyPath(t *testing.T) {
 	}
 	if got.Source.SiteURL == nil || *got.Source.SiteURL != "https://example.test" {
 		t.Errorf("Source.SiteURL = %v, want site URL", got.Source.SiteURL)
-	}
-}
-
-func TestEntry_SourceTitle_CustomOverridesCanonical(t *testing.T) {
-	r := &fakeEntryReader{
-		entry:        entryFixture(),
-		subOK:        true,
-		subscription: subscriptionFixture(strPtr("Example Source"), strPtr("My Example Source")),
-		feed:         feedFixture(),
-	}
-	mux := http.NewServeMux()
-	mux.Handle("GET /api/entries/{slug}", EntryHandler(r))
-
-	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/abc1234567", nil), "did:plc:alice", "sid-1")
-	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d", rr.Code)
-	}
-	var got EntryWire
-	_ = json.Unmarshal(rr.Body.Bytes(), &got)
-	if got.Source.Title == nil || *got.Source.Title != "My Example Source" {
-		t.Errorf("Source.Title = %v, want custom title", got.Source.Title)
-	}
-}
-
-func TestEntry_SourceTitle_EmptyCustomFallsBackToCanonical(t *testing.T) {
-	r := &fakeEntryReader{
-		entry:        entryFixture(),
-		subOK:        true,
-		subscription: subscriptionFixture(strPtr("Example Source"), strPtr("")),
-		feed:         feedFixture(),
-	}
-	mux := http.NewServeMux()
-	mux.Handle("GET /api/entries/{slug}", EntryHandler(r))
-
-	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/abc1234567", nil), "did:plc:alice", "sid-1")
-	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
-	var got EntryWire
-	_ = json.Unmarshal(rr.Body.Bytes(), &got)
-	if got.Source.Title == nil || *got.Source.Title != "Example Source" {
-		t.Errorf("Source.Title = %v, want canonical title when custom is empty", got.Source.Title)
 	}
 }
 
@@ -200,7 +156,7 @@ func TestEntryExtract_CachedReturn(t *testing.T) {
 	r := &fakeEntryReader{
 		entry:        entry,
 		subOK:        true,
-		subscription: subscriptionFixture(strPtr("Example Source"), nil),
+		subscription: subscriptionFixture(strPtr("Example Source")),
 		feed:         feedFixture(),
 	}
 	mux := http.NewServeMux()
@@ -244,7 +200,7 @@ func TestEntryExtract_FreshExtraction_Success(t *testing.T) {
 	r := &fakeEntryReader{
 		entry:        entry,
 		subOK:        true,
-		subscription: subscriptionFixture(strPtr("Example Source"), nil),
+		subscription: subscriptionFixture(strPtr("Example Source")),
 		feed:         feedFixture(),
 	}
 	mux := http.NewServeMux()
@@ -289,7 +245,7 @@ func TestEntryExtract_UpstreamNon2xx_502(t *testing.T) {
 	r := &fakeEntryReader{
 		entry:        entry,
 		subOK:        true,
-		subscription: subscriptionFixture(strPtr("Example Source"), nil),
+		subscription: subscriptionFixture(strPtr("Example Source")),
 		feed:         feedFixture(),
 	}
 	mux := http.NewServeMux()
@@ -318,7 +274,7 @@ func TestEntryExtract_NetworkFailure_502(t *testing.T) {
 	r := &fakeEntryReader{
 		entry:        entry,
 		subOK:        true,
-		subscription: subscriptionFixture(strPtr("Example Source"), nil),
+		subscription: subscriptionFixture(strPtr("Example Source")),
 		feed:         feedFixture(),
 	}
 	mux := http.NewServeMux()

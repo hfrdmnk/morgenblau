@@ -41,7 +41,6 @@ type Source = {
     lastPublishedAt?: string;
     value: {
         title?: string;
-        customTitle?: string;
         feedUrl?: string;
         siteUrl?: string;
         [k: string]: unknown;
@@ -114,7 +113,7 @@ export function Sources() {
             method: 'PATCH',
             headers: { 'content-type': 'application/json' },
             credentials: 'same-origin',
-            body: JSON.stringify({ customTitle: title }),
+            body: JSON.stringify({ title }),
         });
         if (!resp.ok) return false;
         setState((cur) => {
@@ -125,7 +124,8 @@ export function Sources() {
                     r.rkey === rkey
                         ? {
                             ...r,
-                            value: { ...r.value, customTitle: title },
+                            title,
+                            value: { ...r.value, title },
                         }
                         : r,
                 ),
@@ -215,10 +215,7 @@ function addedToSource(added: AddedSubscription): Source {
 }
 
 function displayLabel(s: Source): string {
-    const custom =
-        typeof s.value.customTitle === 'string' ? s.value.customTitle : '';
     return (
-        custom ||
         s.title ||
         (typeof s.value.title === 'string' ? s.value.title : '') ||
         s.feedUrl ||

@@ -34,12 +34,9 @@ type DiscoverResult = {
 
 type SubscriptionItem = {
     feedUrl: string;
-    // Canonical feed title from the resolver. Frozen — user edits go to customTitle.
+    // User-editable display title. Prefilled from the resolver, then owned by
+    // the user (lexicon: blue.morgen.feed.subscription `title` is user-editable).
     title: string;
-    // What the user typed. Prefilled with the canonical title; on submit, any
-    // value that differs from the canonical (after trim) is persisted as the
-    // per-user override.
-    customTitle: string;
     siteUrl: string;
 };
 
@@ -49,11 +46,9 @@ type Props = {
 };
 
 function toItem(candidate: FeedCandidate): SubscriptionItem {
-    const canonical = candidate.title ?? '';
     return {
         feedUrl: candidate.feedUrl,
-        title: canonical,
-        customTitle: canonical,
+        title: candidate.title ?? '',
         siteUrl: candidate.siteUrl ?? '',
     };
 }
@@ -256,7 +251,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
             Object.fromEntries(
                 subscriptions.map((item) => [
                     item.feedUrl,
-                    { customTitle: item.customTitle },
+                    { title: item.title },
                 ]),
             ),
         [subscriptions],
@@ -286,13 +281,11 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         });
     }, []);
 
-    const handleCustomTitleChange = useCallback(
-        (feedUrl: string, customTitle: string) => {
+    const handleTitleChange = useCallback(
+        (feedUrl: string, title: string) => {
             setSubscriptions((current) =>
                 current.map((item) =>
-                    item.feedUrl === feedUrl
-                        ? { ...item, customTitle }
-                        : item,
+                    item.feedUrl === feedUrl ? { ...item, title } : item,
                 ),
             );
         },
@@ -322,20 +315,11 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         setSubmitError(undefined);
         setFieldErrors({});
 
-        // Trim-exact match against canonical = no override. Case and internal
-        // whitespace differences persist as customTitle.
-        const payload = subscriptions.map((item) => {
-            const typed = item.customTitle.trim();
-            const canonical = item.title.trim();
-            const customTitleOut =
-                typed.length > 0 && typed !== canonical ? typed : '';
-            return {
-                feedUrl: item.feedUrl,
-                title: item.title,
-                customTitle: customTitleOut,
-                siteUrl: item.siteUrl,
-            };
-        });
+        const payload = subscriptions.map((item) => ({
+            feedUrl: item.feedUrl,
+            title: item.title.trim(),
+            siteUrl: item.siteUrl,
+        }));
 
         try {
             const response = await fetch('/api/subscriptions', {
@@ -470,7 +454,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                                     existingByFeedUrl={existingByFeedUrl}
                                     selected={selectedMap}
                                     onToggle={toggleCandidate}
-                                    onCustomTitleChange={handleCustomTitleChange}
+                                    onTitleChange={handleTitleChange}
                                     firstCheckboxRef={firstCheckboxRef}
                                     firstTitleInputRef={firstTitleInputRef}
                                 />

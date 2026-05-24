@@ -16,7 +16,7 @@ CREATE TABLE feeds (
     updated_at       TEXT NOT NULL
 );
 
--- Tier-1: per-user derived index of app.skyreader.feed.subscription records
+-- Tier-1: per-user derived index of blue.morgen.feed.subscription records
 -- on the user's PDS. Reconciled, not authoritative — PDS is canonical.
 CREATE TABLE user_subscriptions (
     did              TEXT NOT NULL,
@@ -24,7 +24,6 @@ CREATE TABLE user_subscriptions (
     at_uri           TEXT NOT NULL,
     feed_url         TEXT NOT NULL,
     title            TEXT,
-    custom_title     TEXT,
     created_at       TEXT NOT NULL,
     updated_at       TEXT NOT NULL,
     PRIMARY KEY (did, rkey),

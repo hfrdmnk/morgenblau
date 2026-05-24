@@ -29,8 +29,7 @@ type IndexDeleter interface {
 }
 
 type patchRequest struct {
-	Title       *string `json:"title"`
-	CustomTitle *string `json:"customTitle"`
+	Title *string `json:"title"`
 }
 
 // SubscriptionsPatchHandler updates metadata on the user's subscription via
@@ -71,16 +70,9 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		// Decide what's actually changing.
 		changed := false
 		newTitle := row.Title
-		newCustomTitle := row.CustomTitle
 		if body.Title != nil {
 			if changedString(row.Title, *body.Title) {
 				newTitle = nilIfEmpty(*body.Title)
-				changed = true
-			}
-		}
-		if body.CustomTitle != nil {
-			if changedString(row.CustomTitle, *body.CustomTitle) {
-				newCustomTitle = nilIfEmpty(*body.CustomTitle)
 				changed = true
 			}
 		}
@@ -100,10 +92,12 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		if newTitle != nil {
 			record["title"] = *newTitle
 		}
-		if newCustomTitle != nil {
-			record["customTitle"] = *newCustomTitle
-		}
 
+		// TODO(blue.morgen lexicon): once the blue.morgen.feed.subscription
+		// lexicon is published as a com.atproto.lexicon.schema record and
+		// resolvable on the network, validate `record` before write. Use
+		// lexicon.ValidateRecord(&catalog, obj, "blue.morgen.feed.subscription", 0)
+		// after decoding with data.UnmarshalJSON. See SPEC.md <lexicons>.
 		ref, err := pds.PutRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), rkey, record)
 		if err != nil {
 			slog.Warn("/api/subscriptions PATCH: PDS put failed", "err", err)
@@ -112,19 +106,17 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
 		if err := writer.UpsertUserSubscription(r.Context(), db.UpsertUserSubscriptionParams{
-			Did:         didStr,
-			Rkey:        rkey,
-			AtUri:       ref.URI,
-			FeedUrl:     row.FeedUrl,
-			Title:       newTitle,
-			CustomTitle: newCustomTitle,
-			CreatedAt:   row.CreatedAt,
-			UpdatedAt:   now,
+			Did:       didStr,
+			Rkey:      rkey,
+			AtUri:     ref.URI,
+			FeedUrl:   row.FeedUrl,
+			Title:     newTitle,
+			CreatedAt: row.CreatedAt,
+			UpdatedAt: now,
 		}); err != nil {
 			slog.Warn("/api/subscriptions PATCH: Tier-1 upsert failed", "err", err)
 		}
 		row.Title = newTitle
-		row.CustomTitle = newCustomTitle
 		row.UpdatedAt = now
 		row.AtUri = ref.URI
 		writeJSON(w, rowToWire(row))

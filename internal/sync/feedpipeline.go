@@ -54,7 +54,6 @@ type pipelineQueries interface {
 	UpdateFeedFetchState(ctx context.Context, arg db.UpdateFeedFetchStateParams) error
 	UpsertFeed(ctx context.Context, arg db.UpsertFeedParams) error
 	UpsertFeedEntry(ctx context.Context, arg db.UpsertFeedEntryParams) error
-	UpdateUserSubscriptionsTitleByFeedURL(ctx context.Context, arg db.UpdateUserSubscriptionsTitleByFeedURLParams) error
 	SetFeedIconURL(ctx context.Context, arg db.SetFeedIconURLParams) error
 }
 
@@ -107,8 +106,10 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 		return nil
 	}
 
-	// Refresh feed-level metadata opportunistically.
-	feedTitle := strings.TrimSpace(res.Feed.Title)
+	// Refresh feed-level metadata opportunistically. The feed-claimed title
+	// (res.Feed.Title) is intentionally not persisted to Tier-1: the
+	// blue.morgen.feed.subscription `title` is user-owned (prefilled at add,
+	// edited via PATCH) and would be clobbered by a refresh.
 	feedSite := strings.TrimSpace(res.Feed.Link)
 	if feedSite == "" {
 		// Fall back to the feed URL's origin so favicon discovery still has
@@ -140,16 +141,6 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 		} else if err != nil {
 			slog.Warn("feedpipeline: favicon discovery failed", "site", feedSite, "err", err)
 		}
-	}
-
-	// Push the canonical title down to every subscriber's Tier-1 row.
-	// custom_title is left untouched.
-	if err := p.queries.UpdateUserSubscriptionsTitleByFeedURL(ctx, db.UpdateUserSubscriptionsTitleByFeedURLParams{
-		Title:     nilIfEmpty(feedTitle),
-		UpdatedAt: nowStr,
-		FeedUrl:   feedURL,
-	}); err != nil {
-		slog.Warn("feedpipeline: Tier-1 title refresh failed", "url", feedURL, "err", err)
 	}
 
 	for _, item := range res.Feed.Items {

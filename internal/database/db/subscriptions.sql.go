@@ -46,7 +46,7 @@ func (q *Queries) GetFeed(ctx context.Context, feedUrl string) (Feed, error) {
 }
 
 const getUserSubscription = `-- name: GetUserSubscription :one
-SELECT did, rkey, at_uri, feed_url, title, custom_title, created_at, updated_at
+SELECT did, rkey, at_uri, feed_url, title, created_at, updated_at
 FROM user_subscriptions WHERE did = ? AND rkey = ?
 `
 
@@ -64,7 +64,6 @@ func (q *Queries) GetUserSubscription(ctx context.Context, arg GetUserSubscripti
 		&i.AtUri,
 		&i.FeedUrl,
 		&i.Title,
-		&i.CustomTitle,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -72,7 +71,7 @@ func (q *Queries) GetUserSubscription(ctx context.Context, arg GetUserSubscripti
 }
 
 const getUserSubscriptionByFeedURL = `-- name: GetUserSubscriptionByFeedURL :one
-SELECT did, rkey, at_uri, feed_url, title, custom_title, created_at, updated_at
+SELECT did, rkey, at_uri, feed_url, title, created_at, updated_at
 FROM user_subscriptions WHERE did = ? AND feed_url = ?
 `
 
@@ -90,7 +89,6 @@ func (q *Queries) GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserS
 		&i.AtUri,
 		&i.FeedUrl,
 		&i.Title,
-		&i.CustomTitle,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -99,7 +97,7 @@ func (q *Queries) GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserS
 
 const listUserSourcesWithStats = `-- name: ListUserSourcesWithStats :many
 SELECT
-    us.did, us.rkey, us.at_uri, us.feed_url, us.title, us.custom_title,
+    us.did, us.rkey, us.at_uri, us.feed_url, us.title,
     us.created_at, us.updated_at,
     f.site_url, f.icon_url,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
@@ -111,7 +109,7 @@ SELECT
 FROM user_subscriptions us
 LEFT JOIN feeds f ON f.feed_url = us.feed_url
 WHERE us.did = ?6
-ORDER BY COALESCE(NULLIF(us.custom_title, ''), us.title, us.feed_url) COLLATE NOCASE ASC
+ORDER BY COALESCE(NULLIF(us.title, ''), us.feed_url) COLLATE NOCASE ASC
 `
 
 type ListUserSourcesWithStatsParams struct {
@@ -129,7 +127,6 @@ type ListUserSourcesWithStatsRow struct {
 	AtUri            string      `json:"at_uri"`
 	FeedUrl          string      `json:"feed_url"`
 	Title            *string     `json:"title"`
-	CustomTitle      *string     `json:"custom_title"`
 	CreatedAt        string      `json:"created_at"`
 	UpdatedAt        string      `json:"updated_at"`
 	SiteUrl          *string     `json:"site_url"`
@@ -167,7 +164,6 @@ func (q *Queries) ListUserSourcesWithStats(ctx context.Context, arg ListUserSour
 			&i.AtUri,
 			&i.FeedUrl,
 			&i.Title,
-			&i.CustomTitle,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SiteUrl,
@@ -193,9 +189,9 @@ func (q *Queries) ListUserSourcesWithStats(ctx context.Context, arg ListUserSour
 }
 
 const listUserSubscriptions = `-- name: ListUserSubscriptions :many
-SELECT did, rkey, at_uri, feed_url, title, custom_title, created_at, updated_at
+SELECT did, rkey, at_uri, feed_url, title, created_at, updated_at
 FROM user_subscriptions WHERE did = ?
-ORDER BY COALESCE(NULLIF(custom_title, ''), title, feed_url) COLLATE NOCASE ASC
+ORDER BY COALESCE(NULLIF(title, ''), feed_url) COLLATE NOCASE ASC
 `
 
 func (q *Queries) ListUserSubscriptions(ctx context.Context, did string) ([]UserSubscription, error) {
@@ -213,7 +209,6 @@ func (q *Queries) ListUserSubscriptions(ctx context.Context, did string) ([]User
 			&i.AtUri,
 			&i.FeedUrl,
 			&i.Title,
-			&i.CustomTitle,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -278,23 +273,6 @@ func (q *Queries) UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchS
 	return err
 }
 
-const updateUserSubscriptionsTitleByFeedURL = `-- name: UpdateUserSubscriptionsTitleByFeedURL :exec
-UPDATE user_subscriptions
-SET title = ?, updated_at = ?
-WHERE feed_url = ?
-`
-
-type UpdateUserSubscriptionsTitleByFeedURLParams struct {
-	Title     *string `json:"title"`
-	UpdatedAt string  `json:"updated_at"`
-	FeedUrl   string  `json:"feed_url"`
-}
-
-func (q *Queries) UpdateUserSubscriptionsTitleByFeedURL(ctx context.Context, arg UpdateUserSubscriptionsTitleByFeedURLParams) error {
-	_, err := q.db.ExecContext(ctx, updateUserSubscriptionsTitleByFeedURL, arg.Title, arg.UpdatedAt, arg.FeedUrl)
-	return err
-}
-
 const upsertFeed = `-- name: UpsertFeed :exec
 INSERT INTO feeds (feed_url, site_url, created_at, updated_at)
 VALUES (?, ?, ?, ?)
@@ -322,25 +300,23 @@ func (q *Queries) UpsertFeed(ctx context.Context, arg UpsertFeedParams) error {
 
 const upsertUserSubscription = `-- name: UpsertUserSubscription :exec
 INSERT INTO user_subscriptions (
-    did, rkey, at_uri, feed_url, title, custom_title, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    did, rkey, at_uri, feed_url, title, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (did, rkey) DO UPDATE SET
-    at_uri       = excluded.at_uri,
-    feed_url     = excluded.feed_url,
-    title        = excluded.title,
-    custom_title = excluded.custom_title,
-    updated_at   = excluded.updated_at
+    at_uri     = excluded.at_uri,
+    feed_url   = excluded.feed_url,
+    title      = excluded.title,
+    updated_at = excluded.updated_at
 `
 
 type UpsertUserSubscriptionParams struct {
-	Did         string  `json:"did"`
-	Rkey        string  `json:"rkey"`
-	AtUri       string  `json:"at_uri"`
-	FeedUrl     string  `json:"feed_url"`
-	Title       *string `json:"title"`
-	CustomTitle *string `json:"custom_title"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
+	Did       string  `json:"did"`
+	Rkey      string  `json:"rkey"`
+	AtUri     string  `json:"at_uri"`
+	FeedUrl   string  `json:"feed_url"`
+	Title     *string `json:"title"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
 }
 
 func (q *Queries) UpsertUserSubscription(ctx context.Context, arg UpsertUserSubscriptionParams) error {
@@ -350,7 +326,6 @@ func (q *Queries) UpsertUserSubscription(ctx context.Context, arg UpsertUserSubs
 		arg.AtUri,
 		arg.FeedUrl,
 		arg.Title,
-		arg.CustomTitle,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

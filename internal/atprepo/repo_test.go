@@ -48,9 +48,9 @@ func TestRkeyFromATURI(t *testing.T) {
 		in   string
 		want string
 	}{
-		{in: "at://did:plc:example/app.skyreader.feed.subscription/3la", want: "3la"},
+		{in: "at://did:plc:example/blue.morgen.feed.subscription/3la", want: "3la"},
 		{in: "not-an-at-uri", want: ""},
-		{in: "at://did:plc:example/app.skyreader.feed.subscription/", want: ""},
+		{in: "at://did:plc:example/blue.morgen.feed.subscription/", want: ""},
 	}
 
 	for _, tt := range cases {
@@ -68,11 +68,11 @@ func TestCreateRecord_PostsCorrectBody(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatal(err)
 		}
-		_ = json.NewEncoder(w).Encode(RecordRef{URI: "at://did:plc:example/app.skyreader.feed.subscription/3la", CID: "bafy"})
+		_ = json.NewEncoder(w).Encode(RecordRef{URI: "at://did:plc:example/blue.morgen.feed.subscription/3la", CID: "bafy"})
 	})
 	defer srv.Close()
 
-	out, err := (SessionWriter{}).CreateRecord(context.Background(), newTestSession(t, srv), syntax.NSID("app.skyreader.feed.subscription"), map[string]any{
+	out, err := (SessionWriter{}).CreateRecord(context.Background(), newTestSession(t, srv), syntax.NSID("blue.morgen.feed.subscription"), map[string]any{
 		"feedUrl": "https://example.com/feed.xml",
 	})
 	if err != nil {
@@ -81,7 +81,7 @@ func TestCreateRecord_PostsCorrectBody(t *testing.T) {
 	if out.URI == "" || out.CID != "bafy" {
 		t.Fatalf("ref = %+v", out)
 	}
-	assertRepoWriteBody(t, got, "did:plc:example", "app.skyreader.feed.subscription", "", "https://example.com/feed.xml")
+	assertRepoWriteBody(t, got, "did:plc:example", "blue.morgen.feed.subscription", "", "https://example.com/feed.xml")
 }
 
 func TestPutRecord_PostsCorrectBody(t *testing.T) {
@@ -90,17 +90,17 @@ func TestPutRecord_PostsCorrectBody(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatal(err)
 		}
-		_ = json.NewEncoder(w).Encode(RecordRef{URI: "at://did:plc:example/app.skyreader.feed.subscription/3la", CID: "bafy"})
+		_ = json.NewEncoder(w).Encode(RecordRef{URI: "at://did:plc:example/blue.morgen.feed.subscription/3la", CID: "bafy"})
 	})
 	defer srv.Close()
 
-	_, err := (SessionWriter{}).PutRecord(context.Background(), newTestSession(t, srv), syntax.NSID("app.skyreader.feed.subscription"), "3la", map[string]any{
+	_, err := (SessionWriter{}).PutRecord(context.Background(), newTestSession(t, srv), syntax.NSID("blue.morgen.feed.subscription"), "3la", map[string]any{
 		"feedUrl": "https://example.com/feed.xml",
 	})
 	if err != nil {
 		t.Fatalf("PutRecord: %v", err)
 	}
-	assertRepoWriteBody(t, got, "did:plc:example", "app.skyreader.feed.subscription", "3la", "https://example.com/feed.xml")
+	assertRepoWriteBody(t, got, "did:plc:example", "blue.morgen.feed.subscription", "3la", "https://example.com/feed.xml")
 }
 
 func TestDeleteRecord_PostsCorrectBody(t *testing.T) {
@@ -113,13 +113,13 @@ func TestDeleteRecord_PostsCorrectBody(t *testing.T) {
 	})
 	defer srv.Close()
 
-	if err := (SessionWriter{}).DeleteRecord(context.Background(), newTestSession(t, srv), syntax.NSID("app.skyreader.feed.subscription"), "3la"); err != nil {
+	if err := (SessionWriter{}).DeleteRecord(context.Background(), newTestSession(t, srv), syntax.NSID("blue.morgen.feed.subscription"), "3la"); err != nil {
 		t.Fatalf("DeleteRecord: %v", err)
 	}
 	if got["repo"] != "did:plc:example" {
 		t.Errorf("repo = %v", got["repo"])
 	}
-	if got["collection"] != "app.skyreader.feed.subscription" {
+	if got["collection"] != "blue.morgen.feed.subscription" {
 		t.Errorf("collection = %v", got["collection"])
 	}
 	if got["rkey"] != "3la" {
@@ -135,7 +135,7 @@ func TestCreateRecord_PropagatesUpstreamError(t *testing.T) {
 	})
 	defer srv.Close()
 
-	_, err := (SessionWriter{}).CreateRecord(context.Background(), newTestSession(t, srv), syntax.NSID("app.skyreader.feed.subscription"), map[string]any{
+	_, err := (SessionWriter{}).CreateRecord(context.Background(), newTestSession(t, srv), syntax.NSID("blue.morgen.feed.subscription"), map[string]any{
 		"feedUrl": "https://example.com/feed.xml",
 	})
 	if err == nil {

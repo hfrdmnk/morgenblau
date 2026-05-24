@@ -51,7 +51,7 @@ func (r *rkeyIndex) seed(did, rkey, feedURL string) {
 	row := db.UserSubscription{
 		Did:       did,
 		Rkey:      rkey,
-		AtUri:     "at://" + did + "/app.skyreader.feed.subscription/" + rkey,
+		AtUri:     "at://" + did + "/blue.morgen.feed.subscription/" + rkey,
 		FeedUrl:   feedURL,
 		CreatedAt: "2026-05-15T10:00:00Z",
 		UpdatedAt: "2026-05-15T10:00:00Z",
@@ -103,24 +103,23 @@ func TestSubscriptionsPatch_OtherUserRkey_403(t *testing.T) {
 	}
 }
 
-func TestSubscriptionsPatch_TitleAndCustomTitle_Applied(t *testing.T) {
+func TestSubscriptionsPatch_Title_Applied(t *testing.T) {
 	idx := newRkeyIndex()
 	idx.seedRow(db.UserSubscription{
-		Did:         "did:plc:alice",
-		Rkey:        "3la",
-		AtUri:       "at://did:plc:alice/app.skyreader.feed.subscription/3la",
-		FeedUrl:     "https://example.test/feed.xml",
-		Title:       ptrString("Old Title"),
-		CustomTitle: ptrString("Old Custom"),
-		CreatedAt:   "2026-05-15T10:00:00Z",
-		UpdatedAt:   "2026-05-15T10:00:00Z",
+		Did:       "did:plc:alice",
+		Rkey:      "3la",
+		AtUri:     "at://did:plc:alice/blue.morgen.feed.subscription/3la",
+		FeedUrl:   "https://example.test/feed.xml",
+		Title:     ptrString("Old Title"),
+		CreatedAt: "2026-05-15T10:00:00Z",
+		UpdatedAt: "2026-05-15T10:00:00Z",
 	})
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
 	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
-		strings.NewReader(`{"title":"New Title","customTitle":"New Custom"}`)), "did:plc:alice", "sid-1")
+		strings.NewReader(`{"title":"New Title"}`)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -134,9 +133,6 @@ func TestSubscriptionsPatch_TitleAndCustomTitle_Applied(t *testing.T) {
 	if got.Title != "New Title" {
 		t.Errorf("response title = %q", got.Title)
 	}
-	if got.Value["customTitle"] != "New Custom" {
-		t.Errorf("response customTitle = %v", got.Value["customTitle"])
-	}
 	row, err := idx.GetUserSubscriptionByFeedURL(context.Background(), db.GetUserSubscriptionByFeedURLParams{
 		Did:     "did:plc:alice",
 		FeedUrl: "https://example.test/feed.xml",
@@ -146,9 +142,6 @@ func TestSubscriptionsPatch_TitleAndCustomTitle_Applied(t *testing.T) {
 	}
 	if row.Title == nil || *row.Title != "New Title" {
 		t.Errorf("stored title = %v", row.Title)
-	}
-	if row.CustomTitle == nil || *row.CustomTitle != "New Custom" {
-		t.Errorf("stored custom title = %v", row.CustomTitle)
 	}
 }
 

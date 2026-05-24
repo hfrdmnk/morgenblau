@@ -48,14 +48,13 @@ func (f *fakeIndex) ListUserSourcesWithStats(_ context.Context, arg db.ListUserS
 	out := make([]db.ListUserSourcesWithStatsRow, 0)
 	for _, r := range f.rows[arg.Did] {
 		out = append(out, db.ListUserSourcesWithStatsRow{
-			Did:         r.Did,
-			Rkey:        r.Rkey,
-			AtUri:       r.AtUri,
-			FeedUrl:     r.FeedUrl,
-			Title:       r.Title,
-			CustomTitle: r.CustomTitle,
-			CreatedAt:   r.CreatedAt,
-			UpdatedAt:   r.UpdatedAt,
+			Did:       r.Did,
+			Rkey:      r.Rkey,
+			AtUri:     r.AtUri,
+			FeedUrl:   r.FeedUrl,
+			Title:     r.Title,
+			CreatedAt: r.CreatedAt,
+			UpdatedAt: r.UpdatedAt,
 		})
 	}
 	return out, nil
@@ -87,14 +86,13 @@ func (f *fakeIndex) UpsertUserSubscription(_ context.Context, arg db.UpsertUserS
 		f.rows[arg.Did] = map[string]db.UserSubscription{}
 	}
 	f.rows[arg.Did][arg.FeedUrl] = db.UserSubscription{
-		Did:         arg.Did,
-		Rkey:        arg.Rkey,
-		AtUri:       arg.AtUri,
-		FeedUrl:     arg.FeedUrl,
-		Title:       arg.Title,
-		CustomTitle: arg.CustomTitle,
-		CreatedAt:   arg.CreatedAt,
-		UpdatedAt:   arg.UpdatedAt,
+		Did:       arg.Did,
+		Rkey:      arg.Rkey,
+		AtUri:     arg.AtUri,
+		FeedUrl:   arg.FeedUrl,
+		Title:     arg.Title,
+		CreatedAt: arg.CreatedAt,
+		UpdatedAt: arg.UpdatedAt,
 	}
 	return nil
 }
@@ -123,7 +121,7 @@ func (p *fakePDS) CreateRecord(_ context.Context, sess *oauth.ClientSession, _ s
 	p.lastRec = record
 	rkey := "3la" + itoa(p.creates)
 	return &atprepo.RecordRef{
-		URI: "at://" + sess.Data.AccountDID.String() + "/app.skyreader.feed.subscription/" + rkey,
+		URI: "at://" + sess.Data.AccountDID.String() + "/blue.morgen.feed.subscription/" + rkey,
 		CID: "bafyreiabc",
 	}, nil
 }
@@ -209,7 +207,7 @@ func TestSubscriptionsList_FromIndex(t *testing.T) {
 		"https://example.test/feed.xml": {
 			Did:     "did:plc:alice",
 			Rkey:    "3la",
-			AtUri:   "at://did:plc:alice/app.skyreader.feed.subscription/3la",
+			AtUri:   "at://did:plc:alice/blue.morgen.feed.subscription/3la",
 			FeedUrl: "https://example.test/feed.xml",
 		},
 	}
@@ -350,7 +348,7 @@ func TestSubscriptionsCreate_DedupeGuard_Idempotent(t *testing.T) {
 		feed: {
 			Did:     "did:plc:alice",
 			Rkey:    "3laOLD",
-			AtUri:   "at://did:plc:alice/app.skyreader.feed.subscription/3laOLD",
+			AtUri:   "at://did:plc:alice/blue.morgen.feed.subscription/3laOLD",
 			FeedUrl: feed,
 			Title:   ptrString("Existing"),
 		},

@@ -48,7 +48,7 @@ func genP384B64PEM(t *testing.T) string {
 func baseEnv(t *testing.T) map[string]string {
 	return map[string]string{
 		"BLUESKY_OAUTH_PRIVATE_KEY": genP256B64PEM(t),
-		"BLUESKY_OAUTH_SCOPE":       "atproto repo:app.skyreader.feed.subscription",
+		"BLUESKY_OAUTH_SCOPE":       "atproto repo:blue.morgen.feed.subscription repo:blue.morgen.feed.save repo:blue.morgen.feed.share repo:blue.morgen.graph.follow",
 		"BLUESKY_OAUTH_CLIENT_NAME": "Morgenblau",
 		"BLUESKY_OAUTH_CLIENT_URI":  "https://app.example.com",
 		"APP_URL":                   "https://app.example.com",
@@ -132,7 +132,7 @@ func TestLoad_RejectsMissingScope(t *testing.T) {
 
 func TestLoad_RejectsScopeWithoutAtproto(t *testing.T) {
 	env := baseEnv(t)
-	env["BLUESKY_OAUTH_SCOPE"] = "repo:app.skyreader.feed.subscription"
+	env["BLUESKY_OAUTH_SCOPE"] = "repo:blue.morgen.feed.subscription"
 	_, err := Load(env)
 	if err == nil {
 		t.Fatal("expected error when scope missing 'atproto'")
