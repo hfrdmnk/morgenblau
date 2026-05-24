@@ -1,0 +1,50 @@
+{
+  "lexicon": 1,
+  "id": "blue.morgen.feed.save",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A saved feed item for later reading.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["itemUrl", "createdAt"],
+        "properties": {
+          "itemUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "URL of the saved item."
+          },
+          "feedUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "URL of the source feed (optional provenance)."
+          },
+          "comment": {
+            "type": "string",
+            "maxGraphemes": 3000,
+            "maxLength": 30000,
+            "description": "User's note on why they saved it."
+          },
+          "facets": {
+            "type": "array",
+            "items": { "type": "ref", "ref": "app.bsky.richtext.facet" },
+            "description": "Rich-text annotations (mentions, links, tags) over `comment`."
+          },
+          "tags": {
+            "type": "array",
+            "maxLength": 10,
+            "items": { "type": "string", "maxGraphemes": 64, "maxLength": 640 },
+            "description": "Free-form, user-defined tags (e.g. 'read-later', 'favorite'). No controlled vocabulary."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

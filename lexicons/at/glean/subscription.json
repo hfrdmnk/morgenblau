@@ -1,0 +1,30 @@
+{
+  "lexicon": 1,
+  "id": "at.glean.subscription",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "description": "A single RSS feed subscription.",
+      "record": {
+        "type": "object",
+        "required": ["feedUrl"],
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "feedUrl": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "lexicon": 1,
+  "id": "blue.morgen.access",
+  "defs": {
+    "main": {
+      "type": "permission-set",
+      "title": "Morgenblau",
+      "detail": "Manage your Morgenblau subscriptions, saves, shares, and follows.",
+      "permissions": [
+        {
+          "type": "permission",
+          "resource": "repo",
+          "collection": [
+            "blue.morgen.feed.subscription",
+            "blue.morgen.feed.save",
+            "blue.morgen.feed.share",
+            "blue.morgen.graph.follow"
+          ]
+        }
+      ]
+    }
+  }
+}

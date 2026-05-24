@@ -97,8 +97,6 @@ A Bluesky follow means "I want this person's posts in my timeline." A Morgenblau
 
 Bluesky follows are never auto-mirrored as Morgenblau follows. They surface only as discovery suggestions ("people you know from Bluesky") on the Discover route, which solves cold start without conflating the two signals.
 
-Skyreader's follow records are importable. The user's own `blue.morgen.graph.follow` records remain authoritative for their personal follow graph.
-
 ### Our Records
 
 | NSID | Purpose |
@@ -133,7 +131,8 @@ All four use `tid` rkeys, and all require `createdAt`. Every other field is opti
           },
           "title": {
             "type": "string",
-            "maxGraphemes": 512,
+            "maxGraphemes": 128,
+            "maxLength": 1280,
             "description": "Display title. Auto-prefilled from the feed, user-editable."
           },
           "siteUrl": {
@@ -145,8 +144,8 @@ All four use `tid` rkeys, and all require `createdAt`. Every other field is opti
           "tags": {
             "type": "array",
             "maxLength": 10,
-            "items": { "type": "string", "maxGraphemes": 64 },
-            "description": "User-defined tags."
+            "items": { "type": "string", "maxGraphemes": 64, "maxLength": 640 },
+            "description": "Free-form, user-defined tags. No controlled vocabulary."
           },
           "primary": {
             "type": "boolean",
@@ -193,13 +192,19 @@ All four use `tid` rkeys, and all require `createdAt`. Every other field is opti
           "comment": {
             "type": "string",
             "maxGraphemes": 3000,
+            "maxLength": 30000,
             "description": "User's note on why they saved it."
+          },
+          "facets": {
+            "type": "array",
+            "items": { "type": "ref", "ref": "app.bsky.richtext.facet" },
+            "description": "Rich-text annotations (mentions, links, tags) over `comment`."
           },
           "tags": {
             "type": "array",
             "maxLength": 10,
-            "items": { "type": "string", "maxGraphemes": 64 },
-            "description": "User-defined tags (e.g. 'read-later', 'favorite')."
+            "items": { "type": "string", "maxGraphemes": 64, "maxLength": 640 },
+            "description": "Free-form, user-defined tags (e.g. 'read-later', 'favorite'). No controlled vocabulary."
           },
           "createdAt": {
             "type": "string",
@@ -242,7 +247,13 @@ All four use `tid` rkeys, and all require `createdAt`. Every other field is opti
           "comment": {
             "type": "string",
             "maxGraphemes": 3000,
+            "maxLength": 30000,
             "description": "User's commentary on the share."
+          },
+          "facets": {
+            "type": "array",
+            "items": { "type": "ref", "ref": "app.bsky.richtext.facet" },
+            "description": "Rich-text annotations (mentions, links, tags) over `comment`."
           },
           "createdAt": {
             "type": "string",
@@ -297,7 +308,6 @@ All four use `tid` rkeys, and all require `createdAt`. Every other field is opti
 | `app.skyreader.feed.subscription` | Skyreader | Importable; respected in discovery |
 | `app.skyreader.feed.saved` | Skyreader | Popularity signal (1×); importable as `blue.morgen.feed.save` |
 | `app.skyreader.social.share` | Skyreader | Popularity signal (1.5×); importable as `blue.morgen.feed.share` |
-| `app.skyreader.social.follow` | Skyreader | Importable, never auto-mirrored |
 
 **Popularity weighting:** saves count 1×, shares 1.5×. Equivalent records on Skyreader and Glean are counted at the same weights. Glean's `annotation` (note, quote, rating) is not consumed. Annotations are delegated to margin.at.
 

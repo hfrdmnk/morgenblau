@@ -1,0 +1,44 @@
+{
+  "lexicon": 1,
+  "id": "blue.morgen.feed.share",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A shared feed item. Broadcasts 'I like this' with optional commentary.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["itemUrl", "createdAt"],
+        "properties": {
+          "itemUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "URL of the shared item."
+          },
+          "feedUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "URL of the source feed (optional provenance)."
+          },
+          "comment": {
+            "type": "string",
+            "maxGraphemes": 3000,
+            "maxLength": 30000,
+            "description": "User's commentary on the share."
+          },
+          "facets": {
+            "type": "array",
+            "items": { "type": "ref", "ref": "app.bsky.richtext.facet" },
+            "description": "Rich-text annotations (mentions, links, tags) over `comment`."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

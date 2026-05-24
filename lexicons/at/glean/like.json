@@ -1,0 +1,27 @@
+{
+  "lexicon": 1,
+  "id": "at.glean.like",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "description": "Like an RSS article.",
+      "record": {
+        "type": "object",
+        "required": ["feedUrl", "articleUrl"],
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "feedUrl": {
+            "type": "string"
+          },
+          "articleUrl": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
