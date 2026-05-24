@@ -470,7 +470,7 @@ Simple and minimal.
 
 - Users can **save** individual articles to a separate saved-items view — stored as `blue.morgen.feed.save` records
 - Users can **share** articles with optional commentary — stored as `blue.morgen.feed.share` records
-- No folders, tags, or organization for saved content — just a list
+- Saves carry optional user-defined `tags` (e.g. `read-later`, `favorite`). Flat tag list, no folders or hierarchies. Filtering surfaces through Views.
 
 </saving-sharing>
 
