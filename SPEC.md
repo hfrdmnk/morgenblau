@@ -297,6 +297,14 @@ All four use `tid` rkeys, and all require `createdAt`. Every other field is opti
 }
 ```
 
+### Permission Set
+
+| NSID | Purpose |
+|:--|:--|
+| `blue.morgen.access` | Bundles write access to the four `blue.morgen.*` collections into a single OAuth scope (`include:blue.morgen.access`) |
+
+Published as a `permission-set` lexicon so OAuth clients request one scope instead of enumerating four `repo:` grants. Authority for `blue.morgen.*` is claimed via `_lexicon.morgen.blue` DNS TXT pointing at the publisher DID.
+
 ### External Lexicons We Read
 
 | NSID | Source | How we use it |
@@ -330,7 +338,7 @@ Handle is never persisted in the DB. It's re-resolved on demand via indigo's cac
 
 The browser session cookie carries `(did, session_id)` only (sealed, `HttpOnly; Secure; SameSite=Lax`) — all OAuth material stays server-side.
 
-Scopes: granular `repo:blue.morgen.*` per-collection, following [Dan Abramov's guidance](https://underreacted.leaflet.pub/3mjfozhlhys2z). Avoid `transition:generic`.
+Scopes: `atproto include:blue.morgen.access`, following [Dan Abramov's guidance](https://underreacted.leaflet.pub/3mjfozhlhys2z). The permission set expands to per-collection `repo:` writes on the four `blue.morgen.*` collections. Avoid `transition:generic` and the unsupported partial wildcard `repo:blue.morgen.*`.
 
 Public endpoints: `/oauth-client-metadata.json` (advertised `client_id` in prod), `/oauth-jwks.json` (public half of the P-256 client key), `/oauth/login` (POST), `/oauth/callback` (GET), `/oauth/logout` (POST).
 
