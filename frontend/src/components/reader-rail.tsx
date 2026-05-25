@@ -18,18 +18,26 @@ export type ExtractedToggle = {
     onClick: () => void;
 };
 
+export type SavedToggle = {
+    initial: { rkey: string } | null;
+    itemUrl: string;
+    feedUrl: string | null;
+};
+
 type ReaderRailProps = {
     sourceUrl: string | null;
     extractedToggle?: ExtractedToggle;
+    savedToggle?: SavedToggle;
     showProgress?: boolean;
 };
 
 const RAIL_BUTTON_BASE =
-    'inline-flex size-9 items-center justify-center rounded-xl transition-colors duration-200 ease-out outline-none focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid';
+    'rail-icon-btn inline-flex size-9 items-center justify-center rounded-xl outline-none focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid';
 
 export function ReaderRail({
     sourceUrl,
     extractedToggle,
+    savedToggle,
     showProgress = true,
 }: ReaderRailProps) {
     const progress = useScrollProgress(showProgress);
@@ -44,6 +52,7 @@ export function ReaderRail({
                     <RailIcons
                         sourceUrl={sourceUrl}
                         extractedToggle={extractedToggle}
+                        savedToggle={savedToggle}
                     />
                     {showProgress ? (
                         <ScrollProgressTrack
@@ -68,6 +77,7 @@ export function ReaderRail({
                     <RailIcons
                         sourceUrl={sourceUrl}
                         extractedToggle={extractedToggle}
+                        savedToggle={savedToggle}
                     />
                 </div>
             </aside>
@@ -78,15 +88,21 @@ export function ReaderRail({
 function RailIcons({
     sourceUrl,
     extractedToggle,
+    savedToggle,
 }: {
     sourceUrl: string | null;
     extractedToggle?: ExtractedToggle;
+    savedToggle?: SavedToggle;
 }) {
     const safeSource = safeHref(sourceUrl);
 
     return (
         <>
-            <DisabledRailIcon icon={Bookmark01Icon} label="Save" />
+            {savedToggle ? (
+                <SaveRailIcon toggle={savedToggle} />
+            ) : (
+                <DisabledRailIcon icon={Bookmark01Icon} label="Save" />
+            )}
             <DisabledRailIcon icon={Share01Icon} label="Share" />
             {extractedToggle ? (
                 <ExtractedToggleIcon
@@ -100,10 +116,7 @@ function RailIcons({
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="Open original article"
-                    className={cn(
-                        RAIL_BUTTON_BASE,
-                        'text-muted-foreground hover:text-foreground',
-                    )}
+                    className="inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
                 >
                     <HugeiconsIcon
                         icon={LinkSquare01Icon}
@@ -122,19 +135,21 @@ function ExtractedToggleIcon({
     state: ExtractedToggleState;
     onClick: () => void;
 }) {
-    const isLoading = state === 'loading';
-    const isActive = state === 'active';
+    const { displayed, swapping } = useDeferredState(state);
+    const isLoading = displayed === 'loading';
+    const isActive = displayed === 'active';
 
     return (
         <button
             type="button"
             onClick={onClick}
-            disabled={isLoading}
+            disabled={state === 'loading'}
             aria-pressed={isActive}
             aria-label={
                 isActive ? 'Show feed version' : 'Show extracted version'
             }
             aria-busy={isLoading || undefined}
+            data-swapping={swapping || undefined}
             className={cn(
                 RAIL_BUTTON_BASE,
                 'disabled:cursor-wait',
@@ -150,6 +165,86 @@ function ExtractedToggleIcon({
                     isLoading && 'motion-safe:animate-spin',
                 )}
             />
+        </button>
+    );
+}
+
+type SaveStatus = 'idle' | 'saved';
+
+function SaveRailIcon({ toggle }: { toggle: SavedToggle }) {
+    const initialStatus: SaveStatus = toggle.initial ? 'saved' : 'idle';
+    const [status, setStatus] = useState<SaveStatus>(initialStatus);
+    const [rkey, setRkey] = useState<string | null>(toggle.initial?.rkey ?? null);
+    const [busy, setBusy] = useState(false);
+    const { displayed, swapping } = useDeferredState(status);
+
+    const isSaved = displayed === 'saved';
+    const label = status === 'saved' ? 'Remove from saves' : 'Save for later';
+
+    const onClick = () => {
+        if (busy) return;
+        if (status === 'saved') {
+            if (!rkey) return;
+            const previousRkey = rkey;
+            setBusy(true);
+            setStatus('idle');
+            setRkey(null);
+            fetch(`/api/saves/${encodeURIComponent(previousRkey)}`, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+            })
+                .then((r) => {
+                    if (!r.ok && r.status !== 204) throw new Error(String(r.status));
+                })
+                .catch(() => {
+                    setStatus('saved');
+                    setRkey(previousRkey);
+                })
+                .finally(() => setBusy(false));
+            return;
+        }
+        setBusy(true);
+        setStatus('saved');
+        fetch('/api/saves', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                itemUrl: toggle.itemUrl,
+                feedUrl: toggle.feedUrl ?? undefined,
+            }),
+        })
+            .then(async (r) => {
+                if (!r.ok) throw new Error(String(r.status));
+                const payload = (await r.json()) as { rkey: string };
+                setRkey(payload.rkey);
+            })
+            .catch(() => {
+                setStatus('idle');
+                setRkey(null);
+            })
+            .finally(() => setBusy(false));
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={busy}
+            aria-pressed={isSaved}
+            aria-label={label}
+            aria-busy={busy || undefined}
+            data-swapping={swapping || undefined}
+            data-saved={isSaved || undefined}
+            className={cn(
+                RAIL_BUTTON_BASE,
+                'disabled:cursor-wait',
+                isSaved
+                    ? 'text-primary hover:text-primary'
+                    : 'text-muted-foreground hover:text-foreground',
+            )}
+        >
+            <HugeiconsIcon icon={Bookmark01Icon} className="size-[1.125rem]" />
         </button>
     );
 }
@@ -172,6 +267,39 @@ function DisabledRailIcon({
             <HugeiconsIcon icon={icon} className="size-[1.125rem]" />
         </button>
     );
+}
+
+// useDeferredState mirrors a target value with a brief swap-blur transition:
+// when target changes, the button blurs for ~150ms, then `displayed` catches
+// up, then the blur releases ~30ms later. The two-stage gap lets the CSS
+// transition mask the icon swap. Works whether the change comes from a click
+// (SaveRailIcon) or a parent prop (ExtractedToggleIcon). Reduced-motion users
+// get an instant update.
+function useDeferredState<T>(target: T): { displayed: T; swapping: boolean } {
+    const [displayed, setDisplayed] = useState(target);
+    const [swapping, setSwapping] = useState(false);
+
+    useEffect(() => {
+        if (Object.is(displayed, target)) return;
+        if (
+            typeof window === 'undefined' ||
+            window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ) {
+            setDisplayed(target);
+            return;
+        }
+        setSwapping(true);
+        const id = window.setTimeout(() => setDisplayed(target), 150);
+        return () => window.clearTimeout(id);
+    }, [target, displayed]);
+
+    useEffect(() => {
+        if (!swapping || !Object.is(displayed, target)) return;
+        const id = window.setTimeout(() => setSwapping(false), 30);
+        return () => window.clearTimeout(id);
+    }, [displayed, target, swapping]);
+
+    return { displayed, swapping };
 }
 
 const RING_RADIUS = 8.25;

@@ -45,6 +45,16 @@ type OauthSession struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
+type UserSave struct {
+	Did       string  `json:"did"`
+	Rkey      string  `json:"rkey"`
+	AtUri     string  `json:"at_uri"`
+	ItemUrl   string  `json:"item_url"`
+	FeedUrl   *string `json:"feed_url"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
+}
+
 type UserSubscription struct {
 	Did       string  `json:"did"`
 	Rkey      string  `json:"rkey"`

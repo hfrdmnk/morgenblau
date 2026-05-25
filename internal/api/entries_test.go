@@ -23,6 +23,9 @@ type fakeEntryReader struct {
 	subscription db.UserSubscription
 	feed         db.Feed
 	feedErr      error
+	save         db.UserSave
+	saveOK       bool
+	saveErr      error
 }
 
 func (f *fakeEntryReader) GetFeedEntryBySlug(_ context.Context, _ string) (db.FeedEntry, error) {
@@ -47,6 +50,16 @@ func (f *fakeEntryReader) GetFeed(_ context.Context, _ string) (db.Feed, error) 
 		return db.Feed{}, f.feedErr
 	}
 	return f.feed, nil
+}
+
+func (f *fakeEntryReader) GetUserSaveByItemURL(_ context.Context, _ db.GetUserSaveByItemURLParams) (db.UserSave, error) {
+	if f.saveErr != nil {
+		return db.UserSave{}, f.saveErr
+	}
+	if !f.saveOK {
+		return db.UserSave{}, sql.ErrNoRows
+	}
+	return f.save, nil
 }
 
 func (f *fakeEntryReader) UpdateFeedEntryExtractedBody(_ context.Context, arg db.UpdateFeedEntryExtractedBodyParams) error {
@@ -120,6 +133,66 @@ func TestEntry_HappyPath(t *testing.T) {
 	}
 	if got.Source.SiteURL == nil || *got.Source.SiteURL != "https://example.test" {
 		t.Errorf("Source.SiteURL = %v, want site URL", got.Source.SiteURL)
+	}
+}
+
+func TestEntry_SavedState_Populated(t *testing.T) {
+	r := &fakeEntryReader{
+		entry:        entryFixture(),
+		subOK:        true,
+		subscription: subscriptionFixture(strPtr("Example Source")),
+		feed:         feedFixture(),
+		saveOK:       true,
+		save: db.UserSave{
+			Did:     "did:plc:alice",
+			Rkey:    "3laSAVE",
+			ItemUrl: "https://example.test/post",
+		},
+	}
+	mux := http.NewServeMux()
+	mux.Handle("GET /api/entries/{slug}", EntryHandler(r))
+
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/abc1234567", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	var got EntryWire
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.SavedState == nil {
+		t.Fatal("savedState = nil, want populated")
+	}
+	if got.SavedState.Rkey != "3laSAVE" {
+		t.Errorf("savedState.rkey = %q", got.SavedState.Rkey)
+	}
+}
+
+func TestEntry_SavedState_NotSaved_Nil(t *testing.T) {
+	r := &fakeEntryReader{
+		entry:        entryFixture(),
+		subOK:        true,
+		subscription: subscriptionFixture(strPtr("Example Source")),
+		feed:         feedFixture(),
+		saveOK:       false,
+	}
+	mux := http.NewServeMux()
+	mux.Handle("GET /api/entries/{slug}", EntryHandler(r))
+
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/abc1234567", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d", rr.Code)
+	}
+	var got EntryWire
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.SavedState != nil {
+		t.Errorf("savedState = %+v, want nil", got.SavedState)
 	}
 }
 

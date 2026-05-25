@@ -32,6 +32,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("PATCH /api/subscriptions/{rkey}", api.SubscriptionsPatchHandler(s.queries, s.queries, pdsWriter))
 	mux.Handle("DELETE /api/subscriptions/{rkey}", api.SubscriptionsDeleteHandler(s.queries, s.queries, pdsWriter))
 
+	mux.Handle("POST /api/saves", api.SavesCreateHandler(s.queries, s.queries, pdsWriter))
+	mux.Handle("DELETE /api/saves/{rkey}", api.SavesDeleteHandler(s.queries, s.queries, pdsWriter))
+
 	mux.Handle("GET /api/jobs/active", api.JobsActiveHandler(s.jobs))
 	mux.Handle("GET /api/jobs/{id}", api.JobsGetHandler(s.jobs))
 	mux.Handle("GET /api/digest", api.DigestHandler(s.queries, s.jobs))

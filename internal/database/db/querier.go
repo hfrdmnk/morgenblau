@@ -12,11 +12,14 @@ type Querier interface {
 	DeleteAuthRequest(ctx context.Context, state string) error
 	DeleteExpiredAuthRequests(ctx context.Context, expiresAt string) (int64, error)
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
+	DeleteUserSave(ctx context.Context, arg DeleteUserSaveParams) error
 	DeleteUserSubscription(ctx context.Context, arg DeleteUserSubscriptionParams) error
 	GetAuthRequest(ctx context.Context, state string) (GetAuthRequestRow, error)
 	GetFeed(ctx context.Context, feedUrl string) (Feed, error)
 	GetFeedEntryBySlug(ctx context.Context, entrySlug string) (FeedEntry, error)
 	GetSession(ctx context.Context, arg GetSessionParams) ([]byte, error)
+	GetUserSave(ctx context.Context, arg GetUserSaveParams) (UserSave, error)
+	GetUserSaveByItemURL(ctx context.Context, arg GetUserSaveByItemURLParams) (UserSave, error)
 	GetUserSubscription(ctx context.Context, arg GetUserSubscriptionParams) (UserSubscription, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserSubscriptionByFeedURLParams) (UserSubscription, error)
 	ListAllEntriesForUser(ctx context.Context, did string) ([]ListAllEntriesForUserRow, error)
@@ -35,6 +38,7 @@ type Querier interface {
 	UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchStateParams) error
 	UpsertFeed(ctx context.Context, arg UpsertFeedParams) error
 	UpsertFeedEntry(ctx context.Context, arg UpsertFeedEntryParams) error
+	UpsertUserSave(ctx context.Context, arg UpsertUserSaveParams) error
 	UpsertUserSubscription(ctx context.Context, arg UpsertUserSubscriptionParams) error
 }
 

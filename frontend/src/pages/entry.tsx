@@ -8,7 +8,10 @@ import DOMPurify from 'dompurify';
 import { useEffect, useMemo, useState } from 'react';
 
 import { ReaderRail } from '@/components/reader-rail';
-import type { ExtractedToggleState } from '@/components/reader-rail';
+import type {
+    ExtractedToggleState,
+    SavedToggle,
+} from '@/components/reader-rail';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { digestHref, PATHS } from '@/lib/paths';
@@ -23,6 +26,8 @@ type Source = {
     faviconUrl: string | null;
 };
 
+type SavedState = { rkey: string };
+
 type Entry = {
     id: number;
     entrySlug: string;
@@ -33,6 +38,7 @@ type Entry = {
     source: Source;
     body: string | null;
     metadata?: string | null;
+    savedState: SavedState | null;
 };
 
 type State =
@@ -195,6 +201,11 @@ function ReaderView({ entry }: { entry: Entry }) {
           : entry.body;
 
     const sourceLink = safeHref(entry.url);
+    const savedToggle: SavedToggle = {
+        initial: entry.savedState,
+        itemUrl: entry.url,
+        feedUrl: entry.source.feedUrl ?? null,
+    };
 
     return (
         <div className="min-h-svh bg-card">
@@ -202,6 +213,7 @@ function ReaderView({ entry }: { entry: Entry }) {
             <ReaderRail
                 sourceUrl={sourceLink ?? null}
                 extractedToggle={{ state: toggleState, onClick: onToggleClick }}
+                savedToggle={savedToggle}
             />
             <article className="mx-auto w-full max-w-2xl px-4 pt-8 pb-24 sm:px-6">
                 <header className="mb-8 flex flex-col gap-4">
@@ -227,11 +239,20 @@ function ReaderView({ entry }: { entry: Entry }) {
 function WatchView({ entry }: { entry: Entry }) {
     const embed = useMemo(() => resolveVideoEmbed(entry.url), [entry.url]);
     const sourceLink = safeHref(entry.url);
+    const savedToggle: SavedToggle = {
+        initial: entry.savedState,
+        itemUrl: entry.url,
+        feedUrl: entry.source.feedUrl ?? null,
+    };
 
     return (
         <div className="min-h-svh bg-card">
             <Header />
-            <ReaderRail sourceUrl={sourceLink ?? null} showProgress={false} />
+            <ReaderRail
+                sourceUrl={sourceLink ?? null}
+                savedToggle={savedToggle}
+                showProgress={false}
+            />
             <article className="mx-auto w-full px-4 pt-8 pb-24 sm:px-6">
                 <header className="mx-auto mb-8 flex max-w-2xl flex-col gap-4">
                     <FeedLine source={entry.source} />

@@ -18,11 +18,13 @@ import (
 	"morgenblau/internal/middleware/auth"
 )
 
-// EntryReader reads entries and verifies subscription ownership.
+// EntryReader reads entries, verifies subscription ownership, and looks up
+// whether the requester has saved this entry (for the reader's save button).
 type EntryReader interface {
 	GetFeedEntryBySlug(ctx context.Context, slug string) (db.FeedEntry, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error)
 	GetFeed(ctx context.Context, feedURL string) (db.Feed, error)
+	GetUserSaveByItemURL(ctx context.Context, arg db.GetUserSaveByItemURLParams) (db.UserSave, error)
 }
 
 // EntryExtractWriter persists readability-extracted bodies.
@@ -31,15 +33,15 @@ type EntryExtractWriter interface {
 }
 
 // EntryHandler returns the full entry for a session user. The handler also
-// resolves the source title/site for convenience so frontend code doesn't
-// need a second round-trip.
+// resolves the source title/site and the requester's saved-state for the
+// entry so the frontend doesn't need a second round-trip.
 func EntryHandler(reader EntryReader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		entry, sub, feed, ok := loadAndAuthorize(w, r, reader)
 		if !ok {
 			return
 		}
-		writeJSON(w, entryRowToWire(entry, sub, feed))
+		writeJSON(w, entryRowToWire(entry, sub, feed, lookupSavedState(r.Context(), reader, entry.Url)))
 	})
 }
 
@@ -57,8 +59,10 @@ func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter, httpClie
 			return
 		}
 
+		saved := lookupSavedState(r.Context(), reader, entry.Url)
+
 		if entry.ExtractedBody != nil && *entry.ExtractedBody != "" {
-			writeJSON(w, entryRowToWire(entry, sub, feed))
+			writeJSON(w, entryRowToWire(entry, sub, feed, saved))
 			return
 		}
 
@@ -76,7 +80,7 @@ func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter, httpClie
 			slog.Warn("/api/entries/{id}/extract: persist failed", "err", err)
 		}
 		entry.ExtractedBody = &extracted
-		writeJSON(w, entryRowToWire(entry, sub, feed))
+		writeJSON(w, entryRowToWire(entry, sub, feed, saved))
 	})
 }
 
@@ -127,7 +131,7 @@ func loadAndAuthorize(w http.ResponseWriter, r *http.Request, reader EntryReader
 	return entry, sub, feed, true
 }
 
-func entryRowToWire(row db.FeedEntry, sub db.UserSubscription, feed db.Feed) EntryWire {
+func entryRowToWire(row db.FeedEntry, sub db.UserSubscription, feed db.Feed, saved *SavedState) EntryWire {
 	body := row.ContentHtml
 	if row.ExtractedBody != nil && *row.ExtractedBody != "" {
 		body = row.ExtractedBody
@@ -143,7 +147,30 @@ func entryRowToWire(row db.FeedEntry, sub db.UserSubscription, feed db.Feed) Ent
 		Source:      buildSourceMeta(row.FeedUrl, title, feed.SiteUrl, feed.IconUrl),
 		Body:        body,
 		Metadata:    row.Metadata,
+		SavedState:  saved,
 	}
+}
+
+// lookupSavedState returns the requester's save record for itemURL if one
+// exists. Missing row → nil (not saved). Any other error is logged and the
+// frontend gets a nil — the save button degrades to the unsaved state rather
+// than erroring out the page load.
+func lookupSavedState(ctx context.Context, reader EntryReader, itemURL string) *SavedState {
+	sess := auth.SessionFromContext(ctx)
+	if sess == nil || sess.Data == nil {
+		return nil
+	}
+	row, err := reader.GetUserSaveByItemURL(ctx, db.GetUserSaveByItemURLParams{
+		Did:     sess.Data.AccountDID.String(),
+		ItemUrl: itemURL,
+	})
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			slog.Warn("entries: saved-state lookup failed", "err", err)
+		}
+		return nil
+	}
+	return &SavedState{Rkey: row.Rkey}
 }
 
 func extractReadable(ctx context.Context, client *http.Client, rawURL string, sanitizer *bluemonday.Policy) (string, error) {

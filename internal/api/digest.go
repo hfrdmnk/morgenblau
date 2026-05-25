@@ -21,16 +21,25 @@ type DigestReader interface {
 
 // EntryWire is the on-the-wire entry shape consumed by /consume and the entry
 // detail page. body is the sanitized HTML; the frontend treats it as trusted.
+// SavedState is only populated by the entry detail handler — the digest list
+// leaves it nil to avoid N+1 lookups.
 type EntryWire struct {
-	ID          int64      `json:"id"`
-	EntrySlug   string     `json:"entrySlug"`
-	Title       *string    `json:"title"`
-	URL         string     `json:"url"`
-	ContentType string     `json:"contentType"`
-	PublishedAt string     `json:"publishedAt"`
-	Source      SourceMeta `json:"source"`
-	Body        *string    `json:"body"`
-	Metadata    *string    `json:"metadata,omitempty"`
+	ID          int64       `json:"id"`
+	EntrySlug   string      `json:"entrySlug"`
+	Title       *string     `json:"title"`
+	URL         string      `json:"url"`
+	ContentType string      `json:"contentType"`
+	PublishedAt string      `json:"publishedAt"`
+	Source      SourceMeta  `json:"source"`
+	Body        *string     `json:"body"`
+	Metadata    *string     `json:"metadata,omitempty"`
+	SavedState  *SavedState `json:"savedState"`
+}
+
+// SavedState mirrors the frontend's view: rkey identifies the PDS record so
+// the client can DELETE it on un-save.
+type SavedState struct {
+	Rkey string `json:"rkey"`
 }
 
 type SourceMeta struct {
