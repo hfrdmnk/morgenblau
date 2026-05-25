@@ -198,7 +198,33 @@ func chooseTime(item *gofeed.Item, fallback time.Time) time.Time {
 	if item.UpdatedParsed != nil {
 		return *item.UpdatedParsed
 	}
+	if t, ok := parseRawDate(item.Published); ok {
+		return t
+	}
+	if t, ok := parseRawDate(item.Updated); ok {
+		return t
+	}
 	return fallback
+}
+
+// parseRawDate handles date shapes gofeed misses. The one in the wild is
+// Bluesky's RSS pubDate: no weekday prefix, no seconds, numeric offset
+// (e.g. "24 May 2026 20:02 +0200").
+var extraDateFormats = []string{
+	"2 Jan 2006 15:04 -0700",
+}
+
+func parseRawDate(s string) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, false
+	}
+	for _, f := range extraDateFormats {
+		if t, err := time.Parse(f, s); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func chooseBody(item *gofeed.Item) string {

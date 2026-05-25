@@ -34,6 +34,11 @@ func TestChooseTime(t *testing.T) {
 	published := time.Date(2026, 5, 15, 10, 0, 0, 0, time.UTC)
 	updated := time.Date(2026, 5, 16, 10, 0, 0, 0, time.UTC)
 	fallback := time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC)
+	// Bluesky's RSS emits pubDate without a weekday prefix and without
+	// seconds (e.g. "24 May 2026 20:02 +0200"), which gofeed cannot parse —
+	// see internal/sync/feedpipeline.go chooseTime for the manual fallback.
+	bskyOffset := time.Date(2026, 5, 24, 18, 2, 0, 0, time.UTC) // 20:02 +0200
+	bskyUTC := time.Date(2026, 5, 25, 14, 43, 0, 0, time.UTC)
 	cases := []struct {
 		name string
 		item *gofeed.Item
@@ -42,6 +47,10 @@ func TestChooseTime(t *testing.T) {
 		{name: "published parsed", item: &gofeed.Item{PublishedParsed: &published, UpdatedParsed: &updated}, want: published},
 		{name: "updated fallback", item: &gofeed.Item{UpdatedParsed: &updated}, want: updated},
 		{name: "neither", item: &gofeed.Item{}, want: fallback},
+		{name: "raw bluesky offset", item: &gofeed.Item{Published: "24 May 2026 20:02 +0200"}, want: bskyOffset},
+		{name: "raw bluesky utc", item: &gofeed.Item{Published: "25 May 2026 14:43 +0000"}, want: bskyUTC},
+		{name: "raw updated fallback", item: &gofeed.Item{Updated: "24 May 2026 20:02 +0200"}, want: bskyOffset},
+		{name: "raw malformed", item: &gofeed.Item{Published: "not a date"}, want: fallback},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
