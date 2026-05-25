@@ -48,10 +48,6 @@ export function WindowChrome({ onAddSourceClick }: Props) {
     const me = useAuthedMe();
     const refresh = useChromeRefresh();
 
-    const showAddSource =
-        pathname === PATHS.discover || pathname === PATHS.sources;
-    const showRefresh = pathname === PATHS.digest;
-
     return (
         <header className="flex h-14 shrink-0 items-center justify-between px-4 sm:px-6 lg:px-20">
             <nav className="flex items-center gap-6">
@@ -83,35 +79,31 @@ export function WindowChrome({ onAddSourceClick }: Props) {
             </nav>
 
             <div className="flex items-center gap-2 text-muted-foreground">
-                {showAddSource && (
-                    <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className={ICON_ACTION_CLASS}
-                        aria-label="Add source"
-                        onClick={onAddSourceClick}
-                    >
-                        <HugeiconsIcon icon={PlusSignIcon} className="size-5" />
-                    </Button>
-                )}
-                {showRefresh && (
-                    <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className={ICON_ACTION_CLASS}
-                        aria-label="Refresh"
-                        disabled={!refresh || refresh.busy}
-                        onClick={() => refresh?.onRefresh()}
-                    >
-                        <HugeiconsIcon
-                            icon={Refresh04Icon}
-                            className={cn(
-                                'size-5',
-                                refresh?.busy && 'motion-safe:animate-spin',
-                            )}
-                        />
-                    </Button>
-                )}
+                <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={ICON_ACTION_CLASS}
+                    aria-label="Add source"
+                    onClick={onAddSourceClick}
+                >
+                    <HugeiconsIcon icon={PlusSignIcon} className="size-5" />
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={ICON_ACTION_CLASS}
+                    aria-label="Refresh"
+                    disabled={!refresh || refresh.busy}
+                    onClick={() => refresh?.onRefresh()}
+                >
+                    <HugeiconsIcon
+                        icon={Refresh04Icon}
+                        className={cn(
+                            'size-5',
+                            refresh?.busy && 'motion-safe:animate-spin',
+                        )}
+                    />
+                </Button>
                 <DropdownMenu>
                     <DropdownMenuTrigger
                         render={
