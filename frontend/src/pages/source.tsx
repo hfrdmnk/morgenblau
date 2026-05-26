@@ -1,4 +1,8 @@
-import { HourglassIcon, Pulse01Icon } from '@hugeicons/core-free-icons';
+import {
+    ArrowLeft01Icon,
+    HourglassIcon,
+    Pulse01Icon,
+} from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { useEffect, useState } from 'react';
 
@@ -122,7 +126,8 @@ function SourceView({
     return (
         <main className="mx-auto w-full max-w-2xl px-4 pt-16 pb-12 sm:px-6">
             <header className="mb-10 flex flex-col gap-4">
-                <div className="flex items-center gap-3 font-sans">
+                <div className="relative flex items-center gap-3 font-sans">
+                    <BackButton />
                     <Favicon src={proxyFavicon} className="size-10 rounded-lg" />
                     <div className="min-w-0 flex-1">
                         {domain ? (
@@ -214,7 +219,8 @@ function SourceSkeleton() {
             className="mx-auto w-full max-w-2xl px-4 pt-16 pb-12 sm:px-6"
         >
             <header className="mb-10 flex flex-col gap-4">
-                <div className="flex items-center gap-3">
+                <div className="relative flex items-center gap-3">
+                    <BackButton />
                     <Skeleton className="size-10 rounded-lg" />
                     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                         <Skeleton className="h-3 w-32" />
@@ -255,6 +261,18 @@ function SourceSkeleton() {
                 </ul>
             </article>
         </main>
+    );
+}
+
+function BackButton() {
+    return (
+        <a
+            href={PATHS.sources}
+            aria-label="Back to sources"
+            className="absolute top-1/2 right-full mr-2 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
+        >
+            <HugeiconsIcon icon={ArrowLeft01Icon} className="size-5" />
+        </a>
     );
 }
 

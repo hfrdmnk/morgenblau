@@ -52,7 +52,9 @@ export function WindowChrome({ onAddSourceClick }: Props) {
         <header className="flex h-14 shrink-0 items-center justify-between px-4 sm:px-6 lg:px-20">
             <nav className="flex items-center gap-6">
                 {TABS.map((tab) => {
-                    const isActive = pathname === tab.href;
+                    const isActive =
+                        pathname === tab.href ||
+                        pathname.startsWith(`${tab.href}/`);
 
                     return (
                         <a
