@@ -172,7 +172,9 @@ func TestFrequencyBucket(t *testing.T) {
 		want                       string
 	}{
 		{"no posts at all", "", 0, 0, 0, 0, "noPosts"},
-		{"new overrides everything", young, 99, 99, 99, 99, "new"},
+		{"cadence wins over recency", young, 99, 99, 99, 99, "daily"},
+		{"new is fallback when no cadence fires", young, 0, 0, 0, 0, "new"},
+		{"new is fallback when below all thresholds", young, 0, 0, 0, 1, "new"},
 		{"daily ≥5/7d", long, 5, 5, 5, 5, "daily"},
 		{"weekly ≥3/28d", long, 0, 3, 3, 3, "weekly"},
 		{"biweekly ≥3/56d", long, 0, 0, 3, 3, "biweekly"},

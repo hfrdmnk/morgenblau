@@ -156,22 +156,21 @@ func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) Subscrip
 
 // frequencyBucket implements the cadence rule:
 //   - noPosts   — no entries at all
-//   - new       — first-ever post is within 30 days (and ≥1 post exists)
 //   - daily     — ≥5 posts in last 7 days
 //   - weekly    — ≥3 posts in last 28 days
 //   - biweekly  — ≥3 posts in last 56 days
 //   - monthly   — ≥2 posts in last 84 days
+//   - new       — no cadence bucket fires, but the oldest entry we have is
+//                 within 30 days (not enough history to classify yet)
 //   - irregular — anything else
 //
-// Highest-cadence bucket wins. "New" overrides everything else when applicable.
+// Cadence wins over "new": a feed posting daily still reads as daily even if
+// we only started ingesting it last week. firstPublishedAt is MIN(published_at)
+// over rows we've stored, so it reflects our ingestion window, not the feed's
+// debut.
 func frequencyBucket(firstPublishedAt string, c7, c28, c56, c84 int64, now time.Time) string {
 	if firstPublishedAt == "" {
 		return "noPosts"
-	}
-	if t, err := time.Parse(time.RFC3339, firstPublishedAt); err == nil {
-		if now.Sub(t) <= 30*24*time.Hour {
-			return "new"
-		}
 	}
 	switch {
 	case c7 >= 5:
@@ -182,9 +181,13 @@ func frequencyBucket(firstPublishedAt string, c7, c28, c56, c84 int64, now time.
 		return "biweekly"
 	case c84 >= 2:
 		return "monthly"
-	default:
-		return "irregular"
 	}
+	if t, err := time.Parse(time.RFC3339, firstPublishedAt); err == nil {
+		if now.Sub(t) <= 30*24*time.Hour {
+			return "new"
+		}
+	}
+	return "irregular"
 }
 
 func asString(v any) string {
