@@ -1,7 +1,6 @@
 import {
     Delete02Icon,
     Edit02Icon,
-    Globe02Icon,
     HelpCircleIcon,
     HourglassIcon,
     Pulse01Icon,
@@ -9,7 +8,9 @@ import {
 import { HugeiconsIcon } from '@hugeicons/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { Favicon } from '@/components/favicon';
 import { EditSourceDialog } from '@/components/sources/edit-dialog';
+import { sourceHref } from '@/lib/paths';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { shortTimeAgo } from '@/lib/date';
@@ -251,9 +252,12 @@ function SourceRow({ source, onPatch, onDelete }: RowProps) {
     return (
         <>
             <li className="flex items-start justify-between gap-3 px-5 py-4">
-                <div className="min-w-0 flex-1">
+                <a
+                    href={sourceHref(source.rkey)}
+                    className="-m-2 min-w-0 flex-1 rounded-xl p-2 outline-none transition-colors duration-200 ease-out hover:bg-gray-50 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring dark:hover:bg-gray-900"
+                >
                     <div className="flex items-center gap-1.5 text-xs font-light text-muted-foreground">
-                        <Favicon src={source.faviconUrl} />
+                        <Favicon src={source.faviconUrl} className="size-3.5 shrink-0" />
                         <span className="truncate">{domain}</span>
                     </div>
                     <h3 className="mt-0.5 truncate text-base font-medium tracking-tight">
@@ -277,7 +281,7 @@ function SourceRow({ source, onPatch, onDelete }: RowProps) {
                             </span>
                         ) : null}
                     </div>
-                </div>
+                </a>
                 <div className="flex shrink-0 items-center gap-1">
                     <Button
                         variant="ghost"
@@ -303,24 +307,6 @@ function SourceRow({ source, onPatch, onDelete }: RowProps) {
                 onSave={(next) => onPatch(source.rkey, next)}
             />
         </>
-    );
-}
-
-function Favicon({ src }: { src?: string }) {
-    const [errored, setErrored] = useState(false);
-    if (!src || errored) {
-        return (
-            <HugeiconsIcon icon={Globe02Icon} className="size-3.5 shrink-0" />
-        );
-    }
-    return (
-        <img
-            src={src}
-            alt=""
-            className="size-3.5 shrink-0 rounded-sm"
-            onError={() => setErrored(true)}
-            loading="lazy"
-        />
     );
 }
 

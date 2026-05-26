@@ -20,3 +20,7 @@ export function entryHref(slug: string, fromDate?: string): string {
 export function digestHref(date?: string): string {
     return date ? `${PATHS.digest}?date=${encodeURIComponent(date)}` : PATHS.digest;
 }
+
+export function sourceHref(rkey: string): string {
+    return `${PATHS.sources}/${rkey}`;
+}

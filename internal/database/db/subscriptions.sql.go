@@ -45,6 +45,103 @@ func (q *Queries) GetFeed(ctx context.Context, feedUrl string) (Feed, error) {
 	return i, err
 }
 
+const getFeedIconURL = `-- name: GetFeedIconURL :one
+SELECT icon_url FROM feeds WHERE feed_url = ?
+`
+
+// Returns the stored icon URL for a feed. Drives the favicon-proxy SSRF guard:
+// the proxy only streams URLs the sync pipeline has already vetted.
+func (q *Queries) GetFeedIconURL(ctx context.Context, feedUrl string) (*string, error) {
+	row := q.db.QueryRowContext(ctx, getFeedIconURL, feedUrl)
+	var icon_url *string
+	err := row.Scan(&icon_url)
+	return icon_url, err
+}
+
+const getUserSourceWithStats = `-- name: GetUserSourceWithStats :one
+SELECT
+    us.did, us.rkey, us.at_uri, us.feed_url, us.title,
+    us.created_at, us.updated_at,
+    f.site_url, f.icon_url,
+    COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
+    COALESCE((SELECT MIN(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?1 AND fe.published_at < ?2) AS count_7d,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?3 AND fe.published_at < ?2) AS count_28d,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?4 AND fe.published_at < ?2) AS count_56d,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?5 AND fe.published_at < ?2) AS count_84d,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url) AS total_entries,
+    (SELECT COUNT(*) FROM user_saves s WHERE s.did = us.did AND s.feed_url = us.feed_url) AS saved_by_you
+FROM user_subscriptions us
+LEFT JOIN feeds f ON f.feed_url = us.feed_url
+WHERE us.did = ?6 AND us.rkey = ?7
+`
+
+type GetUserSourceWithStatsParams struct {
+	Cutoff7d  string `json:"cutoff_7d"`
+	Now       string `json:"now"`
+	Cutoff28d string `json:"cutoff_28d"`
+	Cutoff56d string `json:"cutoff_56d"`
+	Cutoff84d string `json:"cutoff_84d"`
+	Did       string `json:"did"`
+	Rkey      string `json:"rkey"`
+}
+
+type GetUserSourceWithStatsRow struct {
+	Did              string      `json:"did"`
+	Rkey             string      `json:"rkey"`
+	AtUri            string      `json:"at_uri"`
+	FeedUrl          string      `json:"feed_url"`
+	Title            *string     `json:"title"`
+	CreatedAt        string      `json:"created_at"`
+	UpdatedAt        string      `json:"updated_at"`
+	SiteUrl          *string     `json:"site_url"`
+	IconUrl          *string     `json:"icon_url"`
+	LastPublishedAt  interface{} `json:"last_published_at"`
+	FirstPublishedAt interface{} `json:"first_published_at"`
+	Count7d          int64       `json:"count_7d"`
+	Count28d         int64       `json:"count_28d"`
+	Count56d         int64       `json:"count_56d"`
+	Count84d         int64       `json:"count_84d"`
+	TotalEntries     int64       `json:"total_entries"`
+	SavedByYou       int64       `json:"saved_by_you"`
+}
+
+// Single-source counterpart to ListUserSourcesWithStats, keyed by (did, rkey).
+// Carries the same windowed counts plus total_entries and saved_by_you so the
+// source detail page can render its stat row in one query.
+func (q *Queries) GetUserSourceWithStats(ctx context.Context, arg GetUserSourceWithStatsParams) (GetUserSourceWithStatsRow, error) {
+	row := q.db.QueryRowContext(ctx, getUserSourceWithStats,
+		arg.Cutoff7d,
+		arg.Now,
+		arg.Cutoff28d,
+		arg.Cutoff56d,
+		arg.Cutoff84d,
+		arg.Did,
+		arg.Rkey,
+	)
+	var i GetUserSourceWithStatsRow
+	err := row.Scan(
+		&i.Did,
+		&i.Rkey,
+		&i.AtUri,
+		&i.FeedUrl,
+		&i.Title,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.SiteUrl,
+		&i.IconUrl,
+		&i.LastPublishedAt,
+		&i.FirstPublishedAt,
+		&i.Count7d,
+		&i.Count28d,
+		&i.Count56d,
+		&i.Count84d,
+		&i.TotalEntries,
+		&i.SavedByYou,
+	)
+	return i, err
+}
+
 const getUserSubscription = `-- name: GetUserSubscription :one
 SELECT did, rkey, at_uri, feed_url, title, created_at, updated_at
 FROM user_subscriptions WHERE did = ? AND rkey = ?

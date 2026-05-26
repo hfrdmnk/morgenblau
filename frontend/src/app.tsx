@@ -8,6 +8,7 @@ import { Discover } from '@/pages/discover';
 import { Entry } from '@/pages/entry';
 import { Library } from '@/pages/library';
 import { Login } from '@/pages/login';
+import { Source } from '@/pages/source';
 import { Sources } from '@/pages/sources';
 import { Welcome } from '@/pages/welcome';
 
@@ -23,10 +24,12 @@ const pages: Record<string, PageDef> = {
 };
 
 const entryDef: PageDef = { Component: Entry, authed: true, chrome: false };
+const sourceDef: PageDef = { Component: Source, authed: true, chrome: false };
 
 function resolvePage(pathname: string): PageDef | null {
     if (pages[pathname]) return pages[pathname];
     if (pathname.startsWith(`${PATHS.entry}/`)) return entryDef;
+    if (pathname.startsWith(`${PATHS.sources}/`)) return sourceDef;
     return null;
 }
 

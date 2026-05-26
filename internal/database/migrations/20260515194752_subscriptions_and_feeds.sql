@@ -17,7 +17,7 @@ CREATE TABLE feeds (
 );
 
 -- Tier-1: per-user derived index of blue.morgen.feed.subscription records
--- on the user's PDS. Reconciled, not authoritative — PDS is canonical.
+-- on the user's PDS. Reconciled, not authoritative; PDS is canonical.
 CREATE TABLE user_subscriptions (
     did              TEXT NOT NULL,
     rkey             TEXT NOT NULL,

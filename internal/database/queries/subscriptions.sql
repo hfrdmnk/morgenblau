@@ -9,6 +9,11 @@ ON CONFLICT (feed_url) DO UPDATE SET
 SELECT feed_url, site_url, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at
 FROM feeds WHERE feed_url = ?;
 
+-- name: GetFeedIconURL :one
+-- Returns the stored icon URL for a feed. Drives the favicon-proxy SSRF guard:
+-- the proxy only streams URLs the sync pipeline has already vetted.
+SELECT icon_url FROM feeds WHERE feed_url = ?;
+
 -- name: SetFeedIconURL :exec
 UPDATE feeds
 SET icon_url = ?, icon_fetched_at = ?, updated_at = ?
@@ -60,6 +65,26 @@ FROM user_subscriptions us
 LEFT JOIN feeds f ON f.feed_url = us.feed_url
 WHERE us.did = sqlc.arg(did)
 ORDER BY COALESCE(NULLIF(us.title, ''), us.feed_url) COLLATE NOCASE ASC;
+
+-- name: GetUserSourceWithStats :one
+-- Single-source counterpart to ListUserSourcesWithStats, keyed by (did, rkey).
+-- Carries the same windowed counts plus total_entries and saved_by_you so the
+-- source detail page can render its stat row in one query.
+SELECT
+    us.did, us.rkey, us.at_uri, us.feed_url, us.title,
+    us.created_at, us.updated_at,
+    f.site_url, f.icon_url,
+    COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
+    COALESCE((SELECT MIN(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_7d) AND fe.published_at < sqlc.arg(now)) AS count_7d,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_28d) AND fe.published_at < sqlc.arg(now)) AS count_28d,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_56d) AND fe.published_at < sqlc.arg(now)) AS count_56d,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_84d) AND fe.published_at < sqlc.arg(now)) AS count_84d,
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url) AS total_entries,
+    (SELECT COUNT(*) FROM user_saves s WHERE s.did = us.did AND s.feed_url = us.feed_url) AS saved_by_you
+FROM user_subscriptions us
+LEFT JOIN feeds f ON f.feed_url = us.feed_url
+WHERE us.did = sqlc.arg(did) AND us.rkey = sqlc.arg(rkey);
 
 -- name: DeleteUserSubscription :exec
 DELETE FROM user_subscriptions WHERE did = ? AND rkey = ?;

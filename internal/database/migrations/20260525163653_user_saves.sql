@@ -2,7 +2,7 @@
 -- +goose StatementBegin
 
 -- Tier-1: per-user derived index of blue.morgen.feed.save records on the
--- user's PDS. Reconciled, not authoritative — PDS is canonical.
+-- user's PDS. Reconciled, not authoritative; PDS is canonical.
 CREATE TABLE user_saves (
     did         TEXT NOT NULL,
     rkey        TEXT NOT NULL,

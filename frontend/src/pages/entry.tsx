@@ -1,12 +1,9 @@
-import {
-    Cancel01Icon,
-    Globe02Icon,
-    PlayIcon,
-} from '@hugeicons/core-free-icons';
+import { Cancel01Icon, PlayIcon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
 import DOMPurify from 'dompurify';
 import { useEffect, useMemo, useState } from 'react';
 
+import { Favicon } from '@/components/favicon';
 import { ReaderRail } from '@/components/reader-rail';
 import type {
     ExtractedToggleState,
@@ -427,29 +424,6 @@ function ManualFailureFallback({ sourceUrl }: { sourceUrl: string }) {
                 Open on original site
             </a>
         </div>
-    );
-}
-
-function Favicon({ src }: { src: string | null }) {
-    const [errored, setErrored] = useState(false);
-
-    if (!src || errored) {
-        return (
-            <HugeiconsIcon
-                icon={Globe02Icon}
-                className="size-4 text-muted-foreground"
-            />
-        );
-    }
-
-    return (
-        <img
-            src={src}
-            alt=""
-            className="size-4 rounded-sm"
-            onError={() => setErrored(true)}
-            loading="lazy"
-        />
     );
 }
 

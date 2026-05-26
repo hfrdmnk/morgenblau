@@ -184,6 +184,87 @@ func (q *Queries) ListDigestForUser(ctx context.Context, arg ListDigestForUserPa
 	return items, nil
 }
 
+const listEntriesForSource = `-- name: ListEntriesForSource :many
+SELECT
+    e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
+    e.published_at, e.fetched_at, e.metadata, e.extracted_body,
+    us.title AS feed_title,
+    f.site_url AS feed_site_url,
+    f.icon_url AS feed_icon_url
+FROM feed_entries e
+JOIN feeds f ON f.feed_url = e.feed_url
+JOIN user_subscriptions us ON us.feed_url = e.feed_url AND us.did = ?1
+WHERE e.feed_url = ?2
+ORDER BY e.published_at DESC, e.id DESC
+LIMIT ?3
+`
+
+type ListEntriesForSourceParams struct {
+	Did     string `json:"did"`
+	FeedUrl string `json:"feed_url"`
+	Limit   int64  `json:"limit"`
+}
+
+type ListEntriesForSourceRow struct {
+	ID            int64   `json:"id"`
+	FeedUrl       string  `json:"feed_url"`
+	Guid          string  `json:"guid"`
+	EntrySlug     string  `json:"entry_slug"`
+	Url           string  `json:"url"`
+	Title         *string `json:"title"`
+	ContentHtml   *string `json:"content_html"`
+	ContentType   string  `json:"content_type"`
+	PublishedAt   string  `json:"published_at"`
+	FetchedAt     string  `json:"fetched_at"`
+	Metadata      *string `json:"metadata"`
+	ExtractedBody *string `json:"extracted_body"`
+	FeedTitle     *string `json:"feed_title"`
+	FeedSiteUrl   *string `json:"feed_site_url"`
+	FeedIconUrl   *string `json:"feed_icon_url"`
+}
+
+// Entries from a single feed, newest first, bounded by limit. The join to
+// user_subscriptions doubles as an ownership filter; the handler still
+// distinguishes "not subscribed" from "no posts" via a separate lookup.
+func (q *Queries) ListEntriesForSource(ctx context.Context, arg ListEntriesForSourceParams) ([]ListEntriesForSourceRow, error) {
+	rows, err := q.db.QueryContext(ctx, listEntriesForSource, arg.Did, arg.FeedUrl, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListEntriesForSourceRow
+	for rows.Next() {
+		var i ListEntriesForSourceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.FeedUrl,
+			&i.Guid,
+			&i.EntrySlug,
+			&i.Url,
+			&i.Title,
+			&i.ContentHtml,
+			&i.ContentType,
+			&i.PublishedAt,
+			&i.FetchedAt,
+			&i.Metadata,
+			&i.ExtractedBody,
+			&i.FeedTitle,
+			&i.FeedSiteUrl,
+			&i.FeedIconUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateFeedEntryExtractedBody = `-- name: UpdateFeedEntryExtractedBody :exec
 UPDATE feed_entries SET extracted_body = ? WHERE id = ?
 `

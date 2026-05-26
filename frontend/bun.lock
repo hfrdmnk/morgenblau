@@ -13,6 +13,7 @@
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "dompurify": "^3.4.3",
+        "fast-average-color": "^9.5.2",
         "react": "^19.2.6",
         "react-dom": "^19.2.6",
         "tailwind-merge": "^3.6.0",
@@ -295,6 +296,8 @@
     "estraverse": ["estraverse@5.3.0", "", {}, "sha512-MMdARuVEQziNTeJD8DgMqmhwR11BRQ/cBP+pLtYdSTnf3MIO8fFeiINEbX36ZdNlfU/7A9f3gUw49B3oQsvwBA=="],
 
     "esutils": ["esutils@2.0.3", "", {}, "sha512-kVscqXk4OCp68SZ0dkgEKVi6/8ij300KBWTJq32P/dYeWTSwK41WyTxalN1eRmA5Z9UU/LX9D7FWSmV9SAYx6g=="],
+
+    "fast-average-color": ["fast-average-color@9.5.2", "", {}, "sha512-FbaU8iPTPljP7tmnVhXbCyASNw/zxnmaNDf88gn5pTXlNvejl9w4FapeWMh6UNDwIjhJJU28EPfQWwW032YgPA=="],
 
     "fast-deep-equal": ["fast-deep-equal@3.1.3", "", {}, "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q=="],
 

@@ -32,6 +32,23 @@ WHERE us.did = ?
   AND e.published_at < ?
 ORDER BY e.published_at DESC, e.id DESC;
 
+-- name: ListEntriesForSource :many
+-- Entries from a single feed, newest first, bounded by limit. The join to
+-- user_subscriptions doubles as an ownership filter; the handler still
+-- distinguishes "not subscribed" from "no posts" via a separate lookup.
+SELECT
+    e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
+    e.published_at, e.fetched_at, e.metadata, e.extracted_body,
+    us.title AS feed_title,
+    f.site_url AS feed_site_url,
+    f.icon_url AS feed_icon_url
+FROM feed_entries e
+JOIN feeds f ON f.feed_url = e.feed_url
+JOIN user_subscriptions us ON us.feed_url = e.feed_url AND us.did = sqlc.arg(did)
+WHERE e.feed_url = sqlc.arg(feed_url)
+ORDER BY e.published_at DESC, e.id DESC
+LIMIT sqlc.arg(limit);
+
 -- name: ListAllEntriesForUser :many
 SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,

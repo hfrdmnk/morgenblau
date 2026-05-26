@@ -17,13 +17,24 @@ type Querier interface {
 	GetAuthRequest(ctx context.Context, state string) (GetAuthRequestRow, error)
 	GetFeed(ctx context.Context, feedUrl string) (Feed, error)
 	GetFeedEntryBySlug(ctx context.Context, entrySlug string) (FeedEntry, error)
+	// Returns the stored icon URL for a feed. Drives the favicon-proxy SSRF guard:
+	// the proxy only streams URLs the sync pipeline has already vetted.
+	GetFeedIconURL(ctx context.Context, feedUrl string) (*string, error)
 	GetSession(ctx context.Context, arg GetSessionParams) ([]byte, error)
 	GetUserSave(ctx context.Context, arg GetUserSaveParams) (UserSave, error)
 	GetUserSaveByItemURL(ctx context.Context, arg GetUserSaveByItemURLParams) (UserSave, error)
+	// Single-source counterpart to ListUserSourcesWithStats, keyed by (did, rkey).
+	// Carries the same windowed counts plus total_entries and saved_by_you so the
+	// source detail page can render its stat row in one query.
+	GetUserSourceWithStats(ctx context.Context, arg GetUserSourceWithStatsParams) (GetUserSourceWithStatsRow, error)
 	GetUserSubscription(ctx context.Context, arg GetUserSubscriptionParams) (UserSubscription, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserSubscriptionByFeedURLParams) (UserSubscription, error)
 	ListAllEntriesForUser(ctx context.Context, did string) ([]ListAllEntriesForUserRow, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
+	// Entries from a single feed, newest first, bounded by limit. The join to
+	// user_subscriptions doubles as an ownership filter; the handler still
+	// distinguishes "not subscribed" from "no posts" via a separate lookup.
+	ListEntriesForSource(ctx context.Context, arg ListEntriesForSourceParams) ([]ListEntriesForSourceRow, error)
 	ListFeedURLsForUser(ctx context.Context, did string) ([]string, error)
 	// One row per subscription with feed metadata and windowed entry stats. The
 	// four window cutoffs (7d, 28d, 56d, 84d as ISO timestamps) and "now" are
