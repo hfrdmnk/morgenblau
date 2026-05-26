@@ -251,11 +251,13 @@ function SourceRow({ source, onPatch, onDelete }: RowProps) {
 
     return (
         <>
-            <li className="flex items-start justify-between gap-3 px-5 py-4">
+            <li className="relative flex items-start justify-between gap-3 px-5 py-4 transition-colors duration-200 ease-out hover:bg-gray-50 has-[a:focus-visible]:outline-1 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-solid has-[a:focus-visible]:outline-ring dark:hover:bg-gray-900">
                 <a
                     href={sourceHref(source.rkey)}
-                    className="-m-2 min-w-0 flex-1 rounded-xl p-2 outline-none transition-colors duration-200 ease-out hover:bg-gray-50 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring dark:hover:bg-gray-900"
-                >
+                    aria-label={title}
+                    className="absolute inset-0 outline-none"
+                />
+                <div className="pointer-events-none min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 text-xs font-light text-muted-foreground">
                         <Favicon src={source.faviconUrl} className="size-3.5 shrink-0" />
                         <span className="truncate">{domain}</span>
@@ -281,8 +283,8 @@ function SourceRow({ source, onPatch, onDelete }: RowProps) {
                             </span>
                         ) : null}
                     </div>
-                </a>
-                <div className="flex shrink-0 items-center gap-1">
+                </div>
+                <div className="relative z-10 flex shrink-0 items-center gap-1">
                     <Button
                         variant="ghost"
                         size="icon-sm"

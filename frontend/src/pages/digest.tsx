@@ -155,10 +155,10 @@ export function Digest() {
                 ) : (
                     <Newspaper
                         entries={state.entries}
-                        fromDate={
+                        entryFrom={
                             isSameDay(selectedDate, today)
                                 ? undefined
-                                : formatISODate(selectedDate)
+                                : { date: formatISODate(selectedDate) }
                         }
                     />
                 )}

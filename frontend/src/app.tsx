@@ -24,7 +24,7 @@ const pages: Record<string, PageDef> = {
 };
 
 const entryDef: PageDef = { Component: Entry, authed: true, chrome: false };
-const sourceDef: PageDef = { Component: Source, authed: true, chrome: false };
+const sourceDef: PageDef = { Component: Source, authed: true, chrome: true };
 
 function resolvePage(pathname: string): PageDef | null {
     if (pages[pathname]) return pages[pathname];

@@ -11,7 +11,7 @@ import type {
 } from '@/components/reader-rail';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { useDocumentTitle } from '@/hooks/use-document-title';
-import { digestHref, PATHS } from '@/lib/paths';
+import { digestHref, PATHS, sourceHref } from '@/lib/paths';
 import { cn, safeHref } from '@/lib/utils';
 
 type ContentType = 'blogpost' | 'microblog' | 'video' | 'podcast';
@@ -53,10 +53,17 @@ function slugFromLocation(): string | null {
     return slug.length > 0 ? slug : null;
 }
 
-function fromDateFromLocation(): string | null {
-    const raw = new URLSearchParams(window.location.search).get('from');
-    if (!raw) return null;
-    return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+function backHrefFromLocation(): string {
+    const params = new URLSearchParams(window.location.search);
+    const rkey = params.get('fromSource');
+    if (rkey && /^[A-Za-z0-9._~-]+$/.test(rkey)) {
+        return sourceHref(rkey);
+    }
+    const date = params.get('from');
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return digestHref(date);
+    }
+    return digestHref();
 }
 
 export function Entry() {
@@ -127,12 +134,12 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function Header() {
-    const back = digestHref(fromDateFromLocation() ?? undefined);
+    const back = backHrefFromLocation();
     return (
         <header className="sticky top-0 z-10 flex h-14 items-center px-4 sm:px-6">
             <a
                 href={back}
-                aria-label="Back to digest"
+                aria-label="Back"
                 className="inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
             >
                 <HugeiconsIcon icon={Cancel01Icon} className="size-5" />

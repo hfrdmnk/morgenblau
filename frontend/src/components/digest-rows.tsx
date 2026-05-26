@@ -12,7 +12,7 @@ import { useMemo } from 'react';
 
 import { Favicon } from '@/components/favicon';
 import { LevelContext } from '@/hooks/use-surface-level';
-import { entryHref } from '@/lib/paths';
+import { entryHref, type EntryFrom } from '@/lib/paths';
 import { safeHref } from '@/lib/utils';
 
 export type ContentType = 'blogpost' | 'microblog' | 'video' | 'podcast';
@@ -50,10 +50,10 @@ const ROW_CLICKABLE_CLASS = `block px-6 py-5 outline-none ${ROW_CLICKABLE_BASE}`
 
 export function Newspaper({
     entries,
-    fromDate,
+    entryFrom,
 }: {
     entries: Entry[];
-    fromDate?: string;
+    entryFrom?: EntryFrom;
 }) {
     return (
         <LevelContext.Provider value={2}>
@@ -72,7 +72,7 @@ export function Newspaper({
                             ) : (
                                 <StandardRow
                                     entry={entry}
-                                    fromDate={fromDate}
+                                    entryFrom={entryFrom}
                                 />
                             )}
                         </li>
@@ -85,10 +85,10 @@ export function Newspaper({
 
 function StandardRow({
     entry,
-    fromDate,
+    entryFrom,
 }: {
     entry: Entry;
-    fromDate?: string;
+    entryFrom?: EntryFrom;
 }) {
     const cleanedSummary = entry.body
         ? cleanSummary(entry.body, entry.title)
@@ -124,7 +124,7 @@ function StandardRow({
     if (opensInReader) {
         return (
             <a
-                href={entryHref(entry.entrySlug, fromDate)}
+                href={entryHref(entry.entrySlug, entryFrom)}
                 className={ROW_CLICKABLE_CLASS}
             >
                 {content}
