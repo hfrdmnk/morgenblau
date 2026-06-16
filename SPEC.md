@@ -409,7 +409,7 @@ Users add sources by pasting a URL. Morgenblau resolves the URL into one or more
 
 ### Organization
 
-Flat list of subscriptions. Windows handle the filtering/viewing.
+Flat list of subscriptions. Views handle the filtering/viewing (see `<views>`).
 
 ### Primary Sources
 
@@ -512,13 +512,6 @@ Things Morgenblau will never do.
 
 ## Brand
 
-### Texture
-
-**Crisp morning.** Clear, sharp, awake, not warm and cozy. The terrace on a clear morning, not the candlelit cafe.
-
-### Core Metaphors
-
-- **The window**: something you choose to look through, then step away from. It never follows you around. What you see through it is finite and tied to today.
-- **The newspaper**: not the layout, but the feeling. A finite object with a clear start and end. A ritual, not a habit.
+See [BRAND.md](./BRAND.md) for the brand layer: essence, the Edition and Morning ideas, voice, color and light, typography, the mark, and motion.
 
 </brand>
