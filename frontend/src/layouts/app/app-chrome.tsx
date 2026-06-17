@@ -51,7 +51,7 @@ export function AppChrome({ onAddSourceClick }: Props) {
     const calendar = useChromeCalendar();
 
     return (
-        <header className="relative flex h-20 shrink-0 items-center justify-between px-4 sm:px-6 lg:px-20">
+        <header className="sticky top-0 z-20 flex h-20 shrink-0 items-center justify-between bg-background px-4 sm:px-6 lg:px-20">
             <nav className="flex items-center gap-6">
                 {TABS.map((tab) => {
                     const isActive =
@@ -154,6 +154,11 @@ export function AppChrome({ onAddSourceClick }: Props) {
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
+
+            <div
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 top-full h-8 bg-linear-to-b from-background to-transparent"
+            />
         </header>
     );
 }
