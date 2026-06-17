@@ -43,7 +43,7 @@ A calm editor with an espresso at 7am, not performing. One step warmer than Line
 
 - Short sentences. Second person ("you curated this").
 - First-party words: editor, publication, sources, edition. Never account, subscriptions, feeds, users.
-- No exclamation marks. No emoji. No urgency language, no counts, no "unread."
+- No exclamation marks. No emoji. No urgency language, no unread counts, no "unread."
 
 ## Motion
 
