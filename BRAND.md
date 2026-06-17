@@ -11,7 +11,7 @@ Intentionality without deprivation. A calm daily edition instead of an infinite 
 - **Edition** is the form. The interface is a finite, dated object with a start and an end: sections, a masthead, a last page. A ritual, not a habit.
 - **Morning** is the feeling. Calm, unhurried, a clean beginning before the day's rush. You open it once and you are not behind.
 
-Edition does the structure. Morning sets the tone. They never overlap: structure stays austere, morning carries the warmth.
+Edition does the structure. Morning sets the tone. Structure stays austere; warmth and color live only at the edges.
 
 ## 80 / 20: austere core, warm edges
 
@@ -21,10 +21,10 @@ Edition does the structure. Morning sets the tone. They never overlap: structure
 
 ## Light and color
 
-- The palette is monochrome. Grays do all the structural work: surfaces, borders, type.
-- **`atmosphere-blue`** is the single accent, for intent only: the primary action, a focus ring, a moment of discovery. Never chrome, never decoration.
-- The morning is the **blue hour**, cool. Deep blue lifting to pale light, the quiet before sunrise. Calm, with none of the energy of a hot orange dawn.
-- The dawn gradient runs cool at the top to pale at the bottom, with at most a thin warm seam at the horizon (`sand-brown`).
+- The product surface is monochrome. Grays do the structural work: surfaces, borders, type. The working chrome stays cool and quiet.
+- **`atmosphere-blue`** is the single product accent, for intent only: the primary action, a focus ring, a moment of discovery. Never chrome, never decoration.
+- The brand imagery orients on **nature**, in its full range: landscape, water, sky, season, any hour.
+- No single mood is mandated. A cool blue hour, a warm dawn, grey overcast, deep dusk all belong, as long as the feeling stays calm and unhurried. The only constant the imagery holds is calm.
 - Category markers stay product-level, one color per content type: leaf-green (longform), sunset-orange (micropost), coral-red (video), aurora-purple (podcast). Each appears only on its own type.
 
 ## Typography
@@ -52,7 +52,6 @@ Ripples settling on water, not springs. Ease-out dominant, under 300ms for UI. S
 ## Never
 
 - Unread counts, badges, progress, "X left to read."
-- A hot-orange "sunrise energy" dawn. The morning is cool and calm.
 - `atmosphere-blue` as decoration or chrome.
 - Serif outside the reader and the wordmark.
 - Warmth (gradient, hand-marks) on the reading plane or working chrome.
