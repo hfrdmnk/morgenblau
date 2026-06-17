@@ -138,7 +138,6 @@ function SelectedSlot({
     date: Date;
     style: CSSProperties;
 }) {
-    const month = date.toLocaleDateString(undefined, { month: 'short' });
     const dayLabel = date.toLocaleDateString(undefined, {
         weekday: 'long',
         month: 'long',
@@ -147,18 +146,15 @@ function SelectedSlot({
 
     return (
         <div
-            className="relative flex w-9 shrink-0 items-center justify-center"
+            className="flex w-9 shrink-0 items-center justify-center"
             style={style}
         >
             <span
                 aria-label={dayLabel}
                 aria-current="date"
-                className="text-lg leading-none font-medium tracking-tight text-foreground"
+                className="text-sm leading-none font-medium tracking-tight text-foreground"
             >
                 {pad(date.getDate())}
-            </span>
-            <span className="absolute top-full right-0 left-0 mt-1 text-center text-xs font-light text-muted-foreground">
-                {month}
             </span>
         </div>
     );
@@ -230,7 +226,7 @@ function TodayAnchor({
         >
             <span
                 aria-hidden
-                className="invisible -mr-1 w-0 text-lg leading-none"
+                className="invisible -mr-1 w-0 text-sm leading-none"
             >
                 0
             </span>

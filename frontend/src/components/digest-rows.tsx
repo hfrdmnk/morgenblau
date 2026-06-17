@@ -13,8 +13,8 @@ import { useMemo } from 'react';
 import { Favicon } from '@/components/favicon';
 import { useAuthedMe } from '@/hooks/use-authed-me';
 import { LevelContext } from '@/hooks/use-surface-level';
-import { formatEditionDate } from '@/lib/date';
-import { pickGreeting } from '@/lib/greetings';
+import { formatEditionDate, isSameDay } from '@/lib/date';
+import { pickGreeting, pickPastTitle } from '@/lib/greetings';
 import { entryHref, type EntryFrom } from '@/lib/paths';
 import { safeHref } from '@/lib/utils';
 
@@ -54,10 +54,12 @@ const ROW_CLICKABLE_CLASS = `block px-6 py-5 outline-none ${ROW_CLICKABLE_BASE}`
 export function Newspaper({
     entries,
     date,
+    today,
     entryFrom,
 }: {
     entries: Entry[];
     date?: Date;
+    today?: Date;
     entryFrom?: EntryFrom;
 }) {
     return (
@@ -68,6 +70,7 @@ export function Newspaper({
                         <DigestMasthead
                             date={date}
                             count={entries.length}
+                            isToday={today ? isSameDay(date, today) : true}
                         />
                         <div
                             aria-hidden
@@ -100,10 +103,22 @@ export function Newspaper({
     );
 }
 
-function DigestMasthead({ date, count }: { date: Date; count: number }) {
+function DigestMasthead({
+    date,
+    count,
+    isToday,
+}: {
+    date: Date;
+    count: number;
+    isToday: boolean;
+}) {
     const me = useAuthedMe();
     const name = me.displayName?.trim().split(/\s+/)[0] ?? null;
-    const greeting = useMemo(() => pickGreeting(name), [name]);
+    // date is stable per selection, so the phrase re-picks only on navigation.
+    const heading = useMemo(
+        () => (isToday ? pickGreeting(name, date) : pickPastTitle(date)),
+        [name, date, isToday],
+    );
     const noun = count === 1 ? 'piece' : 'pieces';
 
     return (
@@ -112,7 +127,7 @@ function DigestMasthead({ date, count }: { date: Date; count: number }) {
                 {formatEditionDate(date)}
             </p>
             <div className="flex items-baseline justify-between gap-4">
-                <h2 className="text-xl font-medium">{greeting}</h2>
+                <h2 className="text-xl font-medium">{heading}</h2>
                 <p className="shrink-0 text-sm text-muted-foreground">
                     {count} {noun}
                 </p>

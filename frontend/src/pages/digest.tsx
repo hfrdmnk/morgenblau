@@ -157,6 +157,7 @@ export function Digest() {
                     <Newspaper
                         entries={state.entries}
                         date={selectedDate}
+                        today={today}
                         entryFrom={
                             isSameDay(selectedDate, today)
                                 ? undefined
