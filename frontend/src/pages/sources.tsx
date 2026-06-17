@@ -6,7 +6,7 @@ import {
     Pulse01Icon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 
 import { Favicon } from '@/components/favicon';
 import { EditSourceDialog } from '@/components/sources/edit-dialog';
@@ -184,18 +184,48 @@ export function Sources() {
     return (
         <main className="mx-auto max-w-2xl px-6 py-8">
             <div className="overflow-hidden rounded-xl bg-card">
-                <ul className="divide-y divide-border">
-                    {sortedRecords.map((r) => (
-                        <SourceRow
-                            key={r.rkey}
-                            source={r}
-                            onPatch={onPatch}
-                            onDelete={onDelete}
-                        />
+                <SourcesMasthead count={sortedRecords.length} />
+                <div
+                    aria-hidden
+                    className="mx-6 border-t border-gray-100 dark:border-gray-700"
+                />
+                <ul className="flex flex-col">
+                    {sortedRecords.map((r, i) => (
+                        <Fragment key={r.rkey}>
+                            {i > 0 ? (
+                                <li
+                                    aria-hidden
+                                    className="mx-6 border-t border-gray-100 dark:border-gray-700"
+                                />
+                            ) : null}
+                            <SourceRow
+                                source={r}
+                                onPatch={onPatch}
+                                onDelete={onDelete}
+                            />
+                        </Fragment>
                     ))}
                 </ul>
             </div>
         </main>
+    );
+}
+
+function SourcesMasthead({ count }: { count: number }) {
+    const noun = count === 1 ? 'source' : 'sources';
+
+    return (
+        <div className="flex flex-col gap-1 px-6 pt-6 pb-5">
+            <p className="text-sm font-light text-muted-foreground">
+                Your publication
+            </p>
+            <div className="flex items-baseline justify-between gap-4">
+                <h2 className="text-xl font-medium">Sources</h2>
+                <p className="shrink-0 text-sm text-muted-foreground">
+                    {count} {noun}
+                </p>
+            </div>
+        </div>
     );
 }
 
