@@ -8,6 +8,32 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Morgenblau</title>
+    <!--
+      Prerender the next page on hover so a click is instant: Chromium builds
+      the destination (runs the bundle + its API fetch) in a hidden tab, then
+      the cross-document view transition animates real content. Same-origin
+      only; excludes redirecting/side-effecting routes. Other browsers ignore
+      this and fall back to a normal navigation.
+    -->
+    <script type="speculationrules">
+      {
+        "prerender": [
+          {
+            "eagerness": "moderate",
+            "where": {
+              "and": [
+                { "href_matches": "/*" },
+                { "not": { "href_matches": "/oauth/*" } },
+                { "not": { "href_matches": "/login" } },
+                { "not": { "href_matches": "/" } },
+                { "not": { "selector_matches": ".no-prerender" } },
+                { "not": { "selector_matches": "[rel~=nofollow]" } }
+              ]
+            }
+          }
+        ]
+      }
+    </script>
   </head>
   <body class="antialiased">
     <div id="root"></div>

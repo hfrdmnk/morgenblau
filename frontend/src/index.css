@@ -188,7 +188,7 @@
         position: relative;
     }
     html {
-        @apply font-sans;
+        @apply bg-background font-sans;
     }
     h1,
     h2 {

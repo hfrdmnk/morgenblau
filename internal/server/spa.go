@@ -40,18 +40,29 @@ func embeddedDistHandler() http.Handler {
 	fileServer := http.FileServer(http.FS(dist))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clean := strings.TrimPrefix(r.URL.Path, "/")
-		if clean == "" {
-			fileServer.ServeHTTP(w, r)
-			return
+
+		// Serve the requested file if it exists, with a cache policy keyed on
+		// the path. Vite content-hashes everything under /assets/, so those are
+		// safe to cache forever; other root files get a modest TTL.
+		if clean != "" {
+			if _, err := fs.Stat(dist, clean); err == nil {
+				if strings.HasPrefix(r.URL.Path, "/assets/") {
+					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				} else {
+					w.Header().Set("Cache-Control", "public, max-age=3600")
+				}
+				fileServer.ServeHTTP(w, r)
+				return
+			}
 		}
-		// If the requested file exists in dist, serve it; otherwise fall back
-		// to index.html so client-side routes resolve.
-		if _, err := fs.Stat(dist, clean); err != nil {
-			r2 := r.Clone(r.Context())
-			r2.URL.Path = "/"
-			fileServer.ServeHTTP(w, r2)
-			return
-		}
-		fileServer.ServeHTTP(w, r)
+
+		// Root and every unknown path fall back to the index.html shell.
+		// no-cache (not no-store) makes the browser revalidate so a new deploy's
+		// hashed asset references are picked up, while keeping the page
+		// bfcache-eligible for instant back/forward navigation.
+		w.Header().Set("Cache-Control", "no-cache")
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = "/"
+		fileServer.ServeHTTP(w, r2)
 	})
 }
