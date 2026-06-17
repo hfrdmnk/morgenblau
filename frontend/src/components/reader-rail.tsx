@@ -269,36 +269,41 @@ function DisabledRailIcon({
     );
 }
 
-// useDeferredState mirrors a target value with a brief swap-blur transition:
-// when target changes, the button blurs for ~150ms, then `displayed` catches
-// up, then the blur releases ~30ms later. The two-stage gap lets the CSS
-// transition mask the icon swap. Works whether the change comes from a click
-// (SaveRailIcon) or a parent prop (ExtractedToggleIcon). Reduced-motion users
-// get an instant update.
+// Mirrors `target` with a swap-blur: on change the button blurs, `displayed`
+// catches up under the blur ~150ms later, and the blur lingers ~30ms past the
+// swap so the icon change stays masked. Reduced-motion users update instantly.
 function useDeferredState<T>(target: T): { displayed: T; swapping: boolean } {
     const [displayed, setDisplayed] = useState(target);
-    const [swapping, setSwapping] = useState(false);
+    const [settling, setSettling] = useState(false);
 
+    const reducedMotion =
+        typeof window === 'undefined' ||
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Reduced motion: mirror instantly during render, no blur stage.
+    if (reducedMotion && !Object.is(displayed, target)) {
+        setDisplayed(target);
+    }
+
+    // Hold the swap so the blur can build, then open a brief settling window.
     useEffect(() => {
-        if (Object.is(displayed, target)) return;
-        if (
-            typeof window === 'undefined' ||
-            window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        ) {
+        if (reducedMotion || Object.is(displayed, target)) return;
+        const id = window.setTimeout(() => {
             setDisplayed(target);
-            return;
-        }
-        setSwapping(true);
-        const id = window.setTimeout(() => setDisplayed(target), 150);
+            setSettling(true);
+        }, 150);
         return () => window.clearTimeout(id);
-    }, [target, displayed]);
+    }, [target, displayed, reducedMotion]);
 
+    // Trail the un-blur ~30ms past the icon swap.
     useEffect(() => {
-        if (!swapping || !Object.is(displayed, target)) return;
-        const id = window.setTimeout(() => setSwapping(false), 30);
+        if (!settling) return;
+        const id = window.setTimeout(() => setSettling(false), 30);
         return () => window.clearTimeout(id);
-    }, [displayed, target, swapping]);
+    }, [settling]);
 
+    const swapping =
+        !reducedMotion && (settling || !Object.is(displayed, target));
     return { displayed, swapping };
 }
 
