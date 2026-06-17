@@ -1,6 +1,5 @@
 import { AppLogoIcon } from '@/components/app-logo-icon';
 import { Button } from '@/components/ui/button';
-import { Window } from '@/components/window';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { PATHS } from '@/lib/paths';
 
@@ -9,10 +8,7 @@ export function Welcome() {
 
     return (
         <div className="min-h-svh bg-background p-6">
-            <Window
-                variant="sunrise"
-                className="flex min-h-[calc(100svh-3rem)] items-center justify-center"
-            >
+            <div className="flex min-h-[calc(100svh-3rem)] items-center justify-center overflow-hidden rounded-xl bg-sunrise shadow-[inset_0_0_0_1px_rgba(255,255,255,0.4)]">
                 <div className="flex flex-col items-center gap-8 px-6 text-center text-white">
                     <AppLogoIcon className="size-16" />
                     <div className="space-y-3">
@@ -31,7 +27,7 @@ export function Welcome() {
                         Begin
                     </Button>
                 </div>
-            </Window>
+            </div>
         </div>
     );
 }

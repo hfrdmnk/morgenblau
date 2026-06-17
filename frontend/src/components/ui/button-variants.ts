@@ -4,8 +4,7 @@ import type { SurfaceLevel } from '@/hooks/use-surface-level';
 
 export const SECONDARY_BY_LEVEL: Record<SurfaceLevel, string> = {
     0: 'bg-gray-100 text-gray-900 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-50 dark:hover:bg-gray-500',
-    1: 'bg-gray-200 text-gray-900 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-50 dark:hover:bg-gray-600',
-    2: 'bg-gray-100 text-gray-900 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-50 dark:hover:bg-gray-500',
+    1: 'bg-gray-100 text-gray-900 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-50 dark:hover:bg-gray-500',
 };
 
 export const buttonVariants = cva(

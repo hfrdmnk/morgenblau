@@ -41,6 +41,28 @@ export function startOfLocalDay(d: Date): Date {
     return out;
 }
 
+// Masthead date, e.g. "Thursday 11th June".
+export function formatEditionDate(d: Date): string {
+    const weekday = d.toLocaleDateString(undefined, { weekday: 'long' });
+    const month = d.toLocaleDateString(undefined, { month: 'long' });
+    return `${weekday} ${ordinal(d.getDate())} ${month}`;
+}
+
+function ordinal(n: number): string {
+    const rem100 = n % 100;
+    if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+    switch (n % 10) {
+        case 1:
+            return `${n}st`;
+        case 2:
+            return `${n}nd`;
+        case 3:
+            return `${n}rd`;
+        default:
+            return `${n}th`;
+    }
+}
+
 // Compact relative-time string for "time since last post" on the sources card.
 // Examples: "3h ago", "4d ago", "5w ago", "2mo ago", "1y ago".
 export function shortTimeAgo(iso: string, now: Date = new Date()): string {

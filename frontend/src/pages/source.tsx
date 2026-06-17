@@ -237,7 +237,7 @@ function SourceSkeleton() {
                 </div>
             </header>
 
-            <article className="overflow-hidden rounded-3xl border border-gray-100 bg-card dark:border-gray-700">
+            <article className="overflow-hidden rounded-xl bg-card">
                 <ul className="flex flex-col">
                     {Array.from({ length: 4 }).map((_, index) => (
                         <li key={index}>

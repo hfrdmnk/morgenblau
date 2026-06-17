@@ -52,7 +52,7 @@ function DropdownMenuContent({
                     )}
                     {...props}
                 >
-                    <LevelContext.Provider value={2}>
+                    <LevelContext.Provider value={1}>
                         {children}
                     </LevelContext.Provider>
                 </MenuPrimitive.Popup>

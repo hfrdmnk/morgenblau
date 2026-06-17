@@ -1,7 +1,7 @@
 import type { FC, ReactNode } from 'react';
 
 import { MeProvider } from '@/components/me-provider';
-import { WindowLayout } from '@/layouts/window-layout';
+import { AppLayout } from '@/layouts/app-layout';
 import { PATHS } from '@/lib/paths';
 import { Digest } from '@/pages/digest';
 import { Discover } from '@/pages/discover';
@@ -38,9 +38,9 @@ export default function App() {
     if (!def) return null;
     const { Component, authed, chrome } = def;
     const inner: ReactNode = chrome ? (
-        <WindowLayout>
+        <AppLayout>
             <Component />
-        </WindowLayout>
+        </AppLayout>
     ) : (
         <Component />
     );

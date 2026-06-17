@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { CalendarStrip } from '@/components/calendar-strip';
 import { Newspaper } from '@/components/digest-rows';
 import type { Entry } from '@/components/digest-rows';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useRegisterChromeRefresh } from '@/hooks/use-chrome-refresh';
+import {
+    useRegisterChromeCalendar,
+    useRegisterChromeRefresh,
+} from '@/hooks/use-chrome-refresh';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useJobsPoll } from '@/hooks/use-jobs-poll';
 import {
@@ -123,15 +125,14 @@ export function Digest() {
 
     const isBusy = state.kind === 'loading' || refreshing || hasActiveJob;
     useRegisterChromeRefresh(onRefresh, isBusy);
+    useRegisterChromeCalendar({
+        selected: selectedDate,
+        today,
+        onSelect: handleSelectDate,
+    });
 
     return (
-        <>
-            <CalendarStrip
-                selected={selectedDate}
-                today={today}
-                onSelect={handleSelectDate}
-            />
-            <div className="mx-auto w-full max-w-2xl px-4 pb-12 sm:px-6">
+        <div className="mx-auto w-full max-w-2xl px-4 pt-10 pb-12 sm:px-6">
                 {isBusy ? (
                     <DigestSkeleton />
                 ) : state.kind === 'error' ? (
@@ -155,6 +156,7 @@ export function Digest() {
                 ) : (
                     <Newspaper
                         entries={state.entries}
+                        date={selectedDate}
                         entryFrom={
                             isSameDay(selectedDate, today)
                                 ? undefined
@@ -162,8 +164,7 @@ export function Digest() {
                         }
                     />
                 )}
-            </div>
-        </>
+        </div>
     );
 }
 
@@ -181,7 +182,7 @@ function DigestSkeleton() {
         <article
             aria-busy
             aria-label="Loading digest"
-            className="overflow-hidden rounded-3xl border border-gray-100 bg-card dark:border-gray-700"
+            className="overflow-hidden rounded-xl bg-card"
         >
             <ul className="flex flex-col">
                 {Array.from({ length: 6 }).map((_, index) => (

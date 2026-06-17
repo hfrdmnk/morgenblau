@@ -11,6 +11,7 @@ import {
     AvatarFallback,
     AvatarImage,
 } from '@/components/ui/avatar';
+import { CalendarStrip } from '@/components/calendar-strip';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -19,7 +20,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useChromeRefresh } from '@/hooks/use-chrome-refresh';
+import { useChromeCalendar, useChromeRefresh } from '@/hooks/use-chrome-refresh';
 import type { Me } from '@/hooks/use-me';
 import { initialsFromHandle, truncateDid } from '@/lib/handle';
 import { PATHS } from '@/lib/paths';
@@ -43,13 +44,14 @@ type Props = {
 
 const ICON_ACTION_CLASS = 'hover:bg-transparent hover:text-primary';
 
-export function WindowChrome({ onAddSourceClick }: Props) {
+export function AppChrome({ onAddSourceClick }: Props) {
     const pathname = window.location.pathname;
     const me = useAuthedMe();
     const refresh = useChromeRefresh();
+    const calendar = useChromeCalendar();
 
     return (
-        <header className="flex h-14 shrink-0 items-center justify-between px-4 sm:px-6 lg:px-20">
+        <header className="relative flex h-20 shrink-0 items-center justify-between px-4 sm:px-6 lg:px-20">
             <nav className="flex items-center gap-6">
                 {TABS.map((tab) => {
                     const isActive =
@@ -79,6 +81,18 @@ export function WindowChrome({ onAddSourceClick }: Props) {
                     );
                 })}
             </nav>
+
+            {calendar && (
+                <div className="pointer-events-none absolute inset-y-0 left-1/2 flex w-[26rem] max-w-[42vw] -translate-x-1/2 items-center">
+                    <div className="pointer-events-auto w-full">
+                        <CalendarStrip
+                            selected={calendar.selected}
+                            today={calendar.today}
+                            onSelect={calendar.onSelect}
+                        />
+                    </div>
+                </div>
+            )}
 
             <div className="flex items-center gap-2 text-muted-foreground">
                 <Button

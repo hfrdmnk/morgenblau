@@ -11,7 +11,10 @@ import DOMPurify from 'dompurify';
 import { useMemo } from 'react';
 
 import { Favicon } from '@/components/favicon';
+import { useAuthedMe } from '@/hooks/use-authed-me';
 import { LevelContext } from '@/hooks/use-surface-level';
+import { formatEditionDate } from '@/lib/date';
+import { pickGreeting } from '@/lib/greetings';
 import { entryHref, type EntryFrom } from '@/lib/paths';
 import { safeHref } from '@/lib/utils';
 
@@ -50,14 +53,28 @@ const ROW_CLICKABLE_CLASS = `block px-6 py-5 outline-none ${ROW_CLICKABLE_BASE}`
 
 export function Newspaper({
     entries,
+    date,
     entryFrom,
 }: {
     entries: Entry[];
+    date?: Date;
     entryFrom?: EntryFrom;
 }) {
     return (
-        <LevelContext.Provider value={2}>
-            <article className="overflow-hidden rounded-3xl border border-gray-100 bg-card dark:border-gray-700">
+        <LevelContext.Provider value={1}>
+            <article className="overflow-hidden rounded-xl bg-card">
+                {date ? (
+                    <>
+                        <DigestMasthead
+                            date={date}
+                            count={entries.length}
+                        />
+                        <div
+                            aria-hidden
+                            className="mx-6 border-t border-gray-100 dark:border-gray-700"
+                        />
+                    </>
+                ) : null}
                 <ul className="flex flex-col">
                     {entries.map((entry, index) => (
                         <li key={entry.id}>
@@ -80,6 +97,27 @@ export function Newspaper({
                 </ul>
             </article>
         </LevelContext.Provider>
+    );
+}
+
+function DigestMasthead({ date, count }: { date: Date; count: number }) {
+    const me = useAuthedMe();
+    const name = me.displayName?.trim().split(/\s+/)[0] ?? null;
+    const greeting = useMemo(() => pickGreeting(name), [name]);
+    const noun = count === 1 ? 'piece' : 'pieces';
+
+    return (
+        <div className="flex flex-col gap-1 px-6 pt-6 pb-5">
+            <p className="text-sm font-light text-muted-foreground">
+                {formatEditionDate(date)}
+            </p>
+            <div className="flex items-baseline justify-between gap-4">
+                <h2 className="text-xl font-medium">{greeting}</h2>
+                <p className="shrink-0 text-sm text-muted-foreground">
+                    {count} {noun}
+                </p>
+            </div>
+        </div>
     );
 }
 
@@ -172,7 +210,7 @@ function MicroblogBody({ html }: { html: string }) {
     const clean = useMemo(() => DOMPurify.sanitize(html), [html]);
     return (
         <div
-            className="text-base text-foreground [&_a]:text-primary [&_a]:underline-offset-4 [&_a:hover]:underline"
+            className="text-sm text-muted-foreground [&_a]:text-primary [&_a]:underline-offset-4 [&_a:hover]:underline"
             dangerouslySetInnerHTML={{ __html: clean }}
         />
     );

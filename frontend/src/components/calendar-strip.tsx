@@ -72,12 +72,11 @@ export function CalendarStrip({ selected, today, onSelect }: Props) {
     };
 
     return (
-        <div className="mx-auto w-full max-w-2xl px-4 pt-10 pb-12 sm:px-6">
-            <div className="group/strip relative">
-                <div
-                    ref={daysAreaRef}
-                    className="flex w-full items-baseline justify-center"
-                >
+        <div className="group/strip relative">
+            <div
+                ref={daysAreaRef}
+                className="flex w-full items-center justify-center"
+            >
                     {Array.from({ length: slotCount }, (_, i) => {
                         const offset = i - centerIndex;
                         const date = addDays(selected, offset);
@@ -119,12 +118,11 @@ export function CalendarStrip({ selected, today, onSelect }: Props) {
                             />
                         );
                     })}
-                </div>
-                <TodayAnchor
-                    hidden={selectedIsToday}
-                    onClick={() => transitionTo(today)}
-                />
             </div>
+            <TodayAnchor
+                hidden={selectedIsToday}
+                onClick={() => transitionTo(today)}
+            />
         </div>
     );
 }
@@ -148,17 +146,18 @@ function SelectedSlot({
     });
 
     return (
-        <div className="flex w-9 shrink-0 flex-col items-center" style={style}>
+        <div
+            className="relative flex w-9 shrink-0 items-center justify-center"
+            style={style}
+        >
             <span
                 aria-label={dayLabel}
                 aria-current="date"
-                className={cn(
-                    'text-lg leading-none font-medium tracking-tight text-foreground'
-                )}
+                className="text-lg leading-none font-medium tracking-tight text-foreground"
             >
                 {pad(date.getDate())}
             </span>
-            <span className="mt-1 text-xs font-light text-muted-foreground">
+            <span className="absolute top-full right-0 left-0 mt-1 text-center text-xs font-light text-muted-foreground">
                 {month}
             </span>
         </div>
@@ -188,7 +187,7 @@ function FadedSlot({
             aria-label={dayLabel}
             onClick={onClick}
             className={cn(
-                'flex w-9 shrink-0 cursor-pointer flex-col items-center rounded-sm',
+                'flex w-9 shrink-0 cursor-pointer items-center justify-center rounded-sm',
                 'text-sm font-normal text-muted-foreground',
                 'opacity-(--day-opacity) transition-opacity duration-200 ease-out',
                 'group-hover/strip:opacity-100',
@@ -202,9 +201,6 @@ function FadedSlot({
             }
         >
             <span className="leading-none">{pad(date.getDate())}</span>
-            <span aria-hidden className="invisible mt-1 text-xs">
-                ·
-            </span>
         </button>
     );
 }
@@ -224,9 +220,9 @@ function TodayAnchor({
             aria-hidden={hidden}
             tabIndex={hidden ? -1 : 0}
             className={cn(
-                'absolute top-0 right-0',
+                'absolute top-1/2 right-0 -translate-y-1/2',
                 'inline-flex cursor-pointer items-center gap-1 rounded-sm pr-1 pl-12 text-sm font-normal text-muted-foreground',
-                'bg-linear-to-r from-transparent to-gray-50 to-[2rem] dark:to-gray-900',
+                'bg-linear-to-r from-transparent to-background to-[2rem]',
                 'transition duration-200 ease-out',
                 'focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring',
                 hidden && 'pointer-events-none opacity-0!',

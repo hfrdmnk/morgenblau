@@ -183,7 +183,7 @@ export function Sources() {
 
     return (
         <main className="mx-auto max-w-2xl px-6 py-8">
-            <div className="overflow-hidden rounded-3xl border border-border bg-card">
+            <div className="overflow-hidden rounded-xl bg-card">
                 <ul className="divide-y divide-border">
                     {sortedRecords.map((r) => (
                         <SourceRow

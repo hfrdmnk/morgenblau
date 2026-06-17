@@ -7,7 +7,7 @@ description: Morgenblau's UI design language for all interface work: surface lay
 
 This skill is Morgenblau's **UI design language**: how the interface looks and moves. The brand layer (essence, the Edition and Morning ideas, voice and tone, the color story, the mark and wordmark) lives in `BRAND.md` at the repo root. This skill implements it.
 
-Implementation details (file paths, CSS tokens, React primitives) live in `src/` and in `plans/morgenblau-design-implementation.md`. For _how_ to realize a rule, look there.
+Implementation details (file paths, CSS tokens, React primitives) live in `frontend/src/`. For _how_ to realize a rule, look there.
 
 Keep the craft bar high (taste, not concrete examples): Linear's precision, Family / Benji Taylor's warmth, Emil Kowalski's restraint, Josh Puckett's animation care, Dieter Rams' "less but better." If a UI decision doesn't serve the brand in `BRAND.md`, simplify it away.
 
@@ -17,17 +17,18 @@ Keep the craft bar high (taste, not concrete examples): Linear's precision, Fami
 
 Morgenblau inverts the common "shadows signal elevation" pattern. Closeness to the user is expressed by **luminance**, not shadow. Surfaces rise toward the user by getting lighter.
 
-| Level                  | Light surface | Light border | Dark surface | Dark border | Example                                                        |
-| ---------------------- | ------------- | ------------ | ------------ | ----------- | -------------------------------------------------------------- |
-| **0** — base           | gray-100      | —            | gray-950     | —           | the page background, behind everything                         |
-| **1** — one above base | gray-50       | gray-200     | gray-900     | gray-800    | a card sitting on bare base (e.g. the login card). |
-| **2** — two above base | white         | gray-100     | gray-800     | gray-700    | a card on the page (e.g. a digest card).                 |
+| Level         | Light surface | Light border | Dark surface | Dark border | Example                                                  |
+| ------------- | ------------- | ------------ | ------------ | ----------- | -------------------------------------------------------- |
+| **0** — base  | gray-100      | —            | gray-950     | —           | the page background and app chrome, behind everything    |
+| **1** — card  | white         | gray-100     | gray-800     | gray-700    | a card on the base (digest, sources, source, login)      |
 
-**Principle:** the same direction in both modes — closer is lighter. In light mode the ladder climbs toward white. In dark mode it climbs from near-black toward mid-gray.
+There are **two levels only**. The base (0) is everything behind, including the nav chrome; a card (1) is anything sitting on it. (Until mid-2026 there was a third level and a framed "Window" container above the base — both retired. Cards now sit directly on the base, borderless, with a uniform 12px radius.)
 
-**Level is a property of the element, not its container.** A surface primitive takes its level explicitly. Default is `2` (the common case — a card on the page). A card placed directly on the base gets level `1`. This makes surfaces predictable and keeps the same primitive working in framed and bare-base contexts.
+**Principle:** the same direction in both modes — closer is lighter. In light mode the card climbs to white; in dark mode it climbs from near-black toward mid-gray.
 
-**Do not** stack deeper than two levels above base. If you find yourself needing a level 3, you've composed too many cards — restructure.
+**Level is a property of the element, not its container.** The `LevelContext` default is `0` (the base — the tree root). A card sets level `1` for its subtree (e.g. the digest `Newspaper`, dropdown popovers, dialogs). This keeps controls inside a card adapting correctly.
+
+**Do not** nest a card inside a card. If you reach for a second level of card, you've composed too many surfaces — restructure.
 
 ---
 
@@ -35,16 +36,16 @@ Morgenblau inverts the common "shadows signal elevation" pattern. Closeness to t
 
 Surfaces lighten as they come forward. **Controls do the opposite: they step forward by contrasting _against_ the surface brightness trend.** Two axes, opposite directions.
 
-| Role                    | Rule                               | L0 light                                                                                         | L1 light | L2 light | L0 dark  | L1 dark  | L2 dark  |
-| ----------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------ | -------- | -------- | -------- | -------- | -------- |
-| **Input bg**            | one step past surface              | gray-50                                                                                          | gray-100 | gray-50  | gray-700 | gray-800 | gray-700 |
-| **Input border**        | two steps past                     | gray-200                                                                                         | gray-200 | gray-100 | gray-600 | gray-700 | gray-600 |
-| **Secondary button bg** | two steps past                     | gray-100                                                                                         | gray-200 | gray-100 | gray-600 | gray-700 | gray-600 |
-| **Primary button**      | color-defined, not level-dependent | solid atmosphere-blue background, white foreground, no border — same in both modes               |          |          |          |          |          |
+| Role                    | Rule                               | L0 light                                                                           | L1 light | L0 dark  | L1 dark  |
+| ----------------------- | ---------------------------------- | ---------------------------------------------------------------------------------- | -------- | -------- | -------- |
+| **Input bg**            | one step past surface              | gray-50                                                                             | gray-50  | gray-700 | gray-700 |
+| **Input border**        | two steps past                     | gray-200                                                                            | gray-100 | gray-600 | gray-600 |
+| **Secondary button bg** | two steps past                     | gray-100                                                                            | gray-100 | gray-600 | gray-600 |
+| **Primary button**      | color-defined, not level-dependent | solid atmosphere-blue background, white foreground, no border — same in both modes  |          |          |          |
 
-**In light mode controls go darker; in dark mode they go lighter.** The rule holds: controls always stand _against_ the surface trend, so they visually step forward.
+**In light mode controls go darker; in dark mode they go lighter.** The rule holds: controls always stand _against_ the surface trend, so they visually step forward. (With only two levels, secondary buttons resolve to the same gray on both — the level distinction now matters mainly for input borders.)
 
-**Exception — level 0 (base) inverts the inversion.** On the darkest surface, there is no darker step available in light mode (and no lighter step in dark mode), so the rule flips: on L0, controls go **lighter** than the surface, not darker. On L0 the input **bg** matches the L2 bg, but the **border goes a step darker than L2's** (gray-200 in light mode) so the edge still reads against the base; dark mode reuses the L2 border (gray-600) unchanged because it already stands out against gray-950.
+**Exception — level 0 (base) inverts the inversion.** On the darkest surface, there is no darker step available in light mode (and no lighter step in dark mode), so the rule flips: on L0, controls go **lighter** than the surface, not darker. On L0 the input **bg** matches the card (L1) bg, but the **border goes a step darker than the card's** (gray-200 in light mode) so the edge still reads against the base; dark mode reuses the card border (gray-600) unchanged because it already stands out against gray-950.
 
 **Focus state — different rule for buttons and inputs.** Morgenblau draws its own focus indicator on the element the user actually perceives — not always the natively focusable one. The shape of the indicator depends on the control:
 
@@ -125,20 +126,18 @@ Scale is **calm, not dramatic**. h1 is not 40 px. Hierarchy is built more with w
 
 ---
 
-## Radius — ladder scaled to element size
+## Radius — uniform 12px for surfaces
 
-| Size                       | Use                                 |
-| -------------------------- | ----------------------------------- |
-| `rounded-sm` (0.125 rem)   | tags, chips                         |
-| `rounded-lg` (0.5 rem)     | small badges, icon wells            |
-| `rounded-xl` (0.75 rem)    | **buttons, inputs**                 |
-| `rounded-2xl` (1 rem)      | tight containers                    |
-| `rounded-3xl` (1.5 rem)    | secondary cards                     |
-| `rounded-4xl` (2 rem)      | **primary cards** (e.g. login card) |
+| Size                     | Use                                                            |
+| ------------------------ | -------------------------------------------------------------- |
+| `rounded-sm` (0.125 rem) | tags, chips                                                    |
+| `rounded-lg` (0.5 rem)   | small badges, icon wells, small / icon buttons                |
+| `rounded-xl` (0.75 rem)  | **buttons, inputs, and all cards** (digest, sources, login)   |
+| `rounded-2xl` (1 rem)    | rare tight inner containers                                    |
 
-**Principle: radius scales with element size.** A 2 rem radius on a button makes it a lozenge; a 0.75 rem radius on a hero card makes it uptight. Match the roundness to the surface area.
+**Principle: one radius for surfaces.** Buttons, inputs, and cards share a uniform **12px** (`rounded-xl`) corner — the UI reads as one calm, consistent system rather than a ladder of competing roundnesses. Only genuinely small elements (chips, icon wells) step down. (Until mid-2026 cards used larger radii — `rounded-3xl`/`rounded-4xl` — and the login "Window" had asymmetric corners; both retired in favor of the uniform 12px.)
 
-The overall UI should feel generously rounded — never square, never pill-shaped by default. Everything stays on the symmetric ladder.
+The overall UI should feel gently rounded — never square, never pill-shaped by default. Corners stay symmetric on all sides.
 
 ---
 
@@ -213,7 +212,7 @@ Lives in `BRAND.md` at the repo root. Not duplicated here.
 
 If a Morgenblau design exhibits any of these, something has gone wrong:
 
-- **Pure-white body background.** The base is `gray-100`; white belongs to level-2 cards.
+- **Pure-white body background.** The base is `gray-100`; white belongs to the card (level 1).
 - **Dramatic type scale** (h1 at 2+ rem, big jumps between levels). Everything above 1.5 rem reads as shouting.
 - **Atmosphere-blue used decoratively** (backgrounds, chrome, non-functional surfaces). Blue is for intent; grays do structure.
 - **Category colors outside their content type.** A leaf-green swatch on a video card breaks the system.
