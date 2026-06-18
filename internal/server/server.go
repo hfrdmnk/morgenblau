@@ -99,8 +99,10 @@ func NewServer() (*http.Server, error) {
 	orchestrator := internalsync.New(tracker, pipeline, engine)
 
 	if fetchMinutes > 0 {
+		interval := time.Duration(fetchMinutes) * time.Minute
 		refresher := internalsync.NewGlobalRefresher(queries, pipeline)
-		go runGlobalFetch(gcCtx, refresher, time.Duration(fetchMinutes)*time.Minute)
+		go runGlobalFetch(gcCtx, refresher, interval)
+		slog.Info("global feed fetch enabled", "interval", interval)
 	} else {
 		slog.Info("global feed fetch disabled (FETCH_INTERVAL_MINUTES <= 0)")
 	}
@@ -187,7 +189,7 @@ func runGlobalFetch(ctx context.Context, r *internalsync.GlobalRefresher, every 
 				slog.Warn("global feed fetch", "err", err)
 				continue
 			}
-			slog.Debug("global feed fetch", "feeds", n)
+			slog.Info("global feed fetch", "feeds", n)
 		}
 	}
 }
