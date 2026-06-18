@@ -9,6 +9,33 @@ import (
 	"context"
 )
 
+const listAllFeedURLs = `-- name: ListAllFeedURLs :many
+SELECT feed_url FROM feeds ORDER BY feed_url
+`
+
+func (q *Queries) ListAllFeedURLs(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listAllFeedURLs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var feed_url string
+		if err := rows.Scan(&feed_url); err != nil {
+			return nil, err
+		}
+		items = append(items, feed_url)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFeedURLsForUser = `-- name: ListFeedURLsForUser :many
 SELECT feed_url FROM user_subscriptions WHERE did = ?
 `

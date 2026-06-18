@@ -30,6 +30,7 @@ type Querier interface {
 	GetUserSubscription(ctx context.Context, arg GetUserSubscriptionParams) (UserSubscription, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserSubscriptionByFeedURLParams) (UserSubscription, error)
 	ListAllEntriesForUser(ctx context.Context, did string) ([]ListAllEntriesForUserRow, error)
+	ListAllFeedURLs(ctx context.Context) ([]string, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
 	// Entries from a single feed, newest first, bounded by limit. The join to
 	// user_subscriptions doubles as an ownership filter; the handler still

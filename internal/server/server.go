@@ -57,6 +57,15 @@ func NewServer() (*http.Server, error) {
 		port = p
 	}
 
+	fetchMinutes := 30
+	if raw := os.Getenv("FETCH_INTERVAL_MINUTES"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid FETCH_INTERVAL_MINUTES %q: %w", raw, err)
+		}
+		fetchMinutes = n
+	}
+
 	db, err := database.Open()
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
@@ -88,6 +97,13 @@ func NewServer() (*http.Server, error) {
 	pipeline := internalsync.NewFeedPipeline(fetcherInst, queries)
 	engine := internalsync.NewEngine(tracker, queries, internalsync.SessionPDSLister{}, pipeline, oauthApp)
 	orchestrator := internalsync.New(tracker, pipeline, engine)
+
+	if fetchMinutes > 0 {
+		refresher := internalsync.NewGlobalRefresher(queries, pipeline)
+		go runGlobalFetch(gcCtx, refresher, time.Duration(fetchMinutes)*time.Minute)
+	} else {
+		slog.Info("global feed fetch disabled (FETCH_INTERVAL_MINUTES <= 0)")
+	}
 
 	NewServer := &Server{
 		port:       port,
@@ -148,6 +164,30 @@ func runJobsGC(ctx context.Context, tracker *jobs.Tracker) {
 			return
 		case <-ticker.C:
 			tracker.GC()
+		}
+	}
+}
+
+// runGlobalFetch re-fetches every feed in the shared catalog on a timer. It's
+// not tied to any user, so it logs via slog rather than minting jobs.Tracker
+// entries. Stops when ctx is cancelled (graceful shutdown).
+func runGlobalFetch(ctx context.Context, r *internalsync.GlobalRefresher, every time.Duration) {
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			n, err := r.RefreshAll(ctx)
+			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				slog.Warn("global feed fetch", "err", err)
+				continue
+			}
+			slog.Debug("global feed fetch", "feeds", n)
 		}
 	}
 }

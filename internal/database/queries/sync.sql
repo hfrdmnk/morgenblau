@@ -5,3 +5,6 @@ WHERE did = ?;
 
 -- name: ListFeedURLsForUser :many
 SELECT feed_url FROM user_subscriptions WHERE did = ?;
+
+-- name: ListAllFeedURLs :many
+SELECT feed_url FROM feeds ORDER BY feed_url;

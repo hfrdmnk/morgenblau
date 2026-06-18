@@ -417,15 +417,16 @@ Users can mark feeds as **primary sources**. These receive prominent placement i
 
 ### Refresh Cadence
 
-Refresh has **exactly three triggers**:
+Refresh has **three user-initiated triggers** plus a **background sweep**:
 
 - **Manual refresh** is available on the digest view.
 - **On subscription add**, the new subscription is fetched immediately (only that feed, not the whole set).
 - **On login**, all of the user's subscriptions are refreshed (behaves like manual refresh), subject to a 5-minute in-flight guard so repeated logins don't thrash upstream feeds.
+- **Background sweep** re-fetches every feed in the shared Tier-2 catalog on a global timer (`FETCH_INTERVAL_MINUTES`, default 30; `0` disables). It is system-wide, not per-user: it touches no PDS records and creates no jobs, so it never lights up a refresh indicator. Conditional GET (etag/last-modified) keeps re-fetches cheap, and the fetcher's worker pool bounds upstream load.
 
 User-initiated refreshes (manual, add, login) dispatch asynchronously, controllers return immediately. While any job is in flight the digest renders its loading skeleton, and once the job goes quiet the digest re-fetches in place. No count, no badge, no persistent indicator. Consistent with the "no unread counts" anti-feature.
 
-Architecture must permit evolving toward finer real-time refresh per feed (HTTP caching headers, per-feed `next_check_at`, exponential backoff on errors).
+Architecture must permit evolving toward finer real-time refresh per feed (HTTP caching headers, per-feed `next_check_at`, exponential backoff on errors), and toward throttling the background sweep per user (e.g. a bounded number of updates per user per day) instead of re-fetching the whole catalog every tick.
 
 ### Failure Handling
 
@@ -464,7 +465,7 @@ Two-tier storage with different authority and sharing models.
 
 ### Tier 1 — PDS-mirrored (per-user)
 
-User-owned records (`blue.morgen.feed.subscription`, `feed.save`, `feed.share`, `graph.follow`) live authoritatively on the user's PDS. Local SQLite tables holding the same data are **derived indexes only** (per `<lexicons>`). Reconciliation: `listRecords` against PDS, diff against local index, apply changes. Reconciliation triggers are the same as fetch triggers in `<feed-sources>` (login, manual refresh, add).
+User-owned records (`blue.morgen.feed.subscription`, `feed.save`, `feed.share`, `graph.follow`) live authoritatively on the user's PDS. Local SQLite tables holding the same data are **derived indexes only** (per `<lexicons>`). Reconciliation: `listRecords` against PDS, diff against local index, apply changes. Reconciliation triggers are the same as the user-initiated fetch triggers in `<feed-sources>` (login, manual refresh, add); the background sweep is Tier-2 only and never reconciles PDS records.
 
 ### Tier 2 — Upstream cache (shared, global)
 
