@@ -24,13 +24,15 @@ type Props = {
 };
 
 const DEFAULT_MAX = 10;
+// Mirror server maxTagGraphemes: code points (not graphemes) to match Go's []rune.
+const MAX_TAG_LENGTH = 64;
 
 function normalizeTags(tags: string[], max: number): string[] {
     const out: string[] = [];
     const seen = new Set<string>();
     for (const raw of tags) {
         const tag = raw.trim();
-        if (!tag) continue;
+        if (!tag || [...tag].length > MAX_TAG_LENGTH) continue;
         const key = tag.toLowerCase();
         if (seen.has(key)) continue;
         seen.add(key);
@@ -66,7 +68,11 @@ export function CreatableCombobox({
         selectedLower.has(lowered) ||
         suggestions.some((tag) => tag.toLowerCase() === lowered);
     const atMax = value.length >= max;
-    const showCreate = trimmed !== '' && !hasExact && !atMax;
+    const showCreate =
+        trimmed !== '' &&
+        !hasExact &&
+        !atMax &&
+        [...trimmed].length <= MAX_TAG_LENGTH;
     const items = showCreate ? [...unselected, trimmed] : unselected;
 
     const commit = (next: string[]) => {
@@ -76,7 +82,12 @@ export function CreatableCombobox({
 
     const addTag = (tag: string) => {
         const next = tag.trim();
-        if (!next || atMax || selectedLower.has(next.toLowerCase())) {
+        if (
+            !next ||
+            atMax ||
+            [...next].length > MAX_TAG_LENGTH ||
+            selectedLower.has(next.toLowerCase())
+        ) {
             return;
         }
         commit([...value, next]);
