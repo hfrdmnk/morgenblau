@@ -74,7 +74,7 @@ export function Newspaper({
                         />
                         <div
                             aria-hidden
-                            className="mx-6 border-t border-gray-100 dark:border-gray-700"
+                            className="mx-6 border-t border-border"
                         />
                     </>
                 ) : null}
@@ -84,7 +84,7 @@ export function Newspaper({
                             {index > 0 ? (
                                 <div
                                     aria-hidden
-                                    className="mx-6 border-t border-gray-100 dark:border-gray-700"
+                                    className="mx-6 border-t border-border"
                                 />
                             ) : null}
                             {entry.contentType === 'microblog' ? (

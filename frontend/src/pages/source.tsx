@@ -244,7 +244,7 @@ function SourceSkeleton() {
                             {index > 0 ? (
                                 <div
                                     aria-hidden
-                                    className="mx-6 border-t border-gray-100 dark:border-gray-700"
+                                    className="mx-6 border-t border-border"
                                 />
                             ) : null}
                             <div className="flex flex-col gap-2 px-6 py-5">

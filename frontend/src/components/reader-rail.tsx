@@ -340,7 +340,7 @@ function ScrollProgressTrack({
                         r={RING_RADIUS}
                         fill="none"
                         strokeWidth="1.5"
-                        className="stroke-border"
+                        className="stroke-gray-200 dark:stroke-gray-700"
                     />
                     <circle
                         cx="9"
@@ -365,7 +365,7 @@ function ScrollProgressTrack({
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={percent}
-            className="h-px w-full overflow-hidden bg-border"
+            className="h-px w-full overflow-hidden bg-gray-200 dark:bg-gray-700"
         >
             <div
                 className="h-full w-full origin-left bg-foreground motion-safe:transition-transform motion-safe:duration-[120ms] motion-safe:ease-linear"

@@ -226,7 +226,7 @@ export function Sources() {
                 <SourcesMasthead count={sortedRecords.length} />
                 <div
                     aria-hidden
-                    className="mx-6 border-t border-gray-100 dark:border-gray-700"
+                    className="mx-6 border-t border-border"
                 />
                 <ul className="flex flex-col">
                     {sortedRecords.map((r, i) => (
@@ -234,7 +234,7 @@ export function Sources() {
                             {i > 0 ? (
                                 <li
                                     aria-hidden
-                                    className="mx-6 border-t border-gray-100 dark:border-gray-700"
+                                    className="mx-6 border-t border-border"
                                 />
                             ) : null}
                             <SourceRow
