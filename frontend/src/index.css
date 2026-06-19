@@ -143,37 +143,37 @@
 
 @media (prefers-color-scheme: dark) {
     :root {
-    --background: var(--color-gray-950);
-    --foreground: var(--color-gray-50);
-    --card: var(--color-gray-800);
-    --card-foreground: var(--color-gray-50);
-    --popover: var(--color-gray-800);
-    --popover-foreground: var(--color-gray-50);
-    --primary: var(--color-atmosphere-blue);
-    --primary-foreground: oklch(1 0 0);
-    --secondary: var(--color-gray-600);
-    --secondary-foreground: var(--color-gray-50);
-    --muted: var(--color-gray-700);
-    --muted-foreground: var(--color-gray-400);
-    --accent: var(--color-gray-800);
-    --accent-foreground: var(--color-gray-50);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: var(--color-gray-800);
-    --input: var(--color-gray-700);
-    --ring: var(--color-atmosphere-blue);
-    --chart-1: var(--color-gray-300);
-    --chart-2: var(--color-gray-500);
-    --chart-3: var(--color-gray-600);
-    --chart-4: var(--color-gray-700);
-    --chart-5: var(--color-gray-800);
-    --sidebar: var(--color-gray-900);
-    --sidebar-foreground: var(--color-gray-50);
-    --sidebar-primary: var(--color-atmosphere-blue);
-    --sidebar-primary-foreground: var(--color-gray-50);
-    --sidebar-accent: var(--color-gray-800);
-    --sidebar-accent-foreground: var(--color-gray-50);
-    --sidebar-border: var(--color-gray-800);
-    --sidebar-ring: var(--color-atmosphere-blue);
+        --background: var(--color-gray-950);
+        --foreground: var(--color-gray-50);
+        --card: var(--color-gray-800);
+        --card-foreground: var(--color-gray-50);
+        --popover: var(--color-gray-800);
+        --popover-foreground: var(--color-gray-50);
+        --primary: var(--color-atmosphere-blue);
+        --primary-foreground: oklch(1 0 0);
+        --secondary: var(--color-gray-600);
+        --secondary-foreground: var(--color-gray-50);
+        --muted: var(--color-gray-700);
+        --muted-foreground: var(--color-gray-400);
+        --accent: var(--color-gray-800);
+        --accent-foreground: var(--color-gray-50);
+        --destructive: oklch(0.704 0.191 22.216);
+        --border: var(--color-gray-800);
+        --input: var(--color-gray-700);
+        --ring: var(--color-atmosphere-blue);
+        --chart-1: var(--color-gray-300);
+        --chart-2: var(--color-gray-500);
+        --chart-3: var(--color-gray-600);
+        --chart-4: var(--color-gray-700);
+        --chart-5: var(--color-gray-800);
+        --sidebar: var(--color-gray-900);
+        --sidebar-foreground: var(--color-gray-50);
+        --sidebar-primary: var(--color-atmosphere-blue);
+        --sidebar-primary-foreground: var(--color-gray-50);
+        --sidebar-accent: var(--color-gray-800);
+        --sidebar-accent-foreground: var(--color-gray-50);
+        --sidebar-border: var(--color-gray-800);
+        --sidebar-ring: var(--color-atmosphere-blue);
     }
 }
 
@@ -183,53 +183,55 @@
         scrollbar-width: thin;
         scrollbar-color: gray transparent;
     }
+
     body {
         @apply bg-background text-foreground;
         position: relative;
     }
+
     html {
         @apply bg-background font-sans;
     }
+
     h1,
     h2 {
         @apply text-2xl font-semibold tracking-tight;
     }
+
     h3 {
         @apply text-xl font-medium tracking-tight;
     }
+
     h4,
     h5,
     h6 {
         @apply text-lg font-medium tracking-tight;
     }
+
     p {
         @apply font-normal;
     }
+
     ::selection {
         background-color: var(--color-atmosphere-blue);
-        color: oklch(
-            from var(--color-atmosphere-blue) calc(l * 2) calc(c * 0.25) h
-        );
+        color: var(--color-white)
     }
 }
 
 @utility bg-sunrise {
-    background: linear-gradient(
-        to bottom,
-        var(--color-atmosphere-blue) 0%,
-        var(--color-atmosphere-blue) 25%,
-        var(--color-sand-brown) 100%
-    );
+    background: linear-gradient(to bottom,
+            var(--color-atmosphere-blue) 0%,
+            var(--color-atmosphere-blue) 25%,
+            var(--color-sand-brown) 100%);
 }
 
 @keyframes fresh-highlight {
     from {
-        background-color: color-mix(
-            in oklch,
-            var(--color-atmosphere-blue) 8%,
-            transparent
-        );
+        background-color: color-mix(in oklch,
+                var(--color-atmosphere-blue) 8%,
+                transparent);
     }
+
     to {
         background-color: transparent;
     }
@@ -237,12 +239,11 @@
 
 @keyframes fresh-highlight-dark {
     from {
-        background-color: color-mix(
-            in oklch,
-            var(--color-atmosphere-blue) 12%,
-            transparent
-        );
+        background-color: color-mix(in oklch,
+                var(--color-atmosphere-blue) 12%,
+                transparent);
     }
+
     to {
         background-color: transparent;
     }
@@ -269,6 +270,7 @@
     from {
         opacity: 0;
     }
+
     to {
         opacity: 1;
     }
@@ -329,6 +331,7 @@ html[data-strip-transition] ::view-transition-group(*) {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
     ::view-transition-group(*),
     ::view-transition-old(*),
     ::view-transition-new(*) {
@@ -370,4 +373,3 @@ html[data-strip-transition] ::view-transition-group(*) {
 .rail-icon-btn[data-saved] svg path {
     fill: currentColor;
 }
-
