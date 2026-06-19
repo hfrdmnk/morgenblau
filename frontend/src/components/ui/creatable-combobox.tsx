@@ -121,7 +121,7 @@ export function CreatableCombobox({
                 highlightedRef.current = (item as string | null) ?? null;
             }}
         >
-            <ComboboxChips ref={anchorRef} className="rounded-xl">
+            <ComboboxChips ref={anchorRef}>
                 <ComboboxValue>
                     {(selected: string[]) => (
                         <>

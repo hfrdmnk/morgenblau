@@ -143,6 +143,7 @@ export function Sources() {
             body: JSON.stringify(patch),
         });
         if (!resp.ok) return false;
+        const feedPatch = patch.feedUrl ? { feedUrl: patch.feedUrl } : {};
         setState((cur) => {
             if (cur.kind !== 'ok') return cur;
             return {
@@ -154,17 +155,22 @@ export function Sources() {
                             title: patch.title,
                             primary: patch.primary,
                             tags: patch.tags,
+                            ...feedPatch,
                             value: {
                                 ...r.value,
                                 title: patch.title,
                                 primary: patch.primary,
                                 tags: patch.tags,
+                                ...feedPatch,
                             },
                         }
                         : r,
                 ),
             };
         });
+        // Re-pointing the feed dispatched a fetch for the new URL; poll until it
+        // lands so the row picks up the new feed's entries and cadence.
+        if (patch.feedUrl) setHasPendingJobs(true);
         return true;
     };
 
@@ -382,6 +388,7 @@ function SourceRow({ source, onPatch, onDelete, tagSuggestions }: RowProps) {
                 initialTitle={title}
                 initialPrimary={source.primary ?? false}
                 initialTags={source.tags ?? []}
+                initialFeedUrl={source.feedUrl}
                 tagSuggestions={tagSuggestions}
                 onSave={(patch) => onPatch(source.rkey, patch)}
             />

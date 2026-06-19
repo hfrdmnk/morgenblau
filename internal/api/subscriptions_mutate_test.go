@@ -72,7 +72,7 @@ func TestSubscriptionsPatch_NoDiff_NoOp(t *testing.T) {
 
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
 		strings.NewReader(`{}`)), "did:plc:alice", "sid-1")
@@ -92,7 +92,7 @@ func TestSubscriptionsPatch_OtherUserRkey_403(t *testing.T) {
 	idx.seed("did:plc:bob", "3la", "https://x")
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
 		strings.NewReader(`{"title":"new"}`)), "did:plc:alice", "sid-1")
@@ -116,7 +116,7 @@ func TestSubscriptionsPatch_Title_Applied(t *testing.T) {
 	})
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
 		strings.NewReader(`{"title":"New Title"}`)), "did:plc:alice", "sid-1")
@@ -160,7 +160,7 @@ func TestSubscriptionsPatch_PrimaryAndTags_Applied(t *testing.T) {
 	})
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
 
 	// primary true→false and tags edited.
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
@@ -207,7 +207,7 @@ func TestSubscriptionsPatch_PrimaryTrue_WrittenToRecord(t *testing.T) {
 	})
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
 		strings.NewReader(`{"primary":true}`)), "did:plc:alice", "sid-1")
@@ -237,7 +237,7 @@ func TestSubscriptionsPatch_SamePrimaryAndTags_NoOp(t *testing.T) {
 	})
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
 
 	// Resubmit identical values (tags in different order should normalize equal? No —
 	// order is significant for tags; we resubmit the SAME order to assert no-op).
@@ -302,5 +302,145 @@ func TestSubscriptionsDelete_PDSFailure_502(t *testing.T) {
 	}
 	if len(idx.deleted) != 0 {
 		t.Errorf("deleted despite PDS failure: %v", idx.deleted)
+	}
+}
+
+// Re-pointing a subscription to a different feed (the YouTube "exclude Shorts"
+// toggle on edit) must rewrite the PDS record, create the Tier-2 catalog row,
+// re-key the Tier-1 row, and dispatch a fetch for the new feed — preserving the
+// existing title/primary/tags.
+func TestSubscriptionsPatch_FeedURLChange_RepointsAndDispatches(t *testing.T) {
+	const channel = "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc"
+	const playlist = "https://www.youtube.com/feeds/videos.xml?playlist_id=UULFabc"
+	idx := newRkeyIndex()
+	tags := `["Tech"]`
+	idx.seedRow(db.UserSubscription{
+		Did:       "did:plc:alice",
+		Rkey:      "3la",
+		AtUri:     "at://did:plc:alice/blue.morgen.feed.subscription/3la",
+		FeedUrl:   channel,
+		Title:     ptrString("Some Channel"),
+		IsPrimary: 1,
+		Tags:      &tags,
+		CreatedAt: "2026-05-15T10:00:00Z",
+		UpdatedAt: "2026-05-15T10:00:00Z",
+	})
+	pds := &fakePDS{}
+	disp := &fakeDispatcher{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, disp))
+
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
+		strings.NewReader(`{"feedUrl":"`+playlist+`"}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.puts != 1 {
+		t.Fatalf("PDS puts = %d, want 1", pds.puts)
+	}
+	if pds.lastPut["feedUrl"] != playlist {
+		t.Errorf("put feedUrl = %v, want %s", pds.lastPut["feedUrl"], playlist)
+	}
+	// Tier-2 catalog upsert created the new feed before Tier-1 referenced it.
+	if len(idx.upsertedFeeds) != 1 || idx.upsertedFeeds[0] != playlist {
+		t.Errorf("UpsertFeed = %v, want [%s]", idx.upsertedFeeds, playlist)
+	}
+	// fetch_one_feed dispatched exactly once, for the new feed.
+	if len(disp.dispatched) != 1 || disp.dispatched[0] != playlist {
+		t.Errorf("dispatched = %v, want [%s]", disp.dispatched, playlist)
+	}
+	// Tier-1 row is re-keyed to the new feed with metadata preserved.
+	row, err := idx.GetUserSubscriptionByFeedURL(context.Background(), db.GetUserSubscriptionByFeedURLParams{
+		Did:     "did:plc:alice",
+		FeedUrl: playlist,
+	})
+	if err != nil {
+		t.Fatalf("GetUserSubscriptionByFeedURL(new): %v", err)
+	}
+	if row.Rkey != "3la" {
+		t.Errorf("rkey = %q, want 3la (same record, re-pointed)", row.Rkey)
+	}
+	if row.Title == nil || *row.Title != "Some Channel" || row.IsPrimary != 1 {
+		t.Errorf("metadata not preserved: title=%v primary=%d", row.Title, row.IsPrimary)
+	}
+	// Response carries the new feed URL and the dispatched job id.
+	var got patchResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.FeedURL != playlist {
+		t.Errorf("response feedUrl = %q, want %s", got.FeedURL, playlist)
+	}
+	if got.JobID == "" {
+		t.Errorf("response jobId empty, want a dispatched id")
+	}
+}
+
+func TestSubscriptionsPatch_FeedURLUnchanged_NoDispatch(t *testing.T) {
+	const feed = "https://example.test/feed.xml"
+	idx := newRkeyIndex()
+	idx.seed("did:plc:alice", "3la", feed)
+	pds := &fakePDS{}
+	disp := &fakeDispatcher{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, disp))
+
+	// Resubmitting the same feed URL is a no-op: no PDS write, no fetch.
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
+		strings.NewReader(`{"feedUrl":"`+feed+`"}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d", rr.Code)
+	}
+	if pds.puts != 0 {
+		t.Errorf("PDS put on unchanged feedUrl: %d", pds.puts)
+	}
+	if len(disp.dispatched) != 0 {
+		t.Errorf("dispatch on unchanged feedUrl: %v", disp.dispatched)
+	}
+	if len(idx.upsertedFeeds) != 0 {
+		t.Errorf("UpsertFeed on unchanged feedUrl: %v", idx.upsertedFeeds)
+	}
+}
+
+func TestSubscriptionsPatch_FeedURLChange_Conflict_409(t *testing.T) {
+	const channel = "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc"
+	const playlist = "https://www.youtube.com/feeds/videos.xml?playlist_id=UULFabc"
+	idx := newRkeyIndex()
+	idx.seedRow(db.UserSubscription{
+		Did:       "did:plc:alice",
+		Rkey:      "3la",
+		AtUri:     "at://did:plc:alice/blue.morgen.feed.subscription/3la",
+		FeedUrl:   channel,
+		CreatedAt: "2026-05-15T10:00:00Z",
+		UpdatedAt: "2026-05-15T10:00:00Z",
+	})
+	// Alice already subscribes to the target feed under a different rkey.
+	idx.fakeIndex.rows["did:plc:alice"] = map[string]db.UserSubscription{
+		playlist: {Did: "did:plc:alice", Rkey: "3other", FeedUrl: playlist},
+	}
+	pds := &fakePDS{}
+	disp := &fakeDispatcher{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, disp))
+
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
+		strings.NewReader(`{"feedUrl":"`+playlist+`"}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.puts != 0 {
+		t.Errorf("PDS put despite conflict: %d", pds.puts)
+	}
+	if len(disp.dispatched) != 0 {
+		t.Errorf("dispatch despite conflict: %v", disp.dispatched)
 	}
 }

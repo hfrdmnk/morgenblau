@@ -143,6 +143,8 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
     const inputId = useId();
     const titleId = useId();
     const tagsId = useId();
+    const primaryId = useId();
+    const excludeShortsId = useId();
     const shortsFreeUrl = youtubeShortsFreeFeedUrl(candidate.feedUrl);
 
     return (
@@ -221,32 +223,42 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                             />
                         </div>
 
-                        <label className="flex cursor-pointer items-center justify-between gap-3">
-                            <span className="flex flex-col gap-0.5">
-                                <span className="text-sm">Primary source</span>
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex flex-col gap-0.5">
+                                <Label
+                                    htmlFor={primaryId}
+                                    className="cursor-pointer text-xs"
+                                >
+                                    Primary source
+                                </Label>
                                 <span className="text-xs font-light text-muted-foreground">
                                     Featured prominently in your digest.
                                 </span>
-                            </span>
+                            </div>
                             <Switch
+                                id={primaryId}
                                 checked={selectedPrimary}
                                 onCheckedChange={(checked) =>
                                     onPrimaryChange(candidate.feedUrl, checked)
                                 }
                             />
-                        </label>
+                        </div>
 
                         {shortsFreeUrl && (
-                            <label className="flex cursor-pointer items-center justify-between gap-3">
-                                <span className="flex flex-col gap-0.5">
-                                    <span className="text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex flex-col gap-0.5">
+                                    <Label
+                                        htmlFor={excludeShortsId}
+                                        className="cursor-pointer text-xs"
+                                    >
                                         Exclude Shorts
-                                    </span>
+                                    </Label>
                                     <span className="text-xs font-light text-muted-foreground">
                                         Subscribe to long-form uploads only.
                                     </span>
-                                </span>
+                                </div>
                                 <Switch
+                                    id={excludeShortsId}
                                     checked={selectedExcludeShorts}
                                     onCheckedChange={(checked) =>
                                         onExcludeShortsChange(
@@ -255,7 +267,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                         )
                                     }
                                 />
-                            </label>
+                            </div>
                         )}
 
                         <div className="flex flex-col gap-1.5">

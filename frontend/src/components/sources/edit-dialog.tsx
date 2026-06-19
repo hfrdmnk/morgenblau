@@ -16,11 +16,18 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import {
+    isYoutubeShortsFreeFeedUrl,
+    youtubeChannelFeedUrl,
+    youtubeShortsFreeFeedUrl,
+} from '@/lib/youtube';
 
 export type SourcePatch = {
     title: string;
     primary: boolean;
     tags: string[];
+    // Set only when the feed URL changes (the YouTube exclude-Shorts toggle).
+    feedUrl?: string;
 };
 
 type Props = {
@@ -29,6 +36,7 @@ type Props = {
     initialTitle: string;
     initialPrimary: boolean;
     initialTags: string[];
+    initialFeedUrl: string;
     tagSuggestions: string[];
     onSave: (patch: SourcePatch) => Promise<boolean>;
 };
@@ -41,12 +49,20 @@ export function EditSourceDialog({
     initialTitle,
     initialPrimary,
     initialTags,
+    initialFeedUrl,
     tagSuggestions,
     onSave,
 }: Props) {
+    // Exclude-Shorts applies only to YouTube uploads feeds; its state is encoded
+    // in the feed URL (channel form vs UULF playlist form), not a stored flag.
+    const channelFeedUrl = youtubeChannelFeedUrl(initialFeedUrl);
+    const isYoutube = channelFeedUrl !== null;
+    const initialExcludeShorts = isYoutubeShortsFreeFeedUrl(initialFeedUrl);
+
     const [title, setTitle] = useState(initialTitle);
     const [primary, setPrimary] = useState(initialPrimary);
     const [tags, setTags] = useState<string[]>(initialTags);
+    const [excludeShorts, setExcludeShorts] = useState(initialExcludeShorts);
     const [saving, setSaving] = useState(false);
 
     const handleOpenChangeComplete = useCallback(
@@ -55,9 +71,10 @@ export function EditSourceDialog({
                 setTitle(initialTitle);
                 setPrimary(initialPrimary);
                 setTags(initialTags);
+                setExcludeShorts(initialExcludeShorts);
             }
         },
-        [initialTitle, initialPrimary, initialTags],
+        [initialTitle, initialPrimary, initialTags, initialExcludeShorts],
     );
 
     const submit = async (event: FormEvent) => {
@@ -66,8 +83,20 @@ export function EditSourceDialog({
         // Keep the existing title rather than wiping it to empty; the backend
         // no-ops the PATCH if title, primary, and tags are all unchanged.
         const nextTitle = title.trim() || initialTitle;
+        // Re-point the feed only when the Shorts toggle actually moved, so an
+        // untouched save never churns the URL or triggers a needless re-fetch.
+        let feedUrl: string | undefined;
+        if (
+            isYoutube &&
+            channelFeedUrl &&
+            excludeShorts !== initialExcludeShorts
+        ) {
+            feedUrl = excludeShorts
+                ? (youtubeShortsFreeFeedUrl(channelFeedUrl) ?? channelFeedUrl)
+                : channelFeedUrl;
+        }
         setSaving(true);
-        const ok = await onSave({ title: nextTitle, primary, tags });
+        const ok = await onSave({ title: nextTitle, primary, tags, feedUrl });
         setSaving(false);
         if (ok) onOpenChange(false);
     };
@@ -104,18 +133,47 @@ export function EditSourceDialog({
                         />
                     </div>
 
-                    <label className="flex cursor-pointer items-center justify-between gap-3">
-                        <span className="flex flex-col gap-0.5">
-                            <span className="text-sm">Primary source</span>
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-col gap-0.5">
+                            <Label
+                                htmlFor="source-primary"
+                                className="cursor-pointer text-xs"
+                            >
+                                Primary source
+                            </Label>
                             <span className="text-xs font-light text-muted-foreground">
                                 Featured prominently in your digest.
                             </span>
-                        </span>
+                        </div>
                         <Switch
+                            id="source-primary"
                             checked={primary}
                             onCheckedChange={(checked) => setPrimary(checked)}
                         />
-                    </label>
+                    </div>
+
+                    {isYoutube && (
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex flex-col gap-0.5">
+                                <Label
+                                    htmlFor="source-exclude-shorts"
+                                    className="cursor-pointer text-xs"
+                                >
+                                    Exclude Shorts
+                                </Label>
+                                <span className="text-xs font-light text-muted-foreground">
+                                    Subscribe to long-form uploads only.
+                                </span>
+                            </div>
+                            <Switch
+                                id="source-exclude-shorts"
+                                checked={excludeShorts}
+                                onCheckedChange={(checked) =>
+                                    setExcludeShorts(checked)
+                                }
+                            />
+                        </div>
+                    )}
 
                     <div className="space-y-2">
                         <Label htmlFor="source-tags" className="text-xs">

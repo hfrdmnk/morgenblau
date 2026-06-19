@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -32,11 +33,23 @@ type patchRequest struct {
 	Title   *string   `json:"title"`
 	Primary *bool     `json:"primary"`
 	Tags    *[]string `json:"tags"`
+	FeedURL *string   `json:"feedUrl"`
 }
 
-// SubscriptionsPatchHandler updates metadata on the user's subscription via
-// putRecord. Metadata-only — no fetch dispatch.
-func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds atprepo.Writer) http.Handler {
+// patchResponse is the updated subscription wire plus, when the feed URL
+// changed, the id of the fetch job dispatched for the new feed so the client
+// can poll it.
+type patchResponse struct {
+	SubscriptionWire
+	JobID string `json:"jobId,omitempty"`
+}
+
+// SubscriptionsPatchHandler updates the user's subscription via putRecord.
+// Metadata edits (title, primary, tags) replace the record in place. A feedUrl
+// change re-points the subscription to a different feed: it additionally upserts
+// the Tier-2 catalog row and dispatches a fetch_one_feed for the new feed (the
+// add path's contract, applied to an existing record).
+func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds atprepo.Writer, disp FetchDispatcher) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := auth.SessionFromContext(r.Context())
 		if sess == nil || sess.Data == nil {
@@ -101,15 +114,41 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			newTagsSlice = unmarshalTags(row.Tags)
 		}
 
+		// A feedUrl change re-points the subscription to a different feed.
+		newFeedURL := row.FeedUrl
+		feedChanged := false
+		if body.FeedURL != nil {
+			if candidate := strings.TrimSpace(*body.FeedURL); candidate != "" && candidate != row.FeedUrl {
+				// Guard against colliding with another of the user's
+				// subscriptions (the (did, feed_url) pair is unique).
+				if other, err := reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
+					Did:     didStr,
+					FeedUrl: candidate,
+				}); err == nil {
+					if other.Rkey != rkey {
+						http.Error(w, "already subscribed to that feed", http.StatusConflict)
+						return
+					}
+				} else if !errors.Is(err, sql.ErrNoRows) {
+					slog.Warn("/api/subscriptions PATCH: feed dedupe probe failed", "err", err)
+					http.Error(w, "internal error", http.StatusInternalServerError)
+					return
+				}
+				newFeedURL = candidate
+				feedChanged = true
+				changed = true
+			}
+		}
+
 		if !changed {
 			// No diff — return the existing record without a PDS hit.
-			writeJSON(w, rowToWire(row))
+			writeJSON(w, patchResponse{SubscriptionWire: rowToWire(row)})
 			return
 		}
 
 		// Build the new record body. PDS putRecord replaces atomically.
 		record := map[string]any{
-			"feedUrl":   row.FeedUrl,
+			"feedUrl":   newFeedURL,
 			"createdAt": row.CreatedAt,
 			"updatedAt": time.Now().UTC().Format(time.RFC3339),
 		}
@@ -135,11 +174,22 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			return
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
+		// Re-pointed feed: ensure the Tier-2 catalog row exists before the
+		// Tier-1 row references it (feed_url FK), mirroring the POST contract.
+		if feedChanged {
+			if err := writer.UpsertFeed(r.Context(), db.UpsertFeedParams{
+				FeedUrl:   newFeedURL,
+				CreatedAt: now,
+				UpdatedAt: now,
+			}); err != nil {
+				slog.Error("/api/subscriptions PATCH: Tier-2 upsert failed (PDS write already succeeded — next sync_user will reconcile)", "err", err)
+			}
+		}
 		if err := writer.UpsertUserSubscription(r.Context(), db.UpsertUserSubscriptionParams{
 			Did:       didStr,
 			Rkey:      rkey,
 			AtUri:     ref.URI,
-			FeedUrl:   row.FeedUrl,
+			FeedUrl:   newFeedURL,
 			Title:     newTitle,
 			IsPrimary: newPrimary,
 			Tags:      newTags,
@@ -151,9 +201,17 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		row.Title = newTitle
 		row.IsPrimary = newPrimary
 		row.Tags = newTags
+		row.FeedUrl = newFeedURL
 		row.UpdatedAt = now
 		row.AtUri = ref.URI
-		writeJSON(w, rowToWire(row))
+
+		resp := patchResponse{SubscriptionWire: rowToWire(row)}
+		if feedChanged {
+			// Dispatch a fetch for the now-current feed; the id lets the client
+			// poll /api/jobs/active and refresh once content lands.
+			resp.JobID = disp.StartFetchOneFeed(sess.Data.AccountDID, newFeedURL)
+		}
+		writeJSON(w, resp)
 	})
 }
 

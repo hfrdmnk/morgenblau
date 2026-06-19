@@ -32,7 +32,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("GET /api/subscriptions/tags", api.SubscriptionsTagsHandler(s.queries))
 	mux.Handle("GET /api/subscriptions/{rkey}", api.SubscriptionGetHandler(s.queries))
 	mux.Handle("GET /api/subscriptions/{rkey}/entries", api.SubscriptionEntriesHandler(s.queries))
-	mux.Handle("PATCH /api/subscriptions/{rkey}", api.SubscriptionsPatchHandler(s.queries, s.queries, pdsWriter))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", api.SubscriptionsPatchHandler(s.queries, s.queries, pdsWriter, s.sync))
 	mux.Handle("DELETE /api/subscriptions/{rkey}", api.SubscriptionsDeleteHandler(s.queries, s.queries, pdsWriter))
 
 	mux.Handle("GET /api/favicon", api.FaviconProxyHandler(s.queries, s.safeClient))

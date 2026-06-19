@@ -23,9 +23,10 @@ import (
 // --- Tier-1 index reader/writer test doubles ---
 
 type fakeIndex struct {
-	mu         sync.Mutex
-	rows       map[string]map[string]db.UserSubscription // did → feedURL → row
-	getFeedErr error
+	mu            sync.Mutex
+	rows          map[string]map[string]db.UserSubscription // did → feedURL → row
+	getFeedErr    error
+	upsertedFeeds []string // feed URLs passed to UpsertFeed, in call order
 }
 
 func newFakeIndex() *fakeIndex {
@@ -91,7 +92,12 @@ func (f *fakeIndex) GetUserSubscriptionByFeedURL(_ context.Context, arg db.GetUs
 	return row, nil
 }
 
-func (f *fakeIndex) UpsertFeed(_ context.Context, _ db.UpsertFeedParams) error { return nil }
+func (f *fakeIndex) UpsertFeed(_ context.Context, arg db.UpsertFeedParams) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.upsertedFeeds = append(f.upsertedFeeds, arg.FeedUrl)
+	return nil
+}
 
 func (f *fakeIndex) UpsertUserSubscription(_ context.Context, arg db.UpsertUserSubscriptionParams) error {
 	f.mu.Lock()
