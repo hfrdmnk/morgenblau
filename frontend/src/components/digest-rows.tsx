@@ -12,7 +12,6 @@ import { useMemo } from 'react';
 
 import { Favicon } from '@/components/favicon';
 import { useAuthedMe } from '@/hooks/use-authed-me';
-import { LevelContext } from '@/hooks/use-surface-level';
 import { formatEditionDate, isSameDay } from '@/lib/date';
 import { pickGreeting, pickPastTitle } from '@/lib/greetings';
 import { entryHref, type EntryFrom } from '@/lib/paths';
@@ -47,7 +46,7 @@ const TYPE_ICONS: Record<ContentType, IconSvgElement> = {
 };
 
 const ROW_CLICKABLE_BASE =
-    'cursor-pointer transition-colors duration-200 ease-out hover:bg-gray-50 focus-visible:outline-1 focus-visible:outline-offset-[-2px] focus-visible:outline-solid focus-visible:outline-ring dark:hover:bg-gray-900';
+    'cursor-pointer transition-colors duration-200 ease-out hover:bg-overlay-1 focus-visible:outline-1 focus-visible:outline-offset-[-2px] focus-visible:outline-solid focus-visible:outline-ring';
 
 const ROW_CLICKABLE_CLASS = `block px-6 py-5 outline-none ${ROW_CLICKABLE_BASE}`;
 
@@ -63,43 +62,35 @@ export function Newspaper({
     entryFrom?: EntryFrom;
 }) {
     return (
-        <LevelContext.Provider value={1}>
-            <article className="overflow-hidden rounded-xl bg-card">
-                {date ? (
-                    <>
-                        <DigestMasthead
-                            date={date}
-                            count={entries.length}
-                            isToday={today ? isSameDay(date, today) : true}
-                        />
-                        <div
-                            aria-hidden
-                            className="mx-6 border-t border-border"
-                        />
-                    </>
-                ) : null}
-                <ul className="flex flex-col">
-                    {entries.map((entry, index) => (
-                        <li key={entry.id}>
-                            {index > 0 ? (
-                                <div
-                                    aria-hidden
-                                    className="mx-6 border-t border-border"
-                                />
-                            ) : null}
-                            {entry.contentType === 'microblog' ? (
-                                <InlineRow entry={entry} />
-                            ) : (
-                                <StandardRow
-                                    entry={entry}
-                                    entryFrom={entryFrom}
-                                />
-                            )}
-                        </li>
-                    ))}
-                </ul>
-            </article>
-        </LevelContext.Provider>
+        <article className="overflow-hidden rounded-xl border border-border bg-card">
+            {date ? (
+                <>
+                    <DigestMasthead
+                        date={date}
+                        count={entries.length}
+                        isToday={today ? isSameDay(date, today) : true}
+                    />
+                    <div aria-hidden className="mx-6 border-t border-border" />
+                </>
+            ) : null}
+            <ul className="flex flex-col">
+                {entries.map((entry, index) => (
+                    <li key={entry.id}>
+                        {index > 0 ? (
+                            <div
+                                aria-hidden
+                                className="mx-6 border-t border-border"
+                            />
+                        ) : null}
+                        {entry.contentType === 'microblog' ? (
+                            <InlineRow entry={entry} />
+                        ) : (
+                            <StandardRow entry={entry} entryFrom={entryFrom} />
+                        )}
+                    </li>
+                ))}
+            </ul>
+        </article>
     );
 }
 

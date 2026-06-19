@@ -331,7 +331,7 @@ function SourceRow({ source, onPatch, onDelete, tagSuggestions }: RowProps) {
 
     return (
         <>
-            <li className="relative flex items-start justify-between gap-3 px-5 py-4 transition-colors duration-200 ease-out hover:bg-gray-50 has-[a:focus-visible]:outline-1 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-solid has-[a:focus-visible]:outline-ring dark:hover:bg-gray-900">
+            <li className="relative flex items-start justify-between gap-3 px-5 py-4 transition-colors duration-200 ease-out hover:bg-overlay-1 has-[a:focus-visible]:outline-1 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-solid has-[a:focus-visible]:outline-ring">
                 <a
                     href={sourceHref(source.rkey)}
                     aria-label={title}

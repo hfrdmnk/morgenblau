@@ -365,7 +365,7 @@ function ScrollProgressTrack({
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={percent}
-            className="h-px w-full overflow-hidden bg-gray-200 dark:bg-gray-700"
+            className="h-px w-full overflow-hidden bg-overlay-2"
         >
             <div
                 className="h-full w-full origin-left bg-foreground motion-safe:transition-transform motion-safe:duration-[120ms] motion-safe:ease-linear"

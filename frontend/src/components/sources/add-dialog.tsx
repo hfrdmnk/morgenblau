@@ -229,7 +229,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                     setUserTags(body.tags);
                 }
             })
-            .catch(() => {});
+            .catch(() => { });
         return () => {
             active = false;
         };
@@ -286,8 +286,8 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
 
             return exists
                 ? current.filter(
-                      (item) => item.feedUrl !== candidate.feedUrl,
-                  )
+                    (item) => item.feedUrl !== candidate.feedUrl,
+                )
                 : [...current, toItem(candidate)];
         });
     }, []);
@@ -428,8 +428,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                 <DialogHeader>
                     <DialogTitle>Add a source</DialogTitle>
                     <DialogDescription>
-                        Paste a website, RSS feed, YouTube channel, or podcast
-                        URL.
+                        Paste a website, RSS feed, or YouTube channel.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -523,10 +522,10 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                         subscriptions.map((item, index) => {
                             const indexedErrors = [
                                 fieldErrors[
-                                    `subscriptions.${index}.feedUrl`
+                                `subscriptions.${index}.feedUrl`
                                 ],
                                 fieldErrors[
-                                    `subscriptions.${index}.title`
+                                `subscriptions.${index}.title`
                                 ],
                             ].filter(Boolean) as string[];
 

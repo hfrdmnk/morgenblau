@@ -17,46 +17,49 @@ Keep the craft bar high (taste, not concrete examples): Linear's precision, Fami
 
 Morgenblau inverts the common "shadows signal elevation" pattern. Closeness to the user is expressed by **luminance**, not shadow. Surfaces rise toward the user by getting lighter.
 
-| Level         | Light surface | Light border | Dark surface | Dark border | Example                                                  |
-| ------------- | ------------- | ------------ | ------------ | ----------- | -------------------------------------------------------- |
-| **0** — base  | gray-100      | —            | gray-950     | —           | the page background and app chrome, behind everything    |
-| **1** — card  | white         | gray-100     | gray-800     | gray-700    | a card on the base (digest, sources, source, login)      |
+| Level      | Light surface | Dark surface | Border            | Example                                               |
+| ---------- | ------------- | ------------ | ----------------- | ----------------------------------------------------- |
+| **0 base** | gray-100      | gray-950     | none              | the page background and app chrome, behind everything |
+| **1 card** | white         | gray-800     | hairline `border` | a card on the base (digest, sources, source, login)   |
 
-There are **two levels only**. The base (0) is everything behind, including the nav chrome; a card (1) is anything sitting on it. (Until mid-2026 there was a third level and a framed "Window" container above the base — both retired. Cards now sit directly on the base, borderless, with a uniform 12px radius.)
+There are **two solid surface levels only**, and they are the only solid grays in the system. The base (0) is everything behind, including the nav chrome; a card (1) is anything sitting on it. Everything _above_ the card (controls, hovers, inner wells, the contents of popovers and dialogs) is an **alpha overlay**, covered in the next section, never a third solid level. (Until mid-2026 there was a third level and a framed "Window" container above the base; both retired.)
 
-**Principle:** the same direction in both modes — closer is lighter. In light mode the card climbs to white; in dark mode it climbs from near-black toward mid-gray.
+**Principle:** the same direction in both modes, closer is lighter. In light mode the card climbs to white; in dark mode it climbs from near-black toward mid-gray.
 
-**Level is a property of the element, not its container.** The `LevelContext` default is `0` (the base — the tree root). A card sets level `1` for its subtree (e.g. the digest `Newspaper`, dropdown popovers, dialogs). This keeps controls inside a card adapting correctly.
+**Borders are reserved for card-level surfaces and dividers.** A card (and its kin: dialogs, popovers, dropdowns) carries a single hairline `border-border` (alpha black 8% in light, white 10% in dark); rules and separators use the same token. Controls never get a border; they read by fill.
 
-**Do not** nest a card inside a card. If you reach for a second level of card, you've composed too many surfaces — restructure.
+**Level is just base-versus-card, expressed directly.** A card paints its own surface with `bg-card`; the base is `bg-background`. There is no `LevelContext`, and controls do not read a level. Overlays composite against whatever sits beneath them, so the same control class is correct on the base, on a card, or inside a dialog.
+
+**Do not** nest a card inside a card. If you reach for a second solid surface on top of a card, you have composed too many surfaces; use an overlay well (`bg-muted`) or restructure.
 
 ---
 
-## Controls invert the layer system
+## Controls and overlays — everything above the card
 
-Surfaces lighten as they come forward. **Controls do the opposite: they step forward by contrasting _against_ the surface brightness trend.** Two axes, opposite directions.
+Above the card there are no solid grays. Buttons, inputs, hovers, switches, menu highlights, inner wells, the contents of dialogs and popovers: all are **alpha overlays**, a tint that composites against whatever surface sits beneath. In light mode the overlay is black at low alpha ("dark + opacity"); in dark mode it is white at low alpha. The tokens self-invert, so one class is correct in both modes and on every surface.
 
-| Role                    | Rule                               | L0 light                                                                           | L1 light | L0 dark  | L1 dark  |
-| ----------------------- | ---------------------------------- | ---------------------------------------------------------------------------------- | -------- | -------- | -------- |
-| **Input bg**            | one step past surface              | gray-50                                                                             | gray-50  | gray-700 | gray-700 |
-| **Input border**        | two steps past                     | gray-200                                                                            | gray-100 | gray-600 | gray-600 |
-| **Secondary button bg** | two steps past                     | gray-100                                                                            | gray-100 | gray-600 | gray-600 |
-| **Primary button**      | color-defined, not level-dependent | solid atmosphere-blue background, white foreground, no border — same in both modes  |          |          |          |
+Why overlays instead of solid level-grays: a solid `gray-100` secondary button is invisible on a `gray-100` base. An overlay tints its substrate, so it always reads, with no level bookkeeping.
 
-**In light mode controls go darker; in dark mode they go lighter.** The rule holds: controls always stand _against_ the surface trend, so they visually step forward. (With only two levels, secondary buttons resolve to the same gray on both — the level distinction now matters mainly for input borders.)
+**Three overlay stops.** `--overlay-1/2/3` (light black 5 / 9 / 13%, dark white 6 / 11 / 15%), surfaced as `bg-overlay-1/2/3`. `--muted` aliases overlay-1 and `--accent` aliases overlay-2, so `bg-muted` and `bg-accent` are overlays too.
 
-**Exception — level 0 (base) inverts the inversion.** On the darkest surface, there is no darker step available in light mode (and no lighter step in dark mode), so the rule flips: on L0, controls go **lighter** than the surface, not darker. On L0 the input **bg** matches the card (L1) bg, but the **border goes a step darker than the card's** (gray-200 in light mode) so the edge still reads against the base; dark mode reuses the card border (gray-600) unchanged because it already stands out against gray-950.
+| Stop          | Role                                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **overlay-1** | rest fill: inputs, input-groups, inner wells (`bg-muted`), gentle row hover                                          |
+| **overlay-2** | hover / highlight: menu + combobox items (`bg-accent`), secondary button rest, ghost hover, input focus, switch track |
+| **overlay-3** | active / pressed: secondary button hover                                                                             |
 
-**Focus state — different rule for buttons and inputs.** Morgenblau draws its own focus indicator on the element the user actually perceives — not always the natively focusable one. The shape of the indicator depends on the control:
+**Primary button** is the one thing above the card that is not an overlay: color-defined, solid atmosphere-blue background, white foreground, no border, identical in both modes.
 
-- **Buttons and clickable controls — 1 px outline, offset 2 px, atmosphere-blue.** Pattern: `outline-none` base, then `focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring`. `outline-solid` is explicit — Tailwind v4 has no bare `outline` utility. The result looks native: thin, solid, sits *outside* the control. Use this on `<Button>`, links, icon buttons, anything you click.
-- **Inputs and compound input wrappers — border color swap, no outline, no ring.** Pattern: `border-input` base, then `focus-visible:border-ring` on a bare input, or `has-[[data-slot=input-group-control]:focus-visible]:border-ring` on a compound wrapper. The border itself becomes atmosphere-blue. No outer halo, no box-shadow, no offset outline — the field's edge already exists, so the focus indicator just colors it. Stays inside the field's footprint and reads as a single calm shape.
+**Two button variants only: primary (solid atmosphere-blue) and secondary (overlay-2, stepping to overlay-3 on hover).** There is no dark or black variant. When a button needs to feel more critical, the answer is **copy and placement**, not a louder color: a confirmation word, a more prominent position, a soft hint underneath, never a third variant.
 
-Why split: an outline on a control with a visible border looks like two parallel rings (border + outline), which feels noisy. Buttons (typically borderless or border-transparent) need a separate shape; inputs already have one.
+**Focus differs for buttons and inputs.**
 
-Error / invalid states (`aria-invalid`) swap the border to `border-destructive` on inputs, and the existing destructive ring style on buttons — so focus and validation stay distinguishable.
+- **Buttons and clickable controls: a 1 px atmosphere-blue outline at offset 2 px.** Pattern: `outline-none` base, then `focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring`. `outline-solid` is explicit because Tailwind v4 has no bare `outline` utility. Thin, solid, sits *outside* the control. This is where atmosphere-blue lives: the focus signal on anything you click.
+- **Inputs and compound input wrappers: deepen the fill, no blue.** A borderless field has no edge to recolor, so focus steps up the overlay scale, `bg-overlay-1` at rest to `focus-visible:bg-overlay-2`. On a compound wrapper, `has-[[data-slot=input-group-control]:focus-visible]:bg-overlay-2`. The field shows a little more of itself. No outline, no ring, no halo; it stays inside the footprint and reads as one calm shape.
 
-**Two button variants only: primary (solid atmosphere-blue, white text) and secondary (gray).** There is no dark / black variant. When a button needs to feel more critical, the answer is **copy and placement**, not a louder color. A confirmation word, a more prominent position, a soft hint underneath — but never a third button variant.
+Why the split: an input carries no border and no blue at rest, so a fill-step is the quietest possible "I am active." A button needs a distinct visible shape, and blue is right for an intentional click target.
+
+Error and invalid states (`aria-invalid`): an input gains a 1 px `ring-destructive` (an error earns a visible edge, kept distinct from the calm focus-fill); a button keeps its existing destructive ring. Focus and validation stay distinguishable.
 
 ---
 
@@ -220,6 +223,8 @@ If a Morgenblau design exhibits any of these, something has gone wrong:
 - **Spring physics by default on UI motion.** The motion metaphor is ripples settling, not springs bouncing.
 - **Staggered card entrances on digest load.** All content arrives together.
 - **A third button variant** (solid, black, dark). Two variants carry every action. Critical actions earn emphasis through copy and placement, not louder buttons.
+- **Solid level-keyed control grays.** A control painted with a fixed `gray-N` (a `bg-gray-100` secondary button, a `gray-700` input) instead of an overlay. It vanishes on a same-gray surface and forces level bookkeeping. Controls tint; only the base and the card are solid.
+- **A border on a control.** Inputs, buttons, switches, and chip fields carry no border; they read by fill. Borders belong to cards (and their dialog / popover kin) and to dividers, nowhere else.
 - **Newsreader (or any serif) in product UI.** Serif belongs to long-form reader body copy only. Using `font-serif` for titles, captions, UI chrome, or marketing breaks the metaphor; the reader stops feeling like a place. (The brand wordmark is a separate lockup set in Newsreader italic; see `BRAND.md`.)
 - **Hand-drawn, script, or decorative _typefaces_.** The product type is Geist + Newsreader; no third typeface. (The editor's-hand marks defined in `BRAND.md` are illustration, not type, and are allowed where that doc permits them.)
 - **Unread counts, progress indicators, "X items left" badges.** These are anti-Morgenblau.

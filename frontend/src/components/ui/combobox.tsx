@@ -8,7 +8,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { cn } from "@/lib/utils"
-import { LevelContext } from "@/hooks/use-surface-level"
+import { badgeVariants } from "@/components/ui/badge-variants"
 import { Button } from "@/components/ui/button"
 import {
   InputGroup,
@@ -118,10 +118,10 @@ function ComboboxContent({
         <ComboboxPrimitive.Popup
           data-slot="combobox-content"
           data-chips={!!anchor}
-          className={cn("group/combobox-content relative max-h-(--available-height) w-(--anchor-width) max-w-(--available-width) min-w-[calc(var(--anchor-width)+--spacing(7))] origin-(--transform-origin) overflow-hidden rounded-xl bg-popover text-popover-foreground ring-1 ring-border shadow-popover duration-100 data-[chips=true]:min-w-(--anchor-width) data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 *:data-[slot=input-group]:m-1 *:data-[slot=input-group]:mb-0 *:data-[slot=input-group]:h-8 *:data-[slot=input-group]:border-input *:data-[slot=input-group]:bg-gray-50 dark:*:data-[slot=input-group]:bg-gray-700 *:data-[slot=input-group]:shadow-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
+          className={cn("group/combobox-content relative max-h-(--available-height) w-(--anchor-width) max-w-(--available-width) min-w-[calc(var(--anchor-width)+--spacing(7))] origin-(--transform-origin) overflow-hidden rounded-xl bg-popover text-popover-foreground ring-1 ring-border shadow-popover duration-100 data-[chips=true]:min-w-(--anchor-width) data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 *:data-[slot=input-group]:m-1 *:data-[slot=input-group]:mb-0 *:data-[slot=input-group]:h-8 *:data-[slot=input-group]:bg-overlay-1 *:data-[slot=input-group]:shadow-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
           {...props}
         >
-          <LevelContext.Provider value={1}>{children}</LevelContext.Provider>
+          {children}
         </ComboboxPrimitive.Popup>
       </ComboboxPrimitive.Positioner>
     </ComboboxPrimitive.Portal>
@@ -231,7 +231,7 @@ function ComboboxChips({
     <ComboboxPrimitive.Chips
       data-slot="combobox-chips"
       className={cn(
-        "flex min-h-10 flex-wrap items-center gap-1 rounded-xl border border-input bg-gray-50 px-2.5 py-1 text-sm transition-colors focus-within:border-ring has-aria-invalid:border-destructive has-data-[slot=combobox-chip]:p-2 dark:bg-gray-700 dark:has-aria-invalid:border-destructive/50",
+        "flex min-h-10 flex-wrap items-center gap-1 rounded-xl bg-overlay-1 px-2.5 py-1 text-sm transition-colors focus-within:bg-overlay-2 has-aria-invalid:ring-1 has-aria-invalid:ring-destructive has-data-[slot=combobox-chip]:p-2",
         className
       )}
       {...props}
@@ -251,7 +251,8 @@ function ComboboxChip({
     <ComboboxPrimitive.Chip
       data-slot="combobox-chip"
       className={cn(
-        "flex w-fit items-center gap-1 rounded-lg bg-foreground/[0.06] px-2 py-1 text-xs font-medium whitespace-nowrap text-foreground/80 has-disabled:pointer-events-none has-disabled:cursor-not-allowed has-disabled:opacity-50",
+        badgeVariants(),
+        "has-disabled:pointer-events-none has-disabled:cursor-not-allowed has-disabled:opacity-50",
         className
       )}
       {...props}

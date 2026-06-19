@@ -3,7 +3,6 @@ import { Menu as MenuPrimitive } from '@base-ui/react/menu';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { ArrowRight01Icon, Tick02Icon } from '@hugeicons/core-free-icons';
 
-import { LevelContext } from '@/hooks/use-surface-level';
 import { cn } from '@/lib/utils';
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
@@ -52,9 +51,7 @@ function DropdownMenuContent({
                     )}
                     {...props}
                 >
-                    <LevelContext.Provider value={1}>
-                        {children}
-                    </LevelContext.Provider>
+                    {children}
                 </MenuPrimitive.Popup>
             </MenuPrimitive.Positioner>
         </MenuPrimitive.Portal>

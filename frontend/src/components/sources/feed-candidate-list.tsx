@@ -3,6 +3,7 @@ import { HugeiconsIcon } from '@hugeicons/react';
 import type { Ref } from 'react';
 import { memo, useId } from 'react';
 
+import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { CreatableCombobox } from '@/components/ui/creatable-combobox';
 import { Input } from '@/components/ui/input';
@@ -152,10 +153,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
             data-state={
                 isExisting ? 'existing' : isSelected ? 'selected' : 'idle'
             }
-            className={cn(
-                'rounded-xl border border-border bg-muted',
-                isExisting && 'opacity-60',
-            )}
+            className="rounded-xl bg-muted"
         >
             <label
                 htmlFor={inputId}
@@ -164,7 +162,12 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                     isExisting ? 'cursor-not-allowed' : 'cursor-pointer',
                 )}
             >
-                <span className="relative mt-0.5 inline-flex shrink-0">
+                <span
+                    className={cn(
+                        'relative mt-0.5 inline-flex shrink-0',
+                        isExisting && 'opacity-60',
+                    )}
+                >
                     <input
                         ref={firstCheckboxRef}
                         id={inputId}
@@ -186,17 +189,23 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <span className="flex min-w-0 items-center gap-2">
-                        <span className="truncate text-sm font-medium">
+                        <span
+                            className={cn(
+                                'truncate text-sm font-medium',
+                                isExisting && 'opacity-60',
+                            )}
+                        >
                             {(isExisting ? savedTitle : candidate.title) ??
                                 candidate.feedUrl}
                         </span>
-                        {isExisting && (
-                            <span className="text-xs font-light text-muted-foreground">
-                                Already added
-                            </span>
-                        )}
+                        {isExisting && <Badge>Already added</Badge>}
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">
+                    <span
+                        className={cn(
+                            'truncate text-xs text-muted-foreground',
+                            isExisting && 'opacity-60',
+                        )}
+                    >
                         {candidate.feedUrl}
                     </span>
                 </div>
@@ -204,7 +213,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
 
             <Collapsible open={isSelected && !isExisting}>
                 <CollapsibleContent className="overflow-hidden">
-                    <div className="flex flex-col gap-4 border-t border-foreground/10 px-4 py-3">
+                    <div className="flex flex-col gap-4 border-t border-border px-4 py-3">
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor={titleId} className="text-xs">
                                 Title
