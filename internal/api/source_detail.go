@@ -142,6 +142,14 @@ func sourceDetailRowToWire(row db.GetUserSourceWithStatsRow, now time.Time) Subs
 	if row.IconUrl != nil {
 		faviconURL = *row.IconUrl
 	}
+	primary := row.IsPrimary != 0
+	tags := unmarshalTags(row.Tags)
+	if primary {
+		value["primary"] = true
+	}
+	if len(tags) > 0 {
+		value["tags"] = tags
+	}
 	lastPublished := asString(row.LastPublishedAt)
 	firstPublished := asString(row.FirstPublishedAt)
 	return SubscriptionDetailWire{
@@ -155,6 +163,8 @@ func sourceDetailRowToWire(row db.GetUserSourceWithStatsRow, now time.Time) Subs
 			FaviconURL:      faviconURL,
 			Frequency:       frequencyBucket(firstPublished, row.Count7d, row.Count28d, row.Count56d, row.Count84d, now),
 			LastPublishedAt: lastPublished,
+			Primary:         primary,
+			Tags:            tags,
 		},
 		TotalEntries: row.TotalEntries,
 		SavedByYou:   row.SavedByYou,

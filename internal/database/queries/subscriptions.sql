@@ -26,26 +26,31 @@ WHERE feed_url = ?;
 
 -- name: UpsertUserSubscription :exec
 INSERT INTO user_subscriptions (
-    did, rkey, at_uri, feed_url, title, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?)
+    did, rkey, at_uri, feed_url, title, is_primary, tags, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (did, rkey) DO UPDATE SET
     at_uri     = excluded.at_uri,
     feed_url   = excluded.feed_url,
     title      = excluded.title,
+    is_primary = excluded.is_primary,
+    tags       = excluded.tags,
     updated_at = excluded.updated_at;
 
 -- name: GetUserSubscription :one
-SELECT did, rkey, at_uri, feed_url, title, created_at, updated_at
+SELECT did, rkey, at_uri, feed_url, title, is_primary, tags, created_at, updated_at
 FROM user_subscriptions WHERE did = ? AND rkey = ?;
 
 -- name: GetUserSubscriptionByFeedURL :one
-SELECT did, rkey, at_uri, feed_url, title, created_at, updated_at
+SELECT did, rkey, at_uri, feed_url, title, is_primary, tags, created_at, updated_at
 FROM user_subscriptions WHERE did = ? AND feed_url = ?;
 
 -- name: ListUserSubscriptions :many
-SELECT did, rkey, at_uri, feed_url, title, created_at, updated_at
+SELECT did, rkey, at_uri, feed_url, title, is_primary, tags, created_at, updated_at
 FROM user_subscriptions WHERE did = ?
 ORDER BY COALESCE(NULLIF(title, ''), feed_url) COLLATE NOCASE ASC;
+
+-- name: ListUserSubscriptionTags :many
+SELECT tags FROM user_subscriptions WHERE did = ? AND tags IS NOT NULL AND tags != '';
 
 -- name: ListUserSourcesWithStats :many
 -- One row per subscription with feed metadata and windowed entry stats. The
@@ -53,6 +58,7 @@ ORDER BY COALESCE(NULLIF(title, ''), feed_url) COLLATE NOCASE ASC;
 -- passed in by the handler so all rows share a single clock.
 SELECT
     us.did, us.rkey, us.at_uri, us.feed_url, us.title,
+    us.is_primary, us.tags,
     us.created_at, us.updated_at,
     f.site_url, f.icon_url,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
@@ -72,6 +78,7 @@ ORDER BY COALESCE(NULLIF(us.title, ''), us.feed_url) COLLATE NOCASE ASC;
 -- source detail page can render its stat row in one query.
 SELECT
     us.did, us.rkey, us.at_uri, us.feed_url, us.title,
+    us.is_primary, us.tags,
     us.created_at, us.updated_at,
     f.site_url, f.icon_url,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,

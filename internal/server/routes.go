@@ -29,6 +29,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("GET /api/subscriptions", api.SubscriptionsListHandler(s.queries))
 	mux.Handle("POST /api/subscriptions/resolve", api.SubscriptionsResolveHandler(s.queries, s.feedfinder))
 	mux.Handle("POST /api/subscriptions", api.SubscriptionsCreateHandler(s.queries, s.queries, pdsWriter, s.sync))
+	mux.Handle("GET /api/subscriptions/tags", api.SubscriptionsTagsHandler(s.queries))
 	mux.Handle("GET /api/subscriptions/{rkey}", api.SubscriptionGetHandler(s.queries))
 	mux.Handle("GET /api/subscriptions/{rkey}/entries", api.SubscriptionEntriesHandler(s.queries))
 	mux.Handle("PATCH /api/subscriptions/{rkey}", api.SubscriptionsPatchHandler(s.queries, s.queries, pdsWriter))

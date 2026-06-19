@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { isMacPlatform } from '@/lib/utils';
+import { youtubeShortsFreeFeedUrl } from '@/lib/youtube';
 
 type ExistingFeedSubscription = { feedUrl: string; title: string | null };
 
@@ -38,6 +38,11 @@ type SubscriptionItem = {
     // the user (lexicon: blue.morgen.feed.subscription `title` is user-editable).
     title: string;
     siteUrl: string;
+    primary: boolean;
+    tags: string[];
+    // UI-only: when true, submit the Shorts-free YouTube playlist feed instead
+    // of the channel feed. Resolved to the effective feedUrl at submit.
+    excludeShorts: boolean;
 };
 
 type Props = {
@@ -50,6 +55,9 @@ function toItem(candidate: FeedCandidate): SubscriptionItem {
         feedUrl: candidate.feedUrl,
         title: candidate.title ?? '',
         siteUrl: candidate.siteUrl ?? '',
+        primary: false,
+        tags: [],
+        excludeShorts: false,
     };
 }
 
@@ -72,12 +80,11 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         undefined,
     );
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+    const [userTags, setUserTags] = useState<string[]>([]);
 
     const firstCheckboxRef = useRef<HTMLInputElement>(null);
     const firstTitleInputRef = useRef<HTMLInputElement>(null);
     const previousCandidatesRef = useRef<FeedCandidate[] | null>(null);
-
-    const isMac = useMemo(() => isMacPlatform(), []);
 
     const resetState = useCallback(() => {
         discoverAbortRef.current?.abort();
@@ -187,43 +194,6 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
     const selectedCount = subscriptions.length;
     const submitDisabled = submitting || selectedCount === 0;
 
-    const onFormKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
-        if (event.key !== 'Enter' || event.nativeEvent.isComposing) {
-            return;
-        }
-
-        if (event.defaultPrevented) {
-            return;
-        }
-
-        const target = event.target;
-        const onSubmitButton =
-            target instanceof HTMLButtonElement && target.type === 'submit';
-
-        if (onSubmitButton) {
-            return;
-        }
-
-        if (event.metaKey || event.ctrlKey) {
-            event.preventDefault();
-
-            if (hasCandidates && selectedCount > 0 && !submitting) {
-                event.currentTarget.requestSubmit();
-            }
-
-            return;
-        }
-
-        if (target instanceof HTMLInputElement) {
-            const isUrlInput = target.id === 'source-url';
-            const isCheckbox = target.type === 'checkbox';
-
-            if (isUrlInput || isCheckbox) {
-                event.preventDefault();
-            }
-        }
-    };
-
     useEffect(() => {
         const previous = previousCandidatesRef.current;
         previousCandidatesRef.current = candidates;
@@ -246,16 +216,57 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         firstCheckboxRef.current?.focus();
     }, [candidates, subscriptions.length]);
 
+    // Pull the user's existing tags once per open, to seed tag suggestions.
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+        let active = true;
+        fetch('/api/subscriptions/tags', { credentials: 'same-origin' })
+            .then((response) => (response.ok ? response.json() : null))
+            .then((body: { tags?: string[] } | null) => {
+                if (active && body?.tags) {
+                    setUserTags(body.tags);
+                }
+            })
+            .catch(() => {});
+        return () => {
+            active = false;
+        };
+    }, [open]);
+
     const selectedMap = useMemo(
         () =>
             Object.fromEntries(
                 subscriptions.map((item) => [
                     item.feedUrl,
-                    { title: item.title },
+                    {
+                        title: item.title,
+                        primary: item.primary,
+                        tags: item.tags,
+                        excludeShorts: item.excludeShorts,
+                    },
                 ]),
             ),
         [subscriptions],
     );
+
+    // Suggestions = tags the user already uses ∪ tags added elsewhere in this
+    // dialog, deduped case-insensitively and sorted.
+    const tagSuggestions = useMemo(() => {
+        const byLower = new Map<string, string>();
+        for (const tag of userTags) {
+            const key = tag.toLowerCase();
+            if (!byLower.has(key)) byLower.set(key, tag);
+        }
+        for (const item of subscriptions) {
+            for (const tag of item.tags) {
+                const key = tag.toLowerCase();
+                if (!byLower.has(key)) byLower.set(key, tag);
+            }
+        }
+        return [...byLower.values()].sort((a, b) => a.localeCompare(b));
+    }, [userTags, subscriptions]);
 
     const existingByFeedUrl = useMemo(
         () =>
@@ -292,6 +303,38 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         [],
     );
 
+    const handlePrimaryChange = useCallback(
+        (feedUrl: string, primary: boolean) => {
+            setSubscriptions((current) =>
+                current.map((item) =>
+                    item.feedUrl === feedUrl ? { ...item, primary } : item,
+                ),
+            );
+        },
+        [],
+    );
+
+    const handleTagsChange = useCallback((feedUrl: string, tags: string[]) => {
+        setSubscriptions((current) =>
+            current.map((item) =>
+                item.feedUrl === feedUrl ? { ...item, tags } : item,
+            ),
+        );
+    }, []);
+
+    const handleExcludeShortsChange = useCallback(
+        (feedUrl: string, excludeShorts: boolean) => {
+            setSubscriptions((current) =>
+                current.map((item) =>
+                    item.feedUrl === feedUrl
+                        ? { ...item, excludeShorts }
+                        : item,
+                ),
+            );
+        },
+        [],
+    );
+
     const submit = async (event: FormEvent) => {
         event.preventDefault();
 
@@ -315,11 +358,18 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         setSubmitError(undefined);
         setFieldErrors({});
 
-        const payload = subscriptions.map((item) => ({
-            feedUrl: item.feedUrl,
-            title: item.title.trim(),
-            siteUrl: item.siteUrl,
-        }));
+        const payload = subscriptions.map((item) => {
+            const feedUrl = item.excludeShorts
+                ? (youtubeShortsFreeFeedUrl(item.feedUrl) ?? item.feedUrl)
+                : item.feedUrl;
+            return {
+                feedUrl,
+                title: item.title.trim(),
+                siteUrl: item.siteUrl,
+                primary: item.primary,
+                tags: item.tags,
+            };
+        });
 
         try {
             const response = await fetch('/api/subscriptions', {
@@ -385,7 +435,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
 
                 <form
                     onSubmit={submit}
-                    onKeyDown={onFormKeyDown}
+                    noValidate
                     className="flex min-h-0 min-w-0 flex-col gap-5"
                 >
                     <div className="space-y-2">
@@ -395,8 +445,9 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                         <div className="flex items-center gap-2">
                             <Input
                                 id="source-url"
-                                type="url"
+                                type="text"
                                 inputMode="url"
+                                enterKeyHint="search"
                                 autoFocus
                                 spellCheck={false}
                                 placeholder="https://example.com"
@@ -455,6 +506,12 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                                     selected={selectedMap}
                                     onToggle={toggleCandidate}
                                     onTitleChange={handleTitleChange}
+                                    onPrimaryChange={handlePrimaryChange}
+                                    onTagsChange={handleTagsChange}
+                                    onExcludeShortsChange={
+                                        handleExcludeShortsChange
+                                    }
+                                    tagSuggestions={tagSuggestions}
                                     firstCheckboxRef={firstCheckboxRef}
                                     firstTitleInputRef={firstTitleInputRef}
                                 />
@@ -516,16 +573,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                                     Adding…
                                 </>
                             ) : (
-                                <>
-                                    {submitLabel}
-                                    <kbd
-                                        data-slot="kbd"
-                                        aria-hidden="true"
-                                        className="ml-1 font-sans text-xs opacity-50"
-                                    >
-                                        {isMac ? '⌘⏎' : 'Ctrl+⏎'}
-                                    </kbd>
-                                </>
+                                submitLabel
                             )}
                         </Button>
                     </DialogFooter>

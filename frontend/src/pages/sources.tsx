@@ -6,10 +6,20 @@ import {
     Pulse01Icon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import {
+    Fragment,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
 
 import { Favicon } from '@/components/favicon';
-import { EditSourceDialog } from '@/components/sources/edit-dialog';
+import {
+    EditSourceDialog,
+    type SourcePatch,
+} from '@/components/sources/edit-dialog';
 import { sourceHref } from '@/lib/paths';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -40,6 +50,8 @@ type Source = {
     faviconUrl?: string;
     frequency?: Frequency;
     lastPublishedAt?: string;
+    primary?: boolean;
+    tags?: string[];
     value: {
         title?: string;
         feedUrl?: string;
@@ -109,12 +121,26 @@ export function Sources() {
     }, []);
     useJobsPoll(hasPendingJobs, onJobsQuiet);
 
-    const onPatch = async (rkey: string, title: string) => {
+    // Tag suggestions for the edit dialog: the distinct set already in use
+    // across the user's sources, deduped case-insensitively and sorted.
+    const tagSuggestions = useMemo(() => {
+        if (state.kind !== 'ok') return [];
+        const byLower = new Map<string, string>();
+        for (const record of state.records) {
+            for (const tag of record.tags ?? []) {
+                const key = tag.toLowerCase();
+                if (!byLower.has(key)) byLower.set(key, tag);
+            }
+        }
+        return [...byLower.values()].sort((a, b) => a.localeCompare(b));
+    }, [state]);
+
+    const onPatch = async (rkey: string, patch: SourcePatch) => {
         const resp = await fetch(`/api/subscriptions/${rkey}`, {
             method: 'PATCH',
             headers: { 'content-type': 'application/json' },
             credentials: 'same-origin',
-            body: JSON.stringify({ title }),
+            body: JSON.stringify(patch),
         });
         if (!resp.ok) return false;
         setState((cur) => {
@@ -125,8 +151,15 @@ export function Sources() {
                     r.rkey === rkey
                         ? {
                             ...r,
-                            title,
-                            value: { ...r.value, title },
+                            title: patch.title,
+                            primary: patch.primary,
+                            tags: patch.tags,
+                            value: {
+                                ...r.value,
+                                title: patch.title,
+                                primary: patch.primary,
+                                tags: patch.tags,
+                            },
                         }
                         : r,
                 ),
@@ -202,6 +235,7 @@ export function Sources() {
                                 source={r}
                                 onPatch={onPatch}
                                 onDelete={onDelete}
+                                tagSuggestions={tagSuggestions}
                             />
                         </Fragment>
                     ))}
@@ -230,12 +264,21 @@ function SourcesMasthead({ count }: { count: number }) {
 }
 
 function addedToSource(added: AddedSubscription): Source {
+    const primary =
+        typeof added.value.primary === 'boolean'
+            ? added.value.primary
+            : undefined;
+    const tags = Array.isArray(added.value.tags)
+        ? (added.value.tags as string[])
+        : undefined;
     return {
         uri: added.uri,
         rkey: added.rkey,
         feedUrl: added.feedUrl,
         title: added.title,
         siteUrl: added.siteUrl,
+        primary,
+        tags,
         value: {
             ...added.value,
             feedUrl: added.feedUrl,
@@ -269,11 +312,12 @@ function siteDomain(s: Source): string {
 
 type RowProps = {
     source: Source;
-    onPatch: (rkey: string, title: string) => Promise<boolean>;
+    onPatch: (rkey: string, patch: SourcePatch) => Promise<boolean>;
     onDelete: (rkey: string) => Promise<boolean>;
+    tagSuggestions: string[];
 };
 
-function SourceRow({ source, onPatch, onDelete }: RowProps) {
+function SourceRow({ source, onPatch, onDelete, tagSuggestions }: RowProps) {
     const [editing, setEditing] = useState(false);
     const title = displayLabel(source);
     const domain = siteDomain(source);
@@ -336,7 +380,10 @@ function SourceRow({ source, onPatch, onDelete }: RowProps) {
                 open={editing}
                 onOpenChange={setEditing}
                 initialTitle={title}
-                onSave={(next) => onPatch(source.rkey, next)}
+                initialPrimary={source.primary ?? false}
+                initialTags={source.tags ?? []}
+                tagSuggestions={tagSuggestions}
+                onSave={(patch) => onPatch(source.rkey, patch)}
             />
         </>
     );

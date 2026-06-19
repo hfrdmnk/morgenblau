@@ -145,6 +145,115 @@ func TestSubscriptionsPatch_Title_Applied(t *testing.T) {
 	}
 }
 
+func TestSubscriptionsPatch_PrimaryAndTags_Applied(t *testing.T) {
+	idx := newRkeyIndex()
+	oldTags := `["News"]`
+	idx.seedRow(db.UserSubscription{
+		Did:       "did:plc:alice",
+		Rkey:      "3la",
+		AtUri:     "at://did:plc:alice/blue.morgen.feed.subscription/3la",
+		FeedUrl:   "https://example.test/feed.xml",
+		IsPrimary: 1,
+		Tags:      &oldTags,
+		CreatedAt: "2026-05-15T10:00:00Z",
+		UpdatedAt: "2026-05-15T10:00:00Z",
+	})
+	pds := &fakePDS{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds))
+
+	// primary true→false and tags edited.
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
+		strings.NewReader(`{"primary":false,"tags":["Tech","Design"]}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.puts != 1 {
+		t.Fatalf("PDS puts = %d, want 1", pds.puts)
+	}
+	// primary==false must be absent from the record map (minimal PDS shape).
+	if _, ok := pds.lastPut["primary"]; ok {
+		t.Errorf("primary should be omitted when false: %v", pds.lastPut["primary"])
+	}
+	if tags, ok := pds.lastPut["tags"].([]string); !ok || len(tags) != 2 || tags[0] != "Tech" {
+		t.Errorf("put tags = %v", pds.lastPut["tags"])
+	}
+
+	var got SubscriptionWire
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Primary {
+		t.Errorf("response primary = true, want false")
+	}
+	if len(got.Tags) != 2 || got.Tags[0] != "Tech" {
+		t.Errorf("response tags = %v", got.Tags)
+	}
+}
+
+func TestSubscriptionsPatch_PrimaryTrue_WrittenToRecord(t *testing.T) {
+	idx := newRkeyIndex()
+	idx.seedRow(db.UserSubscription{
+		Did:       "did:plc:alice",
+		Rkey:      "3la",
+		AtUri:     "at://did:plc:alice/blue.morgen.feed.subscription/3la",
+		FeedUrl:   "https://example.test/feed.xml",
+		IsPrimary: 0,
+		CreatedAt: "2026-05-15T10:00:00Z",
+		UpdatedAt: "2026-05-15T10:00:00Z",
+	})
+	pds := &fakePDS{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds))
+
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
+		strings.NewReader(`{"primary":true}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.lastPut["primary"] != true {
+		t.Errorf("put primary = %v, want true", pds.lastPut["primary"])
+	}
+}
+
+func TestSubscriptionsPatch_SamePrimaryAndTags_NoOp(t *testing.T) {
+	idx := newRkeyIndex()
+	tags := `["News","Tech"]`
+	idx.seedRow(db.UserSubscription{
+		Did:       "did:plc:alice",
+		Rkey:      "3la",
+		AtUri:     "at://did:plc:alice/blue.morgen.feed.subscription/3la",
+		FeedUrl:   "https://example.test/feed.xml",
+		IsPrimary: 1,
+		Tags:      &tags,
+		CreatedAt: "2026-05-15T10:00:00Z",
+		UpdatedAt: "2026-05-15T10:00:00Z",
+	})
+	pds := &fakePDS{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds))
+
+	// Resubmit identical values (tags in different order should normalize equal? No —
+	// order is significant for tags; we resubmit the SAME order to assert no-op).
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
+		strings.NewReader(`{"primary":true,"tags":["News","Tech"]}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.puts != 0 {
+		t.Errorf("PDS put fired on no-diff primary+tags: %d", pds.puts)
+	}
+}
+
 func TestSubscriptionsDelete_HappyPath_204(t *testing.T) {
 	idx := newRkeyIndex()
 	idx.seed("did:plc:alice", "3la", "https://example.test/feed.xml")

@@ -41,6 +41,7 @@ type Querier interface {
 	// four window cutoffs (7d, 28d, 56d, 84d as ISO timestamps) and "now" are
 	// passed in by the handler so all rows share a single clock.
 	ListUserSourcesWithStats(ctx context.Context, arg ListUserSourcesWithStatsParams) ([]ListUserSourcesWithStatsRow, error)
+	ListUserSubscriptionTags(ctx context.Context, did string) ([]*string, error)
 	ListUserSubscriptions(ctx context.Context, did string) ([]UserSubscription, error)
 	ListUserSubscriptionsForSync(ctx context.Context, did string) ([]ListUserSubscriptionsForSyncRow, error)
 	PutAuthRequest(ctx context.Context, arg PutAuthRequestParams) error

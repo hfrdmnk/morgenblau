@@ -4,9 +4,12 @@ import type { Ref } from 'react';
 import { memo, useId } from 'react';
 
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
+import { CreatableCombobox } from '@/components/ui/creatable-combobox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+import { youtubeShortsFreeFeedUrl } from '@/lib/youtube';
 
 export type FeedCandidate = {
     feedUrl: string;
@@ -16,7 +19,14 @@ export type FeedCandidate = {
 
 type Selection = {
     title: string;
+    primary: boolean;
+    tags: string[];
+    excludeShorts: boolean;
 };
+
+// Stable empty-array reference so unselected cards keep referential equality
+// across renders (the memo'd card compares props).
+const EMPTY_TAGS: string[] = [];
 
 type Props = {
     candidates: FeedCandidate[];
@@ -24,6 +34,10 @@ type Props = {
     selected: Record<string, Selection>;
     onToggle: (candidate: FeedCandidate) => void;
     onTitleChange: (feedUrl: string, title: string) => void;
+    onPrimaryChange: (feedUrl: string, primary: boolean) => void;
+    onTagsChange: (feedUrl: string, tags: string[]) => void;
+    onExcludeShortsChange: (feedUrl: string, excludeShorts: boolean) => void;
+    tagSuggestions: string[];
     firstCheckboxRef?: Ref<HTMLInputElement>;
     firstTitleInputRef?: Ref<HTMLInputElement>;
     'aria-labelledby'?: string;
@@ -35,6 +49,10 @@ export function FeedCandidateList({
     selected,
     onToggle,
     onTitleChange,
+    onPrimaryChange,
+    onTagsChange,
+    onExcludeShortsChange,
+    tagSuggestions,
     firstCheckboxRef,
     firstTitleInputRef,
     'aria-labelledby': ariaLabelledBy,
@@ -61,8 +79,17 @@ export function FeedCandidateList({
                         savedTitle={savedTitle}
                         isSelected={isSelected}
                         selectedTitle={selection?.title ?? ''}
+                        selectedPrimary={selection?.primary ?? false}
+                        selectedTags={selection?.tags ?? EMPTY_TAGS}
+                        selectedExcludeShorts={
+                            selection?.excludeShorts ?? false
+                        }
                         onToggle={onToggle}
                         onTitleChange={onTitleChange}
+                        onPrimaryChange={onPrimaryChange}
+                        onTagsChange={onTagsChange}
+                        onExcludeShortsChange={onExcludeShortsChange}
+                        tagSuggestions={tagSuggestions}
                         firstCheckboxRef={
                             index === 0 ? firstCheckboxRef : undefined
                         }
@@ -82,8 +109,15 @@ type CardProps = {
     savedTitle: string | null;
     isSelected: boolean;
     selectedTitle: string;
+    selectedPrimary: boolean;
+    selectedTags: string[];
+    selectedExcludeShorts: boolean;
     onToggle: (candidate: FeedCandidate) => void;
     onTitleChange: (feedUrl: string, title: string) => void;
+    onPrimaryChange: (feedUrl: string, primary: boolean) => void;
+    onTagsChange: (feedUrl: string, tags: string[]) => void;
+    onExcludeShortsChange: (feedUrl: string, excludeShorts: boolean) => void;
+    tagSuggestions: string[];
     firstCheckboxRef?: Ref<HTMLInputElement>;
     firstTitleInputRef?: Ref<HTMLInputElement>;
 };
@@ -94,13 +128,22 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
     savedTitle,
     isSelected,
     selectedTitle,
+    selectedPrimary,
+    selectedTags,
+    selectedExcludeShorts,
     onToggle,
     onTitleChange,
+    onPrimaryChange,
+    onTagsChange,
+    onExcludeShortsChange,
+    tagSuggestions,
     firstCheckboxRef,
     firstTitleInputRef,
 }: CardProps) {
     const inputId = useId();
     const titleId = useId();
+    const tagsId = useId();
+    const shortsFreeUrl = youtubeShortsFreeFeedUrl(candidate.feedUrl);
 
     return (
         <div
@@ -159,7 +202,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
 
             <Collapsible open={isSelected && !isExisting}>
                 <CollapsibleContent className="overflow-hidden">
-                    <div className="flex flex-col gap-3 border-t border-foreground/10 px-4 py-3">
+                    <div className="flex flex-col gap-4 border-t border-foreground/10 px-4 py-3">
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor={titleId} className="text-xs">
                                 Title
@@ -175,6 +218,58 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                         event.target.value,
                                     )
                                 }
+                            />
+                        </div>
+
+                        <label className="flex cursor-pointer items-center justify-between gap-3">
+                            <span className="flex flex-col gap-0.5">
+                                <span className="text-sm">Primary source</span>
+                                <span className="text-xs font-light text-muted-foreground">
+                                    Featured prominently in your digest.
+                                </span>
+                            </span>
+                            <Switch
+                                checked={selectedPrimary}
+                                onCheckedChange={(checked) =>
+                                    onPrimaryChange(candidate.feedUrl, checked)
+                                }
+                            />
+                        </label>
+
+                        {shortsFreeUrl && (
+                            <label className="flex cursor-pointer items-center justify-between gap-3">
+                                <span className="flex flex-col gap-0.5">
+                                    <span className="text-sm">
+                                        Exclude Shorts
+                                    </span>
+                                    <span className="text-xs font-light text-muted-foreground">
+                                        Subscribe to long-form uploads only.
+                                    </span>
+                                </span>
+                                <Switch
+                                    checked={selectedExcludeShorts}
+                                    onCheckedChange={(checked) =>
+                                        onExcludeShortsChange(
+                                            candidate.feedUrl,
+                                            checked,
+                                        )
+                                    }
+                                />
+                            </label>
+                        )}
+
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor={tagsId} className="text-xs">
+                                Tags
+                            </Label>
+                            <CreatableCombobox
+                                id={tagsId}
+                                value={selectedTags}
+                                onValueChange={(tags) =>
+                                    onTagsChange(candidate.feedUrl, tags)
+                                }
+                                suggestions={tagSuggestions}
+                                placeholder="Add tags…"
                             />
                         </div>
                     </div>

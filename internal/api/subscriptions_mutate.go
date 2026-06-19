@@ -29,7 +29,9 @@ type IndexDeleter interface {
 }
 
 type patchRequest struct {
-	Title *string `json:"title"`
+	Title   *string   `json:"title"`
+	Primary *bool     `json:"primary"`
+	Tags    *[]string `json:"tags"`
 }
 
 // SubscriptionsPatchHandler updates metadata on the user's subscription via
@@ -77,6 +79,28 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			}
 		}
 
+		newPrimary := row.IsPrimary
+		if body.Primary != nil {
+			if want := boolToInt64(*body.Primary); want != row.IsPrimary {
+				newPrimary = want
+				changed = true
+			}
+		}
+
+		newTags := row.Tags
+		var newTagsSlice []string
+		if body.Tags != nil {
+			newTagsSlice = normalizeTags(*body.Tags)
+			if !tagsEqual(newTagsSlice, unmarshalTags(row.Tags)) {
+				newTags = marshalTags(newTagsSlice)
+				changed = true
+			} else {
+				newTagsSlice = unmarshalTags(row.Tags)
+			}
+		} else {
+			newTagsSlice = unmarshalTags(row.Tags)
+		}
+
 		if !changed {
 			// No diff — return the existing record without a PDS hit.
 			writeJSON(w, rowToWire(row))
@@ -91,6 +115,12 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		}
 		if newTitle != nil {
 			record["title"] = *newTitle
+		}
+		if newPrimary != 0 {
+			record["primary"] = true
+		}
+		if len(newTagsSlice) > 0 {
+			record["tags"] = newTagsSlice
 		}
 
 		// TODO(blue.morgen lexicon): once the blue.morgen.feed.subscription
@@ -111,12 +141,16 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			AtUri:     ref.URI,
 			FeedUrl:   row.FeedUrl,
 			Title:     newTitle,
+			IsPrimary: newPrimary,
+			Tags:      newTags,
 			CreatedAt: row.CreatedAt,
 			UpdatedAt: now,
 		}); err != nil {
 			slog.Warn("/api/subscriptions PATCH: Tier-1 upsert failed", "err", err)
 		}
 		row.Title = newTitle
+		row.IsPrimary = newPrimary
+		row.Tags = newTags
 		row.UpdatedAt = now
 		row.AtUri = ref.URI
 		writeJSON(w, rowToWire(row))
@@ -165,4 +199,17 @@ func changedString(old *string, next string) bool {
 		return next != ""
 	}
 	return *old != next
+}
+
+// tagsEqual reports whether two tag slices are identical in content and order.
+func tagsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

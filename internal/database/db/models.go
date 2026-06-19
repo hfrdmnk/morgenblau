@@ -61,6 +61,8 @@ type UserSubscription struct {
 	AtUri     string  `json:"at_uri"`
 	FeedUrl   string  `json:"feed_url"`
 	Title     *string `json:"title"`
+	IsPrimary int64   `json:"is_primary"`
+	Tags      *string `json:"tags"`
 	CreatedAt string  `json:"created_at"`
 	UpdatedAt string  `json:"updated_at"`
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -29,13 +30,15 @@ type SubscriptionWire struct {
 	CID   string         `json:"cid,omitempty"`
 	Value map[string]any `json:"value"`
 	// Embedded sugar for the frontend so callers don't dig into Value.
-	Rkey            string `json:"rkey"`
-	FeedURL         string `json:"feedUrl"`
-	Title           string `json:"title,omitempty"`
-	SiteURL         string `json:"siteUrl,omitempty"`
-	FaviconURL      string `json:"faviconUrl,omitempty"`
-	Frequency       string `json:"frequency,omitempty"`
-	LastPublishedAt string `json:"lastPublishedAt,omitempty"`
+	Rkey            string   `json:"rkey"`
+	FeedURL         string   `json:"feedUrl"`
+	Title           string   `json:"title,omitempty"`
+	SiteURL         string   `json:"siteUrl,omitempty"`
+	FaviconURL      string   `json:"faviconUrl,omitempty"`
+	Frequency       string   `json:"frequency,omitempty"`
+	LastPublishedAt string   `json:"lastPublishedAt,omitempty"`
+	Primary         bool     `json:"primary"`
+	Tags            []string `json:"tags,omitempty"`
 }
 
 // IndexReader is the slice of *db.Queries we use for reads. Defined so handler
@@ -114,12 +117,22 @@ func rowToWire(row db.UserSubscription) SubscriptionWire {
 		value["title"] = *row.Title
 		title = *row.Title
 	}
+	primary := row.IsPrimary != 0
+	tags := unmarshalTags(row.Tags)
+	if primary {
+		value["primary"] = true
+	}
+	if len(tags) > 0 {
+		value["tags"] = tags
+	}
 	return SubscriptionWire{
 		URI:     row.AtUri,
 		Value:   value,
 		Rkey:    row.Rkey,
 		FeedURL: row.FeedUrl,
 		Title:   title,
+		Primary: primary,
+		Tags:    tags,
 	}
 }
 
@@ -139,6 +152,14 @@ func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) Subscrip
 	if row.IconUrl != nil {
 		faviconURL = *row.IconUrl
 	}
+	primary := row.IsPrimary != 0
+	tags := unmarshalTags(row.Tags)
+	if primary {
+		value["primary"] = true
+	}
+	if len(tags) > 0 {
+		value["tags"] = tags
+	}
 	lastPublished := asString(row.LastPublishedAt)
 	firstPublished := asString(row.FirstPublishedAt)
 	return SubscriptionWire{
@@ -151,6 +172,8 @@ func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) Subscrip
 		FaviconURL:      faviconURL,
 		Frequency:       frequencyBucket(firstPublished, row.Count7d, row.Count28d, row.Count56d, row.Count84d, now),
 		LastPublishedAt: lastPublished,
+		Primary:         primary,
+		Tags:            tags,
 	}
 }
 
@@ -161,7 +184,7 @@ func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) Subscrip
 //   - biweekly  — ≥3 posts in last 56 days
 //   - monthly   — ≥2 posts in last 84 days
 //   - new       — no cadence bucket fires, but the oldest entry we have is
-//                 within 30 days (not enough history to classify yet)
+//     within 30 days (not enough history to classify yet)
 //   - irregular — anything else
 //
 // Cadence wins over "new": a feed posting daily still reads as daily even if
@@ -273,9 +296,11 @@ type addRequest struct {
 }
 
 type addItem struct {
-	FeedURL string `json:"feedUrl"`
-	Title   string `json:"title"`
-	SiteURL string `json:"siteUrl"`
+	FeedURL string   `json:"feedUrl"`
+	Title   string   `json:"title"`
+	SiteURL string   `json:"siteUrl"`
+	Primary bool     `json:"primary"`
+	Tags    []string `json:"tags"`
 }
 
 type addResponse struct {
@@ -340,6 +365,7 @@ func SubscriptionsCreateHandler(
 
 			// Step 2: PDS write. Single user-editable title; the resolver
 			// prefilled it client-side, the user may have overridden before submit.
+			tags := normalizeTags(item.Tags)
 			record := map[string]any{
 				"feedUrl":   item.FeedURL,
 				"createdAt": now,
@@ -349,6 +375,12 @@ func SubscriptionsCreateHandler(
 			}
 			if item.SiteURL != "" {
 				record["siteUrl"] = item.SiteURL
+			}
+			if item.Primary {
+				record["primary"] = true
+			}
+			if len(tags) > 0 {
+				record["tags"] = tags
 			}
 			// TODO(blue.morgen lexicon): once the blue.morgen.feed.subscription
 			// lexicon is published as a com.atproto.lexicon.schema record and
@@ -382,6 +414,8 @@ func SubscriptionsCreateHandler(
 				AtUri:     ref.URI,
 				FeedUrl:   item.FeedURL,
 				Title:     titlePtr,
+				IsPrimary: boolToInt64(item.Primary),
+				Tags:      marshalTags(tags),
 				CreatedAt: now,
 				UpdatedAt: now,
 			}); err != nil {
@@ -399,6 +433,12 @@ func SubscriptionsCreateHandler(
 			if item.Title != "" {
 				value["title"] = item.Title
 			}
+			if item.Primary {
+				value["primary"] = true
+			}
+			if len(tags) > 0 {
+				value["tags"] = tags
+			}
 			out.Records = append(out.Records, SubscriptionWire{
 				URI:     ref.URI,
 				CID:     ref.CID,
@@ -406,6 +446,8 @@ func SubscriptionsCreateHandler(
 				FeedURL: item.FeedURL,
 				Title:   item.Title,
 				SiteURL: item.SiteURL,
+				Primary: item.Primary,
+				Tags:    tags,
 				Value:   value,
 			})
 
@@ -415,6 +457,52 @@ func SubscriptionsCreateHandler(
 		}
 
 		writeJSON(w, out)
+	})
+}
+
+// --- GET /api/subscriptions/tags ---
+
+// TagsReader is the narrow read used by the "my tags" endpoint.
+type TagsReader interface {
+	ListUserSubscriptionTags(ctx context.Context, did string) ([]*string, error)
+}
+
+type tagsResponse struct {
+	Tags []string `json:"tags"`
+}
+
+// SubscriptionsTagsHandler returns the distinct union of tags across the
+// session user's subscriptions: deduped case-insensitively (first-seen casing
+// wins), sorted ascending case-insensitively. Always a JSON array, never null.
+func SubscriptionsTagsHandler(reader TagsReader) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sess := auth.SessionFromContext(r.Context())
+		if sess == nil || sess.Data == nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		rows, err := reader.ListUserSubscriptionTags(r.Context(), sess.Data.AccountDID.String())
+		if err != nil {
+			slog.Warn("/api/subscriptions/tags: list failed", "err", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		seen := map[string]struct{}{}
+		out := []string{}
+		for _, row := range rows {
+			for _, tag := range unmarshalTags(row) {
+				key := strings.ToLower(tag)
+				if _, dup := seen[key]; dup {
+					continue
+				}
+				seen[key] = struct{}{}
+				out = append(out, tag)
+			}
+		}
+		sort.Slice(out, func(i, j int) bool {
+			return strings.ToLower(out[i]) < strings.ToLower(out[j])
+		})
+		writeJSON(w, tagsResponse{Tags: out})
 	})
 }
 
@@ -429,6 +517,74 @@ func nilIfEmpty(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+func boolToInt64(b bool) int64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+const maxTags = 10
+const maxTagGraphemes = 64
+
+// normalizeTags trims, drops blanks, dedupes case-insensitively (keeping the
+// first-seen casing), drops any tag longer than 64 graphemes, and caps the
+// result at 10. Order is preserved. The grapheme limit uses a rune count
+// (len([]rune)) rather than a full Unicode segmentation pass — close enough for
+// the lexicon's maxGraphemes:64 guard without pulling in a segmentation dep.
+func normalizeTags(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(in))
+	seen := make(map[string]struct{}, len(in))
+	for _, t := range in {
+		t = strings.TrimSpace(t)
+		if t == "" || len([]rune(t)) > maxTagGraphemes {
+			continue
+		}
+		key := strings.ToLower(t)
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, t)
+		if len(out) == maxTags {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// marshalTags renders tags as a JSON array string for storage, or nil when empty.
+func marshalTags(tags []string) *string {
+	if len(tags) == 0 {
+		return nil
+	}
+	b, err := json.Marshal(tags)
+	if err != nil {
+		return nil
+	}
+	s := string(b)
+	return &s
+}
+
+// unmarshalTags parses a stored JSON array string back into a slice. Returns an
+// empty slice on nil, blank, or parse error.
+func unmarshalTags(s *string) []string {
+	if s == nil || *s == "" {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(*s), &out); err != nil {
+		return nil
+	}
+	return out
 }
 
 func itoa(i int) string {

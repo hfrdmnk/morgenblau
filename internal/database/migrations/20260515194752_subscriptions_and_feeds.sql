@@ -24,6 +24,8 @@ CREATE TABLE user_subscriptions (
     at_uri           TEXT NOT NULL,
     feed_url         TEXT NOT NULL,
     title            TEXT,
+    is_primary       INTEGER NOT NULL DEFAULT 0, -- `primary` on the wire; renamed to dodge the SQL keyword
+    tags             TEXT, -- JSON array string e.g. ["a","b"]; NULL when none
     created_at       TEXT NOT NULL,
     updated_at       TEXT NOT NULL,
     PRIMARY KEY (did, rkey),
