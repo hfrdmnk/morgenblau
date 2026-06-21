@@ -1,5 +1,6 @@
 import {
     ArrowLeft01Icon,
+    Edit02Icon,
     HourglassIcon,
     Pulse01Icon,
 } from '@hugeicons/core-free-icons';
@@ -9,6 +10,13 @@ import { useEffect, useState } from 'react';
 import { Newspaper } from '@/components/digest-rows';
 import type { Entry } from '@/components/digest-rows';
 import { Favicon } from '@/components/favicon';
+import { DeleteSourceButton } from '@/components/sources/delete-button';
+import {
+    EditSourceDialog,
+    type SourcePatch,
+} from '@/components/sources/edit-dialog';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { shortTimeAgo } from '@/lib/date';
 import { useDocumentTitle } from '@/hooks/use-document-title';
@@ -42,6 +50,8 @@ type SourceDetail = {
     lastPublishedAt?: string;
     totalEntries: number;
     savedByYou: number;
+    primary?: boolean;
+    tags?: string[];
 };
 
 type State =
@@ -108,20 +118,68 @@ export function Source() {
         );
     }
 
-    return <SourceView detail={state.detail} entries={state.entries} />;
+    const onPatched = (patch: SourcePatch) => {
+        setState((cur) =>
+            cur.kind === 'ok'
+                ? {
+                      ...cur,
+                      detail: {
+                          ...cur.detail,
+                          title: patch.title,
+                          primary: patch.primary,
+                          tags: patch.tags,
+                          ...(patch.feedUrl ? { feedUrl: patch.feedUrl } : {}),
+                      },
+                  }
+                : cur,
+        );
+    };
+
+    return (
+        <SourceView
+            detail={state.detail}
+            entries={state.entries}
+            onPatched={onPatched}
+        />
+    );
 }
 
 function SourceView({
     detail,
     entries,
+    onPatched,
 }: {
     detail: SourceDetail;
     entries: Entry[];
+    onPatched: (patch: SourcePatch) => void;
 }) {
+    const [editing, setEditing] = useState(false);
     const domain = hostnameOf(detail.siteUrl ?? detail.feedUrl);
     const title = detail.title ?? detail.feedUrl;
     const proxyFavicon = `/api/favicon?feed=${encodeURIComponent(detail.feedUrl)}`;
     const frequency = detail.frequency ?? 'noPosts';
+
+    const onPatch = async (patch: SourcePatch) => {
+        const resp = await fetch(`/api/subscriptions/${detail.rkey}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(patch),
+        });
+        if (!resp.ok) return false;
+        onPatched(patch);
+        return true;
+    };
+
+    const onDelete = async () => {
+        const resp = await fetch(`/api/subscriptions/${detail.rkey}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+        });
+        if (!resp.ok) return false;
+        window.location.href = PATHS.sources;
+        return true;
+    };
 
     return (
         <main className="mx-auto w-full max-w-2xl px-4 pt-16 pb-12 sm:px-6">
@@ -139,6 +197,22 @@ function SourceView({
                             {title}
                         </h1>
                     </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label="Edit source"
+                            className="text-muted-foreground"
+                            onClick={() => setEditing(true)}
+                        >
+                            <HugeiconsIcon
+                                icon={Edit02Icon}
+                                className="size-3.5"
+                            />
+                        </Button>
+                        <Separator orientation="vertical" className="h-5" />
+                        <DeleteSourceButton onConfirm={onDelete} />
+                    </div>
                 </div>
                 <StatRow detail={detail} frequency={frequency} />
             </header>
@@ -153,6 +227,17 @@ function SourceView({
                     entryFrom={{ sourceRkey: detail.rkey }}
                 />
             )}
+
+            <EditSourceDialog
+                open={editing}
+                onOpenChange={setEditing}
+                initialTitle={title}
+                initialPrimary={detail.primary ?? false}
+                initialTags={detail.tags ?? []}
+                initialFeedUrl={detail.feedUrl}
+                tagSuggestions={detail.tags ?? []}
+                onSave={onPatch}
+            />
         </main>
     );
 }

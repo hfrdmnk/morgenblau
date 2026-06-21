@@ -47,6 +47,10 @@ type SourceMeta struct {
 	Title      *string `json:"title"`
 	SiteURL    *string `json:"siteUrl"`
 	FaviconURL *string `json:"faviconUrl"`
+	// Rkey is the requester's subscription rkey for this feed. Only set on the
+	// reader path (entryRowToWire), where the subscription row is in hand; the
+	// digest/source-list paths leave it empty so it drops from their JSON.
+	Rkey string `json:"rkey,omitempty"`
 }
 
 // DigestResponse adds in-flight metadata so the frontend can swap empty-state

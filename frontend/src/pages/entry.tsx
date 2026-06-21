@@ -21,6 +21,7 @@ type Source = {
     title: string | null;
     siteUrl: string | null;
     faviconUrl: string | null;
+    rkey?: string;
 };
 
 type SavedState = { rkey: string };
@@ -372,12 +373,25 @@ function Thumbnail({ src }: { src: string }) {
 
 function FeedLine({ source }: { source: Source }) {
     const label = source.title ?? source.feedUrl;
-    return (
-        <div className="flex items-center gap-2 font-sans">
+    const content = (
+        <>
             <Favicon src={source.faviconUrl} />
-            <span className="line-clamp-1 text-sm font-light text-muted-foreground">
-                {label}
-            </span>
+            <span className="line-clamp-1 text-sm font-light">{label}</span>
+        </>
+    );
+    if (source.rkey) {
+        return (
+            <a
+                href={sourceHref(source.rkey)}
+                className="flex w-fit items-center gap-2 rounded-sm font-sans text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
+            >
+                {content}
+            </a>
+        );
+    }
+    return (
+        <div className="flex items-center gap-2 font-sans text-muted-foreground">
+            {content}
         </div>
     );
 }

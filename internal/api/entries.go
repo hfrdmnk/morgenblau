@@ -137,6 +137,8 @@ func entryRowToWire(row db.FeedEntry, sub db.UserSubscription, feed db.Feed, sav
 		body = row.ExtractedBody
 	}
 	title := sub.Title
+	source := buildSourceMeta(row.FeedUrl, title, feed.SiteUrl, feed.IconUrl)
+	source.Rkey = sub.Rkey
 	return EntryWire{
 		ID:          row.ID,
 		EntrySlug:   row.EntrySlug,
@@ -144,7 +146,7 @@ func entryRowToWire(row db.FeedEntry, sub db.UserSubscription, feed db.Feed, sav
 		URL:         row.Url,
 		ContentType: row.ContentType,
 		PublishedAt: row.PublishedAt,
-		Source:      buildSourceMeta(row.FeedUrl, title, feed.SiteUrl, feed.IconUrl),
+		Source:      source,
 		Body:        body,
 		Metadata:    row.Metadata,
 		SavedState:  saved,

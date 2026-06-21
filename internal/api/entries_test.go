@@ -85,6 +85,7 @@ func entryFixture() db.FeedEntry {
 func subscriptionFixture(title *string) db.UserSubscription {
 	return db.UserSubscription{
 		Did:     "did:plc:alice",
+		Rkey:    "3laSUB",
 		FeedUrl: "https://example.test/feed.xml",
 		Title:   title,
 	}
@@ -133,6 +134,9 @@ func TestEntry_HappyPath(t *testing.T) {
 	}
 	if got.Source.SiteURL == nil || *got.Source.SiteURL != "https://example.test" {
 		t.Errorf("Source.SiteURL = %v, want site URL", got.Source.SiteURL)
+	}
+	if got.Source.Rkey != "3laSUB" {
+		t.Errorf("Source.Rkey = %q, want 3laSUB", got.Source.Rkey)
 	}
 }
 
