@@ -19,10 +19,11 @@ import (
 // a new one.
 const guardWindow = 5 * time.Minute
 
-// PDSLister snapshots blue.morgen.feed.subscription records for a user.
-// Stubbed in tests with a canned fake.
+// PDSLister snapshots a user's blue.morgen.feed.* records. Stubbed in tests
+// with a canned fake.
 type PDSLister interface {
 	ListSubscriptions(ctx context.Context, sess *oauth.ClientSession) ([]PDSSubscription, error)
+	ListSaves(ctx context.Context, sess *oauth.ClientSession) ([]PDSSave, error)
 }
 
 // PDSSubscription is the trimmed shape we care about — at-uri, rkey, feedUrl,
@@ -34,6 +35,16 @@ type PDSSubscription struct {
 	Title   string
 }
 
+// PDSSave is the trimmed shape of a blue.morgen.feed.save record we mirror into
+// the user_saves index. feedUrl is optional on the record.
+type PDSSave struct {
+	URI       string
+	Rkey      string
+	ItemURL   string
+	FeedURL   string
+	CreatedAt string
+}
+
 // SyncStore is the slice of *db.Queries SyncUser depends on. Defined here so
 // the orchestrator's full surface remains hideable behind one interface.
 type SyncStore interface {
@@ -41,6 +52,9 @@ type SyncStore interface {
 	UpsertUserSubscription(ctx context.Context, arg db.UpsertUserSubscriptionParams) error
 	DeleteUserSubscription(ctx context.Context, arg db.DeleteUserSubscriptionParams) error
 	UpsertFeed(ctx context.Context, arg db.UpsertFeedParams) error
+	ListUserSavesForSync(ctx context.Context, did string) ([]db.ListUserSavesForSyncRow, error)
+	UpsertUserSave(ctx context.Context, arg db.UpsertUserSaveParams) error
+	DeleteUserSave(ctx context.Context, arg db.DeleteUserSaveParams) error
 }
 
 // SessionResumer hands SyncUser an authenticated session for the given DID,
@@ -167,6 +181,15 @@ func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *oauth.C
 		return nil
 	})
 
+	// Phase 1C: saves reconcile. Independent of the subscription/fetch tracks
+	// and best-effort — a saves hiccup must never fail the primary refresh.
+	g.Go(func() error {
+		if err := e.reconcileSaves(gctx, did, sess); err != nil {
+			slog.Warn("sync_user: saves reconcile failed", "did", did, "err", err)
+		}
+		return nil
+	})
+
 	if err := g.Wait(); err != nil {
 		return err
 	}
@@ -268,6 +291,66 @@ func (e *Engine) reconcileTier1(
 			Rkey: rkey,
 		}); err != nil {
 			slog.Warn("reconcile: Tier-1 delete failed", "err", err)
+		}
+	}
+	return nil
+}
+
+// reconcileSaves diffs the user's blue.morgen.feed.save records on the PDS
+// against the local user_saves index and applies inserts/updates/deletes.
+// Simpler than reconcileTier1: saves are leaf bookmarks, so there's no Tier-2
+// feed upsert and no fetch to trigger.
+func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *oauth.ClientSession) error {
+	snapshot, err := e.store.ListUserSavesForSync(ctx, did.String())
+	if err != nil {
+		return err
+	}
+	remote, err := e.lister.ListSaves(ctx, sess)
+	if err != nil {
+		return err
+	}
+
+	localByRkey := make(map[string]db.ListUserSavesForSyncRow, len(snapshot))
+	for _, row := range snapshot {
+		localByRkey[row.Rkey] = row
+	}
+	remoteByRkey := make(map[string]PDSSave, len(remote))
+	for _, r := range remote {
+		remoteByRkey[r.Rkey] = r
+	}
+
+	now := e.now().UTC().Format(time.RFC3339)
+	didStr := did.String()
+
+	// Inserts + updates from remote.
+	for rkey, r := range remoteByRkey {
+		createdAt := r.CreatedAt
+		if createdAt == "" {
+			createdAt = now
+		}
+		if err := e.store.UpsertUserSave(ctx, db.UpsertUserSaveParams{
+			Did:       didStr,
+			Rkey:      rkey,
+			AtUri:     r.URI,
+			ItemUrl:   r.ItemURL,
+			FeedUrl:   nilIfEmpty(r.FeedURL),
+			CreatedAt: createdAt,
+			UpdatedAt: now,
+		}); err != nil {
+			slog.Warn("reconcile: saves upsert failed", "rkey", rkey, "err", err)
+		}
+	}
+
+	// Deletes: locals that no longer exist remotely.
+	for rkey := range localByRkey {
+		if _, stillThere := remoteByRkey[rkey]; stillThere {
+			continue
+		}
+		if err := e.store.DeleteUserSave(ctx, db.DeleteUserSaveParams{
+			Did:  didStr,
+			Rkey: rkey,
+		}); err != nil {
+			slog.Warn("reconcile: saves delete failed", "rkey", rkey, "err", err)
 		}
 	}
 	return nil

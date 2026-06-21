@@ -37,6 +37,9 @@ type Querier interface {
 	// distinguishes "not subscribed" from "no posts" via a separate lookup.
 	ListEntriesForSource(ctx context.Context, arg ListEntriesForSourceParams) ([]ListEntriesForSourceRow, error)
 	ListFeedURLsForUser(ctx context.Context, did string) ([]string, error)
+	// Snapshot of a user's local save index, used by sync_user to diff against the
+	// PDS and reconcile inserts/deletes.
+	ListUserSavesForSync(ctx context.Context, did string) ([]ListUserSavesForSyncRow, error)
 	// One row per subscription with feed metadata and windowed entry stats. The
 	// four window cutoffs (7d, 28d, 56d, 84d as ISO timestamps) and "now" are
 	// passed in by the handler so all rows share a single clock.

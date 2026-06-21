@@ -16,16 +16,59 @@ import (
 )
 
 type fakeStore struct {
-	mu      sync.Mutex
-	rows    map[string]map[string]db.ListUserSubscriptionsForSyncRow // did -> rkey -> row
-	deletes []string
-	upserts int
-	feedUps int
-	feedErr func(feedURL string) error
+	mu          sync.Mutex
+	rows        map[string]map[string]db.ListUserSubscriptionsForSyncRow // did -> rkey -> row
+	deletes     []string
+	upserts     int
+	feedUps     int
+	feedErr     func(feedURL string) error
+	saves       map[string]map[string]db.ListUserSavesForSyncRow // did -> rkey -> row
+	saveDeletes []string
+	saveUpserts int
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{rows: map[string]map[string]db.ListUserSubscriptionsForSyncRow{}}
+	return &fakeStore{
+		rows:  map[string]map[string]db.ListUserSubscriptionsForSyncRow{},
+		saves: map[string]map[string]db.ListUserSavesForSyncRow{},
+	}
+}
+
+func (s *fakeStore) ListUserSavesForSync(_ context.Context, did string) ([]db.ListUserSavesForSyncRow, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows := make([]db.ListUserSavesForSyncRow, 0, len(s.saves[did]))
+	for _, r := range s.saves[did] {
+		rows = append(rows, r)
+	}
+	return rows, nil
+}
+
+func (s *fakeStore) UpsertUserSave(_ context.Context, arg db.UpsertUserSaveParams) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.saveUpserts++
+	if _, ok := s.saves[arg.Did]; !ok {
+		s.saves[arg.Did] = map[string]db.ListUserSavesForSyncRow{}
+	}
+	s.saves[arg.Did][arg.Rkey] = db.ListUserSavesForSyncRow{
+		Did:     arg.Did,
+		Rkey:    arg.Rkey,
+		AtUri:   arg.AtUri,
+		ItemUrl: arg.ItemUrl,
+		FeedUrl: arg.FeedUrl,
+	}
+	return nil
+}
+
+func (s *fakeStore) DeleteUserSave(_ context.Context, arg db.DeleteUserSaveParams) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.saveDeletes = append(s.saveDeletes, arg.Rkey)
+	if m, ok := s.saves[arg.Did]; ok {
+		delete(m, arg.Rkey)
+	}
+	return nil
 }
 
 func (s *fakeStore) ListUserSubscriptionsForSync(_ context.Context, did string) ([]db.ListUserSubscriptionsForSyncRow, error) {
@@ -81,6 +124,7 @@ type fakeLister struct {
 	calls int32
 	delay time.Duration
 	subs  []PDSSubscription
+	saves []PDSSave
 }
 
 func (f *fakeLister) ListSubscriptions(_ context.Context, _ *oauth.ClientSession) ([]PDSSubscription, error) {
@@ -89,6 +133,10 @@ func (f *fakeLister) ListSubscriptions(_ context.Context, _ *oauth.ClientSession
 		time.Sleep(f.delay)
 	}
 	return f.subs, nil
+}
+
+func (f *fakeLister) ListSaves(_ context.Context, _ *oauth.ClientSession) ([]PDSSave, error) {
+	return f.saves, nil
 }
 
 type countingFetcher struct {
@@ -141,6 +189,38 @@ func TestSyncUser_ReconcileApplies_InsertsAndDeletes(t *testing.T) {
 	}
 	if len(store.deletes) != 1 || store.deletes[0] != "oldA" {
 		t.Errorf("deletes = %v, want [oldA]", store.deletes)
+	}
+}
+
+func TestSyncUser_ReconcileSaves_InsertsAndDeletes(t *testing.T) {
+	store := newFakeStore()
+	// A local save the PDS no longer has → should be deleted.
+	store.saves["did:plc:alice"] = map[string]db.ListUserSavesForSyncRow{
+		"goneA": {Did: "did:plc:alice", Rkey: "goneA", AtUri: "at://x/s/goneA", ItemUrl: "https://item/old"},
+	}
+	feed := "https://feed/new"
+	lister := &fakeLister{saves: []PDSSave{
+		{URI: "at://x/s/newB", Rkey: "newB", ItemURL: "https://item/new", FeedURL: feed, CreatedAt: "2026-06-01T00:00:00Z"},
+	}}
+	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil)
+
+	if err := eng.reconcileSaves(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+		t.Fatal(err)
+	}
+
+	if store.saveUpserts != 1 {
+		t.Errorf("saveUpserts = %d, want 1", store.saveUpserts)
+	}
+	if got, ok := store.saves["did:plc:alice"]["newB"]; !ok {
+		t.Error("remote save newB was not inserted locally")
+	} else if got.ItemUrl != "https://item/new" || got.FeedUrl == nil || *got.FeedUrl != feed {
+		t.Errorf("inserted save = %+v, want item/new + feed/new", got)
+	}
+	if len(store.saveDeletes) != 1 || store.saveDeletes[0] != "goneA" {
+		t.Errorf("saveDeletes = %v, want [goneA]", store.saveDeletes)
+	}
+	if _, ok := store.saves["did:plc:alice"]["goneA"]; ok {
+		t.Error("stale local save goneA was not deleted")
 	}
 }
 

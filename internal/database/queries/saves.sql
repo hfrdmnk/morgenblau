@@ -16,5 +16,10 @@ FROM user_saves WHERE did = ? AND rkey = ?;
 SELECT did, rkey, at_uri, item_url, feed_url, created_at, updated_at
 FROM user_saves WHERE did = ? AND item_url = ?;
 
+-- name: ListUserSavesForSync :many
+-- Snapshot of a user's local save index, used by sync_user to diff against the
+-- PDS and reconcile inserts/deletes.
+SELECT did, rkey, at_uri, item_url, feed_url FROM user_saves WHERE did = ?;
+
 -- name: DeleteUserSave :exec
 DELETE FROM user_saves WHERE did = ? AND rkey = ?;

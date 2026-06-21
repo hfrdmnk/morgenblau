@@ -73,6 +73,49 @@ func (q *Queries) GetUserSaveByItemURL(ctx context.Context, arg GetUserSaveByIte
 	return i, err
 }
 
+const listUserSavesForSync = `-- name: ListUserSavesForSync :many
+SELECT did, rkey, at_uri, item_url, feed_url FROM user_saves WHERE did = ?
+`
+
+type ListUserSavesForSyncRow struct {
+	Did     string  `json:"did"`
+	Rkey    string  `json:"rkey"`
+	AtUri   string  `json:"at_uri"`
+	ItemUrl string  `json:"item_url"`
+	FeedUrl *string `json:"feed_url"`
+}
+
+// Snapshot of a user's local save index, used by sync_user to diff against the
+// PDS and reconcile inserts/deletes.
+func (q *Queries) ListUserSavesForSync(ctx context.Context, did string) ([]ListUserSavesForSyncRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUserSavesForSync, did)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUserSavesForSyncRow
+	for rows.Next() {
+		var i ListUserSavesForSyncRow
+		if err := rows.Scan(
+			&i.Did,
+			&i.Rkey,
+			&i.AtUri,
+			&i.ItemUrl,
+			&i.FeedUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertUserSave = `-- name: UpsertUserSave :exec
 INSERT INTO user_saves (
     did, rkey, at_uri, item_url, feed_url, created_at, updated_at
