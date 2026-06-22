@@ -9,10 +9,12 @@ import {
     useCallback,
     useEffect,
     useMemo,
+    useRef,
     useState,
 } from 'react';
 
 import { Favicon } from '@/components/favicon';
+import { ListHighlight } from '@/components/list-highlight';
 import { DeleteSourceButton } from '@/components/sources/delete-button';
 import {
     EditSourceDialog,
@@ -23,6 +25,8 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { shortTimeAgo } from '@/lib/date';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { useKeyboard } from '@/hooks/use-keyboard';
+import { useListNavigation } from '@/hooks/use-list-navigation';
 import {
     subscribeSubscriptionAdded,
     type AddedSubscription,
@@ -71,6 +75,9 @@ const FREQUENCY_LABEL: Record<Frequency, string> = {
     irregular: 'Irregular',
     noPosts: 'No post',
 };
+
+// Stable empty list so list navigation doesn't reset every render while loading.
+const EMPTY_SOURCES: Source[] = [];
 
 export function Sources() {
     useDocumentTitle('Sources');
@@ -131,6 +138,28 @@ export function Sources() {
         }
         return [...byLower.values()].sort((a, b) => a.localeCompare(b));
     }, [state]);
+
+    const sortedRecords = useMemo(
+        () =>
+            state.kind === 'ok'
+                ? [...state.records].sort((a, b) =>
+                      displayLabel(a).localeCompare(displayLabel(b)),
+                  )
+                : EMPTY_SOURCES,
+        [state],
+    );
+
+    const listRef = useRef<HTMLDivElement>(null);
+    const onOpen = useCallback((s: Source) => {
+        window.location.href = sourceHref(s.rkey);
+    }, []);
+    const nav = useListNavigation(sortedRecords, onOpen);
+    useKeyboard({
+        ArrowDown: () => nav.move(1),
+        ArrowUp: () => nav.move(-1),
+        Enter: () => nav.open(),
+        Escape: () => nav.clear(),
+    });
 
     const onPatch = async (rkey: string, patch: SourcePatch) => {
         const resp = await fetch(`/api/subscriptions/${rkey}`, {
@@ -213,10 +242,6 @@ export function Sources() {
         );
     }
 
-    const sortedRecords = [...state.records].sort((a, b) =>
-        displayLabel(a).localeCompare(displayLabel(b)),
-    );
-
     return (
         <main className="mx-auto max-w-2xl px-6 py-8">
             <div className="overflow-hidden rounded-xl bg-card">
@@ -225,24 +250,37 @@ export function Sources() {
                     aria-hidden
                     className="mx-6 border-t border-border"
                 />
-                <ul className="flex flex-col">
-                    {sortedRecords.map((r, i) => (
-                        <Fragment key={r.rkey}>
-                            {i > 0 ? (
-                                <li
-                                    aria-hidden
-                                    className="mx-6 border-t border-border"
+                <div
+                    ref={listRef}
+                    className="relative"
+                    onMouseLeave={nav.clearPointer}
+                >
+                    <ListHighlight
+                        containerRef={listRef}
+                        active={nav.active}
+                        scrollKey={nav.scrollKey}
+                    />
+                    <ul className="relative z-10 flex flex-col">
+                        {sortedRecords.map((r, i) => (
+                            <Fragment key={r.rkey}>
+                                {i > 0 ? (
+                                    <li
+                                        aria-hidden
+                                        className="mx-6 border-t border-border"
+                                    />
+                                ) : null}
+                                <SourceRow
+                                    source={r}
+                                    index={i}
+                                    onActivate={nav.setActive}
+                                    onPatch={onPatch}
+                                    onDelete={onDelete}
+                                    tagSuggestions={tagSuggestions}
                                 />
-                            ) : null}
-                            <SourceRow
-                                source={r}
-                                onPatch={onPatch}
-                                onDelete={onDelete}
-                                tagSuggestions={tagSuggestions}
-                            />
-                        </Fragment>
-                    ))}
-                </ul>
+                            </Fragment>
+                        ))}
+                    </ul>
+                </div>
             </div>
         </main>
     );
@@ -315,12 +353,21 @@ function siteDomain(s: Source): string {
 
 type RowProps = {
     source: Source;
+    index: number;
+    onActivate: (index: number) => void;
     onPatch: (rkey: string, patch: SourcePatch) => Promise<boolean>;
     onDelete: (rkey: string) => Promise<boolean>;
     tagSuggestions: string[];
 };
 
-function SourceRow({ source, onPatch, onDelete, tagSuggestions }: RowProps) {
+function SourceRow({
+    source,
+    index,
+    onActivate,
+    onPatch,
+    onDelete,
+    tagSuggestions,
+}: RowProps) {
     const [editing, setEditing] = useState(false);
     const title = displayLabel(source);
     const domain = siteDomain(source);
@@ -328,7 +375,11 @@ function SourceRow({ source, onPatch, onDelete, tagSuggestions }: RowProps) {
 
     return (
         <>
-            <li className="relative flex items-start justify-between gap-3 px-5 py-4 transition-colors duration-200 ease-out hover:bg-overlay-1 has-[a:focus-visible]:outline-1 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-solid has-[a:focus-visible]:outline-ring">
+            <li
+                data-nav-row=""
+                onMouseEnter={() => onActivate(index)}
+                className="relative flex items-start justify-between gap-3 px-5 py-4 transition-colors duration-200 ease-out has-[a:focus-visible]:outline-1 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-solid has-[a:focus-visible]:outline-ring"
+            >
                 <a
                     href={sourceHref(source.rkey)}
                     aria-label={title}

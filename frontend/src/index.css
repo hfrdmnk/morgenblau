@@ -386,3 +386,19 @@ html[data-strip-transition] ::view-transition-group(*) {
 .rail-icon-btn[data-saved] svg path {
     fill: currentColor;
 }
+
+/* Traveling list highlight: a single element follows hover + keyboard
+ * selection. Position only animates when motion is welcome; reduced motion
+ * snaps it but keeps the gentle opacity fade. */
+.list-highlight {
+    transition: opacity 120ms ease;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .list-highlight {
+        transition:
+            transform 150ms cubic-bezier(0.23, 1, 0.32, 1),
+            height 150ms cubic-bezier(0.23, 1, 0.32, 1),
+            opacity 120ms ease;
+    }
+}

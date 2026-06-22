@@ -8,15 +8,17 @@ import {
 import { HugeiconsIcon } from '@hugeicons/react';
 import type { IconSvgElement } from '@hugeicons/react';
 import DOMPurify from 'dompurify';
-import { useEffect, useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 
 import { Favicon } from '@/components/favicon';
+import { ListHighlight } from '@/components/list-highlight';
 import { useAuthedMe } from '@/hooks/use-authed-me';
+import type { ListNavigation } from '@/hooks/use-list-navigation';
 import { formatEditionDate, isSameDay } from '@/lib/date';
 import { entryActivation } from '@/lib/entry-nav';
 import { pickGreeting, pickPastTitle } from '@/lib/greetings';
 import { type EntryFrom } from '@/lib/paths';
-import { cn, safeHref } from '@/lib/utils';
+import { safeHref } from '@/lib/utils';
 
 export type ContentType = 'blogpost' | 'microblog' | 'video' | 'podcast';
 
@@ -47,7 +49,7 @@ const TYPE_ICONS: Record<ContentType, IconSvgElement> = {
 };
 
 const ROW_CLICKABLE_BASE =
-    'cursor-pointer transition-colors duration-200 ease-out hover:bg-overlay-1 focus-visible:outline-1 focus-visible:outline-offset-[-2px] focus-visible:outline-solid focus-visible:outline-ring';
+    'cursor-pointer transition-colors duration-200 ease-out focus-visible:outline-1 focus-visible:outline-offset-[-2px] focus-visible:outline-solid focus-visible:outline-ring';
 
 const ROW_CLICKABLE_CLASS = `block px-6 py-5 outline-none ${ROW_CLICKABLE_BASE}`;
 
@@ -56,22 +58,15 @@ export function Newspaper({
     date,
     today,
     entryFrom,
-    selectedIndex,
+    nav,
 }: {
     entries: Entry[];
     date?: Date;
     today?: Date;
     entryFrom?: EntryFrom;
-    selectedIndex?: number | null;
+    nav: ListNavigation;
 }) {
-    const ulRef = useRef<HTMLUListElement>(null);
-
-    useEffect(() => {
-        if (selectedIndex == null) return;
-        ulRef.current?.children[selectedIndex]?.scrollIntoView({
-            block: 'nearest',
-        });
-    }, [selectedIndex]);
+    const listRef = useRef<HTMLDivElement>(null);
 
     return (
         <article className="overflow-hidden rounded-xl border border-border bg-card">
@@ -85,30 +80,43 @@ export function Newspaper({
                     <div aria-hidden className="mx-6 border-t border-border" />
                 </>
             ) : null}
-            <ul ref={ulRef} className="flex flex-col">
-                {entries.map((entry, index) => (
-                    <li key={entry.id}>
-                        {index > 0 ? (
-                            <div
-                                aria-hidden
-                                className="mx-6 border-t border-border"
-                            />
-                        ) : null}
-                        {entry.contentType === 'microblog' ? (
-                            <InlineRow
-                                entry={entry}
-                                selected={index === selectedIndex}
-                            />
-                        ) : (
-                            <StandardRow
-                                entry={entry}
-                                entryFrom={entryFrom}
-                                selected={index === selectedIndex}
-                            />
-                        )}
-                    </li>
-                ))}
-            </ul>
+            <div
+                ref={listRef}
+                className="relative"
+                onMouseLeave={nav.clearPointer}
+            >
+                <ListHighlight
+                    containerRef={listRef}
+                    active={nav.active}
+                    scrollKey={nav.scrollKey}
+                />
+                <ul className="relative z-10 flex flex-col">
+                    {entries.map((entry, index) => (
+                        <li key={entry.id}>
+                            {index > 0 ? (
+                                <div
+                                    aria-hidden
+                                    className="mx-6 border-t border-border"
+                                />
+                            ) : null}
+                            {entry.contentType === 'microblog' ? (
+                                <InlineRow
+                                    entry={entry}
+                                    index={index}
+                                    onActivate={nav.setActive}
+                                />
+                            ) : (
+                                <StandardRow
+                                    entry={entry}
+                                    entryFrom={entryFrom}
+                                    index={index}
+                                    onActivate={nav.setActive}
+                                />
+                            )}
+                        </li>
+                    ))}
+                </ul>
+            </div>
         </article>
     );
 }
@@ -149,11 +157,13 @@ function DigestMasthead({
 function StandardRow({
     entry,
     entryFrom,
-    selected,
+    index,
+    onActivate,
 }: {
     entry: Entry;
     entryFrom?: EntryFrom;
-    selected?: boolean;
+    index: number;
+    onActivate: (index: number) => void;
 }) {
     const cleanedSummary = entry.body
         ? cleanSummary(entry.body, entry.title)
@@ -187,7 +197,11 @@ function StandardRow({
 
     if (!target) {
         return (
-            <div className={cn('px-6 py-5', selected && 'bg-overlay-2')}>
+            <div
+                data-nav-row=""
+                onMouseEnter={() => onActivate(index)}
+                className="px-6 py-5"
+            >
                 {content}
             </div>
         );
@@ -196,10 +210,9 @@ function StandardRow({
     return (
         <a
             href={target.href}
-            className={cn(
-                ROW_CLICKABLE_CLASS,
-                selected && 'bg-overlay-2 hover:bg-overlay-2',
-            )}
+            data-nav-row=""
+            onMouseEnter={() => onActivate(index)}
+            className={ROW_CLICKABLE_CLASS}
             {...(target.external
                 ? { target: '_blank', rel: 'noopener noreferrer' }
                 : {})}
@@ -209,11 +222,23 @@ function StandardRow({
     );
 }
 
-function InlineRow({ entry, selected }: { entry: Entry; selected?: boolean }) {
+function InlineRow({
+    entry,
+    index,
+    onActivate,
+}: {
+    entry: Entry;
+    index: number;
+    onActivate: (index: number) => void;
+}) {
     const meta = formatMicroblogMeta(entry);
 
     return (
-        <div className={cn('px-6 py-5', selected && 'bg-overlay-2')}>
+        <div
+            data-nav-row=""
+            onMouseEnter={() => onActivate(index)}
+            className="px-6 py-5"
+        >
             <div className="flex flex-col gap-3">
                 <RowHeader
                     entry={entry}

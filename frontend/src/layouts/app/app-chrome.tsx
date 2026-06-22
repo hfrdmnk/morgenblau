@@ -127,6 +127,7 @@ export function AppChrome({ onAddSourceClick }: Props) {
                                 variant="ghost"
                                 size="icon-sm"
                                 aria-label="Account"
+                                className="rounded-full"
                             />
                         }
                     >

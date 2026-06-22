@@ -18,6 +18,7 @@ import {
     parseISODate,
     startOfLocalDay,
 } from '@/lib/date';
+import { entryActivation } from '@/lib/entry-nav';
 import { subscribeSubscriptionAdded } from '@/lib/subscription-events';
 
 type DigestResponse = {
@@ -148,7 +149,19 @@ export function Digest() {
                 : { date: formatISODate(selectedDate) },
         [selectedDate, today],
     );
-    const nav = useListNavigation(entries, entryFrom);
+    const onOpen = useCallback(
+        (entry: Entry) => {
+            const target = entryActivation(entry, entryFrom);
+            if (!target) return;
+            if (target.external) {
+                window.open(target.href, '_blank', 'noopener,noreferrer');
+            } else {
+                window.location.href = target.href;
+            }
+        },
+        [entryFrom],
+    );
+    const nav = useListNavigation(entries, onOpen);
 
     useKeyboard({
         ArrowDown: () => nav.move(1),
@@ -195,7 +208,7 @@ export function Digest() {
                         date={selectedDate}
                         today={today}
                         entryFrom={entryFrom}
-                        selectedIndex={nav.selected}
+                        nav={nav}
                     />
                 )}
         </div>
