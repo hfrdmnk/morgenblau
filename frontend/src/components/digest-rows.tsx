@@ -8,14 +8,15 @@ import {
 import { HugeiconsIcon } from '@hugeicons/react';
 import type { IconSvgElement } from '@hugeicons/react';
 import DOMPurify from 'dompurify';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 import { Favicon } from '@/components/favicon';
 import { useAuthedMe } from '@/hooks/use-authed-me';
 import { formatEditionDate, isSameDay } from '@/lib/date';
+import { entryActivation } from '@/lib/entry-nav';
 import { pickGreeting, pickPastTitle } from '@/lib/greetings';
-import { entryHref, type EntryFrom } from '@/lib/paths';
-import { safeHref } from '@/lib/utils';
+import { type EntryFrom } from '@/lib/paths';
+import { cn, safeHref } from '@/lib/utils';
 
 export type ContentType = 'blogpost' | 'microblog' | 'video' | 'podcast';
 
@@ -55,12 +56,23 @@ export function Newspaper({
     date,
     today,
     entryFrom,
+    selectedIndex,
 }: {
     entries: Entry[];
     date?: Date;
     today?: Date;
     entryFrom?: EntryFrom;
+    selectedIndex?: number | null;
 }) {
+    const ulRef = useRef<HTMLUListElement>(null);
+
+    useEffect(() => {
+        if (selectedIndex == null) return;
+        ulRef.current?.children[selectedIndex]?.scrollIntoView({
+            block: 'nearest',
+        });
+    }, [selectedIndex]);
+
     return (
         <article className="overflow-hidden rounded-xl border border-border bg-card">
             {date ? (
@@ -73,7 +85,7 @@ export function Newspaper({
                     <div aria-hidden className="mx-6 border-t border-border" />
                 </>
             ) : null}
-            <ul className="flex flex-col">
+            <ul ref={ulRef} className="flex flex-col">
                 {entries.map((entry, index) => (
                     <li key={entry.id}>
                         {index > 0 ? (
@@ -83,9 +95,16 @@ export function Newspaper({
                             />
                         ) : null}
                         {entry.contentType === 'microblog' ? (
-                            <InlineRow entry={entry} />
+                            <InlineRow
+                                entry={entry}
+                                selected={index === selectedIndex}
+                            />
                         ) : (
-                            <StandardRow entry={entry} entryFrom={entryFrom} />
+                            <StandardRow
+                                entry={entry}
+                                entryFrom={entryFrom}
+                                selected={index === selectedIndex}
+                            />
                         )}
                     </li>
                 ))}
@@ -130,16 +149,17 @@ function DigestMasthead({
 function StandardRow({
     entry,
     entryFrom,
+    selected,
 }: {
     entry: Entry;
     entryFrom?: EntryFrom;
+    selected?: boolean;
 }) {
     const cleanedSummary = entry.body
         ? cleanSummary(entry.body, entry.title)
         : null;
     const byline = formatByline(entry);
-    const opensInReader =
-        entry.contentType === 'blogpost' || entry.contentType === 'video';
+    const target = entryActivation(entry, entryFrom);
 
     const content = (
         <div className="flex flex-col gap-1.5">
@@ -165,39 +185,35 @@ function StandardRow({
         </div>
     );
 
-    if (opensInReader) {
+    if (!target) {
         return (
-            <a
-                href={entryHref(entry.entrySlug, entryFrom)}
-                className={ROW_CLICKABLE_CLASS}
-            >
+            <div className={cn('px-6 py-5', selected && 'bg-overlay-2')}>
                 {content}
-            </a>
+            </div>
         );
-    }
-
-    const link = safeHref(entry.url);
-    if (!link) {
-        return <div className="px-6 py-5">{content}</div>;
     }
 
     return (
         <a
-            href={link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={ROW_CLICKABLE_CLASS}
+            href={target.href}
+            className={cn(
+                ROW_CLICKABLE_CLASS,
+                selected && 'bg-overlay-2 hover:bg-overlay-2',
+            )}
+            {...(target.external
+                ? { target: '_blank', rel: 'noopener noreferrer' }
+                : {})}
         >
             {content}
         </a>
     );
 }
 
-function InlineRow({ entry }: { entry: Entry }) {
+function InlineRow({ entry, selected }: { entry: Entry; selected?: boolean }) {
     const meta = formatMicroblogMeta(entry);
 
     return (
-        <div className="px-6 py-5">
+        <div className={cn('px-6 py-5', selected && 'bg-overlay-2')}>
             <div className="flex flex-col gap-3">
                 <RowHeader
                     entry={entry}

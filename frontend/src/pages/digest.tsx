@@ -9,7 +9,10 @@ import {
 } from '@/hooks/use-chrome-refresh';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useJobsPoll } from '@/hooks/use-jobs-poll';
+import { useKeyboard } from '@/hooks/use-keyboard';
+import { useListNavigation } from '@/hooks/use-list-navigation';
 import {
+    addDays,
     formatISODate,
     isSameDay,
     parseISODate,
@@ -22,6 +25,9 @@ type DigestResponse = {
     entries: Entry[];
     hasActiveJob: boolean;
 };
+
+// Stable empty list so list navigation doesn't reset every render while loading.
+const EMPTY_ENTRIES: Entry[] = [];
 
 type State =
     | { kind: 'loading' }
@@ -131,6 +137,36 @@ export function Digest() {
         onSelect: handleSelectDate,
     });
 
+    const entries = useMemo(
+        () => (state.kind === 'ok' ? state.entries : EMPTY_ENTRIES),
+        [state],
+    );
+    const entryFrom = useMemo(
+        () =>
+            isSameDay(selectedDate, today)
+                ? undefined
+                : { date: formatISODate(selectedDate) },
+        [selectedDate, today],
+    );
+    const nav = useListNavigation(entries, entryFrom);
+
+    useKeyboard({
+        ArrowDown: () => nav.move(1),
+        ArrowUp: () => nav.move(-1),
+        Enter: () => nav.open(),
+        Escape: () => nav.clear(),
+        ArrowLeft: () => handleSelectDate(addDays(selectedDate, -1)),
+        ArrowRight: () => {
+            const next = addDays(selectedDate, 1);
+            if (startOfLocalDay(next).getTime() > today.getTime()) return;
+            handleSelectDate(next);
+        },
+        t: () => handleSelectDate(today),
+        r: () => {
+            if (!isBusy) onRefresh();
+        },
+    });
+
     return (
         <div className="mx-auto w-full max-w-2xl px-4 pt-10 pb-12 sm:px-6">
                 {isBusy ? (
@@ -155,14 +191,11 @@ export function Digest() {
                     />
                 ) : (
                     <Newspaper
-                        entries={state.entries}
+                        entries={entries}
                         date={selectedDate}
                         today={today}
-                        entryFrom={
-                            isSameDay(selectedDate, today)
-                                ? undefined
-                                : { date: formatISODate(selectedDate) }
-                        }
+                        entryFrom={entryFrom}
+                        selectedIndex={nav.selected}
                     />
                 )}
         </div>

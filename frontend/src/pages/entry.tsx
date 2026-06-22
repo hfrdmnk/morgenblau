@@ -5,12 +5,12 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Favicon } from '@/components/favicon';
 import { ReaderRail } from '@/components/reader-rail';
-import type {
-    ExtractedToggleState,
-    SavedToggle,
-} from '@/components/reader-rail';
+import type { ExtractedToggleState } from '@/components/reader-rail';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { useKeyboard } from '@/hooks/use-keyboard';
+import { useSaveToggle } from '@/hooks/use-save-toggle';
+import type { SavedToggle } from '@/hooks/use-save-toggle';
 import { digestHref, PATHS, sourceHref } from '@/lib/paths';
 import { cn, safeHref } from '@/lib/utils';
 
@@ -211,6 +211,20 @@ function ReaderView({ entry }: { entry: Entry }) {
         itemUrl: entry.url,
         feedUrl: entry.source.feedUrl ?? null,
     };
+    const save = useSaveToggle(savedToggle);
+
+    useKeyboard({
+        Escape: () => {
+            window.location.href = backHrefFromLocation();
+        },
+        b: () => save.onToggle(),
+        o: () => {
+            if (sourceLink) {
+                window.open(sourceLink, '_blank', 'noopener,noreferrer');
+            }
+        },
+        m: () => onToggleClick(),
+    });
 
     return (
         <div className="min-h-svh bg-card">
@@ -218,7 +232,7 @@ function ReaderView({ entry }: { entry: Entry }) {
             <ReaderRail
                 sourceUrl={sourceLink ?? null}
                 extractedToggle={{ state: toggleState, onClick: onToggleClick }}
-                savedToggle={savedToggle}
+                save={save}
             />
             <article className="mx-auto w-full max-w-2xl px-4 pt-8 pb-24 sm:px-6">
                 <header className="mb-8 flex flex-col gap-4">
@@ -249,13 +263,26 @@ function WatchView({ entry }: { entry: Entry }) {
         itemUrl: entry.url,
         feedUrl: entry.source.feedUrl ?? null,
     };
+    const save = useSaveToggle(savedToggle);
+
+    useKeyboard({
+        Escape: () => {
+            window.location.href = backHrefFromLocation();
+        },
+        b: () => save.onToggle(),
+        o: () => {
+            if (sourceLink) {
+                window.open(sourceLink, '_blank', 'noopener,noreferrer');
+            }
+        },
+    });
 
     return (
         <div className="min-h-svh bg-card">
             <Header />
             <ReaderRail
                 sourceUrl={sourceLink ?? null}
-                savedToggle={savedToggle}
+                save={save}
                 showProgress={false}
             />
             <article className="mx-auto w-full px-4 pt-8 pb-24 sm:px-6">

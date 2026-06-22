@@ -9,6 +9,7 @@ import { HugeiconsIcon } from '@hugeicons/react';
 import type { IconSvgElement } from '@hugeicons/react';
 import { useEffect, useState } from 'react';
 
+import type { SaveControl } from '@/hooks/use-save-toggle';
 import { cn, safeHref } from '@/lib/utils';
 
 export type ExtractedToggleState = 'inactive' | 'active' | 'loading';
@@ -18,16 +19,10 @@ export type ExtractedToggle = {
     onClick: () => void;
 };
 
-export type SavedToggle = {
-    initial: { rkey: string } | null;
-    itemUrl: string;
-    feedUrl: string | null;
-};
-
 type ReaderRailProps = {
     sourceUrl: string | null;
     extractedToggle?: ExtractedToggle;
-    savedToggle?: SavedToggle;
+    save?: SaveControl;
     showProgress?: boolean;
 };
 
@@ -37,7 +32,7 @@ const RAIL_BUTTON_BASE =
 export function ReaderRail({
     sourceUrl,
     extractedToggle,
-    savedToggle,
+    save,
     showProgress = true,
 }: ReaderRailProps) {
     const progress = useScrollProgress(showProgress);
@@ -52,7 +47,7 @@ export function ReaderRail({
                     <RailIcons
                         sourceUrl={sourceUrl}
                         extractedToggle={extractedToggle}
-                        savedToggle={savedToggle}
+                        save={save}
                     />
                     {showProgress ? (
                         <ScrollProgressTrack
@@ -77,7 +72,7 @@ export function ReaderRail({
                     <RailIcons
                         sourceUrl={sourceUrl}
                         extractedToggle={extractedToggle}
-                        savedToggle={savedToggle}
+                        save={save}
                     />
                 </div>
             </aside>
@@ -88,18 +83,18 @@ export function ReaderRail({
 function RailIcons({
     sourceUrl,
     extractedToggle,
-    savedToggle,
+    save,
 }: {
     sourceUrl: string | null;
     extractedToggle?: ExtractedToggle;
-    savedToggle?: SavedToggle;
+    save?: SaveControl;
 }) {
     const safeSource = safeHref(sourceUrl);
 
     return (
         <>
-            {savedToggle ? (
-                <SaveRailIcon toggle={savedToggle} />
+            {save ? (
+                <SaveRailButton {...save} />
             ) : (
                 <DisabledRailIcon icon={Bookmark01Icon} label="Save" />
             )}
@@ -169,77 +164,24 @@ function ExtractedToggleIcon({
     );
 }
 
-type SaveStatus = 'idle' | 'saved';
-
-function SaveRailIcon({ toggle }: { toggle: SavedToggle }) {
-    const initialStatus: SaveStatus = toggle.initial ? 'saved' : 'idle';
-    const [status, setStatus] = useState<SaveStatus>(initialStatus);
-    const [rkey, setRkey] = useState<string | null>(toggle.initial?.rkey ?? null);
-    const [busy, setBusy] = useState(false);
-    const { displayed, swapping } = useDeferredState(status);
-
-    const isSaved = displayed === 'saved';
-    const label = status === 'saved' ? 'Remove from saves' : 'Save for later';
-
-    const onClick = () => {
-        if (busy) return;
-        if (status === 'saved') {
-            if (!rkey) return;
-            const previousRkey = rkey;
-            setBusy(true);
-            setStatus('idle');
-            setRkey(null);
-            fetch(`/api/saves/${encodeURIComponent(previousRkey)}`, {
-                method: 'DELETE',
-                credentials: 'same-origin',
-            })
-                .then((r) => {
-                    if (!r.ok && r.status !== 204) throw new Error(String(r.status));
-                })
-                .catch(() => {
-                    setStatus('saved');
-                    setRkey(previousRkey);
-                })
-                .finally(() => setBusy(false));
-            return;
-        }
-        setBusy(true);
-        setStatus('saved');
-        fetch('/api/saves', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                itemUrl: toggle.itemUrl,
-                feedUrl: toggle.feedUrl ?? undefined,
-            }),
-        })
-            .then(async (r) => {
-                if (!r.ok) throw new Error(String(r.status));
-                const payload = (await r.json()) as { rkey: string };
-                setRkey(payload.rkey);
-            })
-            .catch(() => {
-                setStatus('idle');
-                setRkey(null);
-            })
-            .finally(() => setBusy(false));
-    };
+function SaveRailButton({ saved, busy, onToggle }: SaveControl) {
+    const { displayed, swapping } = useDeferredState(saved);
+    const label = saved ? 'Remove from saves' : 'Save for later';
 
     return (
         <button
             type="button"
-            onClick={onClick}
+            onClick={onToggle}
             disabled={busy}
-            aria-pressed={isSaved}
+            aria-pressed={displayed}
             aria-label={label}
             aria-busy={busy || undefined}
             data-swapping={swapping || undefined}
-            data-saved={isSaved || undefined}
+            data-saved={displayed || undefined}
             className={cn(
                 RAIL_BUTTON_BASE,
                 'disabled:cursor-wait',
-                isSaved
+                displayed
                     ? 'text-primary hover:text-primary'
                     : 'text-muted-foreground hover:text-foreground',
             )}

@@ -1,5 +1,6 @@
 import type { FC, ReactNode } from 'react';
 
+import { KeyboardHelp } from '@/components/keyboard-help';
 import { MeProvider } from '@/components/me-provider';
 import { AppLayout } from '@/layouts/app-layout';
 import { PATHS } from '@/lib/paths';
@@ -44,5 +45,12 @@ export default function App() {
     ) : (
         <Component />
     );
-    return authed ? <MeProvider>{inner}</MeProvider> : inner;
+    return authed ? (
+        <MeProvider>
+            {inner}
+            <KeyboardHelp />
+        </MeProvider>
+    ) : (
+        inner
+    );
 }

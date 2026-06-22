@@ -5,7 +5,7 @@ import {
     Pulse01Icon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Newspaper } from '@/components/digest-rows';
 import type { Entry } from '@/components/digest-rows';
@@ -20,6 +20,8 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { shortTimeAgo } from '@/lib/date';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { useKeyboard } from '@/hooks/use-keyboard';
+import { useListNavigation } from '@/hooks/use-list-navigation';
 import { PATHS } from '@/lib/paths';
 
 type Frequency =
@@ -72,6 +74,7 @@ export function Source() {
     const [state, setState] = useState<State>(
         rkey ? { kind: 'loading' } : { kind: 'error' },
     );
+    const [reloadTick, setReloadTick] = useState(0);
 
     useDocumentTitle(
         state.kind === 'ok' ? state.detail.title ?? 'Source' : 'Source',
@@ -103,7 +106,7 @@ export function Source() {
         return () => {
             cancelled = true;
         };
-    }, [rkey]);
+    }, [rkey, reloadTick]);
 
     if (state.kind === 'loading') {
         return <SourceSkeleton />;
@@ -140,6 +143,7 @@ export function Source() {
             detail={state.detail}
             entries={state.entries}
             onPatched={onPatched}
+            onReload={() => setReloadTick((tick) => tick + 1)}
         />
     );
 }
@@ -148,12 +152,28 @@ function SourceView({
     detail,
     entries,
     onPatched,
+    onReload,
 }: {
     detail: SourceDetail;
     entries: Entry[];
     onPatched: (patch: SourcePatch) => void;
+    onReload: () => void;
 }) {
     const [editing, setEditing] = useState(false);
+    const entryFrom = useMemo(
+        () => ({ sourceRkey: detail.rkey }),
+        [detail.rkey],
+    );
+    const nav = useListNavigation(entries, entryFrom);
+
+    useKeyboard({
+        ArrowDown: () => nav.move(1),
+        ArrowUp: () => nav.move(-1),
+        Enter: () => nav.open(),
+        Escape: () => nav.clear(),
+        r: () => onReload(),
+    });
+
     const domain = hostnameOf(detail.siteUrl ?? detail.feedUrl);
     const title = detail.title ?? detail.feedUrl;
     const proxyFavicon = `/api/favicon?feed=${encodeURIComponent(detail.feedUrl)}`;
@@ -224,7 +244,8 @@ function SourceView({
             ) : (
                 <Newspaper
                     entries={entries}
-                    entryFrom={{ sourceRkey: detail.rkey }}
+                    entryFrom={entryFrom}
+                    selectedIndex={nav.selected}
                 />
             )}
 
