@@ -38,3 +38,35 @@ Install CLIs once: `go install github.com/pressly/goose/v3/cmd/goose@latest && g
 ## ATProto Skills
 
 For ATProto protocol work, invoke the matching skill: `atproto-oauth`, `atproto-lexicon`, `atproto-publish-lexicon`, `atproto-identity-resolution`, `atproto-repository`, `atproto-cid`, `atproto-attestation`.
+
+## atproto.md
+
+> A read-only, markdown-first API for the AT Protocol ecosystem. Returns structured markdown from any PDS. Accepts at:// URIs directly in the URL path. No authentication required — public data only.
+
+atproto.md resolves handles and DIDs, fetches data directly from the user's PDS via `com.atproto.repo.*`, and returns rich markdown. Works with any collection on any PDS — not just Bluesky.
+
+### Endpoints
+
+- [Resolve identity](https://atproto.md/resolve/{handle-or-did}): Full identity chain — handle → DID → DID document → PDS endpoint
+- [PLC audit log](https://atproto.md/plc/audit/{handle-or-did}): Chronological history of a did:plc identity — PDS migrations, handle changes, key rotations
+- [PLC data](https://atproto.md/plc/data/{handle-or-did}): Current canonical PLC state — active PDS, handles, signing key, and rotation keys
+- [PLC last op](https://atproto.md/plc/last/{handle-or-did}): The most recent PLC operation and the state it established
+- [Usage stats](https://atproto.md/stats): Anonymous traffic — route + MCP-tool hit counts and most-queried collections. No user-specific data
+- [Repo overview](https://atproto.md/at://{actor}): Lists all collections in an actor's repo
+- [List records](https://atproto.md/at://{actor}/{collection}): Paginated records from any collection. Params: limit (default 25, max 100), cursor, reverse
+- [Get record](https://atproto.md/at://{actor}/{collection}/{rkey}): Fetch a single record by its rkey
+- [Get lexicon](https://atproto.md/lexicon/{nsid}): Resolve a Lexicon schema by NSID via DNS-based lexicon resolution (_lexicon TXT → DID → com.atproto.lexicon.schema record)
+- [Discover repos by collection](https://atproto.md/discover/{collection}): Every repo on the network with records in a collection NSID. Params: limit (default 100, max 2000), cursor
+- [Backlinks](https://atproto.md/backlinks/{at-uri-or-did-or-url}): Who links to a target (likes, reposts, replies, follows, any lexicon). Summary of sources by default; add source={collection:path} to list linking records
+
+### Examples
+
+- [Resolve bsky.app](https://atproto.md/resolve/bsky.app)
+- [PLC audit log for bsky.app](https://atproto.md/plc/audit/bsky.app)
+- [PLC data for bsky.app](https://atproto.md/plc/data/bsky.app)
+- [Browse repo](https://atproto.md/at://bsky.app)
+- [List posts](https://atproto.md/at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.post?limit=5)
+- [Get profile](https://atproto.md/at://bsky.app/app.bsky.actor.profile/self)
+- [Get the app.bsky.feed.post lexicon](https://atproto.md/lexicon/app.bsky.feed.post)
+- [Discover site.standard.document repos](https://atproto.md/discover/site.standard.document)
+- [Backlinks to a post](https://atproto.md/backlinks/at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.post/3lgwdn7vd722r)
