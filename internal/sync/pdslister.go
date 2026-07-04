@@ -99,12 +99,34 @@ func toPDSSubscription(r recordEntry) PDSSubscription {
 	// tolerates unknown fields from older producers). Reject malformed records.
 	feedURL, _ := r.Value["feedUrl"].(string)
 	title, _ := r.Value["title"].(string)
+	primary, _ := r.Value["primary"].(bool)
 	return PDSSubscription{
 		URI:     r.URI,
 		Rkey:    atprepo.RkeyFromATURI(r.URI),
 		FeedURL: feedURL,
 		Title:   title,
+		Primary: primary,
+		Tags:    stringSlice(r.Value["tags"]),
 	}
+}
+
+// stringSlice extracts a []string from a decoded JSON array (which arrives as
+// []any), skipping any non-string members. Returns nil when v isn't an array.
+func stringSlice(v any) []string {
+	raw, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		if s, ok := item.(string); ok {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func toPDSSave(r recordEntry) PDSSave {

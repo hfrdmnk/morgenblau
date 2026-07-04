@@ -96,6 +96,9 @@ func TestToPDSSubscription_Mapping(t *testing.T) {
 		Value: map[string]any{
 			"feedUrl": "https://example.com/feed",
 			"title":   "Example",
+			"primary": true,
+			// JSON arrays decode to []any, so tags land as []any{string...}.
+			"tags": []any{"tech", "design"},
 		},
 	}
 	got := toPDSSubscription(r)
@@ -107,6 +110,12 @@ func TestToPDSSubscription_Mapping(t *testing.T) {
 	}
 	if got.Title != "Example" {
 		t.Errorf("title = %q", got.Title)
+	}
+	if !got.Primary {
+		t.Errorf("primary = false, want true")
+	}
+	if len(got.Tags) != 2 || got.Tags[0] != "tech" || got.Tags[1] != "design" {
+		t.Errorf("tags = %v, want [tech design]", got.Tags)
 	}
 }
 
@@ -126,5 +135,67 @@ func TestToPDSSubscription_MissingOptionalFields(t *testing.T) {
 	}
 	if got.Title != "" {
 		t.Errorf("optional title = %q, want empty", got.Title)
+	}
+	// Absent primary/tags mean the record doesn't set them — the PDS is the
+	// source of truth, so zero values are correct, not a data loss.
+	if got.Primary {
+		t.Errorf("primary = true, want false when absent")
+	}
+	if got.Tags != nil {
+		t.Errorf("tags = %v, want nil when absent", got.Tags)
+	}
+}
+
+func TestToPDSSave_Mapping(t *testing.T) {
+	got := toPDSSave(recordEntry{
+		URI: "at://did:plc:alice/blue.morgen.feed.save/3sk",
+		CID: "bafy",
+		Value: map[string]any{
+			"itemUrl":   "https://example.com/post",
+			"feedUrl":   "https://example.com/feed",
+			"createdAt": "2026-06-01T00:00:00Z",
+		},
+	})
+	if got.Rkey != "3sk" {
+		t.Errorf("Rkey = %q", got.Rkey)
+	}
+	if got.ItemURL != "https://example.com/post" {
+		t.Errorf("ItemURL = %q", got.ItemURL)
+	}
+	if got.FeedURL != "https://example.com/feed" {
+		t.Errorf("FeedURL = %q", got.FeedURL)
+	}
+	if got.CreatedAt != "2026-06-01T00:00:00Z" {
+		t.Errorf("CreatedAt = %q", got.CreatedAt)
+	}
+}
+
+func TestToPDSSave_MissingOptionalFields(t *testing.T) {
+	got := toPDSSave(recordEntry{
+		URI:   "at://did:plc:alice/blue.morgen.feed.save/3sk",
+		Value: map[string]any{"itemUrl": "https://example.com/post"},
+	})
+	if got.ItemURL != "https://example.com/post" {
+		t.Errorf("ItemURL = %q", got.ItemURL)
+	}
+	// feedUrl and createdAt are optional on the save record.
+	if got.FeedURL != "" {
+		t.Errorf("FeedURL = %q, want empty", got.FeedURL)
+	}
+	if got.CreatedAt != "" {
+		t.Errorf("CreatedAt = %q, want empty", got.CreatedAt)
+	}
+}
+
+func TestToPDSSubscription_TagsSkipsNonStrings(t *testing.T) {
+	got := toPDSSubscription(recordEntry{
+		URI: "at://did:plc:example/blue.morgen.feed.subscription/3la",
+		Value: map[string]any{
+			"feedUrl": "https://example.com/feed",
+			"tags":    []any{"keep", 42, nil, "also"},
+		},
+	})
+	if len(got.Tags) != 2 || got.Tags[0] != "keep" || got.Tags[1] != "also" {
+		t.Errorf("tags = %v, want [keep also]", got.Tags)
 	}
 }

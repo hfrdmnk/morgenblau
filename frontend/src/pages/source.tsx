@@ -24,6 +24,7 @@ import { useKeyboard } from '@/hooks/use-keyboard';
 import { useListNavigation } from '@/hooks/use-list-navigation';
 import { entryActivation } from '@/lib/entry-nav';
 import { PATHS } from '@/lib/paths';
+import { goBackOr } from '@/lib/utils';
 
 type Frequency =
     | 'new'
@@ -388,6 +389,13 @@ function BackButton() {
         <a
             href={PATHS.sources}
             aria-label="Back to sources"
+            onClick={(e) => {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) {
+                    return;
+                }
+                e.preventDefault();
+                goBackOr(PATHS.sources);
+            }}
             className="absolute top-1/2 right-full mr-2 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
         >
             <HugeiconsIcon icon={ArrowLeft01Icon} className="size-5" />

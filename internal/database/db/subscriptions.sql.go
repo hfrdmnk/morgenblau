@@ -301,8 +301,11 @@ func (q *Queries) ListUserSourcesWithStats(ctx context.Context, arg ListUserSour
 
 const listUserSubscriptionTags = `-- name: ListUserSubscriptionTags :many
 SELECT tags FROM user_subscriptions WHERE did = ? AND tags IS NOT NULL AND tags != ''
+ORDER BY rkey
 `
 
+// Ordered by rkey (a TID, so creation order) to make "first-seen casing wins"
+// deterministic across a tag case-collision.
 func (q *Queries) ListUserSubscriptionTags(ctx context.Context, did string) ([]*string, error) {
 	rows, err := q.db.QueryContext(ctx, listUserSubscriptionTags, did)
 	if err != nil {

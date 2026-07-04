@@ -47,12 +47,16 @@ type Server struct {
 	gcCancel context.CancelFunc
 }
 
-func NewServer() (*http.Server, error) {
+// NewServer builds the HTTP server and returns a cleanup func the caller must
+// invoke after http.Server.Shutdown returns: it drains in-flight sync writes and
+// closes the database. The drain can't hang off server.RegisterOnShutdown because
+// net/http fires those as detached goroutines it never waits for.
+func NewServer() (*http.Server, func(context.Context) error, error) {
 	port := 8000
 	if raw := os.Getenv("PORT"); raw != "" {
 		p, err := strconv.Atoi(raw)
 		if err != nil {
-			return nil, fmt.Errorf("invalid PORT %q: %w", raw, err)
+			return nil, nil, fmt.Errorf("invalid PORT %q: %w", raw, err)
 		}
 		port = p
 	}
@@ -61,24 +65,24 @@ func NewServer() (*http.Server, error) {
 	if raw := os.Getenv("FETCH_INTERVAL_MINUTES"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil {
-			return nil, fmt.Errorf("invalid FETCH_INTERVAL_MINUTES %q: %w", raw, err)
+			return nil, nil, fmt.Errorf("invalid FETCH_INTERVAL_MINUTES %q: %w", raw, err)
 		}
 		fetchMinutes = n
 	}
 
 	db, err := database.Open()
 	if err != nil {
-		return nil, fmt.Errorf("open database: %w", err)
+		return nil, nil, fmt.Errorf("open database: %w", err)
 	}
 
 	oauthCfg, err := config.FromOS()
 	if err != nil {
-		return nil, fmt.Errorf("load oauth config: %w", err)
+		return nil, nil, fmt.Errorf("load oauth config: %w", err)
 	}
 
 	sealer, err := loadCookieSealer()
 	if err != nil {
-		return nil, fmt.Errorf("load cookie sealer: %w", err)
+		return nil, nil, fmt.Errorf("load cookie sealer: %w", err)
 	}
 
 	st := store.New(db)
@@ -107,7 +111,7 @@ func NewServer() (*http.Server, error) {
 		slog.Info("global feed fetch disabled (FETCH_INTERVAL_MINUTES <= 0)")
 	}
 
-	NewServer := &Server{
+	srv := &Server{
 		port:       port,
 		db:         db,
 		queries:    queries,
@@ -125,22 +129,24 @@ func NewServer() (*http.Server, error) {
 	}
 
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", NewServer.port),
-		Handler:      NewServer.RegisterRoutes(),
+		Addr:         fmt.Sprintf(":%d", srv.port),
+		Handler:      srv.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
+	// Fire-and-forget is right for the GC/global-sweep tickers — they hold no
+	// writes worth draining.
 	server.RegisterOnShutdown(gcCancel)
-	server.RegisterOnShutdown(func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
-		defer cancel()
-		if err := orchestrator.Shutdown(shutdownCtx); err != nil {
+
+	cleanup := func(ctx context.Context) error {
+		if err := orchestrator.Shutdown(ctx); err != nil {
 			slog.Warn("sync orchestrator shutdown", "err", err)
 		}
-	})
+		return db.Close()
+	}
 
-	return server, nil
+	return server, cleanup, nil
 }
 
 func loadCookieSealer() (*cookie.Sealer, error) {

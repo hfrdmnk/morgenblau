@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/middleware/auth"
+	"morgenblau/internal/tags"
 )
 
 // IndexRkeyReader fetches a single Tier-1 row + supports the dedupe probe
@@ -104,14 +106,14 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		var newTagsSlice []string
 		if body.Tags != nil {
 			newTagsSlice = normalizeTags(*body.Tags)
-			if !tagsEqual(newTagsSlice, unmarshalTags(row.Tags)) {
-				newTags = marshalTags(newTagsSlice)
+			if !tagsEqual(newTagsSlice, tags.Unmarshal(row.Tags)) {
+				newTags = tags.Marshal(newTagsSlice)
 				changed = true
 			} else {
-				newTagsSlice = unmarshalTags(row.Tags)
+				newTagsSlice = tags.Unmarshal(row.Tags)
 			}
 		} else {
-			newTagsSlice = unmarshalTags(row.Tags)
+			newTagsSlice = tags.Unmarshal(row.Tags)
 		}
 
 		// A feedUrl change re-points the subscription to a different feed.
@@ -119,6 +121,14 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		feedChanged := false
 		if body.FeedURL != nil {
 			if candidate := strings.TrimSpace(*body.FeedURL); candidate != "" && candidate != row.FeedUrl {
+				// The add path resolves feeds through feedfinder; PATCH re-points
+				// to a client-computed URL (e.g. the Shorts toggle) and must stay
+				// fast, so validate format only. A dead-but-well-formed feed still
+				// surfaces via the dispatched fetch.
+				if !isValidFeedURL(candidate) {
+					writeJSONStatus(w, http.StatusBadRequest, map[string]string{"message": "invalid feed URL"})
+					return
+				}
 				// Guard against colliding with another of the user's
 				// subscriptions (the (did, feed_url) pair is unique).
 				if other, err := reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
@@ -250,6 +260,20 @@ func SubscriptionsDeleteHandler(reader IndexRkeyReader, deleter IndexDeleter, pd
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// isValidFeedURL accepts only absolute http(s) URLs with a host. Format-only:
+// it doesn't confirm the URL resolves to a real feed (that's the fetcher's job,
+// on the safehttp client that blocks private/loopback targets).
+func isValidFeedURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+	return u.Host != ""
 }
 
 func changedString(old *string, next string) bool {

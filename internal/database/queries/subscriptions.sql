@@ -50,7 +50,10 @@ FROM user_subscriptions WHERE did = ?
 ORDER BY COALESCE(NULLIF(title, ''), feed_url) COLLATE NOCASE ASC;
 
 -- name: ListUserSubscriptionTags :many
-SELECT tags FROM user_subscriptions WHERE did = ? AND tags IS NOT NULL AND tags != '';
+-- Ordered by rkey (a TID, so creation order) to make "first-seen casing wins"
+-- deterministic across a tag case-collision.
+SELECT tags FROM user_subscriptions WHERE did = ? AND tags IS NOT NULL AND tags != ''
+ORDER BY rkey;
 
 -- name: ListUserSourcesWithStats :many
 -- One row per subscription with feed metadata and windowed entry stats. The

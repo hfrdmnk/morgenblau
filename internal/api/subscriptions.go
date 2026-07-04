@@ -17,6 +17,7 @@ import (
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/feedfinder"
 	"morgenblau/internal/middleware/auth"
+	"morgenblau/internal/tags"
 )
 
 const subscriptionCollection = "blue.morgen.feed.subscription"
@@ -118,12 +119,12 @@ func rowToWire(row db.UserSubscription) SubscriptionWire {
 		title = *row.Title
 	}
 	primary := row.IsPrimary != 0
-	tags := unmarshalTags(row.Tags)
+	tagList := tags.Unmarshal(row.Tags)
 	if primary {
 		value["primary"] = true
 	}
-	if len(tags) > 0 {
-		value["tags"] = tags
+	if len(tagList) > 0 {
+		value["tags"] = tagList
 	}
 	return SubscriptionWire{
 		URI:     row.AtUri,
@@ -132,7 +133,7 @@ func rowToWire(row db.UserSubscription) SubscriptionWire {
 		FeedURL: row.FeedUrl,
 		Title:   title,
 		Primary: primary,
-		Tags:    tags,
+		Tags:    tagList,
 	}
 }
 
@@ -153,12 +154,12 @@ func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) Subscrip
 		faviconURL = *row.IconUrl
 	}
 	primary := row.IsPrimary != 0
-	tags := unmarshalTags(row.Tags)
+	tagList := tags.Unmarshal(row.Tags)
 	if primary {
 		value["primary"] = true
 	}
-	if len(tags) > 0 {
-		value["tags"] = tags
+	if len(tagList) > 0 {
+		value["tags"] = tagList
 	}
 	lastPublished := asString(row.LastPublishedAt)
 	firstPublished := asString(row.FirstPublishedAt)
@@ -173,7 +174,7 @@ func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) Subscrip
 		Frequency:       frequencyBucket(firstPublished, row.Count7d, row.Count28d, row.Count56d, row.Count84d, now),
 		LastPublishedAt: lastPublished,
 		Primary:         primary,
-		Tags:            tags,
+		Tags:            tagList,
 	}
 }
 
@@ -365,7 +366,7 @@ func SubscriptionsCreateHandler(
 
 			// Step 2: PDS write. Single user-editable title; the resolver
 			// prefilled it client-side, the user may have overridden before submit.
-			tags := normalizeTags(item.Tags)
+			tagList := normalizeTags(item.Tags)
 			record := map[string]any{
 				"feedUrl":   item.FeedURL,
 				"createdAt": now,
@@ -379,8 +380,8 @@ func SubscriptionsCreateHandler(
 			if item.Primary {
 				record["primary"] = true
 			}
-			if len(tags) > 0 {
-				record["tags"] = tags
+			if len(tagList) > 0 {
+				record["tags"] = tagList
 			}
 			// TODO(blue.morgen lexicon): once the blue.morgen.feed.subscription
 			// lexicon is published as a com.atproto.lexicon.schema record and
@@ -415,7 +416,7 @@ func SubscriptionsCreateHandler(
 				FeedUrl:   item.FeedURL,
 				Title:     titlePtr,
 				IsPrimary: boolToInt64(item.Primary),
-				Tags:      marshalTags(tags),
+				Tags:      tags.Marshal(tagList),
 				CreatedAt: now,
 				UpdatedAt: now,
 			}); err != nil {
@@ -436,8 +437,8 @@ func SubscriptionsCreateHandler(
 			if item.Primary {
 				value["primary"] = true
 			}
-			if len(tags) > 0 {
-				value["tags"] = tags
+			if len(tagList) > 0 {
+				value["tags"] = tagList
 			}
 			out.Records = append(out.Records, SubscriptionWire{
 				URI:     ref.URI,
@@ -447,7 +448,7 @@ func SubscriptionsCreateHandler(
 				Title:   item.Title,
 				SiteURL: item.SiteURL,
 				Primary: item.Primary,
-				Tags:    tags,
+				Tags:    tagList,
 				Value:   value,
 			})
 
@@ -490,7 +491,7 @@ func SubscriptionsTagsHandler(reader TagsReader) http.Handler {
 		seen := map[string]struct{}{}
 		out := []string{}
 		for _, row := range rows {
-			for _, tag := range unmarshalTags(row) {
+			for _, tag := range tags.Unmarshal(row) {
 				key := strings.ToLower(tag)
 				if _, dup := seen[key]; dup {
 					continue
@@ -556,32 +557,6 @@ func normalizeTags(in []string) []string {
 		}
 	}
 	if len(out) == 0 {
-		return nil
-	}
-	return out
-}
-
-// marshalTags renders tags as a JSON array string for storage, or nil when empty.
-func marshalTags(tags []string) *string {
-	if len(tags) == 0 {
-		return nil
-	}
-	b, err := json.Marshal(tags)
-	if err != nil {
-		return nil
-	}
-	s := string(b)
-	return &s
-}
-
-// unmarshalTags parses a stored JSON array string back into a slice. Returns an
-// empty slice on nil, blank, or parse error.
-func unmarshalTags(s *string) []string {
-	if s == nil || *s == "" {
-		return nil
-	}
-	var out []string
-	if err := json.Unmarshal([]byte(*s), &out); err != nil {
 		return nil
 	}
 	return out

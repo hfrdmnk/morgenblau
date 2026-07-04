@@ -62,6 +62,7 @@ func TestSubscriptionGet_HappyPath(t *testing.T) {
 	title := "Example Feed"
 	site := "https://example.test"
 	icon := "https://example.test/favicon.ico"
+	tagsJSON := `["Tech","Design"]`
 	fake.rows["did:plc:alice"] = map[string]db.GetUserSourceWithStatsRow{
 		"3la": {
 			Did:              "did:plc:alice",
@@ -71,6 +72,8 @@ func TestSubscriptionGet_HappyPath(t *testing.T) {
 			Title:            &title,
 			SiteUrl:          &site,
 			IconUrl:          &icon,
+			IsPrimary:        1,
+			Tags:             &tagsJSON,
 			LastPublishedAt:  "2026-05-20T10:00:00Z",
 			FirstPublishedAt: "2024-01-01T00:00:00Z",
 			Count7d:          5,
@@ -119,6 +122,13 @@ func TestSubscriptionGet_HappyPath(t *testing.T) {
 	}
 	if got.SavedByYou != 7 {
 		t.Errorf("savedByYou = %d, want 7", got.SavedByYou)
+	}
+	// primary/tags feed the edit-dialog prefill on the detail page.
+	if !got.Primary {
+		t.Errorf("primary = false, want true")
+	}
+	if len(got.Tags) != 2 || got.Tags[0] != "Tech" || got.Tags[1] != "Design" {
+		t.Errorf("tags = %v, want [Tech Design]", got.Tags)
 	}
 }
 

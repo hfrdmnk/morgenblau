@@ -15,6 +15,12 @@ export function entryActivation(
     if (opensInReader) {
         return { href: entryHref(entry.entrySlug, from), external: false };
     }
+    // Microblogs render inline with no row-level target — a click does nothing,
+    // so Enter must not diverge by opening a new tab. The RowHeader link icon is
+    // the affordance for both pointer and keyboard.
+    if (entry.contentType === 'microblog') {
+        return null;
+    }
     const link = safeHref(entry.url);
     return link ? { href: link, external: true } : null;
 }

@@ -302,3 +302,10 @@ func nilIfEmpty(s string) *string {
 	}
 	return &s
 }
+
+func boolToInt64(b bool) int64 {
+	if b {
+		return 1
+	}
+	return 0
+}

@@ -14,6 +14,10 @@ export type ListNavigation = {
 // never paint competing highlights. Pointer enters set `active` and mark the input
 // mode; keyboard `move` does the same and bumps `scrollKey` so the list scrolls on
 // keyboard travel but stays put under the mouse.
+//
+// The highlight is intentionally a sighted-only power-user layer: it moves a
+// purely visual index, not DOM focus or aria-activedescendant. Rows are real
+// links, so assistive tech navigates the list fully by Tab / reading order.
 export function useListNavigation<T>(
     items: readonly T[],
     onOpen: (item: T, index: number) => void,

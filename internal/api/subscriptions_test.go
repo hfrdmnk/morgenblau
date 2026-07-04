@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -66,8 +67,15 @@ func (f *fakeIndex) ListUserSourcesWithStats(_ context.Context, arg db.ListUserS
 func (f *fakeIndex) ListUserSubscriptionTags(_ context.Context, did string) ([]*string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	out := make([]*string, 0)
+	// Mirror the query's ORDER BY rkey so "first-seen casing wins" is
+	// deterministic — ranging the map directly would randomize the order.
+	rows := make([]db.UserSubscription, 0, len(f.rows[did]))
 	for _, r := range f.rows[did] {
+		rows = append(rows, r)
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Rkey < rows[j].Rkey })
+	out := make([]*string, 0, len(rows))
+	for _, r := range rows {
 		if r.Tags != nil && *r.Tags != "" {
 			out = append(out, r.Tags)
 		}
@@ -777,29 +785,6 @@ func TestNormalizeTags(t *testing.T) {
 	// Empty in → nil/empty out.
 	if got := normalizeTags(nil); len(got) != 0 {
 		t.Errorf("nil input → %v", got)
-	}
-}
-
-func TestMarshalUnmarshalTags(t *testing.T) {
-	if marshalTags(nil) != nil {
-		t.Errorf("marshalTags(nil) should be nil")
-	}
-	if marshalTags([]string{}) != nil {
-		t.Errorf("marshalTags(empty) should be nil")
-	}
-	p := marshalTags([]string{"a", "b"})
-	if p == nil || *p != `["a","b"]` {
-		t.Errorf("marshalTags = %v", p)
-	}
-	if got := unmarshalTags(p); len(got) != 2 || got[0] != "a" {
-		t.Errorf("unmarshalTags round-trip = %v", got)
-	}
-	if got := unmarshalTags(nil); len(got) != 0 {
-		t.Errorf("unmarshalTags(nil) = %v", got)
-	}
-	bad := "not json"
-	if got := unmarshalTags(&bad); len(got) != 0 {
-		t.Errorf("unmarshalTags(bad) = %v", got)
 	}
 }
 

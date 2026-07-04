@@ -379,6 +379,47 @@ func TestSubscriptionsPatch_FeedURLChange_RepointsAndDispatches(t *testing.T) {
 	}
 }
 
+func TestSubscriptionsPatch_FeedURLChange_Invalid_400(t *testing.T) {
+	const feed = "https://example.test/feed.xml"
+	cases := map[string]string{
+		"not a url":       "not a url",
+		"javascript":      "javascript:alert(1)",
+		"scheme only":     "https://",
+		"relative":        "/feeds/videos.xml",
+		"unsupported ftp": "ftp://example.test/feed.xml",
+	}
+	for name, candidate := range cases {
+		t.Run(name, func(t *testing.T) {
+			idx := newRkeyIndex()
+			idx.seed("did:plc:alice", "3la", feed)
+			pds := &fakePDS{}
+			disp := &fakeDispatcher{}
+			mux := http.NewServeMux()
+			mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, disp))
+
+			body, _ := json.Marshal(map[string]string{"feedUrl": candidate})
+			req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
+				strings.NewReader(string(body))), "did:plc:alice", "sid-1")
+			rr := httptest.NewRecorder()
+			mux.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (body %s)", rr.Code, rr.Body.String())
+			}
+			// A rejected re-point must not touch the PDS or the catalog.
+			if pds.puts != 0 {
+				t.Errorf("PDS puts = %d, want 0 on rejected feedUrl", pds.puts)
+			}
+			if len(idx.upsertedFeeds) != 0 {
+				t.Errorf("UpsertFeed called %d times, want 0", len(idx.upsertedFeeds))
+			}
+			if len(disp.dispatched) != 0 {
+				t.Errorf("dispatched %v, want none", disp.dispatched)
+			}
+		})
+	}
+}
+
 func TestSubscriptionsPatch_FeedURLUnchanged_NoDispatch(t *testing.T) {
 	const feed = "https://example.test/feed.xml"
 	idx := newRkeyIndex()

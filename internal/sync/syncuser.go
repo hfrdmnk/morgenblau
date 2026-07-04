@@ -12,6 +12,7 @@ import (
 
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/jobs"
+	"morgenblau/internal/tags"
 )
 
 // guardWindow matches SPEC <feed-sources>: a repeat login or refresh within
@@ -33,6 +34,8 @@ type PDSSubscription struct {
 	Rkey    string
 	FeedURL string
 	Title   string
+	Primary bool
+	Tags    []string
 }
 
 // PDSSave is the trimmed shape of a blue.morgen.feed.save record we mirror into
@@ -274,6 +277,8 @@ func (e *Engine) reconcileTier1(
 			AtUri:     r.URI,
 			FeedUrl:   r.FeedURL,
 			Title:     nilIfEmpty(r.Title),
+			IsPrimary: boolToInt64(r.Primary),
+			Tags:      tags.Marshal(r.Tags),
 			CreatedAt: now,
 			UpdatedAt: now,
 		}); err != nil {

@@ -12,7 +12,7 @@ import { useKeyboard } from '@/hooks/use-keyboard';
 import { useSaveToggle } from '@/hooks/use-save-toggle';
 import type { SavedToggle } from '@/hooks/use-save-toggle';
 import { digestHref, PATHS, sourceHref } from '@/lib/paths';
-import { cn, safeHref } from '@/lib/utils';
+import { cn, goBackOr, safeHref } from '@/lib/utils';
 
 type ContentType = 'blogpost' | 'microblog' | 'video' | 'podcast';
 
@@ -141,6 +141,20 @@ function Header() {
             <a
                 href={back}
                 aria-label="Back"
+                onClick={(e) => {
+                    // Keep href for middle-click / open-in-new-tab; a plain click
+                    // prefers history.back() to restore scroll + reverse transition.
+                    if (
+                        e.metaKey ||
+                        e.ctrlKey ||
+                        e.shiftKey ||
+                        e.button !== 0
+                    ) {
+                        return;
+                    }
+                    e.preventDefault();
+                    goBackOr(back);
+                }}
                 className="inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
             >
                 <HugeiconsIcon icon={Cancel01Icon} className="size-5" />
@@ -215,7 +229,7 @@ function ReaderView({ entry }: { entry: Entry }) {
 
     useKeyboard({
         Escape: () => {
-            window.location.href = backHrefFromLocation();
+            goBackOr(backHrefFromLocation());
         },
         b: () => save.onToggle(),
         o: () => {
@@ -267,7 +281,7 @@ function WatchView({ entry }: { entry: Entry }) {
 
     useKeyboard({
         Escape: () => {
-            window.location.href = backHrefFromLocation();
+            goBackOr(backHrefFromLocation());
         },
         b: () => save.onToggle(),
         o: () => {

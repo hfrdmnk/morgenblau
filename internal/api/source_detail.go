@@ -10,6 +10,7 @@ import (
 
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/middleware/auth"
+	"morgenblau/internal/tags"
 )
 
 // sourceEntriesLimit caps the per-source entry list. 200 matches the brief —
@@ -143,12 +144,12 @@ func sourceDetailRowToWire(row db.GetUserSourceWithStatsRow, now time.Time) Subs
 		faviconURL = *row.IconUrl
 	}
 	primary := row.IsPrimary != 0
-	tags := unmarshalTags(row.Tags)
+	tagList := tags.Unmarshal(row.Tags)
 	if primary {
 		value["primary"] = true
 	}
-	if len(tags) > 0 {
-		value["tags"] = tags
+	if len(tagList) > 0 {
+		value["tags"] = tagList
 	}
 	lastPublished := asString(row.LastPublishedAt)
 	firstPublished := asString(row.FirstPublishedAt)
@@ -164,7 +165,7 @@ func sourceDetailRowToWire(row db.GetUserSourceWithStatsRow, now time.Time) Subs
 			Frequency:       frequencyBucket(firstPublished, row.Count7d, row.Count28d, row.Count56d, row.Count84d, now),
 			LastPublishedAt: lastPublished,
 			Primary:         primary,
-			Tags:            tags,
+			Tags:            tagList,
 		},
 		TotalEntries: row.TotalEntries,
 		SavedByYou:   row.SavedByYou,

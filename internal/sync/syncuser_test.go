@@ -16,21 +16,25 @@ import (
 )
 
 type fakeStore struct {
-	mu          sync.Mutex
-	rows        map[string]map[string]db.ListUserSubscriptionsForSyncRow // did -> rkey -> row
-	deletes     []string
-	upserts     int
-	feedUps     int
-	feedErr     func(feedURL string) error
-	saves       map[string]map[string]db.ListUserSavesForSyncRow // did -> rkey -> row
-	saveDeletes []string
-	saveUpserts int
+	mu           sync.Mutex
+	rows         map[string]map[string]db.ListUserSubscriptionsForSyncRow // did -> rkey -> row
+	deletes      []string
+	upserts      int
+	upsertParams map[string]db.UpsertUserSubscriptionParams // rkey -> last params
+	feedUps      int
+	feedErr      func(feedURL string) error
+	saves            map[string]map[string]db.ListUserSavesForSyncRow // did -> rkey -> row
+	saveDeletes      []string
+	saveUpserts      int
+	saveUpsertParams map[string]db.UpsertUserSaveParams // rkey -> last params
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		rows:  map[string]map[string]db.ListUserSubscriptionsForSyncRow{},
-		saves: map[string]map[string]db.ListUserSavesForSyncRow{},
+		rows:             map[string]map[string]db.ListUserSubscriptionsForSyncRow{},
+		upsertParams:     map[string]db.UpsertUserSubscriptionParams{},
+		saves:            map[string]map[string]db.ListUserSavesForSyncRow{},
+		saveUpsertParams: map[string]db.UpsertUserSaveParams{},
 	}
 }
 
@@ -48,6 +52,7 @@ func (s *fakeStore) UpsertUserSave(_ context.Context, arg db.UpsertUserSaveParam
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.saveUpserts++
+	s.saveUpsertParams[arg.Rkey] = arg
 	if _, ok := s.saves[arg.Did]; !ok {
 		s.saves[arg.Did] = map[string]db.ListUserSavesForSyncRow{}
 	}
@@ -85,6 +90,7 @@ func (s *fakeStore) UpsertUserSubscription(_ context.Context, arg db.UpsertUserS
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.upserts++
+	s.upsertParams[arg.Rkey] = arg
 	if _, ok := s.rows[arg.Did]; !ok {
 		s.rows[arg.Did] = map[string]db.ListUserSubscriptionsForSyncRow{}
 	}
@@ -192,6 +198,38 @@ func TestSyncUser_ReconcileApplies_InsertsAndDeletes(t *testing.T) {
 	}
 }
 
+// TestSyncUser_ReconcilePreservesPrimaryAndTags guards the regression where the
+// mirror dropped primary/tags: the PDS is the source of truth, so reconcile must
+// carry both onto the Tier-1 upsert. A remote record with them set writes them
+// through; a remote record without them writes zero values (correct, not a wipe).
+func TestSyncUser_ReconcilePreservesPrimaryAndTags(t *testing.T) {
+	store := newFakeStore()
+	lister := &fakeLister{subs: []PDSSubscription{
+		{URI: "at://x/a/withMeta", Rkey: "withMeta", FeedURL: "https://feed/meta", Primary: true, Tags: []string{"tech", "design"}},
+		{URI: "at://x/a/bare", Rkey: "bare", FeedURL: "https://feed/bare"},
+	}}
+	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil)
+	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+		t.Fatal(err)
+	}
+
+	withMeta := store.upsertParams["withMeta"]
+	if withMeta.IsPrimary != 1 {
+		t.Errorf("withMeta.IsPrimary = %d, want 1", withMeta.IsPrimary)
+	}
+	if withMeta.Tags == nil || *withMeta.Tags != `["tech","design"]` {
+		t.Errorf("withMeta.Tags = %v, want [\"tech\",\"design\"]", withMeta.Tags)
+	}
+
+	bare := store.upsertParams["bare"]
+	if bare.IsPrimary != 0 {
+		t.Errorf("bare.IsPrimary = %d, want 0", bare.IsPrimary)
+	}
+	if bare.Tags != nil {
+		t.Errorf("bare.Tags = %v, want nil", bare.Tags)
+	}
+}
+
 func TestSyncUser_ReconcileSaves_InsertsAndDeletes(t *testing.T) {
 	store := newFakeStore()
 	// A local save the PDS no longer has → should be deleted.
@@ -221,6 +259,24 @@ func TestSyncUser_ReconcileSaves_InsertsAndDeletes(t *testing.T) {
 	}
 	if _, ok := store.saves["did:plc:alice"]["goneA"]; ok {
 		t.Error("stale local save goneA was not deleted")
+	}
+}
+
+// TestSyncUser_ReconcileSaves_EmptyCreatedAtFallsBackToNow guards the fallback:
+// a save record without createdAt must still get a non-empty timestamp so the
+// local row's ordering column is never blank.
+func TestSyncUser_ReconcileSaves_EmptyCreatedAtFallsBackToNow(t *testing.T) {
+	store := newFakeStore()
+	lister := &fakeLister{saves: []PDSSave{
+		{URI: "at://x/s/noDate", Rkey: "noDate", ItemURL: "https://item/x", CreatedAt: ""},
+	}}
+	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil)
+	if err := eng.reconcileSaves(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+		t.Fatal(err)
+	}
+	got := store.saveUpsertParams["noDate"]
+	if got.CreatedAt == "" {
+		t.Error("CreatedAt is empty; want the now-fallback timestamp")
 	}
 }
 
