@@ -128,7 +128,7 @@ func SubscriptionEntriesHandler(reader SourceEntriesReader) http.Handler {
 }
 
 func sourceDetailRowToWire(row db.GetUserSourceWithStatsRow, now time.Time) SubscriptionDetailWire {
-	value := map[string]any{"source": sourceUnion(row.Kind, row.FeedUrl)}
+	value := map[string]any{"source": sourceUnion(row.Kind, row.FeedUrl, derefStr(row.SiteUrl))}
 	title := ""
 	if row.Title != nil {
 		value["title"] = *row.Title

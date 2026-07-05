@@ -103,6 +103,7 @@ type SyncStore interface {
 	ListUserSharesForSync(ctx context.Context, did string) ([]db.ListUserSharesForSyncRow, error)
 	UpsertUserShare(ctx context.Context, arg db.UpsertUserShareParams) error
 	DeleteUserShare(ctx context.Context, arg db.DeleteUserShareParams) error
+	GetFeedEntryURLByGuid(ctx context.Context, guid string) (string, error)
 }
 
 // SessionResumer hands SyncUser an authenticated session for the given DID,
@@ -390,8 +391,10 @@ func (e *Engine) reconcileRSS(
 // record is the sole existence authority, the blue.morgen standardPublication
 // variant is a metadata sidecar joined by publication at-uri. Duplicate
 // standard records for one publication collapse to the smallest rkey (TID ⇒
-// earliest created). Orphaned sidecars — publication no longer subscribed —
-// are deleted from the PDS: the single reconcile write exception.
+// earliest created); duplicate sidecars collapse to the LARGEST rkey (newest
+// edit wins). Orphaned sidecars (publication no longer subscribed) and
+// non-canonical duplicate sidecars are deleted from the PDS: the single
+// reconcile write exception.
 func (e *Engine) reconcileStandardfeed(
 	ctx context.Context,
 	did syntax.DID,
@@ -415,7 +418,9 @@ func (e *Engine) reconcileStandardfeed(
 			continue
 		}
 		sidecars = append(sidecars, s)
-		if cur, ok := sidecarByPub[s.Publication]; !ok || s.Rkey < cur.Rkey {
+		// Newest sidecar wins so the user's latest edit survives a duplicate
+		// created by a sync/PATCH race; the losers are deleted below.
+		if cur, ok := sidecarByPub[s.Publication]; !ok || s.Rkey > cur.Rkey {
 			if ok {
 				slog.Warn("reconcile: duplicate sidecar for publication", "publication", s.Publication, "kept", s.Rkey, "dropped", cur.Rkey)
 			}
@@ -499,18 +504,19 @@ func (e *Engine) reconcileStandardfeed(
 		}
 	}
 
-	// Orphaned sidecars: the standard record is gone (unsubscribed in another
-	// app), so the metadata sidecar is dead weight — delete it from the PDS.
+	// Sidecar cleanup: delete orphans (standard record gone) and non-canonical
+	// duplicates for live publications. Both are blue.morgen dead weight, and a
+	// surviving duplicate would keep warn-logging and shadow the newest edit.
 	// Covered by the blue.morgen grant; no standard-scope check needed.
 	for _, sc := range sidecars {
-		if _, alive := canonicalByPub[sc.Publication]; alive {
+		if _, alive := canonicalByPub[sc.Publication]; alive && sidecarByPub[sc.Publication].Rkey == sc.Rkey {
 			continue
 		}
 		if e.pds == nil {
 			continue
 		}
 		if err := e.pds.DeleteRecord(ctx, sess, syntax.NSID(subscriptionCollection), sc.Rkey); err != nil {
-			slog.Warn("reconcile: orphaned sidecar delete failed", "rkey", sc.Rkey, "err", err)
+			slog.Warn("reconcile: sidecar cleanup failed", "rkey", sc.Rkey, "err", err)
 		}
 	}
 }
@@ -612,7 +618,9 @@ func (e *Engine) reconcileShares(ctx context.Context, did syntax.DID, sess *oaut
 			continue
 		}
 		sidecars = append(sidecars, s)
-		if cur, ok := sidecarByDoc[s.Document]; !ok || s.Rkey < cur.Rkey {
+		// Newest sidecar wins so the user's latest comment survives a duplicate
+		// created by a sync/PATCH race; the losers are deleted below.
+		if cur, ok := sidecarByDoc[s.Document]; !ok || s.Rkey > cur.Rkey {
 			if ok {
 				slog.Warn("reconcile: duplicate share sidecar for document", "document", s.Document, "kept", s.Rkey, "dropped", cur.Rkey)
 			}
@@ -675,6 +683,14 @@ func (e *Engine) reconcileShares(ctx context.Context, did syntax.DID, sess *oaut
 			rk := sc.Rkey
 			sidecarRkey = &rk
 		}
+		// No sidecar itemUrl (a bare recommend) — backfill from the cached
+		// entry so the display fallback survives the entry's later deletion,
+		// matching what the API stores at share time.
+		if itemURL == nil {
+			if url, err := e.store.GetFeedEntryURLByGuid(ctx, doc); err == nil {
+				itemURL = nilIfEmpty(url)
+			}
+		}
 		if err := e.store.UpsertUserShare(ctx, db.UpsertUserShareParams{
 			Did:         didStr,
 			Rkey:        rec.Rkey,
@@ -714,18 +730,19 @@ func (e *Engine) reconcileShares(ctx context.Context, did syntax.DID, sess *oaut
 		}
 	}
 
-	// Orphaned sidecars: the recommend is gone (unshared in another app), so the
-	// comment sidecar is dead weight — delete it from the PDS. Covered by the
-	// blue.morgen grant; no standard-scope check needed.
+	// Sidecar cleanup: delete orphans (recommend gone) and non-canonical
+	// duplicates for live documents. Both are blue.morgen dead weight, and a
+	// surviving duplicate would keep warn-logging and shadow the newest comment.
+	// Covered by the blue.morgen grant; no standard-scope check needed.
 	for _, sc := range sidecars {
-		if _, alive := canonicalByDoc[sc.Document]; alive {
+		if _, alive := canonicalByDoc[sc.Document]; alive && sidecarByDoc[sc.Document].Rkey == sc.Rkey {
 			continue
 		}
 		if e.pds == nil {
 			continue
 		}
 		if err := e.pds.DeleteRecord(ctx, sess, syntax.NSID(shareCollection), sc.Rkey); err != nil {
-			slog.Warn("reconcile: orphaned share sidecar delete failed", "rkey", sc.Rkey, "err", err)
+			slog.Warn("reconcile: share sidecar cleanup failed", "rkey", sc.Rkey, "err", err)
 		}
 	}
 	return nil

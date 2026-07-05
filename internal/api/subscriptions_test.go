@@ -110,6 +110,12 @@ func (f *fakeIndex) ListUserSubscriptionTags(_ context.Context, did string) ([]*
 	return out, nil
 }
 
+func (f *fakeIndex) GetFeed(_ context.Context, feedURL string) (db.Feed, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return db.Feed{FeedUrl: feedURL, SiteUrl: f.siteURLs[feedURL]}, nil
+}
+
 func (f *fakeIndex) GetUserSubscriptionByFeedURL(_ context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -191,11 +197,15 @@ type fakePDS struct {
 	listed      map[string][]atprepo.ListedRecord   // canned ListRecords result per collection
 	listErr     error
 	listCalls   int
+	createErr   map[string]error // per-collection CreateRecord failure
 }
 
 func (p *fakePDS) CreateRecord(_ context.Context, sess *oauth.ClientSession, collection syntax.NSID, record map[string]any) (*atprepo.RecordRef, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if err := p.createErr[collection.String()]; err != nil {
+		return nil, err
+	}
 	p.creates++
 	p.lastRec = record
 	p.created = append(p.created, pdsWrite{collection: collection.String(), record: record})

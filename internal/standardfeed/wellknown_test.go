@@ -47,7 +47,7 @@ func TestFetchWellKnown(t *testing.T) {
 }
 
 func TestFetchWellKnown_UnparsableURL(t *testing.T) {
-	client := NewClient(&fakeResolver{}, nil)
+	client := NewClient(&fakeResolver{}, &http.Client{})
 	got, err := client.FetchWellKnown(context.Background(), "://not-a-url")
 	if err != nil || got != "" {
 		t.Fatalf("got (%q, %v), want empty miss", got, err)

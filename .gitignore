@@ -20,6 +20,9 @@ main
 main-linux-*
 *templ.go
 
+# Log files
+*.log
+
 # Node / frontend (bun-only; foreign lockfiles must not appear)
 node_modules
 dist

@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 
+import { InputError } from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { useDocumentTitle } from '@/hooks/use-document-title';
-import { entryHref } from '@/lib/paths';
+import type { ShareError } from '@/hooks/use-share-toggle';
+import { entryHref, PATHS } from '@/lib/paths';
+import { classifyShareResponse } from '@/lib/share-response';
 import { safeHref } from '@/lib/utils';
 
 type Share = {
@@ -25,6 +28,7 @@ type State =
 export function Library() {
     useDocumentTitle('Library');
     const [state, setState] = useState<State>({ kind: 'loading' });
+    const [error, setError] = useState<ShareError | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -46,20 +50,51 @@ export function Library() {
         };
     }, []);
 
-    const unshare = (rkey: string) => {
-        setState((prev) => {
-            if (prev.kind !== 'ok') return prev;
-            return {
-                kind: 'ok',
-                shares: prev.shares.filter((s) => s.rkey !== rkey),
-            };
-        });
-        fetch(`/api/shares/${encodeURIComponent(rkey)}`, {
-            method: 'DELETE',
-            credentials: 'same-origin',
-        }).catch(() => {
-            // Best-effort optimistic removal; a later sync reconciles on failure.
-        });
+    const unshare = async (rkey: string) => {
+        if (state.kind !== 'ok') return;
+        const index = state.shares.findIndex((s) => s.rkey === rkey);
+        if (index === -1) return;
+        const removed = state.shares[index];
+
+        setError(null);
+        setState((prev) =>
+            prev.kind === 'ok'
+                ? {
+                      kind: 'ok',
+                      shares: prev.shares.filter((s) => s.rkey !== rkey),
+                  }
+                : prev,
+        );
+
+        const reinsert = () =>
+            setState((prev) => {
+                if (prev.kind !== 'ok') return prev;
+                const shares = prev.shares.slice();
+                shares.splice(index, 0, removed);
+                return { kind: 'ok', shares };
+            });
+
+        try {
+            const r = await fetch(`/api/shares/${encodeURIComponent(rkey)}`, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+            });
+            const outcome = classifyShareResponse(
+                r.status,
+                r.status === 403
+                    ? ((await r.json().catch(() => null)) as {
+                          code?: string;
+                      } | null)
+                    : null,
+            );
+            if (outcome !== 'ok') {
+                reinsert();
+                setError(outcome);
+            }
+        } catch {
+            reinsert();
+            setError('failed');
+        }
     };
 
     return (
@@ -70,6 +105,27 @@ export function Library() {
                     Everything you've shared to your network and the Atmosphere.
                 </p>
             </header>
+
+            {error === 'reauth' ? (
+                <p
+                    role="status"
+                    className="mb-4 text-sm font-light text-muted-foreground"
+                >
+                    Your session is out of date.{' '}
+                    <a
+                        href={PATHS.login}
+                        className="text-primary underline underline-offset-4"
+                    >
+                        Sign in again
+                    </a>{' '}
+                    to manage your shares.
+                </p>
+            ) : error === 'failed' ? (
+                <InputError
+                    className="mb-4"
+                    message="Couldn't unshare just now. Try again."
+                />
+            ) : null}
 
             {state.kind === 'loading' ? (
                 <p className="text-sm font-light text-muted-foreground">
@@ -162,13 +218,12 @@ function ShareTitle({ share, label }: { share: Share; label: string }) {
 }
 
 function formatDate(iso: string): string {
-    try {
-        return new Date(iso).toLocaleDateString(undefined, {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-        });
-    } catch {
-        return iso;
-    }
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime())
+        ? iso
+        : d.toLocaleDateString(undefined, {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+          });
 }

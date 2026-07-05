@@ -59,7 +59,6 @@ type Source = {
     value: {
         title?: string;
         feedUrl?: string;
-        siteUrl?: string;
         [k: string]: unknown;
     };
 };
@@ -344,10 +343,7 @@ function displayLabel(s: Source): string {
 }
 
 function siteDomain(s: Source): string {
-    const candidate =
-        s.siteUrl ||
-        (typeof s.value.siteUrl === 'string' ? s.value.siteUrl : '') ||
-        s.feedUrl;
+    const candidate = s.siteUrl || s.feedUrl;
     // A standardfeed key is an at-uri; never show it as a "domain" (the site
     // URL fills in after the first fetch).
     if (!candidate || candidate.startsWith('at://')) return '';

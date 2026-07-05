@@ -101,11 +101,14 @@ func (p *StandardfeedPipeline) FetchAndStore(ctx context.Context, pubURI string)
 
 	remote := make(map[string]bool, len(docs))
 	for _, doc := range docs {
+		// Mark present upstream before validating: a transiently-malformed
+		// record still exists, so it must not trip the delete sweep and drop a
+		// good cached entry (with its extraction).
+		remote[doc.URI] = true
 		if doc.Title == "" || doc.PublishedAt == "" {
 			slog.Warn("standardpipeline: skipping malformed document", "uri", doc.URI)
 			continue
 		}
-		remote[doc.URI] = true
 		if cid, known := localCID[doc.URI]; known && cid != nil && *cid == doc.CID {
 			continue // unchanged; never touch the row (protects cached extractions)
 		}

@@ -32,7 +32,7 @@ func (c *Client) FetchWellKnown(ctx context.Context, siteURL string) (string, er
 	if err != nil {
 		return "", nil
 	}
-	resp, err := c.httpClient().Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return "", err
 	}

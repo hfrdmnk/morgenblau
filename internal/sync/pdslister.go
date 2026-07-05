@@ -8,20 +8,22 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/atprepo"
+	"morgenblau/internal/lexicon"
+	"morgenblau/internal/standardfeed"
 )
 
 const (
-	subscriptionCollection = "blue.morgen.feed.subscription"
-	saveCollection         = "blue.morgen.feed.save"
-	shareCollection        = "blue.morgen.feed.share"
+	subscriptionCollection = lexicon.Subscription
+	saveCollection         = lexicon.Save
+	shareCollection        = lexicon.Share
 )
 
 // Standardfeed collections read from the user's own repo. Existence records
 // for publication subscriptions and document shares; blue.morgen records are
 // their metadata sidecars.
 const (
-	standardSubscriptionCollection = "site.standard.graph.subscription"
-	standardRecommendCollection    = "site.standard.graph.recommend"
+	standardSubscriptionCollection = standardfeed.CollectionSubscription
+	standardRecommendCollection    = standardfeed.CollectionRecommend
 )
 
 // SessionPDSLister calls com.atproto.repo.listRecords against the session's
@@ -168,8 +170,8 @@ func pageRecords(ctx context.Context, client listRecordsClient, repo, collection
 }
 
 const (
-	sourceTypeRSS      = subscriptionCollection + "#rssFeed"
-	sourceTypeStandard = subscriptionCollection + "#standardPublication"
+	sourceTypeRSS      = lexicon.SourceRSS
+	sourceTypeStandard = lexicon.SourceStandard
 )
 
 // toPDSSubscription maps a rev-2 record onto the trimmed shape, dispatching

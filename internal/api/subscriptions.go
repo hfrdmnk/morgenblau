@@ -18,6 +18,7 @@ import (
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/feedfinder"
+	"morgenblau/internal/lexicon"
 	"morgenblau/internal/middleware/auth"
 	"morgenblau/internal/oauth/scopes"
 	"morgenblau/internal/standardfeed"
@@ -25,19 +26,24 @@ import (
 )
 
 const (
-	subscriptionCollection = "blue.morgen.feed.subscription"
-	sourceTypeRSS          = subscriptionCollection + "#rssFeed"
-	sourceTypeStandard     = subscriptionCollection + "#standardPublication"
+	subscriptionCollection = lexicon.Subscription
+	sourceTypeRSS          = lexicon.SourceRSS
+	sourceTypeStandard     = lexicon.SourceStandard
 )
 
-// sourceUnion rebuilds the record's `source` variant from an index row. The
-// catalog key doubles as the variant payload: feed URL for rss, publication
-// at-uri for standardfeed.
-func sourceUnion(kind, catalogKey string) map[string]any {
+// sourceUnion rebuilds the record's `source` variant. The catalog key doubles
+// as the variant payload: feed URL for rss, publication at-uri for
+// standardfeed. siteURL rides the rss variant when known (ignored for
+// standardfeed); callers must pass it so a rebuild never drops it.
+func sourceUnion(kind, catalogKey, siteURL string) map[string]any {
 	if kind == "standardfeed" {
 		return map[string]any{"$type": sourceTypeStandard, "publication": catalogKey}
 	}
-	return map[string]any{"$type": sourceTypeRSS, "feedUrl": catalogKey}
+	source := map[string]any{"$type": sourceTypeRSS, "feedUrl": catalogKey}
+	if siteURL != "" {
+		source["siteUrl"] = siteURL
+	}
+	return source
 }
 
 // wireKind normalizes a stored kind for the wire; anything but standardfeed
@@ -154,7 +160,7 @@ func SubscriptionsListHandler(reader SourcesReader) http.Handler {
 
 func rowToWire(row db.UserSubscription) SubscriptionWire {
 	value := map[string]any{
-		"source": sourceUnion(row.Kind, row.FeedUrl),
+		"source": sourceUnion(row.Kind, row.FeedUrl, ""),
 	}
 	title := ""
 	if row.Title != nil {
@@ -187,7 +193,7 @@ func rowToWire(row db.UserSubscription) SubscriptionWire {
 }
 
 func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) SubscriptionWire {
-	value := map[string]any{"source": sourceUnion(row.Kind, row.FeedUrl)}
+	value := map[string]any{"source": sourceUnion(row.Kind, row.FeedUrl, derefStr(row.SiteUrl))}
 	title := ""
 	if row.Title != nil {
 		value["title"] = *row.Title
@@ -604,7 +610,7 @@ func SubscriptionsCreateHandler(
 				// metadata. Written second so a failure still leaves an
 				// adoptable standard record for the next reconcile.
 				if item.Title != "" || item.Primary || len(tagList) > 0 {
-					source = sourceUnion(kind, key)
+					source = sourceUnion(kind, key, "")
 					sidecar := map[string]any{
 						"source":    source,
 						"createdAt": now,
@@ -627,18 +633,12 @@ func SubscriptionsCreateHandler(
 					scRkey := atprepo.RkeyFromATURI(scRef.URI)
 					sidecarRkey = &scRkey
 				} else {
-					source = sourceUnion(kind, key)
+					source = sourceUnion(kind, key, "")
 				}
 			} else {
 				// Single user-editable title; the resolver prefilled it
 				// client-side, the user may have overridden before submit.
-				source = map[string]any{
-					"$type":   sourceTypeRSS,
-					"feedUrl": key,
-				}
-				if item.SiteURL != "" {
-					source["siteUrl"] = item.SiteURL
-				}
+				source = sourceUnion(kind, key, item.SiteURL)
 				record := map[string]any{
 					"source":    source,
 					"createdAt": now,

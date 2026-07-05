@@ -15,12 +15,14 @@ import (
 
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/lexicon"
 	"morgenblau/internal/middleware/auth"
+	"morgenblau/internal/standardfeed"
 )
 
 const (
-	shareCollection     = "blue.morgen.feed.share"
-	recommendCollection = "site.standard.graph.recommend"
+	shareCollection     = lexicon.Share
+	recommendCollection = standardfeed.CollectionRecommend
 )
 
 // maxCommentGraphemes mirrors the blue.morgen.feed.share lexicon's comment cap.
@@ -137,6 +139,15 @@ func shareRSS(
 	sess *oauth.ClientSession, entry db.FeedEntry, comment, now string,
 ) {
 	didStr := sess.Data.AccountDID.String()
+
+	// itemUrl is lexicon-required and the dedupe key; a link-less entry would
+	// write an invalid record that never dedupes, so repeat POSTs would pile up.
+	if entry.Url == "" {
+		writeJSONStatus(w, http.StatusUnprocessableEntity, map[string]string{
+			"message": "this item has no link to share",
+		})
+		return
+	}
 
 	// Dedupe on (did, itemUrl): a second share of the same item is idempotent.
 	if existing, err := reader.GetUserShareByItemURL(r.Context(), db.GetUserShareByItemURLParams{
@@ -290,9 +301,10 @@ func shareStandardfeed(
 // --- DELETE /api/shares/{rkey} ---
 
 // SharesDeleteHandler tombstones the share on the PDS and removes the local row.
-// For standardfeed shares the recommend existence record is deleted first, then
-// its comment sidecar if one exists.
-func SharesDeleteHandler(reader SharesIndexReader, writer SharesIndexWriter, pds atprepo.Writer) http.Handler {
+// For standardfeed shares it deletes EVERY recommend matching the document
+// (a duplicate written by another app would otherwise resurrect the share on the
+// next reconcile) plus the comment sidecar.
+func SharesDeleteHandler(reader SharesIndexReader, writer SharesIndexWriter, pds RepoWriterLister) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := auth.SessionFromContext(r.Context())
 		if sess == nil || sess.Data == nil {
@@ -321,10 +333,24 @@ func SharesDeleteHandler(reader SharesIndexReader, writer SharesIndexWriter, pds
 			if !requireStandardWrite(w, sess) {
 				return
 			}
-			if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(recommendCollection), rkey); err != nil {
-				slog.Warn("/api/shares DELETE: recommend PDS delete failed", "err", err)
+			// Sweep every recommend for this document; leaving a duplicate would
+			// let the next reconcile re-adopt it and resurrect the share.
+			document := derefStr(row.Document)
+			records, err := pds.ListRecords(r.Context(), sess, syntax.NSID(recommendCollection))
+			if err != nil {
+				slog.Warn("/api/shares DELETE: recommend list failed", "err", err)
 				http.Error(w, "upstream PDS error", http.StatusBadGateway)
 				return
+			}
+			for _, rec := range records {
+				if doc, _ := rec.Value["document"].(string); doc != document {
+					continue
+				}
+				if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(recommendCollection), atprepo.RkeyFromATURI(rec.URI)); err != nil {
+					slog.Warn("/api/shares DELETE: recommend PDS delete failed", "uri", rec.URI, "err", err)
+					http.Error(w, "upstream PDS error", http.StatusBadGateway)
+					return
+				}
 			}
 			if row.SidecarRkey != nil && *row.SidecarRkey != "" {
 				if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(shareCollection), *row.SidecarRkey); err != nil {

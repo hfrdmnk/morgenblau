@@ -68,13 +68,6 @@ func NewClient(resolver Resolver, httpClient *http.Client) *Client {
 	return &Client{resolver: resolver, http: httpClient}
 }
 
-func (c *Client) httpClient() *http.Client {
-	if c.http != nil {
-		return c.http
-	}
-	return http.DefaultClient
-}
-
 // blobURL builds the public com.atproto.sync.getBlob URL for a blob CID.
 func blobURL(pdsEndpoint string, did syntax.DID, cid string) string {
 	u, err := url.Parse(pdsEndpoint)

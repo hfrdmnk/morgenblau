@@ -15,6 +15,7 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 
+	"morgenblau/internal/atidentity"
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/cache/profiles"
 	"morgenblau/internal/database"
@@ -93,14 +94,15 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	gcCtx, gcCancel := context.WithCancel(context.Background())
 	go runAuthRequestGC(gcCtx, st)
 
-	profileCache := profiles.New(oauthApp.Dir, profiles.PDSFetcher{})
+	safeClient := safehttp.NewClient(30*time.Second, 5)
+	identityDir := atidentity.Guarded(safeClient)
+	profileCache := profiles.New(identityDir, profiles.PDSFetcher{Client: safeClient})
 	tracker := jobs.New()
 	go runJobsGC(gcCtx, tracker)
 	fetcherInst := fetcher.New()
-	safeClient := safehttp.NewClient(30*time.Second, 5)
 	queries := dbqueries.New(db)
 	pipeline := internalsync.NewFeedPipeline(fetcherInst, queries)
-	stdClient := standardfeed.NewClient(oauthApp.Dir, safeClient)
+	stdClient := standardfeed.NewClient(identityDir, safeClient)
 	finder := feedfinder.New(safeClient).WithStandardResolver(stdClient)
 	stdPipeline := internalsync.NewStandardfeedPipeline(stdClient, queries)
 	router := internalsync.NewSourceRouter(pipeline, stdPipeline)

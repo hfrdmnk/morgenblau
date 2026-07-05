@@ -3,11 +3,13 @@ package api
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
 )
 
@@ -140,6 +142,64 @@ func TestSharesCreate_RSS_SingleRecord(t *testing.T) {
 	}
 	if idx.upserts[0].Document != nil {
 		t.Errorf("rss row must not carry a document: %v", idx.upserts[0].Document)
+	}
+}
+
+func TestSharesCreate_RSS_NoURL_422(t *testing.T) {
+	idx := newShareIndex()
+	entry := rssEntry()
+	entry.Url = ""
+	idx.entry = entry
+	idx.sub = db.UserSubscription{Did: shareDID, Kind: "rss", FeedUrl: shareRSSFeed}
+	pds := &fakePDS{}
+
+	rr := postShare(t, idx, pds, false, `{"entrySlug":"post"}`)
+
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422: %s", rr.Code, rr.Body)
+	}
+	if pds.creates != 0 {
+		t.Errorf("link-less rss share hit the PDS: %d", pds.creates)
+	}
+}
+
+func TestSharesCreate_Standardfeed_SidecarFails_502_NoLocalUpsert(t *testing.T) {
+	// Recommend created, comment sidecar create fails: the handler 502s WITHOUT
+	// a local upsert, leaving the recommend durable for reconcile to adopt.
+	idx := newShareIndex()
+	idx.entry = stdEntry("https://pub.example/doc")
+	idx.sub = db.UserSubscription{Did: shareDID, Kind: "standardfeed", FeedUrl: stdPubURI}
+	pds := &fakePDS{createErr: map[string]error{shareCollection: errors.New("pds down")}}
+
+	rr := postShare(t, idx, pds, true, `{"entrySlug":"std-post","comment":"nice"}`)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502: %s", rr.Code, rr.Body)
+	}
+	if pds.creates != 1 {
+		t.Errorf("creates = %d, want 1 (recommend created, sidecar failed)", pds.creates)
+	}
+	if len(idx.upserts) != 0 {
+		t.Errorf("local upsert ran despite sidecar failure: %+v", idx.upserts)
+	}
+}
+
+func TestSharesCreate_Standardfeed_IdempotentByDocument(t *testing.T) {
+	// A second recommend of the same document returns the existing row (200),
+	// no PDS write.
+	idx := newShareIndex()
+	idx.entry = stdEntry("https://pub.example/doc")
+	idx.sub = db.UserSubscription{Did: shareDID, Kind: "standardfeed", FeedUrl: stdPubURI}
+	idx.byDocument[docGuid] = db.UserShare{Did: shareDID, Rkey: "3existing", Kind: "standardfeed", Document: ptrString(docGuid)}
+	pds := &fakePDS{}
+
+	rr := postShare(t, idx, pds, true, `{"entrySlug":"std-post"}`)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (idempotent): %s", rr.Code, rr.Body)
+	}
+	if pds.creates != 0 {
+		t.Errorf("idempotent re-share hit the PDS: %d", pds.creates)
 	}
 }
 
@@ -366,13 +426,22 @@ func TestSharesDelete_RSS(t *testing.T) {
 	}
 }
 
+func recommendRecord(rkey, document string) atprepo.ListedRecord {
+	return atprepo.ListedRecord{
+		URI:   "at://" + shareDID + "/" + recommendCollection + "/" + rkey,
+		Value: map[string]any{"document": document},
+	}
+}
+
 func TestSharesDelete_Standardfeed_RecommendAndSidecar(t *testing.T) {
 	idx := newShareIndex()
 	idx.byRkey["3rec"] = db.UserShare{
 		Did: shareDID, Rkey: "3rec", Kind: "standardfeed",
 		Document: ptrString(docGuid), SidecarRkey: ptrString("3sc"),
 	}
-	pds := &fakePDS{}
+	pds := &fakePDS{listed: map[string][]atprepo.ListedRecord{
+		recommendCollection: {recommendRecord("3rec", docGuid)},
+	}}
 
 	rr := deleteShare(t, idx, pds, true, "3rec")
 
@@ -391,6 +460,37 @@ func TestSharesDelete_Standardfeed_RecommendAndSidecar(t *testing.T) {
 	}
 	if len(idx.deletes) != 1 || idx.deletes[0] != "3rec" {
 		t.Errorf("local deletes = %v", idx.deletes)
+	}
+}
+
+func TestSharesDelete_Standardfeed_SweepsDuplicateRecommends(t *testing.T) {
+	// A duplicate recommend for the same document (written by another app) must
+	// also be deleted, or the next reconcile re-adopts it and the share returns.
+	idx := newShareIndex()
+	idx.byRkey["3rec"] = db.UserShare{
+		Did: shareDID, Rkey: "3rec", Kind: "standardfeed", Document: ptrString(docGuid),
+	}
+	pds := &fakePDS{listed: map[string][]atprepo.ListedRecord{
+		recommendCollection: {
+			recommendRecord("3rec", docGuid),
+			recommendRecord("3dup", docGuid),
+			recommendRecord("3other", "at://did:plc:x/site.standard.document/zzz"),
+		},
+	}}
+
+	rr := deleteShare(t, idx, pds, true, "3rec")
+
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", rr.Code)
+	}
+	if len(pds.deleted) != 2 {
+		t.Fatalf("PDS deletes = %v, want both recommends for the document", pds.deleted)
+	}
+	want := map[string]bool{recommendCollection + "/3rec": true, recommendCollection + "/3dup": true}
+	for _, d := range pds.deleted {
+		if !want[d] {
+			t.Errorf("unexpected delete %q (a non-matching recommend was swept)", d)
+		}
 	}
 }
 

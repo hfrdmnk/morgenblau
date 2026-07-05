@@ -19,6 +19,9 @@ type Querier interface {
 	GetAuthRequest(ctx context.Context, state string) (GetAuthRequestRow, error)
 	GetFeed(ctx context.Context, feedUrl string) (Feed, error)
 	GetFeedEntryBySlug(ctx context.Context, entrySlug string) (FeedEntry, error)
+	// Reconcile backfills a comment-less share's item_url from its cached entry.
+	// Standardfeed document guids (the document at-uri) are globally unique.
+	GetFeedEntryURLByGuid(ctx context.Context, guid string) (string, error)
 	// Returns the stored icon URL for a feed. Drives the favicon-proxy SSRF guard:
 	// the proxy only streams URLs the sync pipeline has already vetted.
 	GetFeedIconURL(ctx context.Context, feedUrl string) (*string, error)

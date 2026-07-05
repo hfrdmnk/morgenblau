@@ -275,6 +275,30 @@ func TestStandardPipeline_SkipsMalformedDocuments(t *testing.T) {
 	}
 }
 
+func TestStandardPipeline_MalformedDocKeepsCachedEntry(t *testing.T) {
+	// A doc with a cached entry that comes back malformed (missing title) still
+	// exists upstream, so the delete sweep must leave the cached entry alone.
+	cid := "c1"
+	src := &fakeStandardSource{
+		pub: testPublication(),
+		docs: []standardfeed.Document{
+			{URI: testDocURI, CID: "c1", Site: testPubURI, Path: "/x", PublishedAt: "2026-07-01T08:00:00Z"}, // no title
+		},
+	}
+	q := &fakeStdQueries{
+		diffRows: []db.ListFeedEntriesForDiffRow{{Guid: testDocURI, RecordCid: &cid}},
+	}
+	if err := newStdPipeline(src, q).FetchAndStore(context.Background(), testPubURI); err != nil {
+		t.Fatalf("FetchAndStore: %v", err)
+	}
+	if len(q.deletes) != 0 {
+		t.Fatalf("malformed-but-present doc must not be deleted: %+v", q.deletes)
+	}
+	if len(q.entryUpserts) != 0 {
+		t.Fatalf("malformed doc must not be upserted: %+v", q.entryUpserts)
+	}
+}
+
 func TestSourceRouter_RoutesByKeyScheme(t *testing.T) {
 	rss := &recordingFetcher{}
 	std := &recordingFetcher{}

@@ -290,6 +290,33 @@ func TestListDocuments_PagesAndFilters(t *testing.T) {
 	}
 }
 
+func TestListDocuments_HandleAuthorityMatchesDIDSite(t *testing.T) {
+	// Caller passes a handle-authority publication uri, but documents' site
+	// fields use the DID form. The filter must still match them.
+	handlePub := "at://alice.example/site.standard.publication/3abc"
+	didPub := "at://" + pubDID + "/site.standard.publication/3abc"
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"records": []any{map[string]any{
+				"uri": "at://" + pubDID + "/site.standard.document/3one",
+				"cid": "cid-1",
+				"value": map[string]any{
+					"site": didPub, "title": "Doc", "publishedAt": "2026-07-01T08:00:00Z",
+				},
+			}},
+		})
+	})
+	client, _ := newClientAgainst(t, handler, "alice.example")
+
+	docs, err := client.ListDocuments(context.Background(), handlePub)
+	if err != nil {
+		t.Fatalf("ListDocuments: %v", err)
+	}
+	if len(docs) != 1 || docs[0].URI != "at://"+pubDID+"/site.standard.document/3one" {
+		t.Fatalf("handle-authority pub should match DID-form site: %+v", docs)
+	}
+}
+
 func TestListDocuments_EmptyCollection(t *testing.T) {
 	pubURI := "at://" + pubDID + "/site.standard.publication/3abc"
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

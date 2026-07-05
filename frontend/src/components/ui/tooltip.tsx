@@ -25,6 +25,7 @@ function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
 
 function TooltipContent({
     align = 'center',
+    alignOffset,
     side = 'top',
     sideOffset = 6,
     className,
@@ -40,6 +41,7 @@ function TooltipContent({
             <TooltipPrimitive.Positioner
                 className="isolate z-50"
                 align={align}
+                alignOffset={alignOffset}
                 side={side}
                 sideOffset={sideOffset}
             >

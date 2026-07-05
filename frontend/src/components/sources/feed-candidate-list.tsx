@@ -242,7 +242,10 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                 <Tooltip>
                                     <TooltipTrigger
                                         render={
-                                            <Badge className="cursor-help">
+                                            <Badge
+                                                tabIndex={0}
+                                                className="cursor-help"
+                                            >
                                                 <HugeiconsIcon icon={AtIcon} />
                                                 Subscribe via ATProto
                                             </Badge>

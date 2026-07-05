@@ -29,6 +29,8 @@ type fakeEntryReader struct {
 	share        db.UserShare
 	shareOK      bool
 	shareErr     error
+	shareDoc     db.UserShare
+	shareDocOK   bool
 }
 
 func (f *fakeEntryReader) GetFeedEntryBySlug(_ context.Context, _ string) (db.FeedEntry, error) {
@@ -79,10 +81,10 @@ func (f *fakeEntryReader) GetUserShareByDocument(_ context.Context, _ db.GetUser
 	if f.shareErr != nil {
 		return db.UserShare{}, f.shareErr
 	}
-	if !f.shareOK {
+	if !f.shareDocOK {
 		return db.UserShare{}, sql.ErrNoRows
 	}
-	return f.share, nil
+	return f.shareDoc, nil
 }
 
 func (f *fakeEntryReader) UpdateFeedEntryExtractedBody(_ context.Context, arg db.UpdateFeedEntryExtractedBodyParams) error {
@@ -250,6 +252,37 @@ func TestEntry_SharedState_Populated(t *testing.T) {
 	}
 }
 
+func TestEntry_SharedState_Standardfeed_UsesDocumentProbe(t *testing.T) {
+	// For a standardfeed entry, sharedState must probe by document (the guid),
+	// not by itemUrl. The itemUrl probe is left empty so a wrong dispatch misses.
+	entry := entryFixture()
+	entry.Guid = "at://did:plc:pub/site.standard.document/3doc"
+	r := &fakeEntryReader{
+		entry:        entry,
+		subOK:        true,
+		subscription: db.UserSubscription{Did: "did:plc:alice", Rkey: "3laSUB", FeedUrl: entry.FeedUrl, Kind: "standardfeed"},
+		feed:         feedFixture(),
+		shareDocOK:   true,
+		shareDoc:     db.UserShare{Did: "did:plc:alice", Rkey: "3laDOC", Kind: "standardfeed", Document: strPtr(entry.Guid)},
+	}
+	mux := http.NewServeMux()
+	mux.Handle("GET /api/entries/{slug}", EntryHandler(r))
+
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/abc1234567", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	var got EntryWire
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.SharedState == nil || got.SharedState.Rkey != "3laDOC" {
+		t.Errorf("sharedState = %+v, want the document probe's row 3laDOC", got.SharedState)
+	}
+}
+
 func TestEntry_NotSubscribed_403(t *testing.T) {
 	r := &fakeEntryReader{entry: entryFixture(), subOK: false}
 	mux := http.NewServeMux()
@@ -302,6 +335,44 @@ func TestEntryExtract_CachedReturn(t *testing.T) {
 	_ = json.Unmarshal(rr.Body.Bytes(), &got)
 	if got.Body == nil || *got.Body != cached {
 		t.Errorf("body = %v, want cached", got.Body)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestEntryExtract_PathlessDocument_NoFetch(t *testing.T) {
+	// A path-less standardfeed document has no URL to fetch; extract must return
+	// the entry without any HTTP request (an empty-URL fetch would 502).
+	entry := entryFixture()
+	entry.Url = ""
+	fetches := 0
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		fetches++
+		return nil, errors.New("should not fetch")
+	})}
+	r := &fakeEntryReader{
+		entry:        entry,
+		subOK:        true,
+		subscription: subscriptionFixture(strPtr("Example Source")),
+		feed:         feedFixture(),
+	}
+	mux := http.NewServeMux()
+	mux.Handle("POST /api/entries/{slug}/extract", EntryExtractHandler(r, r, client))
+
+	req := withSession(httptest.NewRequest(http.MethodPost, "/api/entries/abc1234567/extract", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if fetches != 0 {
+		t.Errorf("path-less extract made %d HTTP calls, want 0", fetches)
+	}
+	if r.updatedID != 0 {
+		t.Errorf("path-less extract persisted a body (id %d)", r.updatedID)
 	}
 }
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { InputError } from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -48,12 +49,16 @@ export function ShareComposer({ share }: { share: ShareControl }) {
                         value={comment}
                         onChange={(e) => setComment(e.target.value)}
                         placeholder="Say something (optional)"
+                        aria-label="Note"
                         maxLength={3000}
                     />
                 ) : null}
 
                 {share.error === 'reauth' ? (
-                    <p className="text-sm font-light text-muted-foreground">
+                    <p
+                        role="status"
+                        className="text-sm font-light text-muted-foreground"
+                    >
                         Your session is out of date.{' '}
                         <a
                             href={PATHS.login}
@@ -64,9 +69,7 @@ export function ShareComposer({ share }: { share: ShareControl }) {
                         to share to the Atmosphere.
                     </p>
                 ) : share.error === 'failed' ? (
-                    <p className="text-sm font-light text-muted-foreground">
-                        Couldn't share just now. Try again.
-                    </p>
+                    <InputError message="Couldn't share just now. Try again." />
                 ) : null}
 
                 <DialogFooter>

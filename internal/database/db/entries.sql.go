@@ -49,6 +49,19 @@ func (q *Queries) GetFeedEntryBySlug(ctx context.Context, entrySlug string) (Fee
 	return i, err
 }
 
+const getFeedEntryURLByGuid = `-- name: GetFeedEntryURLByGuid :one
+SELECT url FROM feed_entries WHERE guid = ? LIMIT 1
+`
+
+// Reconcile backfills a comment-less share's item_url from its cached entry.
+// Standardfeed document guids (the document at-uri) are globally unique.
+func (q *Queries) GetFeedEntryURLByGuid(ctx context.Context, guid string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getFeedEntryURLByGuid, guid)
+	var url string
+	err := row.Scan(&url)
+	return url, err
+}
+
 const listAllEntriesForUser = `-- name: ListAllEntriesForUser :many
 SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,

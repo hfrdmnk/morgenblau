@@ -660,12 +660,15 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                         })}
 
                     {hasStandardSelected && needsReauth && (
-                        <p className="text-sm font-light text-muted-foreground">
+                        <p
+                            role="status"
+                            className="text-sm font-light text-muted-foreground"
+                        >
                             Subscribing via ATProto needs one extra
                             permission.{' '}
                             <a
                                 href={PATHS.login}
-                                className="text-foreground underline underline-offset-2"
+                                className="text-primary underline underline-offset-4"
                             >
                                 Sign in again
                             </a>{' '}

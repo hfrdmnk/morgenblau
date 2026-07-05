@@ -21,10 +21,12 @@ import (
 )
 
 // IndexRkeyReader fetches a single Tier-1 row + supports the dedupe probe
-// already defined on IndexReader.
+// already defined on IndexReader. GetFeed backs the rss PATCH's siteUrl
+// preservation.
 type IndexRkeyReader interface {
 	IndexReader
 	GetUserSubscription(ctx context.Context, arg db.GetUserSubscriptionParams) (db.UserSubscription, error)
+	GetFeed(ctx context.Context, feedURL string) (db.Feed, error)
 }
 
 // IndexDeleter is the slice of writes the DELETE handler depends on.
@@ -170,7 +172,7 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			// old blue.morgen grant suffices.
 			now := time.Now().UTC().Format(time.RFC3339)
 			record := map[string]any{
-				"source":    sourceUnion(row.Kind, row.FeedUrl),
+				"source":    sourceUnion(row.Kind, row.FeedUrl, ""),
 				"createdAt": row.CreatedAt,
 				"updatedAt": now,
 			}
@@ -227,9 +229,14 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			return
 		}
 
-		// Build the new record body. PDS putRecord replaces atomically.
+		// Build the new record body. PDS putRecord replaces atomically, so the
+		// feed's site URL must be re-attached or a metadata edit strips it.
+		siteURL := ""
+		if feed, err := reader.GetFeed(r.Context(), newFeedURL); err == nil {
+			siteURL = derefStr(feed.SiteUrl)
+		}
 		record := map[string]any{
-			"source":    sourceUnion(row.Kind, newFeedURL),
+			"source":    sourceUnion(row.Kind, newFeedURL, siteURL),
 			"createdAt": row.CreatedAt,
 			"updatedAt": time.Now().UTC().Format(time.RFC3339),
 		}

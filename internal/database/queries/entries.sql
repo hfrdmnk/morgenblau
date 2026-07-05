@@ -31,6 +31,11 @@ ON CONFLICT (feed_url, guid) DO UPDATE SET
 -- name: ListFeedEntriesForDiff :many
 SELECT guid, record_cid FROM feed_entries WHERE feed_url = ?;
 
+-- name: GetFeedEntryURLByGuid :one
+-- Reconcile backfills a comment-less share's item_url from its cached entry.
+-- Standardfeed document guids (the document at-uri) are globally unique.
+SELECT url FROM feed_entries WHERE guid = ? LIMIT 1;
+
 -- name: DeleteFeedEntry :exec
 DELETE FROM feed_entries WHERE feed_url = ? AND guid = ?;
 

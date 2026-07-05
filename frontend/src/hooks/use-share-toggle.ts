@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+import { classifyShareResponse } from '@/lib/share-response';
+
 export type ShareToggle = {
     initial: { rkey: string } | null;
     entrySlug: string;
@@ -51,13 +53,25 @@ export function useShareToggle(toggle: ShareToggle): ShareControl {
                 method: 'DELETE',
                 credentials: 'same-origin',
             })
-                .then((r) => {
-                    if (!r.ok && r.status !== 204)
-                        throw new Error(String(r.status));
+                .then(async (r) => {
+                    const outcome = classifyShareResponse(
+                        r.status,
+                        r.status === 403
+                            ? ((await r.json().catch(() => null)) as {
+                                  code?: string;
+                              } | null)
+                            : null,
+                    );
+                    if (outcome !== 'ok') {
+                        setStatus('shared');
+                        setRkey(previousRkey);
+                        setError(outcome);
+                    }
                 })
                 .catch(() => {
                     setStatus('shared');
                     setRkey(previousRkey);
+                    setError('failed');
                 })
                 .finally(() => setBusy(false));
             return;
@@ -81,19 +95,16 @@ export function useShareToggle(toggle: ShareToggle): ShareControl {
             }),
         })
             .then(async (r) => {
-                if (r.status === 403) {
-                    const payload = (await r.json().catch(() => null)) as {
-                        code?: string;
-                    } | null;
-                    if (payload?.code === 'reauth_required') {
-                        setError('reauth');
-                        return;
-                    }
-                    setError('failed');
-                    return;
-                }
-                if (!r.ok) {
-                    setError('failed');
+                const outcome = classifyShareResponse(
+                    r.status,
+                    r.status === 403
+                        ? ((await r.json().catch(() => null)) as {
+                              code?: string;
+                          } | null)
+                        : null,
+                );
+                if (outcome !== 'ok') {
+                    setError(outcome);
                     return;
                 }
                 const payload = (await r.json()) as { rkey: string };

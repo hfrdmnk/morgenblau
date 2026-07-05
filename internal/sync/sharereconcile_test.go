@@ -94,6 +94,32 @@ func TestReconcileShares_SidecarMergesOntoRecommend(t *testing.T) {
 	}
 }
 
+func TestReconcileShares_DuplicateSidecarNewestWinsOlderDeleted(t *testing.T) {
+	// Two sidecars for one document (a sync/PATCH race): the newest edit must
+	// win and the older duplicate must be deleted from the PDS.
+	store := newFakeStore()
+	writer := &fakeRecordWriter{}
+	lister := &fakeLister{
+		recommends: []PDSRecommend{recommend("3rec", docA)},
+		shares:     []PDSShare{shareSidecar("3aaa", docA, "old"), shareSidecar("3zzz", docA, "new")},
+	}
+	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, writer)
+
+	if err := eng.reconcileShares(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+		t.Fatal(err)
+	}
+	row := store.shareUpsertParams["3rec"]
+	if row.Comment == nil || *row.Comment != "new" {
+		t.Errorf("comment = %v, want the newest sidecar's", row.Comment)
+	}
+	if row.SidecarRkey == nil || *row.SidecarRkey != "3zzz" {
+		t.Errorf("sidecarRkey = %v, want newest 3zzz", row.SidecarRkey)
+	}
+	if len(writer.deleted) != 1 || writer.deleted[0] != "blue.morgen.feed.share/3aaa" {
+		t.Errorf("PDS deletes = %v, want the older duplicate 3aaa", writer.deleted)
+	}
+}
+
 func TestReconcileShares_OrphanSidecarDeletedFromPDS(t *testing.T) {
 	store := newFakeStore()
 	writer := &fakeRecordWriter{}
@@ -209,6 +235,52 @@ func TestReconcileShares_RekeyedCanonicalDeletesBeforeUpsert(t *testing.T) {
 	if _, ok := store.shareUpsertParams["3new"]; !ok {
 		t.Errorf("rekeyed canonical not upserted: %+v", store.shareUpsertParams)
 	}
+	store.assertDeleteBeforeUpsert(t, "3old", "3new")
+}
+
+func TestReconcileShares_BareRecommendBackfillsItemURL(t *testing.T) {
+	// A recommend with no comment sidecar: reconcile fills item_url from the
+	// cached entry so the display fallback survives the entry's later deletion.
+	store := newFakeStore()
+	store.entryURLs = map[string]string{docA: "https://pub.example/post"}
+	lister := &fakeLister{recommends: []PDSRecommend{recommend("3rec", docA)}}
+	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
+
+	if err := eng.reconcileShares(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := store.shareUpsertParams["3rec"]
+	if !ok {
+		t.Fatalf("recommend not upserted: %+v", store.shareUpsertParams)
+	}
+	if got.ItemUrl == nil || *got.ItemUrl != "https://pub.example/post" {
+		t.Errorf("item_url = %v, want backfill from cached entry", got.ItemUrl)
+	}
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// assertDeleteBeforeUpsert fails unless the delete of delRkey precedes the
+// upsert of upRkey in the ordered op-log — the ordering real SQLite's unique
+// constraints demand within one reconcile pass.
+func (s *fakeStore) assertDeleteBeforeUpsert(t *testing.T, delRkey, upRkey string) {
+	t.Helper()
+	di, ui := -1, -1
+	for i, op := range s.ops {
+		if di == -1 && op == "delete:"+delRkey {
+			di = i
+		}
+		if ui == -1 && op == "upsert:"+upRkey {
+			ui = i
+		}
+	}
+	if di == -1 {
+		t.Fatalf("no delete:%s in ops %v", delRkey, s.ops)
+	}
+	if ui == -1 {
+		t.Fatalf("no upsert:%s in ops %v", upRkey, s.ops)
+	}
+	if di > ui {
+		t.Errorf("delete:%s (idx %d) ran after upsert:%s (idx %d); ops=%v", delRkey, di, upRkey, ui, s.ops)
+	}
+}

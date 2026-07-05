@@ -54,7 +54,7 @@ func (c *Client) resolveRepo(ctx context.Context, rawURI, wantCollection string)
 
 func (c *Client) apiClient(endpoint string) *atclient.APIClient {
 	client := atclient.NewAPIClient(endpoint)
-	client.Client = c.httpClient()
+	client.Client = c.http
 	return client
 }
 
@@ -135,6 +135,11 @@ func (c *Client) ListDocuments(ctx context.Context, pubURI string) ([]Document, 
 	}
 	client := c.apiClient(ref.endpoint)
 
+	// Documents reference the publication by its DID-form at-uri. The caller
+	// may have passed a handle authority (adopted verbatim from another app's
+	// subscription record), so match the site field against both forms.
+	didURI := fmt.Sprintf("at://%s/%s/%s", ref.did, CollectionPublication, ref.uri.RecordKey())
+
 	var (
 		out    []Document
 		cursor string
@@ -153,7 +158,7 @@ func (c *Client) ListDocuments(ctx context.Context, pubURI string) ([]Document, 
 			return nil, fmt.Errorf("standardfeed: listRecords %s: %w", pubURI, err)
 		}
 		for _, r := range resp.Records {
-			if site, _ := r.Value["site"].(string); site != pubURI {
+			if site, _ := r.Value["site"].(string); site != pubURI && site != didURI {
 				continue
 			}
 			out = append(out, toDocument(r, ref))

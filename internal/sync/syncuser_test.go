@@ -31,6 +31,11 @@ type fakeStore struct {
 	shares            map[string]map[string]db.ListUserSharesForSyncRow // did -> rkey -> row
 	shareDeletes      []string
 	shareUpsertParams map[string]db.UpsertUserShareParams // rkey -> last params
+	// ops is a single ordered log across deletes and upserts (both subs and
+	// shares) so tests can assert deletes run before a rekeyed upsert — the
+	// property real SQLite's unique constraint enforces but the maps above lose.
+	ops       []string
+	entryURLs map[string]string // guid -> cached feed_entries.url
 }
 
 func newFakeStore() *fakeStore {
@@ -57,6 +62,7 @@ func (s *fakeStore) ListUserSharesForSync(_ context.Context, did string) ([]db.L
 func (s *fakeStore) UpsertUserShare(_ context.Context, arg db.UpsertUserShareParams) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.ops = append(s.ops, "upsert:"+arg.Rkey)
 	s.shareUpsertParams[arg.Rkey] = arg
 	if _, ok := s.shares[arg.Did]; !ok {
 		s.shares[arg.Did] = map[string]db.ListUserSharesForSyncRow{}
@@ -76,11 +82,21 @@ func (s *fakeStore) UpsertUserShare(_ context.Context, arg db.UpsertUserSharePar
 func (s *fakeStore) DeleteUserShare(_ context.Context, arg db.DeleteUserShareParams) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.ops = append(s.ops, "delete:"+arg.Rkey)
 	s.shareDeletes = append(s.shareDeletes, arg.Rkey)
 	if m, ok := s.shares[arg.Did]; ok {
 		delete(m, arg.Rkey)
 	}
 	return nil
+}
+
+func (s *fakeStore) GetFeedEntryURLByGuid(_ context.Context, guid string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if url, ok := s.entryURLs[guid]; ok {
+		return url, nil
+	}
+	return "", errors.New("no rows")
 }
 
 func (s *fakeStore) ListUserSavesForSync(_ context.Context, did string) ([]db.ListUserSavesForSyncRow, error) {
@@ -134,6 +150,7 @@ func (s *fakeStore) ListUserSubscriptionsForSync(_ context.Context, did string) 
 func (s *fakeStore) UpsertUserSubscription(_ context.Context, arg db.UpsertUserSubscriptionParams) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.ops = append(s.ops, "upsert:"+arg.Rkey)
 	s.upserts++
 	s.upsertParams[arg.Rkey] = arg
 	if _, ok := s.rows[arg.Did]; !ok {
@@ -158,6 +175,7 @@ func (s *fakeStore) UpsertUserSubscription(_ context.Context, arg db.UpsertUserS
 func (s *fakeStore) DeleteUserSubscription(_ context.Context, arg db.DeleteUserSubscriptionParams) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.ops = append(s.ops, "delete:"+arg.Rkey)
 	s.deletes = append(s.deletes, arg.Rkey)
 	if m, ok := s.rows[arg.Did]; ok {
 		delete(m, arg.Rkey)

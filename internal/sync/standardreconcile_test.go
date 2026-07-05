@@ -161,6 +161,7 @@ func TestStandardReconcile_DuplicatesCollapseAndRekeySurvives(t *testing.T) {
 	if len(rows) != 1 || rows[0].Rkey != "3aa" {
 		t.Fatalf("rows = %+v, want single 3aa", rows)
 	}
+	store.assertDeleteBeforeUpsert(t, "3zz", "3aa")
 }
 
 func TestStandardReconcile_RemoteDeleteRemovesLocalOnly(t *testing.T) {
@@ -212,6 +213,32 @@ func TestStandardReconcile_LiveSidecarNotDeleted(t *testing.T) {
 	runStandardReconcile(t, store, lister, pds)
 	if len(pds.deleted) != 0 {
 		t.Fatalf("PDS deletes = %v, want none", pds.deleted)
+	}
+}
+
+func TestStandardReconcile_DuplicateSidecarNewestWinsOlderDeleted(t *testing.T) {
+	// Two sidecars for one live publication (sync/PATCH race): newest edit wins,
+	// the older duplicate is deleted from the PDS.
+	store := newFakeStore()
+	pds := &fakeRecordWriter{}
+	lister := &fakeLister{
+		subs:         []PDSSubscription{sidecar("3aaa", pubA, "Old Title"), sidecar("3zzz", pubA, "New Title")},
+		standardSubs: []PDSStandardSubscription{stdSub("3s1", pubA)},
+	}
+	runStandardReconcile(t, store, lister, pds)
+
+	if len(pds.deleted) != 1 || pds.deleted[0] != "blue.morgen.feed.subscription/3aaa" {
+		t.Fatalf("PDS deletes = %v, want the older duplicate sidecar", pds.deleted)
+	}
+	rows, _ := store.ListUserSubscriptionsForSync(context.Background(), "did:plc:alice")
+	if len(rows) != 1 {
+		t.Fatalf("rows = %+v, want one", rows)
+	}
+	if rows[0].Title == nil || *rows[0].Title != "New Title" {
+		t.Errorf("title = %v, want newest sidecar's", rows[0].Title)
+	}
+	if rows[0].SidecarRkey == nil || *rows[0].SidecarRkey != "3zzz" {
+		t.Errorf("sidecarRkey = %v, want newest 3zzz", rows[0].SidecarRkey)
 	}
 }
 
