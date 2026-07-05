@@ -77,6 +77,8 @@ A user **adds a source** → the app **creates a subscription record** → the f
 
 Avoid: "manage subscriptions" in user copy (per `<brand>` — they're editors, not managers). Avoid: "feeds" in user-facing routes/pages (leaks the mechanism).
 
+Standardfeed sources get **no user-facing noun** (not "Publication", not "Standardfeed") — a source is a source. The only user-facing differentiator is a "Subscribe via ATProto" affordance in the picker with a tooltip that leads with the benefit (subscription lives in the user's own account, portable across apps, shares reach the Atmosphere), not the mechanism. RSS candidates carry no label at all. Internally the Tier-2 kind is `standardfeed`.
+
 </terminology>
 
 ---
@@ -90,6 +92,8 @@ Avoid: "manage subscriptions" in user copy (per `<brand>` — they're editors, n
 Morgenblau writes all user-owned records under `blue.morgen.*`. Skyreader's schemas are too verbose for our purpose: they denormalize metadata like `author`, `excerpt`, `image`, and `wordCount` that we'd rather look up from our Tier-2 cache. Glean's overlap is narrow: no share concept, plus `rating` and `quote` dimensions on annotations that we don't model.
 
 Owning the schema lets us stay minimal and move fast while still interoperating where it earns its keep. We import existing subscriptions and saves from other readers (user can choose to do so), and count cross-reader signals in discovery. The end goal is a shared standard between RSS readers in the atmosphere. Until that exists, `blue.morgen.*` is our contribution to the conversation.
+
+Standardfeed (`site.standard.*`) is the first piece of that shared standard we adopt outright, and it gets a different posture than Glean/Skyreader: its records are **co-owned, always-synced state** (read and written like `blue.morgen.*`), not opt-in imports. A subscription created in Leaflet is a Morgenblau source on next sync, no consent step — it's the user's own canonical data, not another app's. The one-way import posture applies only to foreign reader lexicons we read but never write.
 
 ### Why a Separate Follow Graph
 
@@ -106,7 +110,9 @@ Bluesky follows are never auto-mirrored as Morgenblau follows. They surface only
 | `blue.morgen.feed.share` | Broadcast item (public "I like this") |
 | `blue.morgen.graph.follow` | In-app follow, distinct from Bluesky's |
 
-All four use `tid` rkeys, and all require `createdAt`. Every other field is optional. The record carries identity and intent. The Tier-2 cache renders the rest (see `<sync-architecture>`).
+All four use `tid` rkeys, and all require `createdAt`. Subscriptions additionally require the `source` union; every other field is optional. The record carries identity and intent. The Tier-2 cache renders the rest (see `<sync-architecture>`).
+
+**Schema evolution stance:** once a `blue.morgen.*` lexicon has real adoption, it evolves in place with non-breaking changes only (add optional field, relax required to optional; both blessed by the [lexicon compat rules](https://atproto.com/specs/lexicon#versioning-and-breaking-changes)), bumping `revision` each time and republishing the `com.atproto.lexicon.schema` record. Sum types are the exception worth deciding at birth: subscription's `source` is a required **open union** (`#rssFeed` | `#standardPublication`) rather than flat optional fields with an app-enforced XOR, because exactly-one-source is the record's core invariant and belongs in the schema, and union decisions are one-shot (restructuring later is breaking). The restructure shipped as revision 2 while adoption was zero, the only window where breaking is free. Readers must tolerate unknown `source` variants; the reconciler skips records whose variant it doesn't recognize and logs them. `feed.share` deliberately stays flat: its `document` field complements `itemUrl` rather than excluding it, so no union is warranted there.
 
 #### `blue.morgen.feed.subscription`
 
@@ -114,32 +120,26 @@ All four use `tid` rkeys, and all require `createdAt`. Every other field is opti
 {
   "lexicon": 1,
   "id": "blue.morgen.feed.subscription",
+  "revision": 2,
   "defs": {
     "main": {
       "type": "record",
-      "description": "A subscription to an RSS/Atom feed.",
+      "description": "A subscription to a content source, identified by the source union: an RSS/Atom feed or a Standardfeed publication.",
       "key": "tid",
       "record": {
         "type": "object",
-        "required": ["feedUrl", "createdAt"],
+        "required": ["source", "createdAt"],
         "properties": {
-          "feedUrl": {
-            "type": "string",
-            "format": "uri",
-            "maxLength": 2048,
-            "description": "URL of the RSS/Atom feed."
+          "source": {
+            "type": "union",
+            "refs": ["#rssFeed", "#standardPublication"],
+            "description": "Identity of the subscribed source. Open union; readers tolerate unknown variants."
           },
           "title": {
             "type": "string",
             "maxGraphemes": 128,
             "maxLength": 1280,
-            "description": "Display title. Auto-prefilled from the feed, user-editable."
-          },
-          "siteUrl": {
-            "type": "string",
-            "format": "uri",
-            "maxLength": 2048,
-            "description": "Human-facing site URL associated with the feed."
+            "description": "Display title. Auto-prefilled from the source, user-editable."
           },
           "tags": {
             "type": "array",
@@ -149,12 +149,41 @@ All four use `tid` rkeys, and all require `createdAt`. Every other field is opti
           },
           "primary": {
             "type": "boolean",
-            "description": "Whether the feed receives special treatment in the digest."
+            "description": "Whether the source receives special treatment in the digest."
           },
           "createdAt": {
             "type": "string",
             "format": "datetime"
           }
+        }
+      }
+    },
+    "rssFeed": {
+      "type": "object",
+      "required": ["feedUrl"],
+      "properties": {
+        "feedUrl": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2048,
+          "description": "URL of the RSS/Atom feed."
+        },
+        "siteUrl": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2048,
+          "description": "Human-facing site URL associated with the feed."
+        }
+      }
+    },
+    "standardPublication": {
+      "type": "object",
+      "required": ["publication"],
+      "properties": {
+        "publication": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT-URI of the site.standard.publication record. This subscription is a metadata sidecar; the paired site.standard.graph.subscription record is the existence authority."
         }
       }
     }
@@ -223,10 +252,11 @@ All four use `tid` rkeys, and all require `createdAt`. Every other field is opti
 {
   "lexicon": 1,
   "id": "blue.morgen.feed.share",
+  "revision": 2,
   "defs": {
     "main": {
       "type": "record",
-      "description": "A shared feed item. Broadcasts 'I like this' with optional commentary.",
+      "description": "A shared feed item. Broadcasts 'I like this' with optional commentary. For Standardfeed documents this is the lazy comment sidecar of a site.standard.graph.recommend record.",
       "key": "tid",
       "record": {
         "type": "object",
@@ -237,6 +267,11 @@ All four use `tid` rkeys, and all require `createdAt`. Every other field is opti
             "format": "uri",
             "maxLength": 2048,
             "description": "URL of the shared item."
+          },
+          "document": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of the site.standard.document this share refers to, when the item is a Standardfeed document. Joins the share to its paired recommend record."
           },
           "feedUrl": {
             "type": "string",
@@ -305,10 +340,14 @@ All four use `tid` rkeys, and all require `createdAt`. Every other field is opti
 
 Published as a `permission-set` lexicon so OAuth clients request one scope instead of enumerating four `repo:` grants. Authority for `blue.morgen.*` is claimed via `_lexicon.morgen.blue` DNS TXT pointing at the publisher DID.
 
-### External Lexicons We Read
+### External Lexicons
 
 | NSID | Source | How we use it |
 |:--|:--|:--|
+| `site.standard.graph.subscription` | Standardfeed | **Read + write.** Existence record for publication subscriptions; two-way synced with `blue.morgen.feed.subscription` sidecars |
+| `site.standard.publication` | Standardfeed | Read. Publication identity + display metadata (name, icon, url) for Tier-2 |
+| `site.standard.document` | Standardfeed | Read. Entry ingestion for publication sources — PDS-native, no RSS involved |
+| `site.standard.graph.recommend` | Standardfeed | **Read + write.** Existence record for shares of Standardfeed documents; `blue.morgen.feed.share` is its lazy comment sidecar. Popularity signal (1.5×) |
 | `app.bsky.graph.follow` | Bluesky | Suggestions only ("people you know from Bluesky"); never auto-mirrored |
 | `at.margin.note` | margin.at | Margin annotations rendered alongside articles |
 | `at.glean.like` | Glean | Popularity signal (1×); importable as `blue.morgen.feed.save` |
@@ -317,7 +356,7 @@ Published as a `permission-set` lexicon so OAuth clients request one scope inste
 | `app.skyreader.feed.saved` | Skyreader | Popularity signal (1×); importable as `blue.morgen.feed.save` |
 | `app.skyreader.social.share` | Skyreader | Popularity signal (1.5×); importable as `blue.morgen.feed.share` |
 
-**Popularity weighting:** saves count 1×, shares 1.5×. Equivalent records on Skyreader and Glean are counted at the same weights. Glean's `annotation` (note, quote, rating) is not consumed. Annotations are delegated to margin.at.
+**Popularity weighting:** saves count 1×, shares 1.5×. Equivalent records on Skyreader and Glean are counted at the same weights; Standardfeed recommends count as shares (1.5×). Glean's `annotation` (note, quote, rating) is not consumed. Annotations are delegated to margin.at.
 
 </lexicons>
 
@@ -338,7 +377,7 @@ Handle is never persisted in the DB. It's re-resolved on demand via indigo's cac
 
 The browser session cookie carries `(did, session_id)` only (sealed, `HttpOnly; Secure; SameSite=Lax`) — all OAuth material stays server-side.
 
-Scopes: `atproto include:blue.morgen.access`, following [Dan Abramov's guidance](https://underreacted.leaflet.pub/3mjfozhlhys2z). The permission set expands to per-collection `repo:` writes on the four `blue.morgen.*` collections. Avoid `transition:generic` and the unsupported partial wildcard `repo:blue.morgen.*`.
+Scopes: `atproto include:blue.morgen.access repo:site.standard.graph.subscription repo:site.standard.graph.recommend`, following [Dan Abramov's guidance](https://underreacted.leaflet.pub/3mjfozhlhys2z). The permission set expands to per-collection `repo:` writes on the four `blue.morgen.*` collections; the two `site.standard.graph.*` grants cover the co-owned Standardfeed records (see `<lexicons>`) and are requested together even though recommends may ship after subscriptions — one re-auth, not two. Avoid `transition:generic` and the unsupported partial wildcard `repo:blue.morgen.*`.
 
 Public endpoints: `/oauth-client-metadata.json` (advertised `client_id` in prod), `/oauth-jwks.json` (public half of the P-256 client key), `/oauth/login` (POST), `/oauth/callback` (GET), `/oauth/logout` (POST).
 
@@ -370,6 +409,8 @@ In-app reader by default — fetch and render article content directly. Users ca
 Content type is **classified at fetch time and persisted** — entries land in storage with a `content_type` column already set, not derived at render. Same applies to HTML sanitization for the in-app reader: sanitize once during the fetch pipeline, store the safe form, never sanitize at render.
 
 Documented exception: when the RSS feed only ships a summary, the reader **lazily** runs readability extraction against the source URL on first open and caches the sanitized result on the entry row. Eager sanitize-at-fetch still governs the feed-shipped body; the lazy path applies only to the readability-extracted body.
+
+Standardfeed document entries always take this lazy path: the digest summary comes from the record's `description`/`textContent`, and the reader body is readability-extracted from the document's canonical URL (`site` + `path`) on first open. The record's `content` field is an open union of per-app formats (Leaflet blocks, etc.) and is deliberately not rendered — we refuse to maintain per-publisher format renderers. Documents without a `path` fall back to plaintext `textContent`.
 
 Type-specific metadata (reading-time, YouTube video id, etc.) lives in a `metadata` JSON column on `feed_entries`. Fields get promoted to typed columns only when their content-type UI ships and the access patterns are known.
 
@@ -446,7 +487,7 @@ The core differentiator. For each piece of content, the app checks for ATProto b
 
 ### Scope
 
-- **Read:** Show shares, Bluesky reposts and margin.at annotations. No like counts, shares are higher signal.
+- **Read:** Show shares (including Standardfeed recommends), Bluesky reposts and margin.at annotations. No like counts, shares are higher signal.
 - **Follow:** In-app follows stored as `blue.morgen.graph.follow` records (separate from Bluesky social graph follows).
 
 ### UX Principle
@@ -467,11 +508,18 @@ Two-tier storage with different authority and sharing models.
 
 User-owned records (`blue.morgen.feed.subscription`, `feed.save`, `feed.share`, `graph.follow`) live authoritatively on the user's PDS. Local SQLite tables holding the same data are **derived indexes only** (per `<lexicons>`). Reconciliation: `listRecords` against PDS, diff against local index, apply changes. Reconciliation triggers are the same as the user-initiated fetch triggers in `<feed-sources>` (login, manual refresh, add); the background sweep is Tier-2 only and never reconciles PDS records.
 
+**Publication sources (Standardfeed).** For sources backed by a `site.standard.publication`, the `site.standard.graph.subscription` record is the **sole existence authority** — "am I subscribed" is answered only by that record. The `blue.morgen.feed.subscription` sidecar (joined by publication AT-URI) carries Morgenblau-only metadata (title, tags, primary) and is created **lazily**, on the user's first metadata edit; subscribing writes only the standard record. This split makes deletes tombstone-free in both directions: an orphaned sidecar (standard record gone — user unsubscribed in another app) is deleted on reconcile; a standard record without a sidecar is a healthy subscription with default metadata (title falls back to the cached `publication.name`). Reconcile reads both collections; its **only** PDS write is deleting an orphaned sidecar (subscription and share sidecars alike) — otherwise it never writes.
+
+The same pattern governs shares of Standardfeed documents: `site.standard.graph.recommend` is the existence record, `blue.morgen.feed.share` (joined by `document` AT-URI) is the lazy sidecar created only when the user writes a comment. "My shares" is derived from the union of both collections; orphaned share sidecars are deleted on reconcile.
+
 ### Tier 2 — Upstream cache (shared, global)
 
-Parsed feed metadata (etag, last-modified, title, etc.) and parsed entries are cached in local SQLite, **deduped by canonical feed URL across all Morgenblau users**. One `feeds` row per URL; many Tier-1 subscriptions can point at it. The fetcher polls each upstream feed once regardless of how many users subscribe.
+Parsed feed metadata (etag, last-modified, title, etc.) and parsed entries are cached in local SQLite, **deduped by canonical source key across all Morgenblau users**. Tier-2 is **one catalog with two kinds** of source: `rss` rows keyed by canonical feed URL, `standardfeed` rows keyed by publication AT-URI. One catalog row per key; many Tier-1 subscriptions can point at it; entries hang off a single FK regardless of kind. The fetcher polls each upstream source once regardless of how many users subscribe, branching on kind:
 
-Local is canonical for Tier 2 — there is no PDS path for entries, only upstream RSS/Atom. Cache invalidation follows HTTP semantics (etag, last-modified, conditional GET).
+- **rss** — HTTP fetch with conditional GET (etag, last-modified), as before.
+- **standardfeed** — full `listRecords` diff of the publisher repo's `site.standard.document` collection: new records become entries, changed CIDs update them, and records missing upstream **hard-delete** the cached entry (ATProto deletes are honored; a saver keeps only the itemUrl, like a saved RSS item whose page 404s). RSS entries, by contrast, persist as cache forever — RSS has no delete signal. Document entries render via the lazy readability path (see `<content-types>`); the open-union `content` field is deliberately left unrendered.
+
+Local is canonical for Tier 2 — there is no PDS path *authoritative* for entries; RSS entries come from upstream feeds, standardfeed entries are re-derivable from publisher repos. Cache invalidation follows HTTP semantics for rss and repo-diff semantics for standardfeed.
 
 ### Privacy posture
 

@@ -35,6 +35,19 @@ type Writer interface {
 	DeleteRecord(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID, rkey string) error
 }
 
+// ListedRecord is one record returned by ListRecords, value left undecoded.
+type ListedRecord struct {
+	URI   string         `json:"uri"`
+	CID   string         `json:"cid"`
+	Value map[string]any `json:"value"`
+}
+
+// Lister pages a collection in the session user's own repo. Kept separate
+// from Writer so existing fakes don't grow a method they never call.
+type Lister interface {
+	ListRecords(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID) ([]ListedRecord, error)
+}
+
 // SessionWriter calls the session's authenticated APIClient.
 type SessionWriter struct{}
 
@@ -82,6 +95,40 @@ func (SessionWriter) PutRecord(ctx context.Context, sess *oauth.ClientSession, c
 		return nil, err
 	}
 	return &out, nil
+}
+
+type listRecordsResponse struct {
+	Records []ListedRecord `json:"records"`
+	Cursor  string         `json:"cursor"`
+}
+
+// ListRecords pages com.atproto.repo.listRecords over the session user's own
+// repo. Terminates only on an empty cursor — an empty page with a cursor set
+// is a valid continuation, and stopping early would truncate the snapshot.
+func (SessionWriter) ListRecords(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID) ([]ListedRecord, error) {
+	var (
+		out    []ListedRecord
+		cursor string
+	)
+	for {
+		params := map[string]any{
+			"repo":       sess.Data.AccountDID.String(),
+			"collection": collection.String(),
+			"limit":      100,
+		}
+		if cursor != "" {
+			params["cursor"] = cursor
+		}
+		var resp listRecordsResponse
+		if err := sess.APIClient().Get(ctx, syntax.NSID("com.atproto.repo.listRecords"), params, &resp); err != nil {
+			return nil, err
+		}
+		out = append(out, resp.Records...)
+		if resp.Cursor == "" {
+			return out, nil
+		}
+		cursor = resp.Cursor
+	}
 }
 
 func (SessionWriter) DeleteRecord(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID, rkey string) error {

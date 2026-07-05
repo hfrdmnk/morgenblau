@@ -27,11 +27,35 @@ type fakeIndex struct {
 	mu            sync.Mutex
 	rows          map[string]map[string]db.UserSubscription // did → feedURL → row
 	getFeedErr    error
-	upsertedFeeds []string // feed URLs passed to UpsertFeed, in call order
+	upsertedFeeds []string              // feed URLs passed to UpsertFeed, in call order
+	feedParams    []db.UpsertFeedParams // full UpsertFeed args, in call order
+	catalogTitles map[string]*string    // feedURL → feeds.title for the stats join
+	siteURLs      map[string]*string    // feedURL → feeds.site_url for the sibling join
 }
 
 func newFakeIndex() *fakeIndex {
-	return &fakeIndex{rows: map[string]map[string]db.UserSubscription{}}
+	return &fakeIndex{
+		rows:          map[string]map[string]db.UserSubscription{},
+		catalogTitles: map[string]*string{},
+		siteURLs:      map[string]*string{},
+	}
+}
+
+func (f *fakeIndex) ListUserSubscriptionsWithSiteURL(_ context.Context, did string) ([]db.ListUserSubscriptionsWithSiteURLRow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]db.ListUserSubscriptionsWithSiteURLRow, 0)
+	for _, r := range f.rows[did] {
+		out = append(out, db.ListUserSubscriptionsWithSiteURLRow{
+			Rkey:         r.Rkey,
+			FeedUrl:      r.FeedUrl,
+			Kind:         r.Kind,
+			Title:        r.Title,
+			SiteUrl:      f.siteURLs[r.FeedUrl],
+			CatalogTitle: f.catalogTitles[r.FeedUrl],
+		})
+	}
+	return out, nil
 }
 
 func (f *fakeIndex) ListUserSubscriptions(_ context.Context, did string) ([]db.UserSubscription, error) {
@@ -50,15 +74,18 @@ func (f *fakeIndex) ListUserSourcesWithStats(_ context.Context, arg db.ListUserS
 	out := make([]db.ListUserSourcesWithStatsRow, 0)
 	for _, r := range f.rows[arg.Did] {
 		out = append(out, db.ListUserSourcesWithStatsRow{
-			Did:       r.Did,
-			Rkey:      r.Rkey,
-			AtUri:     r.AtUri,
-			FeedUrl:   r.FeedUrl,
-			Title:     r.Title,
-			IsPrimary: r.IsPrimary,
-			Tags:      r.Tags,
-			CreatedAt: r.CreatedAt,
-			UpdatedAt: r.UpdatedAt,
+			Did:          r.Did,
+			Rkey:         r.Rkey,
+			AtUri:        r.AtUri,
+			FeedUrl:      r.FeedUrl,
+			Kind:         r.Kind,
+			SidecarRkey:  r.SidecarRkey,
+			Title:        r.Title,
+			IsPrimary:    r.IsPrimary,
+			Tags:         r.Tags,
+			CreatedAt:    r.CreatedAt,
+			UpdatedAt:    r.UpdatedAt,
+			CatalogTitle: f.catalogTitles[r.FeedUrl],
 		})
 	}
 	return out, nil
@@ -104,6 +131,7 @@ func (f *fakeIndex) UpsertFeed(_ context.Context, arg db.UpsertFeedParams) error
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.upsertedFeeds = append(f.upsertedFeeds, arg.FeedUrl)
+	f.feedParams = append(f.feedParams, arg)
 	return nil
 }
 
@@ -113,16 +141,23 @@ func (f *fakeIndex) UpsertUserSubscription(_ context.Context, arg db.UpsertUserS
 	if _, ok := f.rows[arg.Did]; !ok {
 		f.rows[arg.Did] = map[string]db.UserSubscription{}
 	}
+	// Mirror the query's NULLIF trick: empty/zero kind persists as rss.
+	kind, _ := arg.Kind.(string)
+	if kind == "" {
+		kind = "rss"
+	}
 	f.rows[arg.Did][arg.FeedUrl] = db.UserSubscription{
-		Did:       arg.Did,
-		Rkey:      arg.Rkey,
-		AtUri:     arg.AtUri,
-		FeedUrl:   arg.FeedUrl,
-		Title:     arg.Title,
-		IsPrimary: arg.IsPrimary,
-		Tags:      arg.Tags,
-		CreatedAt: arg.CreatedAt,
-		UpdatedAt: arg.UpdatedAt,
+		Did:         arg.Did,
+		Rkey:        arg.Rkey,
+		AtUri:       arg.AtUri,
+		FeedUrl:     arg.FeedUrl,
+		Kind:        kind,
+		SidecarRkey: arg.SidecarRkey,
+		Title:       arg.Title,
+		IsPrimary:   arg.IsPrimary,
+		Tags:        arg.Tags,
+		CreatedAt:   arg.CreatedAt,
+		UpdatedAt:   arg.UpdatedAt,
 	}
 	return nil
 }
@@ -138,22 +173,35 @@ func (f *fakeFinder) Resolve(_ context.Context, _ string) ([]feedfinder.Candidat
 	return f.candidates, f.err
 }
 
-type fakePDS struct {
-	mu      sync.Mutex
-	creates int
-	puts    int
-	lastRec map[string]any
-	lastPut map[string]any
+// pdsWrite captures one CreateRecord call: which collection got which record.
+type pdsWrite struct {
+	collection string
+	record     map[string]any
 }
 
-func (p *fakePDS) CreateRecord(_ context.Context, sess *oauth.ClientSession, _ syntax.NSID, record map[string]any) (*atprepo.RecordRef, error) {
+type fakePDS struct {
+	mu          sync.Mutex
+	creates     int
+	puts        int
+	lastRec     map[string]any
+	lastPut     map[string]any
+	lastPutRkey string
+	created     []pdsWrite
+	deleted     []string                            // "collection/rkey", in call order
+	listed      map[string][]atprepo.ListedRecord   // canned ListRecords result per collection
+	listErr     error
+	listCalls   int
+}
+
+func (p *fakePDS) CreateRecord(_ context.Context, sess *oauth.ClientSession, collection syntax.NSID, record map[string]any) (*atprepo.RecordRef, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.creates++
 	p.lastRec = record
+	p.created = append(p.created, pdsWrite{collection: collection.String(), record: record})
 	rkey := "3la" + itoa(p.creates)
 	return &atprepo.RecordRef{
-		URI: "at://" + sess.Data.AccountDID.String() + "/blue.morgen.feed.subscription/" + rkey,
+		URI: "at://" + sess.Data.AccountDID.String() + "/" + collection.String() + "/" + rkey,
 		CID: "bafyreiabc",
 	}, nil
 }
@@ -163,11 +211,25 @@ func (p *fakePDS) PutRecord(_ context.Context, _ *oauth.ClientSession, _ syntax.
 	defer p.mu.Unlock()
 	p.puts++
 	p.lastPut = record
+	p.lastPutRkey = rkey
 	return &atprepo.RecordRef{URI: "at://x/c/" + rkey, CID: "bafy"}, nil
 }
 
-func (p *fakePDS) DeleteRecord(_ context.Context, _ *oauth.ClientSession, _ syntax.NSID, _ string) error {
+func (p *fakePDS) DeleteRecord(_ context.Context, _ *oauth.ClientSession, collection syntax.NSID, rkey string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.deleted = append(p.deleted, collection.String()+"/"+rkey)
 	return nil
+}
+
+func (p *fakePDS) ListRecords(_ context.Context, _ *oauth.ClientSession, collection syntax.NSID) ([]atprepo.ListedRecord, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.listCalls++
+	if p.listErr != nil {
+		return nil, p.listErr
+	}
+	return p.listed[collection.String()], nil
 }
 
 type fakeDispatcher struct {
@@ -313,6 +375,118 @@ func TestSubscriptionsResolve_FlagsExisting(t *testing.T) {
 	}
 }
 
+func TestSubscriptionsResolve_SiblingMatrix(t *testing.T) {
+	const site = "https://blog.example.test"
+	const rssFeed = "https://blog.example.test/feed.xml"
+
+	cases := []struct {
+		name      string
+		sub       db.UserSubscription
+		subSite   string
+		subCat    *string
+		candidate feedfinder.Candidate
+		wantVia   *subscribedVia
+	}{
+		{
+			name:      "rss sub flags publication candidate",
+			sub:       db.UserSubscription{Did: "did:plc:alice", Rkey: "1", FeedUrl: rssFeed, Kind: "rss", Title: ptrString("My Blog")},
+			subSite:   site,
+			candidate: feedfinder.Candidate{Kind: "standardfeed", Publication: testPublication, SiteURL: site},
+			wantVia:   &subscribedVia{Kind: "rss", Title: "My Blog"},
+		},
+		{
+			name:      "standardfeed sub flags rss candidate with catalog title",
+			sub:       db.UserSubscription{Did: "did:plc:alice", Rkey: "1", FeedUrl: testPublication, Kind: "standardfeed"},
+			subSite:   site,
+			subCat:    ptrString("Pub Name"),
+			candidate: feedfinder.Candidate{FeedURL: rssFeed, SiteURL: site},
+			wantVia:   &subscribedVia{Kind: "standardfeed", Title: "Pub Name"},
+		},
+		{
+			name:      "same kind same site not flagged",
+			sub:       db.UserSubscription{Did: "did:plc:alice", Rkey: "1", FeedUrl: rssFeed, Kind: "rss"},
+			subSite:   site,
+			candidate: feedfinder.Candidate{FeedURL: "https://blog.example.test/comments.atom", SiteURL: site},
+			wantVia:   nil,
+		},
+		{
+			name:      "shared host different path not siblings",
+			sub:       db.UserSubscription{Did: "did:plc:alice", Rkey: "1", FeedUrl: testPublication, Kind: "standardfeed"},
+			subSite:   "https://leaflet.pub/one",
+			candidate: feedfinder.Candidate{FeedURL: "https://leaflet.pub/two/feed.xml", SiteURL: "https://leaflet.pub/two"},
+			wantVia:   nil,
+		},
+		{
+			name:      "www and trailing slash normalize equal",
+			sub:       db.UserSubscription{Did: "did:plc:alice", Rkey: "1", FeedUrl: rssFeed, Kind: "rss", Title: ptrString("My Blog")},
+			subSite:   "https://www.blog.example.test/",
+			candidate: feedfinder.Candidate{Kind: "standardfeed", Publication: testPublication, SiteURL: site},
+			wantVia:   &subscribedVia{Kind: "rss", Title: "My Blog"},
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			idx := newFakeIndex()
+			idx.rows["did:plc:alice"] = map[string]db.UserSubscription{tt.sub.FeedUrl: tt.sub}
+			idx.siteURLs[tt.sub.FeedUrl] = ptrString(tt.subSite)
+			if tt.subCat != nil {
+				idx.catalogTitles[tt.sub.FeedUrl] = tt.subCat
+			}
+			finder := &fakeFinder{candidates: []feedfinder.Candidate{tt.candidate}}
+			h := SubscriptionsResolveHandler(idx, finder)
+			req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions/resolve",
+				strings.NewReader(`{"url":"https://blog.example.test"}`)), "did:plc:alice", "sid-1")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+			}
+			var got resolveResponse
+			if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if len(got.Candidates) != 1 {
+				t.Fatalf("candidates = %+v", got.Candidates)
+			}
+			via := got.Candidates[0].SubscribedVia
+			if tt.wantVia == nil {
+				if via != nil {
+					t.Errorf("subscribedVia = %+v, want nil", via)
+				}
+				return
+			}
+			if via == nil || via.Kind != tt.wantVia.Kind || via.Title != tt.wantVia.Title {
+				t.Errorf("subscribedVia = %+v, want %+v", via, tt.wantVia)
+			}
+		})
+	}
+}
+
+func TestSubscriptionsResolve_ExistingProbeUsesPublication(t *testing.T) {
+	idx := newFakeIndex()
+	idx.rows["did:plc:alice"] = map[string]db.UserSubscription{
+		testPublication: {Did: "did:plc:alice", Rkey: "3std", FeedUrl: testPublication, Kind: "standardfeed"},
+	}
+	finder := &fakeFinder{candidates: []feedfinder.Candidate{
+		{Kind: "standardfeed", Publication: testPublication, SiteURL: "https://blog.example.test"},
+	}}
+	h := SubscriptionsResolveHandler(idx, finder)
+	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions/resolve",
+		strings.NewReader(`{"url":"https://blog.example.test"}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	var got resolveResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.ExistingSubscriptions) != 1 || got.ExistingSubscriptions[0].FeedURL != testPublication {
+		t.Errorf("existing = %+v, want probe keyed on publication", got.ExistingSubscriptions)
+	}
+}
+
 func TestSubscriptionsResolve_Errors(t *testing.T) {
 	t.Run("finder error", func(t *testing.T) {
 		h := SubscriptionsResolveHandler(newFakeIndex(), &fakeFinder{err: errors.New("upstream down")})
@@ -436,6 +610,8 @@ func TestSubscriptionsCreate_Validation(t *testing.T) {
 		{name: "empty list", body: `{"subscriptions":[]}`, want: "no subscriptions submitted"},
 		{name: "missing feed URL", body: `{"subscriptions":[{"title":"Example"}]}`, want: "subscriptions.0.feedUrl"},
 		{name: "malformed JSON", body: `{"subscriptions":[`, want: "invalid json"},
+		{name: "both feedUrl and publication", body: `{"subscriptions":[{"feedUrl":"https://x/feed.xml","publication":"at://did:plc:p/site.standard.publication/3p"}]}`, want: "subscriptions.0.publication"},
+		{name: "publication not an at-uri", body: `{"subscriptions":[{"publication":"https://not-an-at-uri.example"}]}`, want: "subscriptions.0.publication"},
 	}
 
 	for _, tt := range cases {
@@ -498,6 +674,306 @@ func TestSubscriptionsCreate_Tier1Failure_DispatchesSyncUser(t *testing.T) {
 	}
 }
 
+// --- standardfeed create ---
+
+const testPublication = "at://did:plc:publisher/site.standard.publication/3pub"
+const standardSubCollection = "site.standard.graph.subscription"
+
+func TestSubscriptionsCreate_Standardfeed_DefaultsCreateOnlyStandardRecord(t *testing.T) {
+	idx := newFakeIndex()
+	pds := &fakePDS{}
+	disp := &fakeDispatcher{}
+	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
+
+	body := `{"subscriptions":[{"publication":"` + testPublication + `","siteUrl":"https://blog.example"}]}`
+	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	// Exactly ONE PDS write: the portable standard record. No sidecar when
+	// the picker didn't customize anything.
+	if pds.creates != 1 {
+		t.Fatalf("PDS creates = %d, want 1 (got %+v)", pds.creates, pds.created)
+	}
+	if pds.created[0].collection != standardSubCollection {
+		t.Errorf("collection = %q, want %s", pds.created[0].collection, standardSubCollection)
+	}
+	rec := pds.created[0].record
+	if rec["publication"] != testPublication {
+		t.Errorf("record.publication = %v", rec["publication"])
+	}
+	if _, ok := rec["createdAt"].(string); !ok {
+		t.Errorf("record.createdAt missing: %v", rec)
+	}
+	if _, ok := rec["source"]; ok {
+		t.Errorf("standard record must not carry a blue.morgen source union: %v", rec)
+	}
+
+	// Tier-2 catalog row keyed by the publication at-uri, kind standardfeed.
+	if len(idx.feedParams) != 1 || idx.feedParams[0].FeedUrl != testPublication {
+		t.Fatalf("UpsertFeed params = %+v", idx.feedParams)
+	}
+	if kind, _ := idx.feedParams[0].Kind.(string); kind != "standardfeed" {
+		t.Errorf("UpsertFeed kind = %v", idx.feedParams[0].Kind)
+	}
+	if idx.feedParams[0].SiteUrl == nil || *idx.feedParams[0].SiteUrl != "https://blog.example" {
+		t.Errorf("UpsertFeed siteUrl = %v", idx.feedParams[0].SiteUrl)
+	}
+
+	// Tier-1 row: existence rkey is the STANDARD record's rkey, no sidecar.
+	row, err := idx.GetUserSubscriptionByFeedURL(context.Background(), db.GetUserSubscriptionByFeedURLParams{
+		Did: "did:plc:alice", FeedUrl: testPublication,
+	})
+	if err != nil {
+		t.Fatalf("row lookup: %v", err)
+	}
+	if row.Kind != "standardfeed" {
+		t.Errorf("row kind = %q", row.Kind)
+	}
+	if row.Rkey != "3la1" {
+		t.Errorf("row rkey = %q, want the standard record rkey 3la1", row.Rkey)
+	}
+	if row.SidecarRkey != nil {
+		t.Errorf("row sidecar_rkey = %v, want nil", *row.SidecarRkey)
+	}
+
+	// Fetch dispatched for the publication key.
+	if len(disp.dispatched) != 1 || disp.dispatched[0] != testPublication {
+		t.Errorf("dispatched = %v", disp.dispatched)
+	}
+
+	var got addResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Records) != 1 {
+		t.Fatalf("records = %d", len(got.Records))
+	}
+	wire := got.Records[0]
+	if wire.Kind != "standardfeed" || wire.Publication != testPublication || wire.FeedURL != testPublication {
+		t.Errorf("wire = %+v", wire)
+	}
+	if wire.URI != "at://did:plc:alice/"+standardSubCollection+"/3la1" {
+		t.Errorf("wire uri = %q", wire.URI)
+	}
+}
+
+func TestSubscriptionsCreate_Standardfeed_CustomMetadata_SidecarSecond(t *testing.T) {
+	idx := newFakeIndex()
+	pds := &fakePDS{}
+	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{})
+
+	body := `{"subscriptions":[{"publication":"` + testPublication + `","title":"My Name","primary":true,"tags":["News"]}]}`
+	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.creates != 2 {
+		t.Fatalf("PDS creates = %d, want 2 (standard + sidecar)", pds.creates)
+	}
+	// Order pins the failure contract: the portable record lands first so a
+	// sidecar failure still leaves an adoptable subscription on the PDS.
+	if pds.created[0].collection != standardSubCollection {
+		t.Errorf("first write collection = %q, want standard record first", pds.created[0].collection)
+	}
+	if pds.created[1].collection != "blue.morgen.feed.subscription" {
+		t.Errorf("second write collection = %q, want blue.morgen sidecar", pds.created[1].collection)
+	}
+	sidecar := pds.created[1].record
+	source, ok := sidecar["source"].(map[string]any)
+	if !ok || source["$type"] != "blue.morgen.feed.subscription#standardPublication" || source["publication"] != testPublication {
+		t.Errorf("sidecar source = %v", sidecar["source"])
+	}
+	if sidecar["title"] != "My Name" || sidecar["primary"] != true {
+		t.Errorf("sidecar metadata = %v", sidecar)
+	}
+
+	row, err := idx.GetUserSubscriptionByFeedURL(context.Background(), db.GetUserSubscriptionByFeedURLParams{
+		Did: "did:plc:alice", FeedUrl: testPublication,
+	})
+	if err != nil {
+		t.Fatalf("row lookup: %v", err)
+	}
+	if row.Rkey != "3la1" {
+		t.Errorf("row rkey = %q, want standard rkey 3la1", row.Rkey)
+	}
+	if row.SidecarRkey == nil || *row.SidecarRkey != "3la2" {
+		t.Errorf("row sidecar_rkey = %v, want 3la2", row.SidecarRkey)
+	}
+	if row.Title == nil || *row.Title != "My Name" {
+		t.Errorf("row title = %v", row.Title)
+	}
+}
+
+func TestSubscriptionsCreate_Standardfeed_StaleScope_403(t *testing.T) {
+	idx := newFakeIndex()
+	pds := &fakePDS{}
+	disp := &fakeDispatcher{}
+	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
+
+	// withSession carries NO scopes — a pre-change grant.
+	body := `{"subscriptions":[{"publication":"` + testPublication + `"}]}`
+	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403; body = %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "reauth_required") {
+		t.Errorf("body = %q, want reauth_required code", rr.Body.String())
+	}
+	if pds.creates != 0 {
+		t.Errorf("PDS creates = %d, want 0 on stale scope", pds.creates)
+	}
+	if len(disp.dispatched) != 0 {
+		t.Errorf("dispatched = %v, want none", disp.dispatched)
+	}
+}
+
+func TestSubscriptionsCreate_Standardfeed_Dedupe_Idempotent(t *testing.T) {
+	idx := newFakeIndex()
+	idx.rows["did:plc:alice"] = map[string]db.UserSubscription{
+		testPublication: {
+			Did:     "did:plc:alice",
+			Rkey:    "3laOLD",
+			AtUri:   "at://did:plc:alice/" + standardSubCollection + "/3laOLD",
+			FeedUrl: testPublication,
+			Kind:    "standardfeed",
+		},
+	}
+	pds := &fakePDS{}
+	disp := &fakeDispatcher{}
+	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
+
+	body := `{"subscriptions":[{"publication":"` + testPublication + `"}]}`
+	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d", rr.Code)
+	}
+	if pds.creates != 0 {
+		t.Errorf("PDS creates on dedupe path: %d", pds.creates)
+	}
+	if len(disp.dispatched) != 0 {
+		t.Errorf("dispatch on dedupe path: %v", disp.dispatched)
+	}
+	var got addResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Records) != 1 || got.Records[0].Kind != "standardfeed" || got.Records[0].Publication != testPublication {
+		t.Errorf("records = %+v", got.Records)
+	}
+}
+
+func TestSubscriptionsCreate_MixedBatch_BothKinds(t *testing.T) {
+	idx := newFakeIndex()
+	pds := &fakePDS{}
+	disp := &fakeDispatcher{}
+	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
+
+	body := `{"subscriptions":[{"feedUrl":"https://example.test/feed.xml","title":"RSS"},{"publication":"` + testPublication + `"}]}`
+	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.creates != 2 {
+		t.Fatalf("PDS creates = %d, want 2", pds.creates)
+	}
+	if pds.created[0].collection != "blue.morgen.feed.subscription" || pds.created[1].collection != standardSubCollection {
+		t.Errorf("collections = %q, %q", pds.created[0].collection, pds.created[1].collection)
+	}
+	var got addResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Records) != 2 || got.Records[0].Kind != "rss" || got.Records[1].Kind != "standardfeed" {
+		t.Errorf("records = %+v", got.Records)
+	}
+	if len(disp.dispatched) != 2 {
+		t.Errorf("dispatched = %v", disp.dispatched)
+	}
+}
+
+func TestSubscriptionsCreate_SiblingPairInBatch_409(t *testing.T) {
+	idx := newFakeIndex()
+	pds := &fakePDS{}
+	disp := &fakeDispatcher{}
+	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
+
+	// An rss feed and a publication for the SAME site in one batch.
+	body := `{"subscriptions":[
+		{"feedUrl":"https://blog.example.test/feed.xml","siteUrl":"https://blog.example.test"},
+		{"publication":"` + testPublication + `","siteUrl":"https://blog.example.test"}
+	]}`
+	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.creates != 0 {
+		t.Errorf("PDS creates = %d, want 0", pds.creates)
+	}
+	if len(disp.dispatched) != 0 {
+		t.Errorf("dispatched = %v", disp.dispatched)
+	}
+}
+
+func TestSubscriptionsList_Standardfeed_CatalogTitleFallback(t *testing.T) {
+	idx := newFakeIndex()
+	idx.rows["did:plc:alice"] = map[string]db.UserSubscription{
+		testPublication: {
+			Did:     "did:plc:alice",
+			Rkey:    "3std",
+			AtUri:   "at://did:plc:alice/" + standardSubCollection + "/3std",
+			FeedUrl: testPublication,
+			Kind:    "standardfeed",
+			// No user title: the wire falls back to the cached catalog title.
+		},
+	}
+	idx.catalogTitles[testPublication] = ptrString("Publication Name")
+
+	h := SubscriptionsListHandler(idx)
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	var got []SubscriptionWire
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("rows = %d", len(got))
+	}
+	if got[0].Kind != "standardfeed" || got[0].Publication != testPublication {
+		t.Errorf("wire kind/publication = %q/%q", got[0].Kind, got[0].Publication)
+	}
+	if got[0].Title != "Publication Name" {
+		t.Errorf("wire title = %q, want catalog fallback", got[0].Title)
+	}
+	// The value map mirrors the PDS record — no user title there.
+	if _, ok := got[0].Value["title"]; ok {
+		t.Errorf("value.title should stay absent without a user title: %v", got[0].Value)
+	}
+}
+
 // --- primary + tags ---
 
 func TestSubscriptionsCreate_PrimaryAndTags_PersistedEverywhere(t *testing.T) {
@@ -521,6 +997,14 @@ func TestSubscriptionsCreate_PrimaryAndTags_PersistedEverywhere(t *testing.T) {
 	}
 	if tags, ok := pds.lastRec["tags"].([]string); !ok || len(tags) != 2 || tags[0] != "News" || tags[1] != "Tech" {
 		t.Errorf("PDS record tags = %v (%T), want [News Tech]", pds.lastRec["tags"], pds.lastRec["tags"])
+	}
+	// Rev-2 shape: identity lives in the required source union, not flat.
+	recSource, ok := pds.lastRec["source"].(map[string]any)
+	if !ok || recSource["$type"] != "blue.morgen.feed.subscription#rssFeed" || recSource["feedUrl"] != "https://example.test/feed.xml" {
+		t.Errorf("PDS record source = %v, want rssFeed variant", pds.lastRec["source"])
+	}
+	if _, flat := pds.lastRec["feedUrl"]; flat {
+		t.Errorf("PDS record must not carry flat feedUrl: %v", pds.lastRec["feedUrl"])
 	}
 
 	// Tier-1 upsert persisted them (round-trip via the stored row).
@@ -800,6 +1284,10 @@ func (failingPDS) PutRecord(_ context.Context, _ *oauth.ClientSession, _ syntax.
 
 func (failingPDS) DeleteRecord(_ context.Context, _ *oauth.ClientSession, _ syntax.NSID, _ string) error {
 	return errors.New("pds down")
+}
+
+func (failingPDS) ListRecords(_ context.Context, _ *oauth.ClientSession, _ syntax.NSID) ([]atprepo.ListedRecord, error) {
+	return nil, errors.New("pds down")
 }
 
 func ptrString(s string) *string { return &s }

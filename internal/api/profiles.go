@@ -11,6 +11,7 @@ import (
 
 	"morgenblau/internal/cache/profiles"
 	"morgenblau/internal/middleware/auth"
+	"morgenblau/internal/oauth/scopes"
 )
 
 // ProfileSource is the slice of *profiles.Cache the handlers depend on.
@@ -20,9 +21,18 @@ type ProfileSource interface {
 	Refresh(ctx context.Context, did syntax.DID) (profiles.Profile, error)
 }
 
+// meResponse is the session user's profile plus session-health flags the
+// frontend needs for calm prompting.
+type meResponse struct {
+	profiles.Profile
+	// NeedsReauth is true when the session's grant predates the standardfeed
+	// scopes — standard-record writes will 403 until the user re-logs-in.
+	NeedsReauth bool `json:"needsReauth"`
+}
+
 // MeProfileHandler returns the session user's profile {did, handle,
-// displayName, avatar}. Self-bypass is implicit: always Refresh so user-driven
-// Bluesky profile edits surface immediately.
+// displayName, avatar} plus needsReauth. Self-bypass is implicit: always
+// Refresh so user-driven Bluesky profile edits surface immediately.
 func MeProfileHandler(src ProfileSource) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := auth.SessionFromContext(r.Context())
@@ -41,7 +51,7 @@ func MeProfileHandler(src ProfileSource) http.Handler {
 			http.Error(w, "could not resolve identity", http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, p)
+		writeJSON(w, meResponse{Profile: p, NeedsReauth: !scopes.HasStandardWrite(sess)})
 	})
 }
 

@@ -9,8 +9,22 @@ import (
 	"context"
 )
 
+const deleteFeedEntry = `-- name: DeleteFeedEntry :exec
+DELETE FROM feed_entries WHERE feed_url = ? AND guid = ?
+`
+
+type DeleteFeedEntryParams struct {
+	FeedUrl string `json:"feed_url"`
+	Guid    string `json:"guid"`
+}
+
+func (q *Queries) DeleteFeedEntry(ctx context.Context, arg DeleteFeedEntryParams) error {
+	_, err := q.db.ExecContext(ctx, deleteFeedEntry, arg.FeedUrl, arg.Guid)
+	return err
+}
+
 const getFeedEntryBySlug = `-- name: GetFeedEntryBySlug :one
-SELECT id, feed_url, guid, entry_slug, url, title, content_html, content_type, published_at, fetched_at, metadata, extracted_body
+SELECT id, feed_url, guid, entry_slug, url, title, content_html, content_type, published_at, fetched_at, metadata, extracted_body, record_cid
 FROM feed_entries WHERE entry_slug = ?
 `
 
@@ -30,6 +44,7 @@ func (q *Queries) GetFeedEntryBySlug(ctx context.Context, entrySlug string) (Fee
 		&i.FetchedAt,
 		&i.Metadata,
 		&i.ExtractedBody,
+		&i.RecordCid,
 	)
 	return i, err
 }
@@ -39,6 +54,7 @@ SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
     e.published_at, e.fetched_at, e.metadata, e.extracted_body,
     us.title AS feed_title,
+    f.title AS catalog_title,
     f.site_url AS feed_site_url,
     f.icon_url AS feed_icon_url
 FROM feed_entries e
@@ -62,6 +78,7 @@ type ListAllEntriesForUserRow struct {
 	Metadata      *string `json:"metadata"`
 	ExtractedBody *string `json:"extracted_body"`
 	FeedTitle     *string `json:"feed_title"`
+	CatalogTitle  *string `json:"catalog_title"`
 	FeedSiteUrl   *string `json:"feed_site_url"`
 	FeedIconUrl   *string `json:"feed_icon_url"`
 }
@@ -89,6 +106,7 @@ func (q *Queries) ListAllEntriesForUser(ctx context.Context, did string) ([]List
 			&i.Metadata,
 			&i.ExtractedBody,
 			&i.FeedTitle,
+			&i.CatalogTitle,
 			&i.FeedSiteUrl,
 			&i.FeedIconUrl,
 		); err != nil {
@@ -110,6 +128,7 @@ SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
     e.published_at, e.fetched_at, e.metadata, e.extracted_body,
     us.title AS feed_title,
+    f.title AS catalog_title,
     f.site_url AS feed_site_url,
     f.icon_url AS feed_icon_url
 FROM feed_entries e
@@ -141,6 +160,7 @@ type ListDigestForUserRow struct {
 	Metadata      *string `json:"metadata"`
 	ExtractedBody *string `json:"extracted_body"`
 	FeedTitle     *string `json:"feed_title"`
+	CatalogTitle  *string `json:"catalog_title"`
 	FeedSiteUrl   *string `json:"feed_site_url"`
 	FeedIconUrl   *string `json:"feed_icon_url"`
 }
@@ -168,6 +188,7 @@ func (q *Queries) ListDigestForUser(ctx context.Context, arg ListDigestForUserPa
 			&i.Metadata,
 			&i.ExtractedBody,
 			&i.FeedTitle,
+			&i.CatalogTitle,
 			&i.FeedSiteUrl,
 			&i.FeedIconUrl,
 		); err != nil {
@@ -189,6 +210,7 @@ SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
     e.published_at, e.fetched_at, e.metadata, e.extracted_body,
     us.title AS feed_title,
+    f.title AS catalog_title,
     f.site_url AS feed_site_url,
     f.icon_url AS feed_icon_url
 FROM feed_entries e
@@ -219,6 +241,7 @@ type ListEntriesForSourceRow struct {
 	Metadata      *string `json:"metadata"`
 	ExtractedBody *string `json:"extracted_body"`
 	FeedTitle     *string `json:"feed_title"`
+	CatalogTitle  *string `json:"catalog_title"`
 	FeedSiteUrl   *string `json:"feed_site_url"`
 	FeedIconUrl   *string `json:"feed_icon_url"`
 }
@@ -249,9 +272,42 @@ func (q *Queries) ListEntriesForSource(ctx context.Context, arg ListEntriesForSo
 			&i.Metadata,
 			&i.ExtractedBody,
 			&i.FeedTitle,
+			&i.CatalogTitle,
 			&i.FeedSiteUrl,
 			&i.FeedIconUrl,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFeedEntriesForDiff = `-- name: ListFeedEntriesForDiff :many
+SELECT guid, record_cid FROM feed_entries WHERE feed_url = ?
+`
+
+type ListFeedEntriesForDiffRow struct {
+	Guid      string  `json:"guid"`
+	RecordCid *string `json:"record_cid"`
+}
+
+func (q *Queries) ListFeedEntriesForDiff(ctx context.Context, feedUrl string) ([]ListFeedEntriesForDiffRow, error) {
+	rows, err := q.db.QueryContext(ctx, listFeedEntriesForDiff, feedUrl)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFeedEntriesForDiffRow
+	for rows.Next() {
+		var i ListFeedEntriesForDiffRow
+		if err := rows.Scan(&i.Guid, &i.RecordCid); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -317,6 +373,58 @@ func (q *Queries) UpsertFeedEntry(ctx context.Context, arg UpsertFeedEntryParams
 		arg.PublishedAt,
 		arg.FetchedAt,
 		arg.Metadata,
+	)
+	return err
+}
+
+const upsertStandardfeedEntry = `-- name: UpsertStandardfeedEntry :exec
+INSERT INTO feed_entries (feed_url, guid, entry_slug, url, title, content_html, content_type, published_at, fetched_at, metadata, extracted_body, record_cid)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (feed_url, guid) DO UPDATE SET
+    url            = excluded.url,
+    title          = excluded.title,
+    content_html   = excluded.content_html,
+    content_type   = excluded.content_type,
+    published_at   = excluded.published_at,
+    fetched_at     = excluded.fetched_at,
+    metadata       = excluded.metadata,
+    extracted_body = excluded.extracted_body,
+    record_cid     = excluded.record_cid
+`
+
+type UpsertStandardfeedEntryParams struct {
+	FeedUrl       string  `json:"feed_url"`
+	Guid          string  `json:"guid"`
+	EntrySlug     string  `json:"entry_slug"`
+	Url           string  `json:"url"`
+	Title         *string `json:"title"`
+	ContentHtml   *string `json:"content_html"`
+	ContentType   string  `json:"content_type"`
+	PublishedAt   string  `json:"published_at"`
+	FetchedAt     string  `json:"fetched_at"`
+	Metadata      *string `json:"metadata"`
+	ExtractedBody *string `json:"extracted_body"`
+	RecordCid     *string `json:"record_cid"`
+}
+
+// Standardfeed counterpart to UpsertFeedEntry. Unlike the rss upsert it owns
+// extracted_body and record_cid on conflict: a CID change must reset the
+// cached readability body (path-ful docs pass NULL) or refresh the plaintext
+// fallback (path-less docs pass the new textContent).
+func (q *Queries) UpsertStandardfeedEntry(ctx context.Context, arg UpsertStandardfeedEntryParams) error {
+	_, err := q.db.ExecContext(ctx, upsertStandardfeedEntry,
+		arg.FeedUrl,
+		arg.Guid,
+		arg.EntrySlug,
+		arg.Url,
+		arg.Title,
+		arg.ContentHtml,
+		arg.ContentType,
+		arg.PublishedAt,
+		arg.FetchedAt,
+		arg.Metadata,
+		arg.ExtractedBody,
+		arg.RecordCid,
 	)
 	return err
 }

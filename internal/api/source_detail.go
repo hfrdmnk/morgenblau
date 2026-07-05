@@ -128,15 +128,17 @@ func SubscriptionEntriesHandler(reader SourceEntriesReader) http.Handler {
 }
 
 func sourceDetailRowToWire(row db.GetUserSourceWithStatsRow, now time.Time) SubscriptionDetailWire {
-	value := map[string]any{"feedUrl": row.FeedUrl}
+	value := map[string]any{"source": sourceUnion(row.Kind, row.FeedUrl)}
 	title := ""
 	if row.Title != nil {
 		value["title"] = *row.Title
 		title = *row.Title
 	}
+	if title == "" && row.CatalogTitle != nil {
+		title = *row.CatalogTitle
+	}
 	siteURL := ""
 	if row.SiteUrl != nil {
-		value["siteUrl"] = *row.SiteUrl
 		siteURL = *row.SiteUrl
 	}
 	faviconURL := ""
@@ -153,22 +155,28 @@ func sourceDetailRowToWire(row db.GetUserSourceWithStatsRow, now time.Time) Subs
 	}
 	lastPublished := asString(row.LastPublishedAt)
 	firstPublished := asString(row.FirstPublishedAt)
+	kind := wireKind(row.Kind)
+	wire := SubscriptionWire{
+		URI:             row.AtUri,
+		Value:           value,
+		Rkey:            row.Rkey,
+		Kind:            kind,
+		FeedURL:         row.FeedUrl,
+		Title:           title,
+		SiteURL:         siteURL,
+		FaviconURL:      faviconURL,
+		Frequency:       frequencyBucket(firstPublished, row.Count7d, row.Count28d, row.Count56d, row.Count84d, now),
+		LastPublishedAt: lastPublished,
+		Primary:         primary,
+		Tags:            tagList,
+	}
+	if kind == "standardfeed" {
+		wire.Publication = row.FeedUrl
+	}
 	return SubscriptionDetailWire{
-		SubscriptionWire: SubscriptionWire{
-			URI:             row.AtUri,
-			Value:           value,
-			Rkey:            row.Rkey,
-			FeedURL:         row.FeedUrl,
-			Title:           title,
-			SiteURL:         siteURL,
-			FaviconURL:      faviconURL,
-			Frequency:       frequencyBucket(firstPublished, row.Count7d, row.Count28d, row.Count56d, row.Count84d, now),
-			LastPublishedAt: lastPublished,
-			Primary:         primary,
-			Tags:            tagList,
-		},
-		TotalEntries: row.TotalEntries,
-		SavedByYou:   row.SavedByYou,
+		SubscriptionWire: wire,
+		TotalEntries:     row.TotalEntries,
+		SavedByYou:       row.SavedByYou,
 	}
 }
 
@@ -180,7 +188,7 @@ func sourceEntryRowToWire(row db.ListEntriesForSourceRow) EntryWire {
 		URL:         row.Url,
 		ContentType: row.ContentType,
 		PublishedAt: row.PublishedAt,
-		Source:      buildSourceMeta(row.FeedUrl, row.FeedTitle, row.FeedSiteUrl, row.FeedIconUrl),
+		Source:      buildSourceMeta(row.FeedUrl, displayTitle(row.FeedTitle, row.CatalogTitle), row.FeedSiteUrl, row.FeedIconUrl),
 		Body:        row.ContentHtml,
 		Metadata:    row.Metadata,
 	}

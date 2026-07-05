@@ -146,6 +146,79 @@ func TestCreateRecord_PropagatesUpstreamError(t *testing.T) {
 	}
 }
 
+// TestListRecords_PagesUntilCursorEmpty mirrors the pdslister contract: an
+// empty page with a non-empty cursor is a valid continuation; only an empty
+// cursor terminates. Stopping early would make the DELETE sweep miss
+// duplicate standard records.
+func TestListRecords_PagesUntilCursorEmpty(t *testing.T) {
+	page := 0
+	pages := []struct {
+		records []map[string]any
+		cursor  string
+	}{
+		{records: []map[string]any{
+			{"uri": "at://did:plc:example/site.standard.graph.subscription/3a", "cid": "b", "value": map[string]any{"publication": "at://pub/one"}},
+		}, cursor: "c1"},
+		{records: nil, cursor: "c2"},
+		{records: []map[string]any{
+			{"uri": "at://did:plc:example/site.standard.graph.subscription/3b", "cid": "b", "value": map[string]any{"publication": "at://pub/two"}},
+		}, cursor: ""},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/xrpc/com.atproto.repo.listRecords" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("repo"); got != "did:plc:example" {
+			t.Errorf("repo = %q", got)
+		}
+		if got := r.URL.Query().Get("collection"); got != "site.standard.graph.subscription" {
+			t.Errorf("collection = %q", got)
+		}
+		if page >= len(pages) {
+			t.Errorf("unexpected extra page request: %d", page)
+			http.Error(w, "extra", http.StatusInternalServerError)
+			return
+		}
+		p := pages[page]
+		page++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"records": p.records, "cursor": p.cursor})
+	}))
+	defer srv.Close()
+
+	out, err := (SessionWriter{}).ListRecords(context.Background(), newTestSession(t, srv), syntax.NSID("site.standard.graph.subscription"))
+	if err != nil {
+		t.Fatalf("ListRecords: %v", err)
+	}
+	if page != len(pages) {
+		t.Errorf("pages fetched = %d, want %d", page, len(pages))
+	}
+	if len(out) != 2 {
+		t.Fatalf("records = %d, want 2", len(out))
+	}
+	if out[0].URI != "at://did:plc:example/site.standard.graph.subscription/3a" {
+		t.Errorf("first record = %+v", out[0])
+	}
+	if pub, _ := out[1].Value["publication"].(string); pub != "at://pub/two" {
+		t.Errorf("second record value = %+v", out[1].Value)
+	}
+}
+
+func TestListRecords_PropagatesUpstreamError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"InvalidRequest","message":"bad collection"}`))
+	}))
+	defer srv.Close()
+
+	_, err := (SessionWriter{}).ListRecords(context.Background(), newTestSession(t, srv), syntax.NSID("site.standard.graph.subscription"))
+	if err == nil {
+		t.Fatal("expected upstream error")
+	}
+}
+
 func repoServer(t *testing.T, endpoint string, h http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

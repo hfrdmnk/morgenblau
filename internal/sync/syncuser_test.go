@@ -22,20 +22,65 @@ type fakeStore struct {
 	upserts      int
 	upsertParams map[string]db.UpsertUserSubscriptionParams // rkey -> last params
 	feedUps      int
+	feedParams   []db.UpsertFeedParams
 	feedErr      func(feedURL string) error
 	saves            map[string]map[string]db.ListUserSavesForSyncRow // did -> rkey -> row
 	saveDeletes      []string
 	saveUpserts      int
 	saveUpsertParams map[string]db.UpsertUserSaveParams // rkey -> last params
+	shares            map[string]map[string]db.ListUserSharesForSyncRow // did -> rkey -> row
+	shareDeletes      []string
+	shareUpsertParams map[string]db.UpsertUserShareParams // rkey -> last params
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		rows:             map[string]map[string]db.ListUserSubscriptionsForSyncRow{},
-		upsertParams:     map[string]db.UpsertUserSubscriptionParams{},
-		saves:            map[string]map[string]db.ListUserSavesForSyncRow{},
-		saveUpsertParams: map[string]db.UpsertUserSaveParams{},
+		rows:              map[string]map[string]db.ListUserSubscriptionsForSyncRow{},
+		upsertParams:      map[string]db.UpsertUserSubscriptionParams{},
+		saves:             map[string]map[string]db.ListUserSavesForSyncRow{},
+		saveUpsertParams:  map[string]db.UpsertUserSaveParams{},
+		shares:            map[string]map[string]db.ListUserSharesForSyncRow{},
+		shareUpsertParams: map[string]db.UpsertUserShareParams{},
 	}
+}
+
+func (s *fakeStore) ListUserSharesForSync(_ context.Context, did string) ([]db.ListUserSharesForSyncRow, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows := make([]db.ListUserSharesForSyncRow, 0, len(s.shares[did]))
+	for _, r := range s.shares[did] {
+		rows = append(rows, r)
+	}
+	return rows, nil
+}
+
+func (s *fakeStore) UpsertUserShare(_ context.Context, arg db.UpsertUserShareParams) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.shareUpsertParams[arg.Rkey] = arg
+	if _, ok := s.shares[arg.Did]; !ok {
+		s.shares[arg.Did] = map[string]db.ListUserSharesForSyncRow{}
+	}
+	s.shares[arg.Did][arg.Rkey] = db.ListUserSharesForSyncRow{
+		Did:         arg.Did,
+		Rkey:        arg.Rkey,
+		AtUri:       arg.AtUri,
+		Kind:        arg.Kind,
+		ItemUrl:     arg.ItemUrl,
+		Document:    arg.Document,
+		SidecarRkey: arg.SidecarRkey,
+	}
+	return nil
+}
+
+func (s *fakeStore) DeleteUserShare(_ context.Context, arg db.DeleteUserShareParams) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.shareDeletes = append(s.shareDeletes, arg.Rkey)
+	if m, ok := s.shares[arg.Did]; ok {
+		delete(m, arg.Rkey)
+	}
+	return nil
 }
 
 func (s *fakeStore) ListUserSavesForSync(_ context.Context, did string) ([]db.ListUserSavesForSyncRow, error) {
@@ -94,12 +139,18 @@ func (s *fakeStore) UpsertUserSubscription(_ context.Context, arg db.UpsertUserS
 	if _, ok := s.rows[arg.Did]; !ok {
 		s.rows[arg.Did] = map[string]db.ListUserSubscriptionsForSyncRow{}
 	}
+	kind := "rss"
+	if k, ok := arg.Kind.(string); ok && k != "" {
+		kind = k
+	}
 	s.rows[arg.Did][arg.Rkey] = db.ListUserSubscriptionsForSyncRow{
-		Did:     arg.Did,
-		Rkey:    arg.Rkey,
-		AtUri:   arg.AtUri,
-		FeedUrl: arg.FeedUrl,
-		Title:   arg.Title,
+		Did:         arg.Did,
+		Rkey:        arg.Rkey,
+		AtUri:       arg.AtUri,
+		FeedUrl:     arg.FeedUrl,
+		Kind:        kind,
+		SidecarRkey: arg.SidecarRkey,
+		Title:       arg.Title,
 	}
 	return nil
 }
@@ -118,6 +169,7 @@ func (s *fakeStore) UpsertFeed(_ context.Context, arg db.UpsertFeedParams) error
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.feedUps++
+	s.feedParams = append(s.feedParams, arg)
 	if s.feedErr != nil {
 		if err := s.feedErr(arg.FeedUrl); err != nil {
 			return err
@@ -127,10 +179,17 @@ func (s *fakeStore) UpsertFeed(_ context.Context, arg db.UpsertFeedParams) error
 }
 
 type fakeLister struct {
-	calls int32
-	delay time.Duration
-	subs  []PDSSubscription
-	saves []PDSSave
+	calls         int32
+	delay         time.Duration
+	subs          []PDSSubscription
+	subsErr       error
+	saves         []PDSSave
+	standardSubs  []PDSStandardSubscription
+	standardErr   error
+	shares        []PDSShare
+	sharesErr     error
+	recommends    []PDSRecommend
+	recommendsErr error
 }
 
 func (f *fakeLister) ListSubscriptions(_ context.Context, _ *oauth.ClientSession) ([]PDSSubscription, error) {
@@ -138,11 +197,23 @@ func (f *fakeLister) ListSubscriptions(_ context.Context, _ *oauth.ClientSession
 	if f.delay > 0 {
 		time.Sleep(f.delay)
 	}
-	return f.subs, nil
+	return f.subs, f.subsErr
 }
 
 func (f *fakeLister) ListSaves(_ context.Context, _ *oauth.ClientSession) ([]PDSSave, error) {
 	return f.saves, nil
+}
+
+func (f *fakeLister) ListStandardSubscriptions(_ context.Context, _ *oauth.ClientSession) ([]PDSStandardSubscription, error) {
+	return f.standardSubs, f.standardErr
+}
+
+func (f *fakeLister) ListShares(_ context.Context, _ *oauth.ClientSession) ([]PDSShare, error) {
+	return f.shares, f.sharesErr
+}
+
+func (f *fakeLister) ListRecommends(_ context.Context, _ *oauth.ClientSession) ([]PDSRecommend, error) {
+	return f.recommends, f.recommendsErr
 }
 
 type countingFetcher struct {
@@ -182,10 +253,10 @@ func TestSyncUser_ReconcileApplies_InsertsAndDeletes(t *testing.T) {
 		"oldA": {Did: "did:plc:alice", Rkey: "oldA", AtUri: "at://x/a/oldA", FeedUrl: "https://feed/old"},
 	}
 	lister := &fakeLister{subs: []PDSSubscription{
-		{URI: "at://x/a/newB", Rkey: "newB", FeedURL: "https://feed/new", Title: "New"},
+		{URI: "at://x/a/newB", Kind: "rss", Rkey: "newB", FeedURL: "https://feed/new", Title: "New"},
 	}}
 	fetcher := &countingFetcher{}
-	eng := NewEngine(jobs.New(), store, lister, fetcher, nil)
+	eng := NewEngine(jobs.New(), store, lister, fetcher, nil, nil)
 	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
 		t.Fatal(err)
 	}
@@ -205,10 +276,10 @@ func TestSyncUser_ReconcileApplies_InsertsAndDeletes(t *testing.T) {
 func TestSyncUser_ReconcilePreservesPrimaryAndTags(t *testing.T) {
 	store := newFakeStore()
 	lister := &fakeLister{subs: []PDSSubscription{
-		{URI: "at://x/a/withMeta", Rkey: "withMeta", FeedURL: "https://feed/meta", Primary: true, Tags: []string{"tech", "design"}},
-		{URI: "at://x/a/bare", Rkey: "bare", FeedURL: "https://feed/bare"},
+		{URI: "at://x/a/withMeta", Kind: "rss", Rkey: "withMeta", FeedURL: "https://feed/meta", Primary: true, Tags: []string{"tech", "design"}},
+		{URI: "at://x/a/bare", Kind: "rss", Rkey: "bare", FeedURL: "https://feed/bare"},
 	}}
-	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil)
+	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
 	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +311,7 @@ func TestSyncUser_ReconcileSaves_InsertsAndDeletes(t *testing.T) {
 	lister := &fakeLister{saves: []PDSSave{
 		{URI: "at://x/s/newB", Rkey: "newB", ItemURL: "https://item/new", FeedURL: feed, CreatedAt: "2026-06-01T00:00:00Z"},
 	}}
-	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil)
+	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
 
 	if err := eng.reconcileSaves(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
 		t.Fatal(err)
@@ -270,7 +341,7 @@ func TestSyncUser_ReconcileSaves_EmptyCreatedAtFallsBackToNow(t *testing.T) {
 	lister := &fakeLister{saves: []PDSSave{
 		{URI: "at://x/s/noDate", Rkey: "noDate", ItemURL: "https://item/x", CreatedAt: ""},
 	}}
-	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil)
+	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
 	if err := eng.reconcileSaves(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
 		t.Fatal(err)
 	}
@@ -291,10 +362,10 @@ func TestSyncUser_DualTrackParallelism(t *testing.T) {
 		"k1": {Did: "did:plc:alice", Rkey: "k1", AtUri: "at://x/a/k1", FeedUrl: "https://existing"},
 	}
 	lister := &fakeLister{delay: delay, subs: []PDSSubscription{
-		{URI: "at://x/a/k1", Rkey: "k1", FeedURL: "https://existing"},
+		{URI: "at://x/a/k1", Kind: "rss", Rkey: "k1", FeedURL: "https://existing"},
 	}}
 	fetcher := &countingFetcher{delay: delay}
-	eng := NewEngine(jobs.New(), store, lister, fetcher, nil)
+	eng := NewEngine(jobs.New(), store, lister, fetcher, nil, nil)
 
 	t0 := time.Now()
 	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
@@ -312,11 +383,11 @@ func TestSyncUser_Phase2FetchesOnlyNewURLs(t *testing.T) {
 		"k1": {Did: "did:plc:alice", Rkey: "k1", AtUri: "at://x/a/k1", FeedUrl: "https://old"},
 	}
 	lister := &fakeLister{subs: []PDSSubscription{
-		{URI: "at://x/a/k1", Rkey: "k1", FeedURL: "https://old"},
-		{URI: "at://x/a/new", Rkey: "new", FeedURL: "https://new"},
+		{URI: "at://x/a/k1", Kind: "rss", Rkey: "k1", FeedURL: "https://old"},
+		{URI: "at://x/a/new", Kind: "rss", Rkey: "new", FeedURL: "https://new"},
 	}}
 	fetcher := &countingFetcher{}
-	eng := NewEngine(jobs.New(), store, lister, fetcher, nil)
+	eng := NewEngine(jobs.New(), store, lister, fetcher, nil, nil)
 	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
 		t.Fatal(err)
 	}
@@ -350,11 +421,11 @@ func TestSyncUser_FK_NotCalledOnTier2Failure(t *testing.T) {
 		return nil
 	}
 	lister := &fakeLister{subs: []PDSSubscription{
-		{URI: "at://x/a/ok", Rkey: "ok", FeedURL: "https://ok/feed"},
-		{URI: "at://x/a/broken", Rkey: "broken", FeedURL: "https://broken/feed"},
+		{URI: "at://x/a/ok", Kind: "rss", Rkey: "ok", FeedURL: "https://ok/feed"},
+		{URI: "at://x/a/broken", Kind: "rss", Rkey: "broken", FeedURL: "https://broken/feed"},
 	}}
 	fetcher := &countingFetcher{}
-	eng := NewEngine(jobs.New(), store, lister, fetcher, nil)
+	eng := NewEngine(jobs.New(), store, lister, fetcher, nil, nil)
 	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +451,7 @@ func TestSyncUser_InFlightGuard_Coalesces(t *testing.T) {
 	store := newFakeStore()
 	lister := &fakeLister{}
 	tracker := jobs.New()
-	eng := NewEngine(tracker, store, lister, &countingFetcher{}, &nopResumer{})
+	eng := NewEngine(tracker, store, lister, &countingFetcher{}, &nopResumer{}, nil)
 
 	did := mustDID("did:plc:alice")
 
@@ -397,11 +468,11 @@ func TestSyncUser_ShutdownWaitsForRun(t *testing.T) {
 	store := newFakeStore()
 	// Slow lister so the run goroutine is still in flight when Shutdown fires.
 	lister := &fakeLister{delay: 200 * time.Millisecond, subs: []PDSSubscription{
-		{URI: "at://x/a/k1", Rkey: "k1", FeedURL: "https://example.com/feed"},
+		{URI: "at://x/a/k1", Kind: "rss", Rkey: "k1", FeedURL: "https://example.com/feed"},
 	}}
 	fetcher := &countingFetcher{}
 	tracker := jobs.New()
-	eng := NewEngine(tracker, store, lister, fetcher, &nopResumer{})
+	eng := NewEngine(tracker, store, lister, fetcher, &nopResumer{}, nil)
 	orch := New(tracker, fetcher, eng)
 
 	id, err := orch.StartLoginRefresh(context.Background(), mustDID("did:plc:alice"), "sid-1")
@@ -435,11 +506,11 @@ func TestOrchestrator_ShutdownDeadlineExceeded(t *testing.T) {
 	store := newFakeStore()
 	// Lister that blocks longer than the Shutdown deadline.
 	lister := &fakeLister{delay: 500 * time.Millisecond, subs: []PDSSubscription{
-		{URI: "at://x/a/k1", Rkey: "k1", FeedURL: "https://example.com/feed"},
+		{URI: "at://x/a/k1", Kind: "rss", Rkey: "k1", FeedURL: "https://example.com/feed"},
 	}}
 	tracker := jobs.New()
 	fetcher := &countingFetcher{}
-	eng := NewEngine(tracker, store, lister, fetcher, &nopResumer{})
+	eng := NewEngine(tracker, store, lister, fetcher, &nopResumer{}, nil)
 	orch := New(tracker, fetcher, eng)
 
 	if _, err := orch.StartLoginRefresh(context.Background(), mustDID("did:plc:alice"), "sid-1"); err != nil {

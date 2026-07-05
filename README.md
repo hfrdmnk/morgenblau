@@ -56,6 +56,10 @@ Local dev uses a **loopback client**: `client_id` is `http://localhost`, callbac
 
 For prod, set both env vars to your public URLs and serve `oauth-client-metadata.json` + `jwks.json` from that origin.
 
+### Scopes
+
+`BLUESKY_OAUTH_SCOPE` (see `.env.example`) requests `atproto include:blue.morgen.access` plus the two co-owned Standardfeed grants `repo:site.standard.graph.subscription` and `repo:site.standard.graph.recommend`. The Standardfeed grants back the publication-source and share flows; sessions minted before they were added still work for RSS, but Standardfeed writes return `403 {"code":"reauth_required"}` and the UI shows a calm "sign in again" prompt. Widening the scope requires a fresh sign-in — the app can't upgrade an existing session's grant.
+
 ## Database
 
 SQLite via the pure-Go `modernc.org/sqlite` driver — the DB file lives at `$DB_PATH` (default `./data/morgenblau.db`) and is created on first open. WAL mode, foreign keys on, and a 5s busy timeout are set via DSN pragmas. Plain SQL, no ORM. Migrations live in `internal/database/migrations/`, handwritten queries in `internal/database/queries/`, generated code in `internal/database/db/`.

@@ -7,7 +7,9 @@ export type AddedSubscription = {
     uri: string;
     cid?: string;
     rkey: string;
+    kind?: 'rss' | 'standardfeed';
     feedUrl: string;
+    publication?: string;
     title?: string;
     siteUrl?: string;
     value: Record<string, unknown>;

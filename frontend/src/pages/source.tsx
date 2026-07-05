@@ -47,7 +47,9 @@ const FREQUENCY_LABEL: Record<Frequency, string> = {
 
 type SourceDetail = {
     rkey: string;
+    kind?: 'rss' | 'standardfeed';
     feedUrl: string;
+    publication?: string;
     title?: string;
     siteUrl?: string;
     frequency?: Frequency;

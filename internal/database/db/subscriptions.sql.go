@@ -24,7 +24,7 @@ func (q *Queries) DeleteUserSubscription(ctx context.Context, arg DeleteUserSubs
 }
 
 const getFeed = `-- name: GetFeed :one
-SELECT feed_url, site_url, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at
+SELECT feed_url, kind, site_url, title, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at
 FROM feeds WHERE feed_url = ?
 `
 
@@ -33,7 +33,9 @@ func (q *Queries) GetFeed(ctx context.Context, feedUrl string) (Feed, error) {
 	var i Feed
 	err := row.Scan(
 		&i.FeedUrl,
+		&i.Kind,
 		&i.SiteUrl,
+		&i.Title,
 		&i.Etag,
 		&i.LastModified,
 		&i.LastFetchedAt,
@@ -60,10 +62,11 @@ func (q *Queries) GetFeedIconURL(ctx context.Context, feedUrl string) (*string, 
 
 const getUserSourceWithStats = `-- name: GetUserSourceWithStats :one
 SELECT
-    us.did, us.rkey, us.at_uri, us.feed_url, us.title,
+    us.did, us.rkey, us.at_uri, us.feed_url, us.kind, us.sidecar_rkey, us.title,
     us.is_primary, us.tags,
     us.created_at, us.updated_at,
     f.site_url, f.icon_url,
+    f.title AS catalog_title,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
     COALESCE((SELECT MIN(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?1 AND fe.published_at < ?2) AS count_7d,
@@ -92,6 +95,8 @@ type GetUserSourceWithStatsRow struct {
 	Rkey             string      `json:"rkey"`
 	AtUri            string      `json:"at_uri"`
 	FeedUrl          string      `json:"feed_url"`
+	Kind             string      `json:"kind"`
+	SidecarRkey      *string     `json:"sidecar_rkey"`
 	Title            *string     `json:"title"`
 	IsPrimary        int64       `json:"is_primary"`
 	Tags             *string     `json:"tags"`
@@ -99,6 +104,7 @@ type GetUserSourceWithStatsRow struct {
 	UpdatedAt        string      `json:"updated_at"`
 	SiteUrl          *string     `json:"site_url"`
 	IconUrl          *string     `json:"icon_url"`
+	CatalogTitle     *string     `json:"catalog_title"`
 	LastPublishedAt  interface{} `json:"last_published_at"`
 	FirstPublishedAt interface{} `json:"first_published_at"`
 	Count7d          int64       `json:"count_7d"`
@@ -128,6 +134,8 @@ func (q *Queries) GetUserSourceWithStats(ctx context.Context, arg GetUserSourceW
 		&i.Rkey,
 		&i.AtUri,
 		&i.FeedUrl,
+		&i.Kind,
+		&i.SidecarRkey,
 		&i.Title,
 		&i.IsPrimary,
 		&i.Tags,
@@ -135,6 +143,7 @@ func (q *Queries) GetUserSourceWithStats(ctx context.Context, arg GetUserSourceW
 		&i.UpdatedAt,
 		&i.SiteUrl,
 		&i.IconUrl,
+		&i.CatalogTitle,
 		&i.LastPublishedAt,
 		&i.FirstPublishedAt,
 		&i.Count7d,
@@ -148,7 +157,7 @@ func (q *Queries) GetUserSourceWithStats(ctx context.Context, arg GetUserSourceW
 }
 
 const getUserSubscription = `-- name: GetUserSubscription :one
-SELECT did, rkey, at_uri, feed_url, title, is_primary, tags, created_at, updated_at
+SELECT did, rkey, at_uri, feed_url, kind, sidecar_rkey, title, is_primary, tags, created_at, updated_at
 FROM user_subscriptions WHERE did = ? AND rkey = ?
 `
 
@@ -165,6 +174,8 @@ func (q *Queries) GetUserSubscription(ctx context.Context, arg GetUserSubscripti
 		&i.Rkey,
 		&i.AtUri,
 		&i.FeedUrl,
+		&i.Kind,
+		&i.SidecarRkey,
 		&i.Title,
 		&i.IsPrimary,
 		&i.Tags,
@@ -175,7 +186,7 @@ func (q *Queries) GetUserSubscription(ctx context.Context, arg GetUserSubscripti
 }
 
 const getUserSubscriptionByFeedURL = `-- name: GetUserSubscriptionByFeedURL :one
-SELECT did, rkey, at_uri, feed_url, title, is_primary, tags, created_at, updated_at
+SELECT did, rkey, at_uri, feed_url, kind, sidecar_rkey, title, is_primary, tags, created_at, updated_at
 FROM user_subscriptions WHERE did = ? AND feed_url = ?
 `
 
@@ -192,6 +203,8 @@ func (q *Queries) GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserS
 		&i.Rkey,
 		&i.AtUri,
 		&i.FeedUrl,
+		&i.Kind,
+		&i.SidecarRkey,
 		&i.Title,
 		&i.IsPrimary,
 		&i.Tags,
@@ -203,10 +216,11 @@ func (q *Queries) GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserS
 
 const listUserSourcesWithStats = `-- name: ListUserSourcesWithStats :many
 SELECT
-    us.did, us.rkey, us.at_uri, us.feed_url, us.title,
+    us.did, us.rkey, us.at_uri, us.feed_url, us.kind, us.sidecar_rkey, us.title,
     us.is_primary, us.tags,
     us.created_at, us.updated_at,
     f.site_url, f.icon_url,
+    f.title AS catalog_title,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
     COALESCE((SELECT MIN(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?1 AND fe.published_at < ?2) AS count_7d,
@@ -216,7 +230,7 @@ SELECT
 FROM user_subscriptions us
 LEFT JOIN feeds f ON f.feed_url = us.feed_url
 WHERE us.did = ?6
-ORDER BY COALESCE(NULLIF(us.title, ''), us.feed_url) COLLATE NOCASE ASC
+ORDER BY COALESCE(NULLIF(us.title, ''), f.title, us.feed_url) COLLATE NOCASE ASC
 `
 
 type ListUserSourcesWithStatsParams struct {
@@ -233,6 +247,8 @@ type ListUserSourcesWithStatsRow struct {
 	Rkey             string      `json:"rkey"`
 	AtUri            string      `json:"at_uri"`
 	FeedUrl          string      `json:"feed_url"`
+	Kind             string      `json:"kind"`
+	SidecarRkey      *string     `json:"sidecar_rkey"`
 	Title            *string     `json:"title"`
 	IsPrimary        int64       `json:"is_primary"`
 	Tags             *string     `json:"tags"`
@@ -240,6 +256,7 @@ type ListUserSourcesWithStatsRow struct {
 	UpdatedAt        string      `json:"updated_at"`
 	SiteUrl          *string     `json:"site_url"`
 	IconUrl          *string     `json:"icon_url"`
+	CatalogTitle     *string     `json:"catalog_title"`
 	LastPublishedAt  interface{} `json:"last_published_at"`
 	FirstPublishedAt interface{} `json:"first_published_at"`
 	Count7d          int64       `json:"count_7d"`
@@ -272,6 +289,8 @@ func (q *Queries) ListUserSourcesWithStats(ctx context.Context, arg ListUserSour
 			&i.Rkey,
 			&i.AtUri,
 			&i.FeedUrl,
+			&i.Kind,
+			&i.SidecarRkey,
 			&i.Title,
 			&i.IsPrimary,
 			&i.Tags,
@@ -279,6 +298,7 @@ func (q *Queries) ListUserSourcesWithStats(ctx context.Context, arg ListUserSour
 			&i.UpdatedAt,
 			&i.SiteUrl,
 			&i.IconUrl,
+			&i.CatalogTitle,
 			&i.LastPublishedAt,
 			&i.FirstPublishedAt,
 			&i.Count7d,
@@ -330,7 +350,7 @@ func (q *Queries) ListUserSubscriptionTags(ctx context.Context, did string) ([]*
 }
 
 const listUserSubscriptions = `-- name: ListUserSubscriptions :many
-SELECT did, rkey, at_uri, feed_url, title, is_primary, tags, created_at, updated_at
+SELECT did, rkey, at_uri, feed_url, kind, sidecar_rkey, title, is_primary, tags, created_at, updated_at
 FROM user_subscriptions WHERE did = ?
 ORDER BY COALESCE(NULLIF(title, ''), feed_url) COLLATE NOCASE ASC
 `
@@ -349,11 +369,62 @@ func (q *Queries) ListUserSubscriptions(ctx context.Context, did string) ([]User
 			&i.Rkey,
 			&i.AtUri,
 			&i.FeedUrl,
+			&i.Kind,
+			&i.SidecarRkey,
 			&i.Title,
 			&i.IsPrimary,
 			&i.Tags,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserSubscriptionsWithSiteURL = `-- name: ListUserSubscriptionsWithSiteURL :many
+SELECT us.rkey, us.feed_url, us.kind, us.title, f.site_url, f.title AS catalog_title
+FROM user_subscriptions us
+LEFT JOIN feeds f ON f.feed_url = us.feed_url
+WHERE us.did = ?
+`
+
+type ListUserSubscriptionsWithSiteURLRow struct {
+	Rkey         string  `json:"rkey"`
+	FeedUrl      string  `json:"feed_url"`
+	Kind         string  `json:"kind"`
+	Title        *string `json:"title"`
+	SiteUrl      *string `json:"site_url"`
+	CatalogTitle *string `json:"catalog_title"`
+}
+
+// Sibling-guard read: every subscription with its catalog site_url so the
+// resolve handler can flag candidates that point at the same site under the
+// other kind (rss vs standardfeed).
+func (q *Queries) ListUserSubscriptionsWithSiteURL(ctx context.Context, did string) ([]ListUserSubscriptionsWithSiteURLRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUserSubscriptionsWithSiteURL, did)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUserSubscriptionsWithSiteURLRow
+	for rows.Next() {
+		var i ListUserSubscriptionsWithSiteURLRow
+		if err := rows.Scan(
+			&i.Rkey,
+			&i.FeedUrl,
+			&i.Kind,
+			&i.Title,
+			&i.SiteUrl,
+			&i.CatalogTitle,
 		); err != nil {
 			return nil, err
 		}
@@ -417,24 +488,32 @@ func (q *Queries) UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchS
 }
 
 const upsertFeed = `-- name: UpsertFeed :exec
-INSERT INTO feeds (feed_url, site_url, created_at, updated_at)
-VALUES (?, ?, ?, ?)
+INSERT INTO feeds (feed_url, kind, site_url, title, created_at, updated_at)
+VALUES (?, COALESCE(NULLIF(?6, ''), 'rss'), ?, ?, ?, ?)
 ON CONFLICT (feed_url) DO UPDATE SET
     site_url = COALESCE(NULLIF(excluded.site_url, ''), feeds.site_url),
+    title = COALESCE(excluded.title, feeds.title),
     updated_at = excluded.updated_at
 `
 
 type UpsertFeedParams struct {
-	FeedUrl   string  `json:"feed_url"`
-	SiteUrl   *string `json:"site_url"`
-	CreatedAt string  `json:"created_at"`
-	UpdatedAt string  `json:"updated_at"`
+	FeedUrl   string      `json:"feed_url"`
+	Kind      interface{} `json:"kind"`
+	SiteUrl   *string     `json:"site_url"`
+	Title     *string     `json:"title"`
+	CreatedAt string      `json:"created_at"`
+	UpdatedAt string      `json:"updated_at"`
 }
 
+// kind defaults to 'rss' via NULLIF so pre-standardfeed callers passing the
+// zero value keep working; it is never changed on conflict. title is the
+// cached publication name; COALESCE keeps rss callers (nil) from clobbering it.
 func (q *Queries) UpsertFeed(ctx context.Context, arg UpsertFeedParams) error {
 	_, err := q.db.ExecContext(ctx, upsertFeed,
 		arg.FeedUrl,
+		arg.Kind,
 		arg.SiteUrl,
+		arg.Title,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -443,27 +522,30 @@ func (q *Queries) UpsertFeed(ctx context.Context, arg UpsertFeedParams) error {
 
 const upsertUserSubscription = `-- name: UpsertUserSubscription :exec
 INSERT INTO user_subscriptions (
-    did, rkey, at_uri, feed_url, title, is_primary, tags, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    did, rkey, at_uri, feed_url, kind, sidecar_rkey, title, is_primary, tags, created_at, updated_at
+) VALUES (?, ?, ?, ?, COALESCE(NULLIF(?11, ''), 'rss'), ?, ?, ?, ?, ?, ?)
 ON CONFLICT (did, rkey) DO UPDATE SET
-    at_uri     = excluded.at_uri,
-    feed_url   = excluded.feed_url,
-    title      = excluded.title,
-    is_primary = excluded.is_primary,
-    tags       = excluded.tags,
-    updated_at = excluded.updated_at
+    at_uri       = excluded.at_uri,
+    feed_url     = excluded.feed_url,
+    sidecar_rkey = excluded.sidecar_rkey,
+    title        = excluded.title,
+    is_primary   = excluded.is_primary,
+    tags         = excluded.tags,
+    updated_at   = excluded.updated_at
 `
 
 type UpsertUserSubscriptionParams struct {
-	Did       string  `json:"did"`
-	Rkey      string  `json:"rkey"`
-	AtUri     string  `json:"at_uri"`
-	FeedUrl   string  `json:"feed_url"`
-	Title     *string `json:"title"`
-	IsPrimary int64   `json:"is_primary"`
-	Tags      *string `json:"tags"`
-	CreatedAt string  `json:"created_at"`
-	UpdatedAt string  `json:"updated_at"`
+	Did         string      `json:"did"`
+	Rkey        string      `json:"rkey"`
+	AtUri       string      `json:"at_uri"`
+	FeedUrl     string      `json:"feed_url"`
+	Kind        interface{} `json:"kind"`
+	SidecarRkey *string     `json:"sidecar_rkey"`
+	Title       *string     `json:"title"`
+	IsPrimary   int64       `json:"is_primary"`
+	Tags        *string     `json:"tags"`
+	CreatedAt   string      `json:"created_at"`
+	UpdatedAt   string      `json:"updated_at"`
 }
 
 func (q *Queries) UpsertUserSubscription(ctx context.Context, arg UpsertUserSubscriptionParams) error {
@@ -472,6 +554,8 @@ func (q *Queries) UpsertUserSubscription(ctx context.Context, arg UpsertUserSubs
 		arg.Rkey,
 		arg.AtUri,
 		arg.FeedUrl,
+		arg.Kind,
+		arg.SidecarRkey,
 		arg.Title,
 		arg.IsPrimary,
 		arg.Tags,

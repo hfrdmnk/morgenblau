@@ -16,6 +16,7 @@ import (
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/middleware/auth"
+	"morgenblau/internal/standardfeed"
 	"morgenblau/internal/tags"
 )
 
@@ -81,6 +82,13 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		var body patchRequest
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+
+		// A standardfeed source has no feed URL to re-point — its identity
+		// is the publication at-uri on the standard record.
+		if row.Kind == "standardfeed" && body.FeedURL != nil {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"message": "feed URL cannot be changed for a publication source"})
 			return
 		}
 
@@ -156,9 +164,72 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			return
 		}
 
+		if row.Kind == "standardfeed" {
+			// Metadata rides the blue.morgen sidecar; the standard existence
+			// record is never touched by edits, so no scope gate here — the
+			// old blue.morgen grant suffices.
+			now := time.Now().UTC().Format(time.RFC3339)
+			record := map[string]any{
+				"source":    sourceUnion(row.Kind, row.FeedUrl),
+				"createdAt": row.CreatedAt,
+				"updatedAt": now,
+			}
+			if newTitle != nil {
+				record["title"] = *newTitle
+			}
+			if newPrimary != 0 {
+				record["primary"] = true
+			}
+			if len(newTagsSlice) > 0 {
+				record["tags"] = newTagsSlice
+			}
+			var (
+				sidecarRkey string
+				err         error
+			)
+			if row.SidecarRkey != nil && *row.SidecarRkey != "" {
+				sidecarRkey = *row.SidecarRkey
+				_, err = pds.PutRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), sidecarRkey, record)
+			} else {
+				// First customization: create the sidecar lazily.
+				var ref *atprepo.RecordRef
+				ref, err = pds.CreateRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), record)
+				if err == nil {
+					sidecarRkey = atprepo.RkeyFromATURI(ref.URI)
+				}
+			}
+			if err != nil {
+				slog.Warn("/api/subscriptions PATCH: PDS sidecar write failed", "err", err)
+				http.Error(w, "upstream PDS error", http.StatusBadGateway)
+				return
+			}
+			if err := writer.UpsertUserSubscription(r.Context(), db.UpsertUserSubscriptionParams{
+				Did:         didStr,
+				Rkey:        rkey,
+				AtUri:       row.AtUri,
+				FeedUrl:     row.FeedUrl,
+				Kind:        row.Kind,
+				SidecarRkey: &sidecarRkey,
+				Title:       newTitle,
+				IsPrimary:   newPrimary,
+				Tags:        newTags,
+				CreatedAt:   row.CreatedAt,
+				UpdatedAt:   now,
+			}); err != nil {
+				slog.Warn("/api/subscriptions PATCH: Tier-1 upsert failed", "err", err)
+			}
+			row.Title = newTitle
+			row.IsPrimary = newPrimary
+			row.Tags = newTags
+			row.SidecarRkey = &sidecarRkey
+			row.UpdatedAt = now
+			writeJSON(w, patchResponse{SubscriptionWire: rowToWire(row)})
+			return
+		}
+
 		// Build the new record body. PDS putRecord replaces atomically.
 		record := map[string]any{
-			"feedUrl":   newFeedURL,
+			"source":    sourceUnion(row.Kind, newFeedURL),
 			"createdAt": row.CreatedAt,
 			"updatedAt": time.Now().UTC().Format(time.RFC3339),
 		}
@@ -225,9 +296,19 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 	})
 }
 
-// SubscriptionsDeleteHandler tombstones the PDS record and removes the
+// RepoWriterLister is the PDS surface the DELETE handler needs: record
+// writes plus the own-repo listing used to sweep duplicate standard records.
+type RepoWriterLister interface {
+	atprepo.Writer
+	atprepo.Lister
+}
+
+// SubscriptionsDeleteHandler tombstones the PDS record(s) and removes the
 // Tier-1 row. Tier-2 feeds row is left alone — other users may still subscribe.
-func SubscriptionsDeleteHandler(reader IndexRkeyReader, deleter IndexDeleter, pds atprepo.Writer) http.Handler {
+// For standardfeed sources it deletes EVERY standard record matching the
+// publication (other apps may have written duplicates; leaving one would
+// resurrect the subscription on the next reconcile) plus the sidecar.
+func SubscriptionsDeleteHandler(reader IndexRkeyReader, deleter IndexDeleter, pds RepoWriterLister) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := auth.SessionFromContext(r.Context())
 		if sess == nil || sess.Data == nil {
@@ -240,7 +321,7 @@ func SubscriptionsDeleteHandler(reader IndexRkeyReader, deleter IndexDeleter, pd
 			return
 		}
 		didStr := sess.Data.AccountDID.String()
-		_, err := reader.GetUserSubscription(r.Context(), db.GetUserSubscriptionParams{Did: didStr, Rkey: rkey})
+		row, err := reader.GetUserSubscription(r.Context(), db.GetUserSubscriptionParams{Did: didStr, Rkey: rkey})
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				http.Error(w, "forbidden", http.StatusForbidden)
@@ -250,10 +331,41 @@ func SubscriptionsDeleteHandler(reader IndexRkeyReader, deleter IndexDeleter, pd
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), rkey); err != nil {
-			slog.Warn("/api/subscriptions DELETE: PDS delete failed", "err", err)
-			http.Error(w, "upstream PDS error", http.StatusBadGateway)
-			return
+
+		if row.Kind == "standardfeed" {
+			if !requireStandardWrite(w, sess) {
+				return
+			}
+			records, err := pds.ListRecords(r.Context(), sess, syntax.NSID(standardfeed.CollectionSubscription))
+			if err != nil {
+				slog.Warn("/api/subscriptions DELETE: standard collection list failed", "err", err)
+				http.Error(w, "upstream PDS error", http.StatusBadGateway)
+				return
+			}
+			for _, rec := range records {
+				publication, _ := rec.Value["publication"].(string)
+				if publication != row.FeedUrl {
+					continue
+				}
+				if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(standardfeed.CollectionSubscription), atprepo.RkeyFromATURI(rec.URI)); err != nil {
+					slog.Warn("/api/subscriptions DELETE: standard record delete failed", "uri", rec.URI, "err", err)
+					http.Error(w, "upstream PDS error", http.StatusBadGateway)
+					return
+				}
+			}
+			if row.SidecarRkey != nil && *row.SidecarRkey != "" {
+				if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), *row.SidecarRkey); err != nil {
+					slog.Warn("/api/subscriptions DELETE: sidecar delete failed", "err", err)
+					http.Error(w, "upstream PDS error", http.StatusBadGateway)
+					return
+				}
+			}
+		} else {
+			if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), rkey); err != nil {
+				slog.Warn("/api/subscriptions DELETE: PDS delete failed", "err", err)
+				http.Error(w, "upstream PDS error", http.StatusBadGateway)
+				return
+			}
 		}
 		if err := deleter.DeleteUserSubscription(r.Context(), db.DeleteUserSubscriptionParams{Did: didStr, Rkey: rkey}); err != nil {
 			slog.Warn("/api/subscriptions DELETE: Tier-1 delete failed", "err", err)

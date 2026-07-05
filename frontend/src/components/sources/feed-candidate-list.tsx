@@ -1,4 +1,4 @@
-import { Tick02Icon } from '@hugeicons/core-free-icons';
+import { AtIcon, Tick02Icon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
 import type { Ref } from 'react';
 import { memo, useId } from 'react';
@@ -9,14 +9,17 @@ import { CreatableCombobox } from '@/components/ui/creatable-combobox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { candidateKey, type FeedCandidate } from '@/lib/candidates';
 import { cn } from '@/lib/utils';
 import { youtubeShortsFreeFeedUrl } from '@/lib/youtube';
 
-export type FeedCandidate = {
-    feedUrl: string;
-    title: string | null;
-    siteUrl: string | null;
-};
+export type { FeedCandidate };
 
 type Selection = {
     title: string;
@@ -32,12 +35,14 @@ const EMPTY_TAGS: string[] = [];
 type Props = {
     candidates: FeedCandidate[];
     existingByFeedUrl: Map<string, string | null>;
+    // Candidate keys blocked because their cross-kind sibling is selected.
+    siblingBlocked: Set<string>;
     selected: Record<string, Selection>;
     onToggle: (candidate: FeedCandidate) => void;
-    onTitleChange: (feedUrl: string, title: string) => void;
-    onPrimaryChange: (feedUrl: string, primary: boolean) => void;
-    onTagsChange: (feedUrl: string, tags: string[]) => void;
-    onExcludeShortsChange: (feedUrl: string, excludeShorts: boolean) => void;
+    onTitleChange: (key: string, title: string) => void;
+    onPrimaryChange: (key: string, primary: boolean) => void;
+    onTagsChange: (key: string, tags: string[]) => void;
+    onExcludeShortsChange: (key: string, excludeShorts: boolean) => void;
     tagSuggestions: string[];
     firstCheckboxRef?: Ref<HTMLInputElement>;
     firstTitleInputRef?: Ref<HTMLInputElement>;
@@ -47,6 +52,7 @@ type Props = {
 export function FeedCandidateList({
     candidates,
     existingByFeedUrl,
+    siblingBlocked,
     selected,
     onToggle,
     onTitleChange,
@@ -59,48 +65,52 @@ export function FeedCandidateList({
     'aria-labelledby': ariaLabelledBy,
 }: Props) {
     return (
-        <div
-            role="group"
-            aria-labelledby={ariaLabelledBy}
-            className="flex flex-col gap-2"
-        >
-            {candidates.map((candidate, index) => {
-                const isExisting = existingByFeedUrl.has(candidate.feedUrl);
-                const savedTitle = isExisting
-                    ? (existingByFeedUrl.get(candidate.feedUrl) ?? null)
-                    : null;
-                const selection = selected[candidate.feedUrl];
-                const isSelected = selection !== undefined;
+        <TooltipProvider>
+            <div
+                role="group"
+                aria-labelledby={ariaLabelledBy}
+                className="flex flex-col gap-2"
+            >
+                {candidates.map((candidate, index) => {
+                    const key = candidateKey(candidate);
+                    const isExisting = existingByFeedUrl.has(key);
+                    const savedTitle = isExisting
+                        ? (existingByFeedUrl.get(key) ?? null)
+                        : null;
+                    const selection = selected[key];
+                    const isSelected = selection !== undefined;
 
-                return (
-                    <FeedCandidateCard
-                        key={candidate.feedUrl}
-                        candidate={candidate}
-                        isExisting={isExisting}
-                        savedTitle={savedTitle}
-                        isSelected={isSelected}
-                        selectedTitle={selection?.title ?? ''}
-                        selectedPrimary={selection?.primary ?? false}
-                        selectedTags={selection?.tags ?? EMPTY_TAGS}
-                        selectedExcludeShorts={
-                            selection?.excludeShorts ?? false
-                        }
-                        onToggle={onToggle}
-                        onTitleChange={onTitleChange}
-                        onPrimaryChange={onPrimaryChange}
-                        onTagsChange={onTagsChange}
-                        onExcludeShortsChange={onExcludeShortsChange}
-                        tagSuggestions={tagSuggestions}
-                        firstCheckboxRef={
-                            index === 0 ? firstCheckboxRef : undefined
-                        }
-                        firstTitleInputRef={
-                            index === 0 ? firstTitleInputRef : undefined
-                        }
-                    />
-                );
-            })}
-        </div>
+                    return (
+                        <FeedCandidateCard
+                            key={key}
+                            candidate={candidate}
+                            isExisting={isExisting}
+                            savedTitle={savedTitle}
+                            isSiblingBlocked={siblingBlocked.has(key)}
+                            isSelected={isSelected}
+                            selectedTitle={selection?.title ?? ''}
+                            selectedPrimary={selection?.primary ?? false}
+                            selectedTags={selection?.tags ?? EMPTY_TAGS}
+                            selectedExcludeShorts={
+                                selection?.excludeShorts ?? false
+                            }
+                            onToggle={onToggle}
+                            onTitleChange={onTitleChange}
+                            onPrimaryChange={onPrimaryChange}
+                            onTagsChange={onTagsChange}
+                            onExcludeShortsChange={onExcludeShortsChange}
+                            tagSuggestions={tagSuggestions}
+                            firstCheckboxRef={
+                                index === 0 ? firstCheckboxRef : undefined
+                            }
+                            firstTitleInputRef={
+                                index === 0 ? firstTitleInputRef : undefined
+                            }
+                        />
+                    );
+                })}
+            </div>
+        </TooltipProvider>
     );
 }
 
@@ -108,25 +118,36 @@ type CardProps = {
     candidate: FeedCandidate;
     isExisting: boolean;
     savedTitle: string | null;
+    isSiblingBlocked: boolean;
     isSelected: boolean;
     selectedTitle: string;
     selectedPrimary: boolean;
     selectedTags: string[];
     selectedExcludeShorts: boolean;
     onToggle: (candidate: FeedCandidate) => void;
-    onTitleChange: (feedUrl: string, title: string) => void;
-    onPrimaryChange: (feedUrl: string, primary: boolean) => void;
-    onTagsChange: (feedUrl: string, tags: string[]) => void;
-    onExcludeShortsChange: (feedUrl: string, excludeShorts: boolean) => void;
+    onTitleChange: (key: string, title: string) => void;
+    onPrimaryChange: (key: string, primary: boolean) => void;
+    onTagsChange: (key: string, tags: string[]) => void;
+    onExcludeShortsChange: (key: string, excludeShorts: boolean) => void;
     tagSuggestions: string[];
     firstCheckboxRef?: Ref<HTMLInputElement>;
     firstTitleInputRef?: Ref<HTMLInputElement>;
 };
 
+function subscribedViaLabel(via: { kind: string; title?: string }): string {
+    if (via.title) {
+        return `Already subscribed via ${via.title}`;
+    }
+    return via.kind === 'standardfeed'
+        ? 'Already subscribed via ATProto'
+        : 'Already subscribed via RSS';
+}
+
 const FeedCandidateCard = memo(function FeedCandidateCard({
     candidate,
     isExisting,
     savedTitle,
+    isSiblingBlocked,
     isSelected,
     selectedTitle,
     selectedPrimary,
@@ -146,12 +167,18 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
     const tagsId = useId();
     const primaryId = useId();
     const excludeShortsId = useId();
-    const shortsFreeUrl = youtubeShortsFreeFeedUrl(candidate.feedUrl);
+    const key = candidateKey(candidate);
+    const shortsFreeUrl = candidate.feedUrl
+        ? youtubeShortsFreeFeedUrl(candidate.feedUrl)
+        : null;
+    const isStandard = candidate.kind === 'standardfeed';
+    const isDisabled =
+        isExisting || candidate.subscribedVia !== undefined || isSiblingBlocked;
 
     return (
         <div
             data-state={
-                isExisting ? 'existing' : isSelected ? 'selected' : 'idle'
+                isDisabled ? 'existing' : isSelected ? 'selected' : 'idle'
             }
             className="rounded-xl bg-muted"
         >
@@ -159,13 +186,13 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                 htmlFor={inputId}
                 className={cn(
                     'flex min-w-0 items-start gap-3 px-4 py-3',
-                    isExisting ? 'cursor-not-allowed' : 'cursor-pointer',
+                    isDisabled ? 'cursor-not-allowed' : 'cursor-pointer',
                 )}
             >
                 <span
                     className={cn(
                         'relative mt-0.5 inline-flex shrink-0',
-                        isExisting && 'opacity-60',
+                        isDisabled && 'opacity-60',
                     )}
                 >
                     <input
@@ -179,7 +206,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                             'disabled:cursor-not-allowed',
                         )}
                         checked={isSelected || isExisting}
-                        disabled={isExisting}
+                        disabled={isDisabled}
                         onChange={() => onToggle(candidate)}
                     />
                     <HugeiconsIcon
@@ -192,26 +219,56 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                         <span
                             className={cn(
                                 'truncate text-sm font-medium',
-                                isExisting && 'opacity-60',
+                                isDisabled && 'opacity-60',
                             )}
                         >
                             {(isExisting ? savedTitle : candidate.title) ??
-                                candidate.feedUrl}
+                                candidate.feedUrl ??
+                                candidate.siteUrl ??
+                                key}
                         </span>
                         {isExisting && <Badge>Already added</Badge>}
+                        {!isExisting && candidate.subscribedVia && (
+                            <Badge>
+                                {subscribedViaLabel(candidate.subscribedVia)}
+                            </Badge>
+                        )}
+                        {!isExisting && !candidate.subscribedVia && isSiblingBlocked && (
+                            <Badge>Same site selected</Badge>
+                        )}
+                        {isStandard &&
+                            !isExisting &&
+                            !candidate.subscribedVia && (
+                                <Tooltip>
+                                    <TooltipTrigger
+                                        render={
+                                            <Badge className="cursor-help">
+                                                <HugeiconsIcon icon={AtIcon} />
+                                                Subscribe via ATProto
+                                            </Badge>
+                                        }
+                                    />
+                                    <TooltipContent>
+                                        This subscription lives in your own
+                                        account: it travels with you across
+                                        apps, and anything you share reaches
+                                        the whole Atmosphere.
+                                    </TooltipContent>
+                                </Tooltip>
+                            )}
                     </span>
                     <span
                         className={cn(
                             'truncate text-xs text-muted-foreground',
-                            isExisting && 'opacity-60',
+                            isDisabled && 'opacity-60',
                         )}
                     >
-                        {candidate.feedUrl}
+                        {candidate.feedUrl ?? candidate.siteUrl ?? key}
                     </span>
                 </div>
             </label>
 
-            <Collapsible open={isSelected && !isExisting}>
+            <Collapsible open={isSelected && !isDisabled}>
                 <CollapsibleContent className="overflow-hidden">
                     <div className="flex flex-col gap-4 border-t border-border px-4 py-3">
                         <div className="flex flex-col gap-1.5">
@@ -224,10 +281,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                 type="text"
                                 value={selectedTitle}
                                 onChange={(event) =>
-                                    onTitleChange(
-                                        candidate.feedUrl,
-                                        event.target.value,
-                                    )
+                                    onTitleChange(key, event.target.value)
                                 }
                             />
                         </div>
@@ -248,7 +302,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                 id={primaryId}
                                 checked={selectedPrimary}
                                 onCheckedChange={(checked) =>
-                                    onPrimaryChange(candidate.feedUrl, checked)
+                                    onPrimaryChange(key, checked)
                                 }
                             />
                         </div>
@@ -270,10 +324,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                     id={excludeShortsId}
                                     checked={selectedExcludeShorts}
                                     onCheckedChange={(checked) =>
-                                        onExcludeShortsChange(
-                                            candidate.feedUrl,
-                                            checked,
-                                        )
+                                        onExcludeShortsChange(key, checked)
                                     }
                                 />
                             </div>
@@ -287,7 +338,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                 id={tagsId}
                                 value={selectedTags}
                                 onValueChange={(tags) =>
-                                    onTagsChange(candidate.feedUrl, tags)
+                                    onTagsChange(key, tags)
                                 }
                                 suggestions={tagSuggestions}
                                 placeholder="Add tags…"

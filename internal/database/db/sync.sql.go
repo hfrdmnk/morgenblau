@@ -64,17 +64,19 @@ func (q *Queries) ListFeedURLsForUser(ctx context.Context, did string) ([]string
 }
 
 const listUserSubscriptionsForSync = `-- name: ListUserSubscriptionsForSync :many
-SELECT did, rkey, at_uri, feed_url, title
+SELECT did, rkey, at_uri, feed_url, kind, sidecar_rkey, title
 FROM user_subscriptions
 WHERE did = ?
 `
 
 type ListUserSubscriptionsForSyncRow struct {
-	Did     string  `json:"did"`
-	Rkey    string  `json:"rkey"`
-	AtUri   string  `json:"at_uri"`
-	FeedUrl string  `json:"feed_url"`
-	Title   *string `json:"title"`
+	Did         string  `json:"did"`
+	Rkey        string  `json:"rkey"`
+	AtUri       string  `json:"at_uri"`
+	FeedUrl     string  `json:"feed_url"`
+	Kind        string  `json:"kind"`
+	SidecarRkey *string `json:"sidecar_rkey"`
+	Title       *string `json:"title"`
 }
 
 func (q *Queries) ListUserSubscriptionsForSync(ctx context.Context, did string) ([]ListUserSubscriptionsForSyncRow, error) {
@@ -91,6 +93,8 @@ func (q *Queries) ListUserSubscriptionsForSync(ctx context.Context, did string) 
 			&i.Rkey,
 			&i.AtUri,
 			&i.FeedUrl,
+			&i.Kind,
+			&i.SidecarRkey,
 			&i.Title,
 		); err != nil {
 			return nil, err

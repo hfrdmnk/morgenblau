@@ -7,20 +7,61 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/feedfinder"
 	"morgenblau/internal/middleware/auth"
+	"morgenblau/internal/oauth/scopes"
+	"morgenblau/internal/standardfeed"
 	"morgenblau/internal/tags"
 )
 
-const subscriptionCollection = "blue.morgen.feed.subscription"
+const (
+	subscriptionCollection = "blue.morgen.feed.subscription"
+	sourceTypeRSS          = subscriptionCollection + "#rssFeed"
+	sourceTypeStandard     = subscriptionCollection + "#standardPublication"
+)
+
+// sourceUnion rebuilds the record's `source` variant from an index row. The
+// catalog key doubles as the variant payload: feed URL for rss, publication
+// at-uri for standardfeed.
+func sourceUnion(kind, catalogKey string) map[string]any {
+	if kind == "standardfeed" {
+		return map[string]any{"$type": sourceTypeStandard, "publication": catalogKey}
+	}
+	return map[string]any{"$type": sourceTypeRSS, "feedUrl": catalogKey}
+}
+
+// wireKind normalizes a stored kind for the wire; anything but standardfeed
+// (including the zero value on rows predating the column) reads as rss.
+func wireKind(kind string) string {
+	if kind == "standardfeed" {
+		return "standardfeed"
+	}
+	return "rss"
+}
+
+// requireStandardWrite gates site.standard.graph.* writes on the session's
+// grant. Sessions minted before the scope change get a 403 the frontend
+// turns into a calm re-auth prompt.
+func requireStandardWrite(w http.ResponseWriter, sess *oauth.ClientSession) bool {
+	if scopes.HasStandardWrite(sess) {
+		return true
+	}
+	writeJSONStatus(w, http.StatusForbidden, map[string]string{
+		"code":    "reauth_required",
+		"message": "sign in again to enable ATProto subscriptions",
+	})
+	return false
+}
 
 // SubscriptionWire is the on-the-wire shape returned by GET / POST. The list
 // endpoint additionally fills FaviconURL, Frequency, and LastPublishedAt;
@@ -32,7 +73,9 @@ type SubscriptionWire struct {
 	Value map[string]any `json:"value"`
 	// Embedded sugar for the frontend so callers don't dig into Value.
 	Rkey            string   `json:"rkey"`
+	Kind            string   `json:"kind"`
 	FeedURL         string   `json:"feedUrl"`
+	Publication     string   `json:"publication,omitempty"`
 	Title           string   `json:"title,omitempty"`
 	SiteURL         string   `json:"siteUrl,omitempty"`
 	FaviconURL      string   `json:"faviconUrl,omitempty"`
@@ -111,7 +154,7 @@ func SubscriptionsListHandler(reader SourcesReader) http.Handler {
 
 func rowToWire(row db.UserSubscription) SubscriptionWire {
 	value := map[string]any{
-		"feedUrl": row.FeedUrl,
+		"source": sourceUnion(row.Kind, row.FeedUrl),
 	}
 	title := ""
 	if row.Title != nil {
@@ -126,27 +169,37 @@ func rowToWire(row db.UserSubscription) SubscriptionWire {
 	if len(tagList) > 0 {
 		value["tags"] = tagList
 	}
-	return SubscriptionWire{
+	kind := wireKind(row.Kind)
+	wire := SubscriptionWire{
 		URI:     row.AtUri,
 		Value:   value,
 		Rkey:    row.Rkey,
+		Kind:    kind,
 		FeedURL: row.FeedUrl,
 		Title:   title,
 		Primary: primary,
 		Tags:    tagList,
 	}
+	if kind == "standardfeed" {
+		wire.Publication = row.FeedUrl
+	}
+	return wire
 }
 
 func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) SubscriptionWire {
-	value := map[string]any{"feedUrl": row.FeedUrl}
+	value := map[string]any{"source": sourceUnion(row.Kind, row.FeedUrl)}
 	title := ""
 	if row.Title != nil {
 		value["title"] = *row.Title
 		title = *row.Title
 	}
+	if title == "" && row.CatalogTitle != nil {
+		// No user override: fall back to the catalog title (the cached
+		// publication name for standardfeed sources).
+		title = *row.CatalogTitle
+	}
 	siteURL := ""
 	if row.SiteUrl != nil {
-		value["siteUrl"] = *row.SiteUrl
 		siteURL = *row.SiteUrl
 	}
 	faviconURL := ""
@@ -163,10 +216,12 @@ func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) Subscrip
 	}
 	lastPublished := asString(row.LastPublishedAt)
 	firstPublished := asString(row.FirstPublishedAt)
-	return SubscriptionWire{
+	kind := wireKind(row.Kind)
+	wire := SubscriptionWire{
 		URI:             row.AtUri,
 		Value:           value,
 		Rkey:            row.Rkey,
+		Kind:            kind,
 		FeedURL:         row.FeedUrl,
 		Title:           title,
 		SiteURL:         siteURL,
@@ -176,6 +231,10 @@ func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) Subscrip
 		Primary:         primary,
 		Tags:            tagList,
 	}
+	if kind == "standardfeed" {
+		wire.Publication = row.FeedUrl
+	}
+	return wire
 }
 
 // frequencyBucket implements the cadence rule:
@@ -231,19 +290,41 @@ type resolveRequest struct {
 	URL string `json:"url"`
 }
 
-type resolveResponse struct {
-	Candidates            []feedfinder.Candidate `json:"candidates"`
-	ExistingSubscriptions []existingSubMeta      `json:"existingSubscriptions"`
+// candidateWire is a finder candidate plus the sibling annotation: set when
+// the user already subscribes to the same site under the OTHER kind.
+type candidateWire struct {
+	feedfinder.Candidate
+	SubscribedVia *subscribedVia `json:"subscribedVia,omitempty"`
 }
 
+type subscribedVia struct {
+	Kind  string `json:"kind"`
+	Title string `json:"title,omitempty"`
+}
+
+type resolveResponse struct {
+	Candidates            []candidateWire   `json:"candidates"`
+	ExistingSubscriptions []existingSubMeta `json:"existingSubscriptions"`
+}
+
+// existingSubMeta flags a candidate the user already subscribes to. FeedURL
+// carries the catalog key — the publication at-uri for standardfeed rows —
+// so the picker can match it against `publication ?? feedUrl`.
 type existingSubMeta struct {
 	FeedURL string  `json:"feedUrl"`
 	Title   *string `json:"title"`
 }
 
-// SubscriptionsResolveHandler turns a pasted URL into feed candidates and
-// flags any candidates that the user is already subscribed to.
-func SubscriptionsResolveHandler(reader IndexReader, finder FeedFinder) http.Handler {
+// ResolveReader is the read slice of the resolve handler: the per-candidate
+// dedupe probe plus the sibling-guard join.
+type ResolveReader interface {
+	GetUserSubscriptionByFeedURL(ctx context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error)
+	ListUserSubscriptionsWithSiteURL(ctx context.Context, did string) ([]db.ListUserSubscriptionsWithSiteURLRow, error)
+}
+
+// SubscriptionsResolveHandler turns a pasted URL into feed candidates, flags
+// any the user already subscribes to, and annotates cross-kind siblings.
+func SubscriptionsResolveHandler(reader ResolveReader, finder FeedFinder) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := auth.SessionFromContext(r.Context())
 		if sess == nil || sess.Data == nil {
@@ -268,26 +349,109 @@ func SubscriptionsResolveHandler(reader IndexReader, finder FeedFinder) http.Han
 			return
 		}
 
-		existing := make([]existingSubMeta, 0)
-		for _, c := range cands {
-			row, err := reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
-				Did:     sess.Data.AccountDID.String(),
-				FeedUrl: c.FeedURL,
-			})
-			if err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
+		// Sibling annotation is best-effort UX sugar — a failed join never
+		// fails the resolve.
+		siblings := map[string][]subscribedVia{}
+		if subs, err := reader.ListUserSubscriptionsWithSiteURL(r.Context(), sess.Data.AccountDID.String()); err != nil {
+			slog.Warn("/api/subscriptions/resolve: sibling join failed", "err", err)
+		} else {
+			for _, s := range subs {
+				key := subscriptionSiblingKey(s)
+				if key == "" {
 					continue
 				}
-				slog.Warn("/api/subscriptions/resolve: index probe failed", "err", err)
-				continue
+				title := ""
+				if s.Title != nil && *s.Title != "" {
+					title = *s.Title
+				} else if s.CatalogTitle != nil {
+					title = *s.CatalogTitle
+				}
+				siblings[key] = append(siblings[key], subscribedVia{Kind: wireKind(s.Kind), Title: title})
 			}
-			existing = append(existing, existingSubMeta{FeedURL: row.FeedUrl, Title: row.Title})
 		}
-		if cands == nil {
-			cands = []feedfinder.Candidate{}
+
+		existing := make([]existingSubMeta, 0)
+		out := make([]candidateWire, 0, len(cands))
+		for _, c := range cands {
+			// Candidate identity: publication at-uri for standardfeed, feed
+			// URL for rss — the same key the create path dedupes on.
+			probeKey := c.FeedURL
+			if c.Publication != "" {
+				probeKey = c.Publication
+			}
+			row, err := reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
+				Did:     sess.Data.AccountDID.String(),
+				FeedUrl: probeKey,
+			})
+			switch {
+			case err == nil:
+				existing = append(existing, existingSubMeta{FeedURL: row.FeedUrl, Title: row.Title})
+			case !errors.Is(err, sql.ErrNoRows):
+				slog.Warn("/api/subscriptions/resolve: index probe failed", "err", err)
+			}
+
+			wire := candidateWire{Candidate: c}
+			key, kind := candidateSiblingKey(c)
+			if key != "" {
+				for _, via := range siblings[key] {
+					if via.Kind != kind {
+						v := via
+						wire.SubscribedVia = &v
+						break
+					}
+				}
+			}
+			out = append(out, wire)
 		}
-		writeJSON(w, resolveResponse{Candidates: cands, ExistingSubscriptions: existing})
+		writeJSON(w, resolveResponse{Candidates: out, ExistingSubscriptions: existing})
 	})
+}
+
+// siblingKey normalizes a site URL for cross-kind matching: lowercase host
+// minus "www.", plus the path minus its trailing slash. Host+path keeps
+// shared-host publications (leaflet.pub/<pub>) from false matches.
+func siblingKey(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	host := strings.TrimPrefix(strings.ToLower(u.Host), "www.")
+	return host + strings.TrimRight(u.Path, "/")
+}
+
+// rssSiblingKey keys an rss source: its site URL, falling back to the feed
+// URL's bare host (empty path) when no site URL is known.
+func rssSiblingKey(siteURL, feedURL string) string {
+	if key := siblingKey(siteURL); key != "" {
+		return key
+	}
+	u, err := url.Parse(feedURL)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return strings.TrimPrefix(strings.ToLower(u.Host), "www.")
+}
+
+func subscriptionSiblingKey(row db.ListUserSubscriptionsWithSiteURLRow) string {
+	siteURL := ""
+	if row.SiteUrl != nil {
+		siteURL = *row.SiteUrl
+	}
+	if row.Kind == "standardfeed" {
+		return siblingKey(siteURL)
+	}
+	return rssSiblingKey(siteURL, row.FeedUrl)
+}
+
+func candidateSiblingKey(c feedfinder.Candidate) (string, string) {
+	kind := wireKind(c.Kind)
+	if kind == "standardfeed" {
+		return siblingKey(c.SiteURL), kind
+	}
+	return rssSiblingKey(c.SiteURL, c.FeedURL), kind
 }
 
 // --- POST /api/subscriptions ---
@@ -296,12 +460,16 @@ type addRequest struct {
 	Subscriptions []addItem `json:"subscriptions"`
 }
 
+// addItem carries either feedUrl (rss) or publication (standardfeed) —
+// exactly one. For standardfeed, title/primary/tags are sent only when the
+// user customized them in the picker; defaults mean "no sidecar record".
 type addItem struct {
-	FeedURL string   `json:"feedUrl"`
-	Title   string   `json:"title"`
-	SiteURL string   `json:"siteUrl"`
-	Primary bool     `json:"primary"`
-	Tags    []string `json:"tags"`
+	FeedURL     string   `json:"feedUrl"`
+	Publication string   `json:"publication"`
+	Title       string   `json:"title"`
+	SiteURL     string   `json:"siteUrl"`
+	Primary     bool     `json:"primary"`
+	Tags        []string `json:"tags"`
 }
 
 type addResponse struct {
@@ -331,9 +499,20 @@ func SubscriptionsCreateHandler(
 			return
 		}
 		fieldErrors := make(map[string]string)
+		hasStandard := false
 		for i, item := range body.Subscriptions {
-			if strings.TrimSpace(item.FeedURL) == "" {
+			feedURL := strings.TrimSpace(item.FeedURL)
+			publication := strings.TrimSpace(item.Publication)
+			switch {
+			case feedURL == "" && publication == "":
 				fieldErrors["subscriptions."+itoa(i)+".feedUrl"] = "Feed URL is required"
+			case feedURL != "" && publication != "":
+				fieldErrors["subscriptions."+itoa(i)+".publication"] = "feedUrl and publication are mutually exclusive"
+			case publication != "":
+				if _, err := syntax.ParseATURI(publication); err != nil {
+					fieldErrors["subscriptions."+itoa(i)+".publication"] = "publication must be an at:// URI"
+				}
+				hasStandard = true
 			}
 		}
 		if len(fieldErrors) > 0 {
@@ -344,17 +523,55 @@ func SubscriptionsCreateHandler(
 			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"message": "no subscriptions submitted"})
 			return
 		}
+		// Gate the whole batch before any write: a mid-batch 403 would leave
+		// earlier items created and later ones silently dropped.
+		if hasStandard && !requireStandardWrite(w, sess) {
+			return
+		}
+		// Sibling belt: an rss feed and a publication for the same site in
+		// one batch is exactly the double-subscribe the picker guards against.
+		kindByKey := make(map[string]string, len(body.Subscriptions))
+		for _, item := range body.Subscriptions {
+			var key, kind string
+			if strings.TrimSpace(item.Publication) != "" {
+				key, kind = siblingKey(item.SiteURL), "standardfeed"
+			} else {
+				key, kind = rssSiblingKey(item.SiteURL, item.FeedURL), "rss"
+			}
+			if key == "" {
+				continue
+			}
+			if prev, ok := kindByKey[key]; ok && prev != kind {
+				writeJSONStatus(w, http.StatusConflict, map[string]string{
+					"message": "Pick either the RSS feed or the ATProto publication for a site, not both",
+				})
+				return
+			}
+			kindByKey[key] = kind
+		}
 
 		out := addResponse{Records: make([]SubscriptionWire, 0, len(body.Subscriptions)), JobIDs: []string{}}
 		now := time.Now().UTC().Format(time.RFC3339)
 		didStr := sess.Data.AccountDID.String()
 
 		for _, item := range body.Subscriptions {
+			item.FeedURL = strings.TrimSpace(item.FeedURL)
+			item.Publication = strings.TrimSpace(item.Publication)
+			isStandard := item.Publication != ""
+			// The catalog key: feed URL for rss, publication at-uri for
+			// standardfeed. Keys Tier-2, Tier-1, dedupe, and the fetch job.
+			key := item.FeedURL
+			kind := "rss"
+			if isStandard {
+				key = item.Publication
+				kind = "standardfeed"
+			}
+
 			// Step 1: dedupe guard. If a Tier-1 row already maps this DID
-			// to this feed_url, return the existing record idempotently.
+			// to this catalog key, return the existing record idempotently.
 			if row, err := reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
 				Did:     didStr,
-				FeedUrl: item.FeedURL,
+				FeedUrl: key,
 			}); err == nil {
 				out.Records = append(out.Records, rowToWire(row))
 				continue
@@ -364,43 +581,100 @@ func SubscriptionsCreateHandler(
 				return
 			}
 
-			// Step 2: PDS write. Single user-editable title; the resolver
-			// prefilled it client-side, the user may have overridden before submit.
+			// Step 2: PDS write(s).
 			tagList := normalizeTags(item.Tags)
-			record := map[string]any{
-				"feedUrl":   item.FeedURL,
-				"createdAt": now,
-			}
-			if item.Title != "" {
-				record["title"] = item.Title
-			}
-			if item.SiteURL != "" {
-				record["siteUrl"] = item.SiteURL
-			}
-			if item.Primary {
-				record["primary"] = true
-			}
-			if len(tagList) > 0 {
-				record["tags"] = tagList
-			}
-			// TODO(blue.morgen lexicon): once the blue.morgen.feed.subscription
-			// lexicon is published as a com.atproto.lexicon.schema record and
-			// resolvable on the network, validate `record` before write. Use
-			// lexicon.ValidateRecord(&catalog, obj, "blue.morgen.feed.subscription", 0)
-			// after decoding with data.UnmarshalJSON. See SPEC.md <lexicons>.
-			ref, err := pds.CreateRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), record)
-			if err != nil {
-				slog.Warn("/api/subscriptions: PDS create failed", "err", err)
-				http.Error(w, "upstream PDS error", http.StatusBadGateway)
-				return
+			var (
+				ref         *atprepo.RecordRef
+				sidecarRkey *string
+				source      map[string]any
+			)
+			if isStandard {
+				// The existence record is the portable standard subscription.
+				var err error
+				ref, err = pds.CreateRecord(r.Context(), sess, syntax.NSID(standardfeed.CollectionSubscription), map[string]any{
+					"publication": key,
+					"createdAt":   now,
+				})
+				if err != nil {
+					slog.Warn("/api/subscriptions: standard record create failed", "err", err)
+					http.Error(w, "upstream PDS error", http.StatusBadGateway)
+					return
+				}
+				// Lazy blue.morgen sidecar, only when the picker customized
+				// metadata. Written second so a failure still leaves an
+				// adoptable standard record for the next reconcile.
+				if item.Title != "" || item.Primary || len(tagList) > 0 {
+					source = sourceUnion(kind, key)
+					sidecar := map[string]any{
+						"source":    source,
+						"createdAt": now,
+					}
+					if item.Title != "" {
+						sidecar["title"] = item.Title
+					}
+					if item.Primary {
+						sidecar["primary"] = true
+					}
+					if len(tagList) > 0 {
+						sidecar["tags"] = tagList
+					}
+					scRef, err := pds.CreateRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), sidecar)
+					if err != nil {
+						slog.Warn("/api/subscriptions: sidecar create failed (standard record already on PDS; reconcile will adopt it)", "err", err)
+						http.Error(w, "upstream PDS error", http.StatusBadGateway)
+						return
+					}
+					scRkey := atprepo.RkeyFromATURI(scRef.URI)
+					sidecarRkey = &scRkey
+				} else {
+					source = sourceUnion(kind, key)
+				}
+			} else {
+				// Single user-editable title; the resolver prefilled it
+				// client-side, the user may have overridden before submit.
+				source = map[string]any{
+					"$type":   sourceTypeRSS,
+					"feedUrl": key,
+				}
+				if item.SiteURL != "" {
+					source["siteUrl"] = item.SiteURL
+				}
+				record := map[string]any{
+					"source":    source,
+					"createdAt": now,
+				}
+				if item.Title != "" {
+					record["title"] = item.Title
+				}
+				if item.Primary {
+					record["primary"] = true
+				}
+				if len(tagList) > 0 {
+					record["tags"] = tagList
+				}
+				// TODO(blue.morgen lexicon): once the blue.morgen.feed.subscription
+				// lexicon is published as a com.atproto.lexicon.schema record and
+				// resolvable on the network, validate `record` before write. Use
+				// lexicon.ValidateRecord(&catalog, obj, "blue.morgen.feed.subscription", 0)
+				// after decoding with data.UnmarshalJSON. See SPEC.md <lexicons>.
+				var err error
+				ref, err = pds.CreateRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), record)
+				if err != nil {
+					slog.Warn("/api/subscriptions: PDS create failed", "err", err)
+					http.Error(w, "upstream PDS error", http.StatusBadGateway)
+					return
+				}
 			}
 			rkey := atprepo.RkeyFromATURI(ref.URI)
 
-			// Step 3: Tier-2 catalog upsert (dedup by canonical URL).
+			// Step 3: Tier-2 catalog upsert (dedup by canonical key). Title
+			// stays nil — feeds.title is the cached publication name, owned
+			// by the fetch pipeline.
 			titlePtr := nilIfEmpty(item.Title)
 			siteURLPtr := nilIfEmpty(item.SiteURL)
 			if err := writer.UpsertFeed(r.Context(), db.UpsertFeedParams{
-				FeedUrl:   item.FeedURL,
+				FeedUrl:   key,
+				Kind:      kind,
 				SiteUrl:   siteURLPtr,
 				CreatedAt: now,
 				UpdatedAt: now,
@@ -410,15 +684,17 @@ func SubscriptionsCreateHandler(
 
 			// Step 4: Tier-1 index upsert.
 			if err := writer.UpsertUserSubscription(r.Context(), db.UpsertUserSubscriptionParams{
-				Did:       didStr,
-				Rkey:      rkey,
-				AtUri:     ref.URI,
-				FeedUrl:   item.FeedURL,
-				Title:     titlePtr,
-				IsPrimary: boolToInt64(item.Primary),
-				Tags:      tags.Marshal(tagList),
-				CreatedAt: now,
-				UpdatedAt: now,
+				Did:         didStr,
+				Rkey:        rkey,
+				AtUri:       ref.URI,
+				FeedUrl:     key,
+				Kind:        kind,
+				SidecarRkey: sidecarRkey,
+				Title:       titlePtr,
+				IsPrimary:   boolToInt64(item.Primary),
+				Tags:        tags.Marshal(tagList),
+				CreatedAt:   now,
+				UpdatedAt:   now,
 			}); err != nil {
 				slog.Error("/api/subscriptions: Tier-1 upsert failed; dispatching sync_user to reconcile from PDS", "err", err)
 				if _, derr := disp.StartManualRefresh(r.Context(), sess.Data.AccountDID, sess.Data.SessionID); derr != nil {
@@ -427,8 +703,7 @@ func SubscriptionsCreateHandler(
 			}
 
 			value := map[string]any{
-				"feedUrl":   item.FeedURL,
-				"siteUrl":   item.SiteURL,
+				"source":    source,
 				"createdAt": now,
 			}
 			if item.Title != "" {
@@ -440,20 +715,25 @@ func SubscriptionsCreateHandler(
 			if len(tagList) > 0 {
 				value["tags"] = tagList
 			}
-			out.Records = append(out.Records, SubscriptionWire{
+			wire := SubscriptionWire{
 				URI:     ref.URI,
 				CID:     ref.CID,
 				Rkey:    rkey,
-				FeedURL: item.FeedURL,
+				Kind:    kind,
+				FeedURL: key,
 				Title:   item.Title,
 				SiteURL: item.SiteURL,
 				Primary: item.Primary,
 				Tags:    tagList,
 				Value:   value,
-			})
+			}
+			if isStandard {
+				wire.Publication = key
+			}
+			out.Records = append(out.Records, wire)
 
 			// Step 5: dispatch fetch_one_feed (async).
-			jobID := disp.StartFetchOneFeed(sess.Data.AccountDID, item.FeedURL)
+			jobID := disp.StartFetchOneFeed(sess.Data.AccountDID, key)
 			out.JobIDs = append(out.JobIDs, jobID)
 		}
 

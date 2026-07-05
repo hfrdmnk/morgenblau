@@ -15,6 +15,7 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 
+	"morgenblau/internal/atprepo"
 	"morgenblau/internal/cache/profiles"
 	"morgenblau/internal/database"
 	dbqueries "morgenblau/internal/database/db"
@@ -25,6 +26,7 @@ import (
 	"morgenblau/internal/oauth/cookie"
 	"morgenblau/internal/oauth/store"
 	"morgenblau/internal/safehttp"
+	"morgenblau/internal/standardfeed"
 	internalsync "morgenblau/internal/sync"
 )
 
@@ -96,15 +98,18 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	go runJobsGC(gcCtx, tracker)
 	fetcherInst := fetcher.New()
 	safeClient := safehttp.NewClient(30*time.Second, 5)
-	finder := feedfinder.New(safeClient)
 	queries := dbqueries.New(db)
 	pipeline := internalsync.NewFeedPipeline(fetcherInst, queries)
-	engine := internalsync.NewEngine(tracker, queries, internalsync.SessionPDSLister{}, pipeline, oauthApp)
-	orchestrator := internalsync.New(tracker, pipeline, engine)
+	stdClient := standardfeed.NewClient(oauthApp.Dir, safeClient)
+	finder := feedfinder.New(safeClient).WithStandardResolver(stdClient)
+	stdPipeline := internalsync.NewStandardfeedPipeline(stdClient, queries)
+	router := internalsync.NewSourceRouter(pipeline, stdPipeline)
+	engine := internalsync.NewEngine(tracker, queries, internalsync.SessionPDSLister{}, router, oauthApp, atprepo.SessionWriter{})
+	orchestrator := internalsync.New(tracker, router, engine)
 
 	if fetchMinutes > 0 {
 		interval := time.Duration(fetchMinutes) * time.Minute
-		refresher := internalsync.NewGlobalRefresher(queries, pipeline)
+		refresher := internalsync.NewGlobalRefresher(queries, router)
 		go runGlobalFetch(gcCtx, refresher, interval)
 		slog.Info("global feed fetch enabled", "interval", interval)
 	} else {

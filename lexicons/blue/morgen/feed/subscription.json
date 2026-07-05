@@ -1,32 +1,26 @@
 {
   "lexicon": 1,
   "id": "blue.morgen.feed.subscription",
+  "revision": 2,
   "defs": {
     "main": {
       "type": "record",
-      "description": "A subscription to an RSS/Atom feed.",
+      "description": "A subscription to a content source, identified by the source union: an RSS/Atom feed or a Standardfeed publication.",
       "key": "tid",
       "record": {
         "type": "object",
-        "required": ["feedUrl", "createdAt"],
+        "required": ["source", "createdAt"],
         "properties": {
-          "feedUrl": {
-            "type": "string",
-            "format": "uri",
-            "maxLength": 2048,
-            "description": "URL of the RSS/Atom feed."
+          "source": {
+            "type": "union",
+            "refs": ["#rssFeed", "#standardPublication"],
+            "description": "Identity of the subscribed source. Open union; readers tolerate unknown variants."
           },
           "title": {
             "type": "string",
             "maxGraphemes": 128,
             "maxLength": 1280,
-            "description": "Display title. Auto-prefilled from the feed, user-editable."
-          },
-          "siteUrl": {
-            "type": "string",
-            "format": "uri",
-            "maxLength": 2048,
-            "description": "Human-facing site URL associated with the feed."
+            "description": "Display title. Auto-prefilled from the source, user-editable."
           },
           "tags": {
             "type": "array",
@@ -36,12 +30,41 @@
           },
           "primary": {
             "type": "boolean",
-            "description": "Whether the feed receives special treatment in the digest."
+            "description": "Whether the source receives special treatment in the digest."
           },
           "createdAt": {
             "type": "string",
             "format": "datetime"
           }
+        }
+      }
+    },
+    "rssFeed": {
+      "type": "object",
+      "required": ["feedUrl"],
+      "properties": {
+        "feedUrl": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2048,
+          "description": "URL of the RSS/Atom feed."
+        },
+        "siteUrl": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2048,
+          "description": "Human-facing site URL associated with the feed."
+        }
+      }
+    },
+    "standardPublication": {
+      "type": "object",
+      "required": ["publication"],
+      "properties": {
+        "publication": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT-URI of the site.standard.publication record. This subscription is a metadata sidecar; the paired site.standard.graph.subscription record is the existence authority."
         }
       }
     }

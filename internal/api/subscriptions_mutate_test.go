@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 
+	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
 )
 
@@ -270,6 +272,10 @@ func TestSubscriptionsDelete_HappyPath_204(t *testing.T) {
 	if len(idx.deleted) != 1 {
 		t.Errorf("deleted = %v", idx.deleted)
 	}
+	// The rss path never lists the standard collection.
+	if pds.listCalls != 0 {
+		t.Errorf("ListRecords called %d times on rss delete", pds.listCalls)
+	}
 }
 
 func TestSubscriptionsDelete_OtherUserRkey_403(t *testing.T) {
@@ -302,6 +308,219 @@ func TestSubscriptionsDelete_PDSFailure_502(t *testing.T) {
 	}
 	if len(idx.deleted) != 0 {
 		t.Errorf("deleted despite PDS failure: %v", idx.deleted)
+	}
+}
+
+// --- standardfeed PATCH/DELETE ---
+
+// seedStandardRow returns a Tier-1 row for a standardfeed subscription; the
+// rkey is the standard record's, the at-uri points at the standard collection.
+func seedStandardRow(sidecarRkey *string) db.UserSubscription {
+	return db.UserSubscription{
+		Did:         "did:plc:alice",
+		Rkey:        "3std",
+		AtUri:       "at://did:plc:alice/" + standardSubCollection + "/3std",
+		FeedUrl:     testPublication,
+		Kind:        "standardfeed",
+		SidecarRkey: sidecarRkey,
+		CreatedAt:   "2026-06-01T10:00:00Z",
+		UpdatedAt:   "2026-06-01T10:00:00Z",
+	}
+}
+
+func TestSubscriptionsPatch_Standardfeed_RejectsFeedURL_400(t *testing.T) {
+	idx := newRkeyIndex()
+	idx.seedRow(seedStandardRow(nil))
+	pds := &fakePDS{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3std",
+		strings.NewReader(`{"feedUrl":"https://example.test/feed.xml"}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.puts != 0 || pds.creates != 0 {
+		t.Errorf("PDS touched on rejected patch: puts=%d creates=%d", pds.puts, pds.creates)
+	}
+}
+
+// A metadata edit on a standardfeed source lazily creates the blue.morgen
+// sidecar. No scope gate: the sidecar rides the old blue.morgen grant, so
+// this runs on a scope-less session on purpose.
+func TestSubscriptionsPatch_Standardfeed_FirstEdit_CreatesSidecar(t *testing.T) {
+	idx := newRkeyIndex()
+	idx.seedRow(seedStandardRow(nil))
+	pds := &fakePDS{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3std",
+		strings.NewReader(`{"title":"Custom"}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.puts != 0 {
+		t.Errorf("PDS puts = %d, want 0 (no sidecar existed)", pds.puts)
+	}
+	if pds.creates != 1 {
+		t.Fatalf("PDS creates = %d, want 1 sidecar", pds.creates)
+	}
+	if pds.created[0].collection != "blue.morgen.feed.subscription" {
+		t.Errorf("sidecar collection = %q", pds.created[0].collection)
+	}
+	rec := pds.created[0].record
+	source, ok := rec["source"].(map[string]any)
+	if !ok || source["$type"] != "blue.morgen.feed.subscription#standardPublication" || source["publication"] != testPublication {
+		t.Errorf("sidecar source = %v", rec["source"])
+	}
+	if rec["title"] != "Custom" {
+		t.Errorf("sidecar title = %v", rec["title"])
+	}
+
+	// The Tier-1 row keeps the standard identity and gains the sidecar rkey.
+	row, err := idx.GetUserSubscriptionByFeedURL(context.Background(), db.GetUserSubscriptionByFeedURLParams{
+		Did: "did:plc:alice", FeedUrl: testPublication,
+	})
+	if err != nil {
+		t.Fatalf("row lookup: %v", err)
+	}
+	if row.Rkey != "3std" || row.AtUri != "at://did:plc:alice/"+standardSubCollection+"/3std" {
+		t.Errorf("standard identity changed: rkey=%q atUri=%q", row.Rkey, row.AtUri)
+	}
+	if row.SidecarRkey == nil || *row.SidecarRkey != "3la1" {
+		t.Errorf("sidecar_rkey = %v, want 3la1", row.SidecarRkey)
+	}
+	if row.Kind != "standardfeed" {
+		t.Errorf("kind = %q", row.Kind)
+	}
+
+	var got SubscriptionWire
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Kind != "standardfeed" || got.Title != "Custom" {
+		t.Errorf("wire = %+v", got)
+	}
+}
+
+func TestSubscriptionsPatch_Standardfeed_SecondEdit_PutsExistingSidecar(t *testing.T) {
+	idx := newRkeyIndex()
+	idx.seedRow(seedStandardRow(ptrString("3sc")))
+	pds := &fakePDS{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3std",
+		strings.NewReader(`{"title":"Renamed"}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.creates != 0 {
+		t.Errorf("PDS creates = %d, want 0 (sidecar already exists)", pds.creates)
+	}
+	if pds.puts != 1 || pds.lastPutRkey != "3sc" {
+		t.Fatalf("PDS puts = %d rkey %q, want 1 put at 3sc", pds.puts, pds.lastPutRkey)
+	}
+	if pds.lastPut["title"] != "Renamed" {
+		t.Errorf("put title = %v", pds.lastPut["title"])
+	}
+
+	row, _ := idx.GetUserSubscriptionByFeedURL(context.Background(), db.GetUserSubscriptionByFeedURLParams{
+		Did: "did:plc:alice", FeedUrl: testPublication,
+	})
+	if row.SidecarRkey == nil || *row.SidecarRkey != "3sc" {
+		t.Errorf("sidecar_rkey = %v, want preserved 3sc", row.SidecarRkey)
+	}
+}
+
+func TestSubscriptionsDelete_Standardfeed_SweepsDuplicatesAndSidecar(t *testing.T) {
+	idx := newRkeyIndex()
+	idx.seedRow(seedStandardRow(ptrString("3sc")))
+	pds := &fakePDS{listed: map[string][]atprepo.ListedRecord{
+		standardSubCollection: {
+			{URI: "at://did:plc:alice/" + standardSubCollection + "/3std", Value: map[string]any{"publication": testPublication}},
+			// A duplicate written by another app — must be swept too.
+			{URI: "at://did:plc:alice/" + standardSubCollection + "/3dup", Value: map[string]any{"publication": testPublication}},
+			// A different publication — must survive.
+			{URI: "at://did:plc:alice/" + standardSubCollection + "/3other", Value: map[string]any{"publication": "at://did:plc:other/site.standard.publication/3x"}},
+		},
+	}}
+	mux := http.NewServeMux()
+	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds))
+
+	req := withStandardWriteSession(httptest.NewRequest(http.MethodDelete, "/api/subscriptions/3std", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	want := []string{
+		standardSubCollection + "/3std",
+		standardSubCollection + "/3dup",
+		"blue.morgen.feed.subscription/3sc",
+	}
+	if len(pds.deleted) != len(want) {
+		t.Fatalf("deleted = %v, want %v", pds.deleted, want)
+	}
+	for i := range want {
+		if pds.deleted[i] != want[i] {
+			t.Errorf("deleted[%d] = %q, want %q", i, pds.deleted[i], want[i])
+		}
+	}
+	if len(idx.deleted) != 1 {
+		t.Errorf("local deletes = %v", idx.deleted)
+	}
+}
+
+func TestSubscriptionsDelete_Standardfeed_StaleScope_403(t *testing.T) {
+	idx := newRkeyIndex()
+	idx.seedRow(seedStandardRow(nil))
+	pds := &fakePDS{}
+	mux := http.NewServeMux()
+	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds))
+
+	req := withSession(httptest.NewRequest(http.MethodDelete, "/api/subscriptions/3std", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403; body = %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "reauth_required") {
+		t.Errorf("body = %q, want reauth_required code", rr.Body.String())
+	}
+	if pds.listCalls != 0 || len(pds.deleted) != 0 || len(idx.deleted) != 0 {
+		t.Errorf("stale-scope delete touched state: lists=%d pds=%v local=%v", pds.listCalls, pds.deleted, idx.deleted)
+	}
+}
+
+func TestSubscriptionsDelete_Standardfeed_ListFailure_502(t *testing.T) {
+	idx := newRkeyIndex()
+	idx.seedRow(seedStandardRow(nil))
+	pds := &fakePDS{listErr: errors.New("pds down")}
+	mux := http.NewServeMux()
+	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds))
+
+	req := withStandardWriteSession(httptest.NewRequest(http.MethodDelete, "/api/subscriptions/3std", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", rr.Code)
+	}
+	if len(pds.deleted) != 0 || len(idx.deleted) != 0 {
+		t.Errorf("deletes despite list failure: pds=%v local=%v", pds.deleted, idx.deleted)
 	}
 }
 
@@ -341,8 +560,9 @@ func TestSubscriptionsPatch_FeedURLChange_RepointsAndDispatches(t *testing.T) {
 	if pds.puts != 1 {
 		t.Fatalf("PDS puts = %d, want 1", pds.puts)
 	}
-	if pds.lastPut["feedUrl"] != playlist {
-		t.Errorf("put feedUrl = %v, want %s", pds.lastPut["feedUrl"], playlist)
+	putSource, ok := pds.lastPut["source"].(map[string]any)
+	if !ok || putSource["$type"] != "blue.morgen.feed.subscription#rssFeed" || putSource["feedUrl"] != playlist {
+		t.Errorf("put source = %v, want rssFeed variant with feedUrl %s", pds.lastPut["source"], playlist)
 	}
 	// Tier-2 catalog upsert created the new feed before Tier-1 referenced it.
 	if len(idx.upsertedFeeds) != 1 || idx.upsertedFeeds[0] != playlist {

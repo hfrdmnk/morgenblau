@@ -1,4 +1,5 @@
 import {
+    AtIcon,
     Edit02Icon,
     HourglassIcon,
     Pulse01Icon,
@@ -45,7 +46,9 @@ type Frequency =
 type Source = {
     uri: string;
     rkey: string;
+    kind?: 'rss' | 'standardfeed';
     feedUrl: string;
+    publication?: string;
     title?: string;
     siteUrl?: string;
     faviconUrl?: string;
@@ -315,7 +318,9 @@ function addedToSource(added: AddedSubscription): Source {
     return {
         uri: added.uri,
         rkey: added.rkey,
+        kind: added.kind,
         feedUrl: added.feedUrl,
+        publication: added.publication,
         title: added.title,
         siteUrl: added.siteUrl,
         primary,
@@ -343,7 +348,9 @@ function siteDomain(s: Source): string {
         s.siteUrl ||
         (typeof s.value.siteUrl === 'string' ? s.value.siteUrl : '') ||
         s.feedUrl;
-    if (!candidate) return '';
+    // A standardfeed key is an at-uri; never show it as a "domain" (the site
+    // URL fills in after the first fetch).
+    if (!candidate || candidate.startsWith('at://')) return '';
     try {
         return new URL(candidate).hostname.replace(/^www\./, '');
     } catch {
@@ -408,6 +415,15 @@ function SourceRow({
                                     className="size-3.5"
                                 />
                                 {shortTimeAgo(source.lastPublishedAt)}
+                            </span>
+                        ) : null}
+                        {source.kind === 'standardfeed' ? (
+                            <span className="inline-flex items-center gap-1">
+                                <HugeiconsIcon
+                                    icon={AtIcon}
+                                    className="size-3.5"
+                                />
+                                ATProto
                             </span>
                         ) : null}
                     </div>

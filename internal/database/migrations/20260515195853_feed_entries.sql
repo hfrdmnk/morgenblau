@@ -17,6 +17,7 @@ CREATE TABLE feed_entries (
     fetched_at      TEXT NOT NULL,
     metadata        TEXT,
     extracted_body  TEXT,
+    record_cid      TEXT, -- site.standard.document CID for the sweep diff; NULL for rss
     UNIQUE (feed_url, guid),
     UNIQUE (entry_slug),
     FOREIGN KEY (feed_url) REFERENCES feeds(feed_url) ON DELETE CASCADE

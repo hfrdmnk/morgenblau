@@ -24,21 +24,28 @@ type DigestReader interface {
 // SavedState is only populated by the entry detail handler — the digest list
 // leaves it nil to avoid N+1 lookups.
 type EntryWire struct {
-	ID          int64       `json:"id"`
-	EntrySlug   string      `json:"entrySlug"`
-	Title       *string     `json:"title"`
-	URL         string      `json:"url"`
-	ContentType string      `json:"contentType"`
-	PublishedAt string      `json:"publishedAt"`
-	Source      SourceMeta  `json:"source"`
-	Body        *string     `json:"body"`
-	Metadata    *string     `json:"metadata,omitempty"`
-	SavedState  *SavedState `json:"savedState"`
+	ID          int64        `json:"id"`
+	EntrySlug   string       `json:"entrySlug"`
+	Title       *string      `json:"title"`
+	URL         string       `json:"url"`
+	ContentType string       `json:"contentType"`
+	PublishedAt string       `json:"publishedAt"`
+	Source      SourceMeta   `json:"source"`
+	Body        *string      `json:"body"`
+	Metadata    *string      `json:"metadata,omitempty"`
+	SavedState  *SavedState  `json:"savedState"`
+	SharedState *SharedState `json:"sharedState"`
 }
 
 // SavedState mirrors the frontend's view: rkey identifies the PDS record so
 // the client can DELETE it on un-save.
 type SavedState struct {
+	Rkey string `json:"rkey"`
+}
+
+// SharedState mirrors SavedState for shares: rkey is the deletable record —
+// the recommend rkey for standardfeed shares, the share rkey for rss.
+type SharedState struct {
 	Rkey string `json:"rkey"`
 }
 
@@ -146,7 +153,7 @@ func allEntriesRowToWire(row db.ListAllEntriesForUserRow) EntryWire {
 		URL:         row.Url,
 		ContentType: row.ContentType,
 		PublishedAt: row.PublishedAt,
-		Source:      buildSourceMeta(row.FeedUrl, row.FeedTitle, row.FeedSiteUrl, row.FeedIconUrl),
+		Source:      buildSourceMeta(row.FeedUrl, displayTitle(row.FeedTitle, row.CatalogTitle), row.FeedSiteUrl, row.FeedIconUrl),
 		Body:        row.ContentHtml,
 		Metadata:    row.Metadata,
 	}
@@ -160,10 +167,20 @@ func digestRowToWire(row db.ListDigestForUserRow) EntryWire {
 		URL:         row.Url,
 		ContentType: row.ContentType,
 		PublishedAt: row.PublishedAt,
-		Source:      buildSourceMeta(row.FeedUrl, row.FeedTitle, row.FeedSiteUrl, row.FeedIconUrl),
+		Source:      buildSourceMeta(row.FeedUrl, displayTitle(row.FeedTitle, row.CatalogTitle), row.FeedSiteUrl, row.FeedIconUrl),
 		Body:        row.ContentHtml,
 		Metadata:    row.Metadata,
 	}
+}
+
+// displayTitle prefers the user's per-subscription title over the catalog
+// title cached from the source itself (the publication name for standardfeed
+// sources; NULL for rss).
+func displayTitle(userTitle, catalogTitle *string) *string {
+	if userTitle != nil && *userTitle != "" {
+		return userTitle
+	}
+	return catalogTitle
 }
 
 // buildSourceMeta returns the canonical favicon resolved by the sync pipeline,

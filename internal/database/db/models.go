@@ -6,7 +6,9 @@ package db
 
 type Feed struct {
 	FeedUrl       string  `json:"feed_url"`
+	Kind          string  `json:"kind"`
 	SiteUrl       *string `json:"site_url"`
+	Title         *string `json:"title"`
 	Etag          *string `json:"etag"`
 	LastModified  *string `json:"last_modified"`
 	LastFetchedAt *string `json:"last_fetched_at"`
@@ -29,6 +31,7 @@ type FeedEntry struct {
 	FetchedAt     string  `json:"fetched_at"`
 	Metadata      *string `json:"metadata"`
 	ExtractedBody *string `json:"extracted_body"`
+	RecordCid     *string `json:"record_cid"`
 }
 
 type OauthAuthRequest struct {
@@ -55,14 +58,30 @@ type UserSave struct {
 	UpdatedAt string  `json:"updated_at"`
 }
 
+type UserShare struct {
+	Did         string  `json:"did"`
+	Rkey        string  `json:"rkey"`
+	AtUri       string  `json:"at_uri"`
+	Kind        string  `json:"kind"`
+	ItemUrl     *string `json:"item_url"`
+	Document    *string `json:"document"`
+	Comment     *string `json:"comment"`
+	FeedUrl     *string `json:"feed_url"`
+	SidecarRkey *string `json:"sidecar_rkey"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
+}
+
 type UserSubscription struct {
-	Did       string  `json:"did"`
-	Rkey      string  `json:"rkey"`
-	AtUri     string  `json:"at_uri"`
-	FeedUrl   string  `json:"feed_url"`
-	Title     *string `json:"title"`
-	IsPrimary int64   `json:"is_primary"`
-	Tags      *string `json:"tags"`
-	CreatedAt string  `json:"created_at"`
-	UpdatedAt string  `json:"updated_at"`
+	Did         string  `json:"did"`
+	Rkey        string  `json:"rkey"`
+	AtUri       string  `json:"at_uri"`
+	FeedUrl     string  `json:"feed_url"`
+	Kind        string  `json:"kind"`
+	SidecarRkey *string `json:"sidecar_rkey"`
+	Title       *string `json:"title"`
+	IsPrimary   int64   `json:"is_primary"`
+	Tags        *string `json:"tags"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
 }

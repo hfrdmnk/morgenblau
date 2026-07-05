@@ -6,10 +6,10 @@ import {
     Share01Icon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
-import type { IconSvgElement } from '@hugeicons/react';
 import { useEffect, useState } from 'react';
 
 import type { SaveControl } from '@/hooks/use-save-toggle';
+import type { ShareControl } from '@/hooks/use-share-toggle';
 import { cn, safeHref } from '@/lib/utils';
 
 export type ExtractedToggleState = 'inactive' | 'active' | 'loading';
@@ -23,6 +23,7 @@ type ReaderRailProps = {
     sourceUrl: string | null;
     extractedToggle?: ExtractedToggle;
     save?: SaveControl;
+    share?: ShareControl;
     showProgress?: boolean;
 };
 
@@ -33,6 +34,7 @@ export function ReaderRail({
     sourceUrl,
     extractedToggle,
     save,
+    share,
     showProgress = true,
 }: ReaderRailProps) {
     const progress = useScrollProgress(showProgress);
@@ -48,6 +50,7 @@ export function ReaderRail({
                         sourceUrl={sourceUrl}
                         extractedToggle={extractedToggle}
                         save={save}
+                        share={share}
                     />
                     {showProgress ? (
                         <ScrollProgressTrack
@@ -73,6 +76,7 @@ export function ReaderRail({
                         sourceUrl={sourceUrl}
                         extractedToggle={extractedToggle}
                         save={save}
+                        share={share}
                     />
                 </div>
             </aside>
@@ -84,21 +88,19 @@ function RailIcons({
     sourceUrl,
     extractedToggle,
     save,
+    share,
 }: {
     sourceUrl: string | null;
     extractedToggle?: ExtractedToggle;
     save?: SaveControl;
+    share?: ShareControl;
 }) {
     const safeSource = safeHref(sourceUrl);
 
     return (
         <>
-            {save ? (
-                <SaveRailButton {...save} />
-            ) : (
-                <DisabledRailIcon icon={Bookmark01Icon} label="Save" />
-            )}
-            <DisabledRailIcon icon={Share01Icon} label="Share" />
+            {save ? <SaveRailButton {...save} /> : null}
+            {share ? <ShareRailButton {...share} /> : null}
             {extractedToggle ? (
                 <ExtractedToggleIcon
                     state={extractedToggle.state}
@@ -191,22 +193,28 @@ function SaveRailButton({ saved, busy, onToggle }: SaveControl) {
     );
 }
 
-function DisabledRailIcon({
-    icon,
-    label,
-}: {
-    icon: IconSvgElement;
-    label: string;
-}) {
+function ShareRailButton({ shared, busy, onToggle }: ShareControl) {
+    const { displayed, swapping } = useDeferredState(shared);
+    const label = shared ? 'Unshare' : 'Share';
+
     return (
         <button
             type="button"
-            disabled
+            onClick={onToggle}
+            disabled={busy}
+            aria-pressed={displayed}
             aria-label={label}
-            aria-disabled="true"
-            className="inline-flex size-9 cursor-not-allowed items-center justify-center rounded-xl text-muted-foreground/40"
+            aria-busy={busy || undefined}
+            data-swapping={swapping || undefined}
+            className={cn(
+                RAIL_BUTTON_BASE,
+                'disabled:cursor-wait',
+                displayed
+                    ? 'text-primary hover:text-primary'
+                    : 'text-muted-foreground hover:text-foreground',
+            )}
         >
-            <HugeiconsIcon icon={icon} className="size-[1.125rem]" />
+            <HugeiconsIcon icon={Share01Icon} className="size-[1.125rem]" />
         </button>
     );
 }

@@ -10,8 +10,32 @@ ON CONFLICT (feed_url, guid) DO UPDATE SET
     fetched_at   = excluded.fetched_at,
     metadata     = excluded.metadata;
 
+-- name: UpsertStandardfeedEntry :exec
+-- Standardfeed counterpart to UpsertFeedEntry. Unlike the rss upsert it owns
+-- extracted_body and record_cid on conflict: a CID change must reset the
+-- cached readability body (path-ful docs pass NULL) or refresh the plaintext
+-- fallback (path-less docs pass the new textContent).
+INSERT INTO feed_entries (feed_url, guid, entry_slug, url, title, content_html, content_type, published_at, fetched_at, metadata, extracted_body, record_cid)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (feed_url, guid) DO UPDATE SET
+    url            = excluded.url,
+    title          = excluded.title,
+    content_html   = excluded.content_html,
+    content_type   = excluded.content_type,
+    published_at   = excluded.published_at,
+    fetched_at     = excluded.fetched_at,
+    metadata       = excluded.metadata,
+    extracted_body = excluded.extracted_body,
+    record_cid     = excluded.record_cid;
+
+-- name: ListFeedEntriesForDiff :many
+SELECT guid, record_cid FROM feed_entries WHERE feed_url = ?;
+
+-- name: DeleteFeedEntry :exec
+DELETE FROM feed_entries WHERE feed_url = ? AND guid = ?;
+
 -- name: GetFeedEntryBySlug :one
-SELECT id, feed_url, guid, entry_slug, url, title, content_html, content_type, published_at, fetched_at, metadata, extracted_body
+SELECT id, feed_url, guid, entry_slug, url, title, content_html, content_type, published_at, fetched_at, metadata, extracted_body, record_cid
 FROM feed_entries WHERE entry_slug = ?;
 
 -- name: UpdateFeedEntryExtractedBody :exec
@@ -22,6 +46,7 @@ SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
     e.published_at, e.fetched_at, e.metadata, e.extracted_body,
     us.title AS feed_title,
+    f.title AS catalog_title,
     f.site_url AS feed_site_url,
     f.icon_url AS feed_icon_url
 FROM feed_entries e
@@ -40,6 +65,7 @@ SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
     e.published_at, e.fetched_at, e.metadata, e.extracted_body,
     us.title AS feed_title,
+    f.title AS catalog_title,
     f.site_url AS feed_site_url,
     f.icon_url AS feed_icon_url
 FROM feed_entries e
@@ -54,6 +80,7 @@ SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
     e.published_at, e.fetched_at, e.metadata, e.extracted_body,
     us.title AS feed_title,
+    f.title AS catalog_title,
     f.site_url AS feed_site_url,
     f.icon_url AS feed_icon_url
 FROM feed_entries e

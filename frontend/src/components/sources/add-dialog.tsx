@@ -3,10 +3,8 @@ import { HugeiconsIcon } from '@hugeicons/react';
 import type { FormEvent, KeyboardEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import {
-    FeedCandidateList,
-    type FeedCandidate,
-} from '@/components/sources/feed-candidate-list';
+import { FeedCandidateList } from '@/components/sources/feed-candidate-list';
+import { candidateKey, type FeedCandidate } from '@/lib/candidates';
 import { InputError } from '@/components/input-error';
 import {
     emitSubscriptionAdded,
@@ -23,8 +21,11 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PATHS } from '@/lib/paths';
 import { youtubeShortsFreeFeedUrl } from '@/lib/youtube';
 
+// feedUrl carries the catalog key: the feed URL for rss subscriptions, the
+// publication at-uri for ATProto ones.
 type ExistingFeedSubscription = { feedUrl: string; title: string | null };
 
 type DiscoverResult = {
@@ -33,10 +34,17 @@ type DiscoverResult = {
 };
 
 type SubscriptionItem = {
+    // Candidate identity: publication at-uri or feed URL.
+    key: string;
+    kind: 'rss' | 'standardfeed';
     feedUrl: string;
+    publication?: string;
     // User-editable display title. Prefilled from the resolver, then owned by
     // the user (lexicon: blue.morgen.feed.subscription `title` is user-editable).
     title: string;
+    // The resolver's prefill: an ATProto item only sends its title when the
+    // user diverged from it (unchanged defaults mean no sidecar record).
+    prefilledTitle: string;
     siteUrl: string;
     primary: boolean;
     tags: string[];
@@ -52,13 +60,50 @@ type Props = {
 
 function toItem(candidate: FeedCandidate): SubscriptionItem {
     return {
-        feedUrl: candidate.feedUrl,
+        key: candidateKey(candidate),
+        kind: candidate.kind === 'standardfeed' ? 'standardfeed' : 'rss',
+        feedUrl: candidate.feedUrl ?? '',
+        publication: candidate.publication,
         title: candidate.title ?? '',
+        prefilledTitle: candidate.title ?? '',
         siteUrl: candidate.siteUrl ?? '',
         primary: false,
         tags: [],
         excludeShorts: false,
     };
+}
+
+// siblingKeyOf mirrors the server's sibling rule: lowercase host minus
+// "www." plus the path minus its trailing slash. rss candidates fall back
+// to the feed URL's bare host when no site URL is known.
+function siblingKeyOf(candidate: FeedCandidate): string | null {
+    const normalized = normalizeSiblingUrl(candidate.siteUrl ?? '');
+    if (candidate.kind === 'standardfeed') {
+        return normalized;
+    }
+    if (normalized) {
+        return normalized;
+    }
+    try {
+        return new URL(candidate.feedUrl ?? '').hostname
+            .toLowerCase()
+            .replace(/^www\./, '');
+    } catch {
+        return null;
+    }
+}
+
+function normalizeSiblingUrl(raw: string): string | null {
+    if (!raw) return null;
+    try {
+        const u = new URL(raw);
+        return (
+            u.hostname.toLowerCase().replace(/^www\./, '') +
+            u.pathname.replace(/\/+$/, '')
+        );
+    } catch {
+        return null;
+    }
 }
 
 export function AddSourceDialog({ open, onOpenChange }: Props) {
@@ -159,8 +204,10 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
             const existing = new Set(
                 result.existingSubscriptions.map((s) => s.feedUrl),
             );
+            // Fresh = not already subscribed, and not a sibling of an
+            // existing subscription of the other kind.
             const fresh = result.candidates.filter(
-                (c) => !existing.has(c.feedUrl),
+                (c) => !existing.has(candidateKey(c)) && !c.subscribedVia,
             );
 
             if (fresh.length === 1) {
@@ -239,7 +286,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         () =>
             Object.fromEntries(
                 subscriptions.map((item) => [
-                    item.feedUrl,
+                    item.key,
                     {
                         title: item.title,
                         primary: item.primary,
@@ -250,6 +297,52 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
             ),
         [subscriptions],
     );
+
+    // A candidate is blocked while its cross-kind sibling (same site, other
+    // kind) is selected — subscribing to both would duplicate the source.
+    const siblingBlocked = useMemo(() => {
+        const blocked = new Set<string>();
+        if (!candidates) return blocked;
+        for (const candidate of candidates) {
+            const key = candidateKey(candidate);
+            if (selectedMap[key]) continue;
+            const ownKind = candidate.kind ?? 'rss';
+            const ownSibling = siblingKeyOf(candidate);
+            if (!ownSibling) continue;
+            const hasSelectedSibling = candidates.some(
+                (other) =>
+                    (other.kind ?? 'rss') !== ownKind &&
+                    siblingKeyOf(other) === ownSibling &&
+                    selectedMap[candidateKey(other)] !== undefined,
+            );
+            if (hasSelectedSibling) blocked.add(key);
+        }
+        return blocked;
+    }, [candidates, selectedMap]);
+
+    // ATProto subscribes need the post-change OAuth grant; surface the calm
+    // re-auth note as soon as an ATProto candidate is selected.
+    const hasStandardSelected = subscriptions.some(
+        (item) => item.kind === 'standardfeed',
+    );
+    const [needsReauth, setNeedsReauth] = useState(false);
+    useEffect(() => {
+        if (!hasStandardSelected) {
+            return;
+        }
+        let active = true;
+        fetch('/api/profiles/me', { credentials: 'same-origin' })
+            .then((response) => (response.ok ? response.json() : null))
+            .then((body: { needsReauth?: boolean } | null) => {
+                if (active && body) {
+                    setNeedsReauth(body.needsReauth === true);
+                }
+            })
+            .catch(() => {});
+        return () => {
+            active = false;
+        };
+    }, [hasStandardSelected]);
 
     // Suggestions = tags the user already uses ∪ tags added elsewhere in this
     // dialog, deduped case-insensitively and sorted.
@@ -279,56 +372,48 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
     );
 
     const toggleCandidate = useCallback((candidate: FeedCandidate) => {
+        const key = candidateKey(candidate);
         setSubscriptions((current) => {
-            const exists = current.some(
-                (item) => item.feedUrl === candidate.feedUrl,
-            );
+            const exists = current.some((item) => item.key === key);
 
             return exists
-                ? current.filter(
-                    (item) => item.feedUrl !== candidate.feedUrl,
-                )
+                ? current.filter((item) => item.key !== key)
                 : [...current, toItem(candidate)];
         });
     }, []);
 
-    const handleTitleChange = useCallback(
-        (feedUrl: string, title: string) => {
-            setSubscriptions((current) =>
-                current.map((item) =>
-                    item.feedUrl === feedUrl ? { ...item, title } : item,
-                ),
-            );
-        },
-        [],
-    );
-
-    const handlePrimaryChange = useCallback(
-        (feedUrl: string, primary: boolean) => {
-            setSubscriptions((current) =>
-                current.map((item) =>
-                    item.feedUrl === feedUrl ? { ...item, primary } : item,
-                ),
-            );
-        },
-        [],
-    );
-
-    const handleTagsChange = useCallback((feedUrl: string, tags: string[]) => {
+    const handleTitleChange = useCallback((key: string, title: string) => {
         setSubscriptions((current) =>
             current.map((item) =>
-                item.feedUrl === feedUrl ? { ...item, tags } : item,
+                item.key === key ? { ...item, title } : item,
+            ),
+        );
+    }, []);
+
+    const handlePrimaryChange = useCallback(
+        (key: string, primary: boolean) => {
+            setSubscriptions((current) =>
+                current.map((item) =>
+                    item.key === key ? { ...item, primary } : item,
+                ),
+            );
+        },
+        [],
+    );
+
+    const handleTagsChange = useCallback((key: string, tags: string[]) => {
+        setSubscriptions((current) =>
+            current.map((item) =>
+                item.key === key ? { ...item, tags } : item,
             ),
         );
     }, []);
 
     const handleExcludeShortsChange = useCallback(
-        (feedUrl: string, excludeShorts: boolean) => {
+        (key: string, excludeShorts: boolean) => {
             setSubscriptions((current) =>
                 current.map((item) =>
-                    item.feedUrl === feedUrl
-                        ? { ...item, excludeShorts }
-                        : item,
+                    item.key === key ? { ...item, excludeShorts } : item,
                 ),
             );
         },
@@ -359,6 +444,19 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         setFieldErrors({});
 
         const payload = subscriptions.map((item) => {
+            if (item.kind === 'standardfeed') {
+                // Send metadata only when the user diverged from the
+                // prefill — untouched defaults mean no sidecar record.
+                const title = item.title.trim();
+                return {
+                    publication: item.publication,
+                    siteUrl: item.siteUrl,
+                    title:
+                        title === item.prefilledTitle.trim() ? '' : title,
+                    primary: item.primary,
+                    tags: item.tags,
+                };
+            }
             const feedUrl = item.excludeShorts
                 ? (youtubeShortsFreeFeedUrl(item.feedUrl) ?? item.feedUrl)
                 : item.feedUrl;
@@ -383,7 +481,13 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                 const body = (await response.json().catch(() => null)) as {
                     errors?: Record<string, string>;
                     message?: string;
+                    code?: string;
                 } | null;
+                if (body?.code === 'reauth_required') {
+                    setNeedsReauth(true);
+                    setSubmitError(undefined);
+                    return;
+                }
                 if (body?.errors) {
                     setFieldErrors(body.errors);
                 }
@@ -502,6 +606,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                                     aria-labelledby="candidate-list-heading"
                                     candidates={candidates}
                                     existingByFeedUrl={existingByFeedUrl}
+                                    siblingBlocked={siblingBlocked}
                                     selected={selectedMap}
                                     onToggle={toggleCandidate}
                                     onTitleChange={handleTitleChange}
@@ -525,6 +630,9 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                                 `subscriptions.${index}.feedUrl`
                                 ],
                                 fieldErrors[
+                                `subscriptions.${index}.publication`
+                                ],
+                                fieldErrors[
                                 `subscriptions.${index}.title`
                                 ],
                             ].filter(Boolean) as string[];
@@ -535,11 +643,11 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
 
                             return (
                                 <div
-                                    key={item.feedUrl}
+                                    key={item.key}
                                     className="flex flex-col gap-1"
                                 >
                                     <p className="text-xs text-muted-foreground">
-                                        {item.title || item.feedUrl}
+                                        {item.title || item.key}
                                     </p>
                                     {indexedErrors.map((message) => (
                                         <InputError
@@ -550,6 +658,20 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                                 </div>
                             );
                         })}
+
+                    {hasStandardSelected && needsReauth && (
+                        <p className="text-sm font-light text-muted-foreground">
+                            Subscribing via ATProto needs one extra
+                            permission.{' '}
+                            <a
+                                href={PATHS.login}
+                                className="text-foreground underline underline-offset-2"
+                            >
+                                Sign in again
+                            </a>{' '}
+                            to enable it.
+                        </p>
+                    )}
 
                     {topLevelError && <InputError message={topLevelError} />}
 

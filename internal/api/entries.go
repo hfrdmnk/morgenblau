@@ -25,6 +25,8 @@ type EntryReader interface {
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error)
 	GetFeed(ctx context.Context, feedURL string) (db.Feed, error)
 	GetUserSaveByItemURL(ctx context.Context, arg db.GetUserSaveByItemURLParams) (db.UserSave, error)
+	GetUserShareByItemURL(ctx context.Context, arg db.GetUserShareByItemURLParams) (db.UserShare, error)
+	GetUserShareByDocument(ctx context.Context, arg db.GetUserShareByDocumentParams) (db.UserShare, error)
 }
 
 // EntryExtractWriter persists readability-extracted bodies.
@@ -41,7 +43,9 @@ func EntryHandler(reader EntryReader) http.Handler {
 		if !ok {
 			return
 		}
-		writeJSON(w, entryRowToWire(entry, sub, feed, lookupSavedState(r.Context(), reader, entry.Url)))
+		saved := lookupSavedState(r.Context(), reader, entry.Url)
+		shared := lookupSharedState(r.Context(), reader, sub, entry)
+		writeJSON(w, entryRowToWire(entry, sub, feed, saved, shared))
 	})
 }
 
@@ -60,9 +64,18 @@ func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter, httpClie
 		}
 
 		saved := lookupSavedState(r.Context(), reader, entry.Url)
+		shared := lookupSharedState(r.Context(), reader, sub, entry)
 
 		if entry.ExtractedBody != nil && *entry.ExtractedBody != "" {
-			writeJSON(w, entryRowToWire(entry, sub, feed, saved))
+			writeJSON(w, entryRowToWire(entry, sub, feed, saved, shared))
+			return
+		}
+
+		// Path-less standardfeed documents have no canonical URL to extract
+		// from; their plaintext body was prefilled at ingest or lives in
+		// content_html. Return the entry as-is rather than fetching "".
+		if entry.Url == "" {
+			writeJSON(w, entryRowToWire(entry, sub, feed, saved, shared))
 			return
 		}
 
@@ -80,7 +93,7 @@ func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter, httpClie
 			slog.Warn("/api/entries/{id}/extract: persist failed", "err", err)
 		}
 		entry.ExtractedBody = &extracted
-		writeJSON(w, entryRowToWire(entry, sub, feed, saved))
+		writeJSON(w, entryRowToWire(entry, sub, feed, saved, shared))
 	})
 }
 
@@ -131,13 +144,12 @@ func loadAndAuthorize(w http.ResponseWriter, r *http.Request, reader EntryReader
 	return entry, sub, feed, true
 }
 
-func entryRowToWire(row db.FeedEntry, sub db.UserSubscription, feed db.Feed, saved *SavedState) EntryWire {
+func entryRowToWire(row db.FeedEntry, sub db.UserSubscription, feed db.Feed, saved *SavedState, shared *SharedState) EntryWire {
 	body := row.ContentHtml
 	if row.ExtractedBody != nil && *row.ExtractedBody != "" {
 		body = row.ExtractedBody
 	}
-	title := sub.Title
-	source := buildSourceMeta(row.FeedUrl, title, feed.SiteUrl, feed.IconUrl)
+	source := buildSourceMeta(row.FeedUrl, displayTitle(sub.Title, feed.Title), feed.SiteUrl, feed.IconUrl)
 	source.Rkey = sub.Rkey
 	return EntryWire{
 		ID:          row.ID,
@@ -150,6 +162,7 @@ func entryRowToWire(row db.FeedEntry, sub db.UserSubscription, feed db.Feed, sav
 		Body:        body,
 		Metadata:    row.Metadata,
 		SavedState:  saved,
+		SharedState: shared,
 	}
 }
 
@@ -173,6 +186,36 @@ func lookupSavedState(ctx context.Context, reader EntryReader, itemURL string) *
 		return nil
 	}
 	return &SavedState{Rkey: row.Rkey}
+}
+
+// lookupSharedState returns the requester's share record for this entry, if
+// one exists. The probe key follows the subscription kind: standardfeed shares
+// dedupe by the document at-uri (the entry guid), rss shares by item URL. A
+// missing row → nil (not shared); any other error degrades the share button to
+// its un-shared state rather than failing the page load.
+func lookupSharedState(ctx context.Context, reader EntryReader, sub db.UserSubscription, entry db.FeedEntry) *SharedState {
+	sess := auth.SessionFromContext(ctx)
+	if sess == nil || sess.Data == nil {
+		return nil
+	}
+	did := sess.Data.AccountDID.String()
+	var (
+		row db.UserShare
+		err error
+	)
+	if wireKind(sub.Kind) == "standardfeed" {
+		doc := entry.Guid
+		row, err = reader.GetUserShareByDocument(ctx, db.GetUserShareByDocumentParams{Did: did, Document: &doc})
+	} else {
+		row, err = reader.GetUserShareByItemURL(ctx, db.GetUserShareByItemURLParams{Did: did, ItemUrl: nilIfEmpty(entry.Url)})
+	}
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			slog.Warn("entries: shared-state lookup failed", "err", err)
+		}
+		return nil
+	}
+	return &SharedState{Rkey: row.Rkey}
 }
 
 func extractReadable(ctx context.Context, client *http.Client, rawURL string, sanitizer *bluemonday.Policy) (string, error) {

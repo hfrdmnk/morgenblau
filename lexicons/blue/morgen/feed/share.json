@@ -1,10 +1,11 @@
 {
   "lexicon": 1,
   "id": "blue.morgen.feed.share",
+  "revision": 2,
   "defs": {
     "main": {
       "type": "record",
-      "description": "A shared feed item. Broadcasts 'I like this' with optional commentary.",
+      "description": "A shared feed item. Broadcasts 'I like this' with optional commentary. For Standardfeed documents this is the lazy comment sidecar of a site.standard.graph.recommend record.",
       "key": "tid",
       "record": {
         "type": "object",
@@ -15,6 +16,11 @@
             "format": "uri",
             "maxLength": 2048,
             "description": "URL of the shared item."
+          },
+          "document": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of the site.standard.document this share refers to, when the item is a Standardfeed document. Joins the share to its paired recommend record."
           },
           "feedUrl": {
             "type": "string",

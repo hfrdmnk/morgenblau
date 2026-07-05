@@ -6,11 +6,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Favicon } from '@/components/favicon';
 import { ReaderRail } from '@/components/reader-rail';
 import type { ExtractedToggleState } from '@/components/reader-rail';
+import { ShareComposer } from '@/components/share-composer';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useKeyboard } from '@/hooks/use-keyboard';
 import { useSaveToggle } from '@/hooks/use-save-toggle';
 import type { SavedToggle } from '@/hooks/use-save-toggle';
+import { useShareToggle } from '@/hooks/use-share-toggle';
+import type { ShareToggle } from '@/hooks/use-share-toggle';
 import { digestHref, PATHS, sourceHref } from '@/lib/paths';
 import { cn, goBackOr, safeHref } from '@/lib/utils';
 
@@ -25,6 +28,7 @@ type Source = {
 };
 
 type SavedState = { rkey: string };
+type SharedState = { rkey: string };
 
 type Entry = {
     id: number;
@@ -37,6 +41,7 @@ type Entry = {
     body: string | null;
     metadata?: string | null;
     savedState: SavedState | null;
+    sharedState: SharedState | null;
 };
 
 type State =
@@ -220,18 +225,29 @@ function ReaderView({ entry }: { entry: Entry }) {
           : entry.body;
 
     const sourceLink = safeHref(entry.url);
+    // A path-less Standardfeed document has no canonical URL: nothing to save
+    // by (the save index keys on itemUrl) and no note the share can attach to.
+    const canSave = entry.url !== '';
     const savedToggle: SavedToggle = {
         initial: entry.savedState,
         itemUrl: entry.url,
         feedUrl: entry.source.feedUrl ?? null,
     };
     const save = useSaveToggle(savedToggle);
+    const shareToggle: ShareToggle = {
+        initial: entry.sharedState,
+        entrySlug: entry.entrySlug,
+        canComment: canSave,
+    };
+    const share = useShareToggle(shareToggle);
 
     useKeyboard({
         Escape: () => {
             goBackOr(backHrefFromLocation());
         },
-        b: () => save.onToggle(),
+        b: () => {
+            if (canSave) save.onToggle();
+        },
         o: () => {
             if (sourceLink) {
                 window.open(sourceLink, '_blank', 'noopener,noreferrer');
@@ -246,8 +262,10 @@ function ReaderView({ entry }: { entry: Entry }) {
             <ReaderRail
                 sourceUrl={sourceLink ?? null}
                 extractedToggle={{ state: toggleState, onClick: onToggleClick }}
-                save={save}
+                save={canSave ? save : undefined}
+                share={share}
             />
+            <ShareComposer share={share} />
             <article className="mx-auto w-full max-w-2xl px-4 pt-8 pb-24 sm:px-6">
                 <header className="mb-8 flex flex-col gap-4">
                     <FeedLine source={entry.source} />
@@ -278,6 +296,12 @@ function WatchView({ entry }: { entry: Entry }) {
         feedUrl: entry.source.feedUrl ?? null,
     };
     const save = useSaveToggle(savedToggle);
+    const shareToggle: ShareToggle = {
+        initial: entry.sharedState,
+        entrySlug: entry.entrySlug,
+        canComment: entry.url !== '',
+    };
+    const share = useShareToggle(shareToggle);
 
     useKeyboard({
         Escape: () => {
@@ -297,8 +321,10 @@ function WatchView({ entry }: { entry: Entry }) {
             <ReaderRail
                 sourceUrl={sourceLink ?? null}
                 save={save}
+                share={share}
                 showProgress={false}
             />
+            <ShareComposer share={share} />
             <article className="mx-auto w-full px-4 pt-8 pb-24 sm:px-6">
                 <header className="mx-auto mb-8 flex max-w-2xl flex-col gap-4">
                     <FeedLine source={entry.source} />

@@ -11,8 +11,10 @@ import (
 type Querier interface {
 	DeleteAuthRequest(ctx context.Context, state string) error
 	DeleteExpiredAuthRequests(ctx context.Context, expiresAt string) (int64, error)
+	DeleteFeedEntry(ctx context.Context, arg DeleteFeedEntryParams) error
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
 	DeleteUserSave(ctx context.Context, arg DeleteUserSaveParams) error
+	DeleteUserShare(ctx context.Context, arg DeleteUserShareParams) error
 	DeleteUserSubscription(ctx context.Context, arg DeleteUserSubscriptionParams) error
 	GetAuthRequest(ctx context.Context, state string) (GetAuthRequestRow, error)
 	GetFeed(ctx context.Context, feedUrl string) (Feed, error)
@@ -23,6 +25,10 @@ type Querier interface {
 	GetSession(ctx context.Context, arg GetSessionParams) ([]byte, error)
 	GetUserSave(ctx context.Context, arg GetUserSaveParams) (UserSave, error)
 	GetUserSaveByItemURL(ctx context.Context, arg GetUserSaveByItemURLParams) (UserSave, error)
+	GetUserShare(ctx context.Context, arg GetUserShareParams) (UserShare, error)
+	GetUserShareByDocument(ctx context.Context, arg GetUserShareByDocumentParams) (UserShare, error)
+	// Dedupe probe for rss shares; standardfeed shares dedupe by document instead.
+	GetUserShareByItemURL(ctx context.Context, arg GetUserShareByItemURLParams) (UserShare, error)
 	// Single-source counterpart to ListUserSourcesWithStats, keyed by (did, rkey).
 	// Carries the same windowed counts plus total_entries and saved_by_you so the
 	// source detail page can render its stat row in one query.
@@ -36,10 +42,17 @@ type Querier interface {
 	// user_subscriptions doubles as an ownership filter; the handler still
 	// distinguishes "not subscribed" from "no posts" via a separate lookup.
 	ListEntriesForSource(ctx context.Context, arg ListEntriesForSourceParams) ([]ListEntriesForSourceRow, error)
+	ListFeedEntriesForDiff(ctx context.Context, feedUrl string) ([]ListFeedEntriesForDiffRow, error)
 	ListFeedURLsForUser(ctx context.Context, did string) ([]string, error)
 	// Snapshot of a user's local save index, used by sync_user to diff against the
 	// PDS and reconcile inserts/deletes.
 	ListUserSavesForSync(ctx context.Context, did string) ([]ListUserSavesForSyncRow, error)
+	// Newest first. The entry join resolves title/slug for document shares whose
+	// entry is still cached; deleted entries fall back to item_url display.
+	ListUserShares(ctx context.Context, did string) ([]ListUserSharesRow, error)
+	// Snapshot of a user's local share index, used by sync_user to diff against
+	// the PDS and reconcile inserts/deletes.
+	ListUserSharesForSync(ctx context.Context, did string) ([]ListUserSharesForSyncRow, error)
 	// One row per subscription with feed metadata and windowed entry stats. The
 	// four window cutoffs (7d, 28d, 56d, 84d as ISO timestamps) and "now" are
 	// passed in by the handler so all rows share a single clock.
@@ -49,14 +62,27 @@ type Querier interface {
 	ListUserSubscriptionTags(ctx context.Context, did string) ([]*string, error)
 	ListUserSubscriptions(ctx context.Context, did string) ([]UserSubscription, error)
 	ListUserSubscriptionsForSync(ctx context.Context, did string) ([]ListUserSubscriptionsForSyncRow, error)
+	// Sibling-guard read: every subscription with its catalog site_url so the
+	// resolve handler can flag candidates that point at the same site under the
+	// other kind (rss vs standardfeed).
+	ListUserSubscriptionsWithSiteURL(ctx context.Context, did string) ([]ListUserSubscriptionsWithSiteURLRow, error)
 	PutAuthRequest(ctx context.Context, arg PutAuthRequestParams) error
 	PutSession(ctx context.Context, arg PutSessionParams) error
 	SetFeedIconURL(ctx context.Context, arg SetFeedIconURLParams) error
 	UpdateFeedEntryExtractedBody(ctx context.Context, arg UpdateFeedEntryExtractedBodyParams) error
 	UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchStateParams) error
+	// kind defaults to 'rss' via NULLIF so pre-standardfeed callers passing the
+	// zero value keep working; it is never changed on conflict. title is the
+	// cached publication name; COALESCE keeps rss callers (nil) from clobbering it.
 	UpsertFeed(ctx context.Context, arg UpsertFeedParams) error
 	UpsertFeedEntry(ctx context.Context, arg UpsertFeedEntryParams) error
+	// Standardfeed counterpart to UpsertFeedEntry. Unlike the rss upsert it owns
+	// extracted_body and record_cid on conflict: a CID change must reset the
+	// cached readability body (path-ful docs pass NULL) or refresh the plaintext
+	// fallback (path-less docs pass the new textContent).
+	UpsertStandardfeedEntry(ctx context.Context, arg UpsertStandardfeedEntryParams) error
 	UpsertUserSave(ctx context.Context, arg UpsertUserSaveParams) error
+	UpsertUserShare(ctx context.Context, arg UpsertUserShareParams) error
 	UpsertUserSubscription(ctx context.Context, arg UpsertUserSubscriptionParams) error
 }
 

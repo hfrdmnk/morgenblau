@@ -40,6 +40,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("POST /api/saves", api.SavesCreateHandler(s.queries, s.queries, pdsWriter))
 	mux.Handle("DELETE /api/saves/{rkey}", api.SavesDeleteHandler(s.queries, s.queries, pdsWriter))
 
+	mux.Handle("GET /api/shares", api.SharesListHandler(s.queries))
+	mux.Handle("POST /api/shares", api.SharesCreateHandler(s.queries, s.queries, pdsWriter))
+	mux.Handle("DELETE /api/shares/{rkey}", api.SharesDeleteHandler(s.queries, s.queries, pdsWriter))
+
 	mux.Handle("GET /api/jobs/active", api.JobsActiveHandler(s.jobs))
 	mux.Handle("GET /api/jobs/{id}", api.JobsGetHandler(s.jobs))
 	mux.Handle("GET /api/digest", api.DigestHandler(s.queries, s.jobs))

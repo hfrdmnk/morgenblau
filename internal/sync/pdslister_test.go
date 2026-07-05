@@ -10,6 +10,16 @@ import (
 	"github.com/bluesky-social/indigo/atproto/atclient"
 )
 
+// rssRecordValue builds a minimal rev-2 union-shaped record value.
+func rssRecordValue(feedURL string) map[string]any {
+	return map[string]any{
+		"source": map[string]any{
+			"$type":   "blue.morgen.feed.subscription#rssFeed",
+			"feedUrl": feedURL,
+		},
+	}
+}
+
 // TestListSubscriptions_PagesUntilCursorEmpty asserts the lister keeps paging
 // past an empty page (cursor still set) and only stops when the cursor is
 // empty. An early stop would let reconcile delete every local row missed by
@@ -21,12 +31,12 @@ func TestListSubscriptions_PagesUntilCursorEmpty(t *testing.T) {
 		cursor  string
 	}{
 		{records: []map[string]any{
-			{"uri": "at://x/c/r1", "cid": "b", "value": map[string]any{"feedUrl": "https://a/feed"}},
+			{"uri": "at://x/c/r1", "cid": "b", "value": rssRecordValue("https://a/feed")},
 		}, cursor: "c1"},
 		// Empty page but cursor still set — must NOT terminate paging.
 		{records: nil, cursor: "c2"},
 		{records: []map[string]any{
-			{"uri": "at://x/c/r3", "cid": "b", "value": map[string]any{"feedUrl": "https://b/feed"}},
+			{"uri": "at://x/c/r3", "cid": "b", "value": rssRecordValue("https://b/feed")},
 		}, cursor: ""},
 	}
 
@@ -69,7 +79,7 @@ func TestListSubscriptions_StopsOnEmptyCursor(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"records": []map[string]any{
-				{"uri": "at://x/c/r", "cid": "b", "value": map[string]any{"feedUrl": "https://a/feed"}},
+				{"uri": "at://x/c/r", "cid": "b", "value": rssRecordValue("https://a/feed")},
 			},
 			"cursor": "",
 		})
@@ -89,24 +99,37 @@ func TestListSubscriptions_StopsOnEmptyCursor(t *testing.T) {
 	}
 }
 
-func TestToPDSSubscription_Mapping(t *testing.T) {
+func TestToPDSSubscription_RSSVariant(t *testing.T) {
 	r := recordEntry{
 		URI: "at://did:plc:alice/blue.morgen.feed.subscription/3la",
 		CID: "bafy",
 		Value: map[string]any{
-			"feedUrl": "https://example.com/feed",
+			"source": map[string]any{
+				"$type":   "blue.morgen.feed.subscription#rssFeed",
+				"feedUrl": "https://example.com/feed",
+				"siteUrl": "https://example.com",
+			},
 			"title":   "Example",
 			"primary": true,
 			// JSON arrays decode to []any, so tags land as []any{string...}.
 			"tags": []any{"tech", "design"},
 		},
 	}
-	got := toPDSSubscription(r)
+	got, ok := toPDSSubscription(r)
+	if !ok {
+		t.Fatal("expected ok for rssFeed variant")
+	}
+	if got.Kind != "rss" {
+		t.Errorf("Kind = %q", got.Kind)
+	}
 	if got.Rkey != "3la" {
 		t.Errorf("Rkey = %q", got.Rkey)
 	}
 	if got.FeedURL != "https://example.com/feed" {
 		t.Errorf("FeedURL = %q", got.FeedURL)
+	}
+	if got.SiteURL != "https://example.com" {
+		t.Errorf("SiteURL = %q", got.SiteURL)
 	}
 	if got.Title != "Example" {
 		t.Errorf("title = %q", got.Title)
@@ -119,30 +142,55 @@ func TestToPDSSubscription_Mapping(t *testing.T) {
 	}
 }
 
-func TestToPDSSubscription_MissingOptionalFields(t *testing.T) {
-	got := toPDSSubscription(recordEntry{
-		URI: "at://did:plc:example/blue.morgen.feed.subscription/3la",
-		CID: "bafy",
+func TestToPDSSubscription_StandardPublicationVariant(t *testing.T) {
+	got, ok := toPDSSubscription(recordEntry{
+		URI: "at://did:plc:alice/blue.morgen.feed.subscription/3la",
 		Value: map[string]any{
-			"feedUrl": "https://example.com/feed",
+			"source": map[string]any{
+				"$type":       "blue.morgen.feed.subscription#standardPublication",
+				"publication": "at://did:plc:pub/site.standard.publication/3p",
+			},
+			"title": "My Title",
 		},
 	})
-	if got.Rkey != "3la" {
-		t.Errorf("Rkey = %q", got.Rkey)
+	if !ok {
+		t.Fatal("expected ok for standardPublication variant")
 	}
-	if got.FeedURL != "https://example.com/feed" {
-		t.Errorf("FeedURL = %q", got.FeedURL)
+	if got.Kind != "standardfeed" {
+		t.Errorf("Kind = %q", got.Kind)
 	}
-	if got.Title != "" {
-		t.Errorf("optional title = %q, want empty", got.Title)
+	if got.Publication != "at://did:plc:pub/site.standard.publication/3p" {
+		t.Errorf("Publication = %q", got.Publication)
 	}
-	// Absent primary/tags mean the record doesn't set them — the PDS is the
-	// source of truth, so zero values are correct, not a data loss.
-	if got.Primary {
-		t.Errorf("primary = true, want false when absent")
+	if got.FeedURL != "" {
+		t.Errorf("FeedURL = %q, want empty", got.FeedURL)
 	}
-	if got.Tags != nil {
-		t.Errorf("tags = %v, want nil when absent", got.Tags)
+	if got.Title != "My Title" {
+		t.Errorf("title = %q", got.Title)
+	}
+}
+
+func TestToPDSSubscription_SkipsUnrecognizableRecords(t *testing.T) {
+	cases := []struct {
+		name  string
+		value map[string]any
+	}{
+		{"v1 flat shape (no source)", map[string]any{"feedUrl": "https://example.com/feed"}},
+		{"unknown variant", map[string]any{"source": map[string]any{"$type": "blue.morgen.feed.subscription#carrierPigeon", "coop": "x"}}},
+		{"source not a map", map[string]any{"source": "https://example.com/feed"}},
+		{"rss variant missing feedUrl", map[string]any{"source": map[string]any{"$type": "blue.morgen.feed.subscription#rssFeed"}}},
+		{"standard variant missing publication", map[string]any{"source": map[string]any{"$type": "blue.morgen.feed.subscription#standardPublication"}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ok := toPDSSubscription(recordEntry{
+				URI:   "at://did:plc:alice/blue.morgen.feed.subscription/3la",
+				Value: tc.value,
+			})
+			if ok {
+				t.Fatal("expected record to be skipped")
+			}
+		})
 	}
 }
 
@@ -187,14 +235,98 @@ func TestToPDSSave_MissingOptionalFields(t *testing.T) {
 	}
 }
 
-func TestToPDSSubscription_TagsSkipsNonStrings(t *testing.T) {
-	got := toPDSSubscription(recordEntry{
-		URI: "at://did:plc:example/blue.morgen.feed.subscription/3la",
+func TestToPDSShare_RSSMapping(t *testing.T) {
+	got, ok := toPDSShare(recordEntry{
+		URI: "at://did:plc:alice/blue.morgen.feed.share/3sh",
 		Value: map[string]any{
-			"feedUrl": "https://example.com/feed",
-			"tags":    []any{"keep", 42, nil, "also"},
+			"itemUrl":   "https://example.com/post",
+			"feedUrl":   "https://example.com/feed",
+			"comment":   "great read",
+			"createdAt": "2026-06-01T00:00:00Z",
 		},
 	})
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if got.Rkey != "3sh" || got.ItemURL != "https://example.com/post" {
+		t.Errorf("got = %+v", got)
+	}
+	if got.Document != "" {
+		t.Errorf("Document = %q, want empty (rss share)", got.Document)
+	}
+	if got.FeedURL != "https://example.com/feed" || got.Comment != "great read" {
+		t.Errorf("got = %+v", got)
+	}
+}
+
+func TestToPDSShare_SidecarCarriesDocument(t *testing.T) {
+	got, ok := toPDSShare(recordEntry{
+		URI: "at://did:plc:alice/blue.morgen.feed.share/3sc",
+		Value: map[string]any{
+			"itemUrl":  "https://blog.example/post",
+			"document": "at://did:plc:pub/site.standard.document/3da",
+			"comment":  "loved it",
+		},
+	})
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if got.Document != "at://did:plc:pub/site.standard.document/3da" {
+		t.Errorf("Document = %q", got.Document)
+	}
+}
+
+func TestToPDSShare_MissingItemURLSkipped(t *testing.T) {
+	if _, ok := toPDSShare(recordEntry{
+		URI:   "at://did:plc:alice/blue.morgen.feed.share/3sc",
+		Value: map[string]any{"comment": "no url"},
+	}); ok {
+		t.Error("expected skip: itemUrl is required by the lexicon")
+	}
+}
+
+func TestToPDSRecommend_Mapping(t *testing.T) {
+	got, ok := toPDSRecommend(recordEntry{
+		URI: "at://did:plc:alice/site.standard.graph.recommend/3rec",
+		Value: map[string]any{
+			"document":  "at://did:plc:pub/site.standard.document/3da",
+			"createdAt": "2026-06-01T00:00:00Z",
+		},
+	})
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if got.Rkey != "3rec" || got.Document != "at://did:plc:pub/site.standard.document/3da" {
+		t.Errorf("got = %+v", got)
+	}
+	if got.CreatedAt != "2026-06-01T00:00:00Z" {
+		t.Errorf("CreatedAt = %q", got.CreatedAt)
+	}
+}
+
+func TestToPDSRecommend_MissingDocumentSkipped(t *testing.T) {
+	if _, ok := toPDSRecommend(recordEntry{
+		URI:   "at://did:plc:alice/site.standard.graph.recommend/3rec",
+		Value: map[string]any{"createdAt": "2026-06-01T00:00:00Z"},
+	}); ok {
+		t.Error("expected skip: document is required")
+	}
+}
+
+func TestToPDSSubscription_TagsSkipsNonStrings(t *testing.T) {
+	got, ok := toPDSSubscription(recordEntry{
+		URI: "at://did:plc:example/blue.morgen.feed.subscription/3la",
+		Value: map[string]any{
+			"source": map[string]any{
+				"$type":   "blue.morgen.feed.subscription#rssFeed",
+				"feedUrl": "https://example.com/feed",
+			},
+			"tags": []any{"keep", 42, nil, "also"},
+		},
+	})
+	if !ok {
+		t.Fatal("expected ok")
+	}
 	if len(got.Tags) != 2 || got.Tags[0] != "keep" || got.Tags[1] != "also" {
 		t.Errorf("tags = %v, want [keep also]", got.Tags)
 	}
