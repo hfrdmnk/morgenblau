@@ -3,8 +3,7 @@
 CREATE TABLE oauth_sessions (
     did         TEXT NOT NULL,
     session_id  TEXT NOT NULL,
-    -- TODO(P1): AEAD-encrypt before public deploy. Re-enables by wrapping the
-    -- store's serializer; no schema change needed.
+    -- AEAD-encrypted at rest by the store serializer (internal/secret keyset).
     data        BLOB NOT NULL,
     updated_at  TEXT NOT NULL,
     PRIMARY KEY (did, session_id)
@@ -12,7 +11,7 @@ CREATE TABLE oauth_sessions (
 
 CREATE TABLE oauth_auth_requests (
     state       TEXT PRIMARY KEY,
-    -- TODO(P1): AEAD-encrypt before public deploy.
+    -- AEAD-encrypted at rest by the store serializer (internal/secret keyset).
     data        BLOB NOT NULL,
     created_at  TEXT NOT NULL,
     expires_at  TEXT NOT NULL

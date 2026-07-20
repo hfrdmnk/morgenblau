@@ -1,0 +1,14 @@
+#!/bin/sh
+# Gate commits on frontend findings introduced by the changeset (fallow audit, gate=new-only);
+# inherited findings never block. Bypass once with: git commit --no-verify
+[ -x frontend/node_modules/.bin/fallow ] || exit 0
+
+# Merge-base with the upstream so feature branches compare against the right base.
+UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+if [ -n "$UPSTREAM" ]; then
+  BASE="$(git merge-base "$UPSTREAM" HEAD 2>/dev/null || echo "$UPSTREAM")"
+else
+  BASE="main"
+fi
+
+cd frontend && exec node_modules/.bin/fallow audit --base "$BASE" --quiet --gate-marker pre-commit

@@ -10,18 +10,14 @@ import (
 )
 
 // FeedLister is the slice of the catalog the global refresher reads.
-// Satisfied by *db.Queries via ListAllFeedURLs.
 type FeedLister interface {
 	ListAllFeedURLs(ctx context.Context) ([]string, error)
 }
 
-// globalFetchConcurrency caps in-flight goroutines per sweep. Aligned with
-// fetcher.WorkerPoolSize so we never spawn more than the fetcher will admit.
+// globalFetchConcurrency is aligned with fetcher.WorkerPoolSize so a sweep never spawns more than the fetcher will admit.
 const globalFetchConcurrency = fetcher.WorkerPoolSize
 
-// GlobalRefresher re-fetches every feed in the shared Tier-2 catalog on a
-// timer. It maps to no user, so it stays out of the jobs tracker — failures
-// are logged, not surfaced to a refresh pill.
+// GlobalRefresher re-fetches every feed in the shared Tier-2 catalog on a timer; it maps to no user, so it stays out of the jobs tracker and logs failures instead of a refresh pill.
 type GlobalRefresher struct {
 	lister  FeedLister
 	fetcher FeedFetcher
@@ -31,10 +27,7 @@ func NewGlobalRefresher(lister FeedLister, fetcher FeedFetcher) *GlobalRefresher
 	return &GlobalRefresher{lister: lister, fetcher: fetcher}
 }
 
-// RefreshAll lists every catalog feed and fans out FetchAndStore with bounded
-// concurrency. Returns the number of feeds attempted. The error is non-nil
-// only for a list-query failure or a cancelled context; per-feed fetch
-// failures are logged and swallowed so one dead feed can't abort the sweep.
+// RefreshAll fans out FetchAndStore with bounded concurrency; per-feed failures are logged and swallowed so one dead feed can't abort the sweep.
 func (r *GlobalRefresher) RefreshAll(ctx context.Context) (int, error) {
 	urls, err := r.lister.ListAllFeedURLs(ctx)
 	if err != nil {
@@ -55,8 +48,7 @@ func (r *GlobalRefresher) RefreshAll(ctx context.Context) (int, error) {
 			return nil
 		})
 	}
-	// Closures never return errors, so Wait only unblocks once every fetch
-	// settles. The sole thing that ends a sweep early is ctx cancellation.
+	// Closures never return errors, so only ctx cancellation ends the sweep early.
 	_ = g.Wait()
 	if err := ctx.Err(); err != nil {
 		return len(urls), err

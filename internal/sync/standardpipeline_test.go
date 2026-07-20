@@ -144,6 +144,45 @@ func TestStandardPipeline_InsertsNewDocument(t *testing.T) {
 	}
 }
 
+func TestStandardPipeline_DetectsLanguageFromDocumentContent(t *testing.T) {
+	src := &fakeStandardSource{
+		pub: testPublication(),
+		docs: []standardfeed.Document{{
+			URI: testDocURI, CID: "cid1", Site: testPubURI,
+			Title: "Article", Path: "/a",
+			Description: "Le rapide renard brun saute par-dessus le chien paresseux pendant que le soleil se couche lentement derriere les collines lointaines.",
+			PublishedAt: "2026-07-01T08:00:00Z",
+		}},
+	}
+	q := &fakeStdQueries{}
+	if err := newStdPipeline(src, q).FetchAndStore(context.Background(), testPubURI); err != nil {
+		t.Fatalf("FetchAndStore: %v", err)
+	}
+	if len(q.feedUpserts) != 1 {
+		t.Fatalf("feed upserts: %+v", q.feedUpserts)
+	}
+	if lang := q.feedUpserts[0].Language; lang == nil || *lang != "fr" {
+		t.Errorf("Language = %v, want fr (detected from document content)", lang)
+	}
+}
+
+func TestStandardPipeline_UnknownLanguageWhenContentTooShort(t *testing.T) {
+	src := &fakeStandardSource{
+		pub: testPublication(),
+		docs: []standardfeed.Document{{
+			URI: testDocURI, CID: "cid1", Site: testPubURI,
+			Title: "Hi", Path: "/a", Description: "Hi", PublishedAt: "2026-07-01T08:00:00Z",
+		}},
+	}
+	q := &fakeStdQueries{}
+	if err := newStdPipeline(src, q).FetchAndStore(context.Background(), testPubURI); err != nil {
+		t.Fatalf("FetchAndStore: %v", err)
+	}
+	if lang := q.feedUpserts[0].Language; lang != nil {
+		t.Errorf("Language = %v, want nil (standardfeed documents carry no language tag hint)", lang)
+	}
+}
+
 func TestStandardPipeline_UnchangedCIDWritesNothing(t *testing.T) {
 	cid := "cid1"
 	src := &fakeStandardSource{
@@ -276,8 +315,7 @@ func TestStandardPipeline_SkipsMalformedDocuments(t *testing.T) {
 }
 
 func TestStandardPipeline_MalformedDocKeepsCachedEntry(t *testing.T) {
-	// A doc with a cached entry that comes back malformed (missing title) still
-	// exists upstream, so the delete sweep must leave the cached entry alone.
+	// A doc that comes back malformed but still exists upstream must not be swept as a delete.
 	cid := "c1"
 	src := &fakeStandardSource{
 		pub: testPublication(),

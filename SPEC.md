@@ -79,6 +79,8 @@ Avoid: "manage subscriptions" in user copy (per `<brand>` — they're editors, n
 
 Standardfeed sources get **no user-facing noun** (not "Publication", not "Standardfeed") — a source is a source. The only user-facing differentiator is a "Subscribe via ATProto" affordance in the picker with a tooltip that leads with the benefit (subscription lives in the user's own account, portable across apps, shares reach the Atmosphere), not the mechanism. RSS candidates carry no label at all. Internally the Tier-2 kind is `standardfeed`.
 
+**Reader network**: the set of apps whose reading records feed discovery: Morgenblau, Skyreader, Glean, Standardfeed. It supplies discovery *candidates* (subscriptions, saves, shares, recommends). margin.at is not a member: annotations stay a render-time layer, never a discovery signal. Adjacent social graphs (Bluesky follows, Tangled follows) are also not members; they contribute only to personal ranking, as weaker trust signals than a follow inside the reader network (Morgenblau, Skyreader). Two-layer rule: **the reader network supplies the candidates; social graphs rank them.**
+
 </terminology>
 
 ---
@@ -348,11 +350,13 @@ Published as a `permission-set` lexicon so OAuth clients request one scope inste
 | `site.standard.publication` | Standardfeed | Read. Publication identity + display metadata (name, icon, url) for Tier-2 |
 | `site.standard.document` | Standardfeed | Read. Entry ingestion for publication sources — PDS-native, no RSS involved |
 | `site.standard.graph.recommend` | Standardfeed | **Read + write.** Existence record for shares of Standardfeed documents; `blue.morgen.feed.share` is its lazy comment sidecar. Popularity signal (1.5×) |
+| `pub.leaflet.publication` | Leaflet | Read. Leaflet dual-writes discoverable publications into `site.standard.publication` under the same rkey; discovery resolves that sibling first and falls back to this record's `base_path` RSS feed only for legacy un-mirrored publications |
 | `app.bsky.graph.follow` | Bluesky | Suggestions only ("people you know from Bluesky"); never auto-mirrored |
 | `at.margin.note` | margin.at | Margin annotations rendered alongside articles |
 | `at.glean.like` | Glean | Popularity signal (1×); importable as `blue.morgen.feed.save` |
 | `at.glean.subscription` | Glean | Importable as `blue.morgen.feed.subscription` |
 | `app.skyreader.feed.subscription` | Skyreader | Importable; respected in discovery |
+| `app.skyreader.social.follow` | Skyreader | Read. Reader-network trust signal: strong trust tier, one-hop people discovery, trending follower counts. Unpublished lexicon (shape-identical to `blue.morgen.graph.follow`); consumed by NSID convention |
 | `app.skyreader.feed.saved` | Skyreader | Popularity signal (1×); importable as `blue.morgen.feed.save` |
 | `app.skyreader.social.share` | Skyreader | Popularity signal (1.5×); importable as `blue.morgen.feed.share` |
 
@@ -392,7 +396,7 @@ References:
 
 ## Three Content Types
 
-All four are first-class citizens in v1, each with a UI optimized for its format.
+All three are first-class citizens in v1, each with a UI optimized for its format.
 
 | Type      | Description                        | Playback                 |
 | --------- | ---------------------------------- | ------------------------ |
@@ -490,11 +494,96 @@ The core differentiator. For each piece of content, the app checks for ATProto b
 - **Read:** Show shares (including Standardfeed recommends), Bluesky reposts and margin.at annotations. No like counts, shares are higher signal.
 - **Follow:** In-app follows stored as `blue.morgen.graph.follow` records (separate from Bluesky social graph follows).
 
+### The Follow Contract
+
+Following a person does exactly two things: their shares appear in the user's Library (network section), and their taste feeds personal source suggestions at the strongest trust tier (see `<discovery>`). It deliberately does **not** auto-subscribe to publications they author (their publication ranks top of suggestions via the authorship signal; becoming a digest source stays an explicit act — the digest is built only from sources the user chose) and puts **nothing** in the digest. You follow a person's taste, not a timeline of them.
+
+A person can never follow themselves. Self remains searchable for profile access with the follow action omitted, and an invalid self-follow record encountered during reconciliation is removed.
+
 ### UX Principle
 
 Social context is available but not forced. The reading experience comes first. Reactions are opt-in per article — shown only if the user wants to see them.
 
 </social-layer>
+
+---
+
+<discovery>
+
+## Discovery
+
+The Discover route answers "where do I find good stuff to read?" using the reader network (see `<terminology>`). Two tabs (Sources, People) toggled **in-page**, not in the app chrome — a chrome-level subnav would put a second "Sources" at equal visual weight beside the main nav's. Each tab has two suggestion classes: **Personal** (ranked by the user's own graphs) and **Global/Trending** (network-wide aggregates).
+
+### Data acquisition
+
+No firehose/Jetstream in v1; it can be layered in later without changing the model.
+
+- **Personal**: on-demand `listRecords` crawls of the repos of people the user follows (bounded set), plus single-repo crawls when the user inspects one person (card expansion, profile page), cached in local SQLite with a TTL. Same posture as Tier-1/Tier-2: local tables are derived caches, re-derivable from PDSes.
+- **Global/Trending**: a **daily batch job** enumerates repos per collection via relay `com.atproto.sync.listReposByCollection`, then diffs records into local aggregate tables (canonical source key → per-signal counts). Daily cadence is deliberate and brand-aligned: Morgenblau is a daily-digest product, so trending that changes once a day is calmer than a live ticker, and one computation serves all users.
+
+Aggregates are keyed by the same canonical source keys as Tier-2 (canonical feed URL for `rss`, publication AT-URI for `standardfeed`), so cross-reader dedup falls out of the keying.
+
+### Personal ranking (Sources)
+
+`score(source) = Σ over followed people p: trust(p) × strongest signal(p, source)`. The orderings are spec; the exact numbers live in code.
+
+- **Trust tiers:** reader-network follow (Morgenblau, Skyreader) > Bluesky/Tangled follow. A person in both tiers takes the higher, not the sum.
+- **Signal ordering:** authors the publication > subscribes to it > shared an item from it. Saves are excluded — a save is never attributed to a person, so it never enters personal ranking or reason lines (see `<saving-sharing>`); saves count only in anonymous trending aggregates.
+- All signals are per-source: an item reaction counts toward the source it came from (via `feedUrl`/`document` provenance, Tier-2 `itemUrl` lookup as fallback).
+- **Time:** standing signals (authorship, subscription) are timeless with a mild recency lean (newer subscription slightly outranks an old one, actively publishing author outranks a dormant one). Reaction signals (shares — and saves on the trending side) decay with age, Hacker-News-gravity style.
+- **One signal per person per source** (strongest wins), so prolific sharers don't dominate.
+- **Weak-tier cap:** total Bluesky/Tangled contribution per source is capped at roughly two strong subscribers' worth, so wide-graph virality can surface a source but never bury what reader-network friends actually read.
+- **Filters before ranking:** sources the user already subscribes to (by canonical key) and hidden sources drop out.
+- **Every suggestion carries its reason** ("3 people you follow subscribe", "@alice shared this"), derived from its top contributors, plus up to 3 contributor DIDs so the card can show an avatar stack of exactly the people the count claims.
+
+Future direction: collaborative filtering over the daily batch's subscription matrix (or a small learned ranker) can replace the hand-tuned weights without touching acquisition.
+
+### Global/Trending ranking (Sources)
+
+Same signal weights and gravity decay as personal ranking — plus saves at their `<lexicons>` popularity weight, which trending may count because aggregates are anonymous — summed over the whole network from the daily batch tables, with no trust term. Two filters keep it signal instead of noise:
+
+- **Language:** trending only shows sources in the languages the user demonstrably reads, inferred from their own subscriptions (content-based detection is primary, the feed's `language` tag is a hint only). App locale is the cold-start fallback for users with no subscriptions. Sources whose language can't be determined **pass the filter**: occasionally showing a wrong-language source beats silently eating a good one.
+- **Quality bar:** a source needs signals from **≥3 distinct repos** to trend at all. Kills single-repo spam and self-promotion, and doubles as a floor on quality.
+
+Already-subscribed and hidden sources drop out, same as personal.
+
+Trending sources are delivered inside the unified sources response, not a separate endpoint: personal cards carry a per-card trending flag, and trending-only sources (no personal signal) are appended as their own cards. A source that has any personal signal never appears as a trending-only card, and an aggregate read failure degrades the list to personal-only rather than erroring.
+
+### People
+
+**Eligibility:** only people with visible reader-network presence (≥1 subscription, share, or authored publication) are ever suggested — following someone with no reader records yields nothing under the follow contract (see `<social-layer>`). Saves don't confer eligibility: they're invisible under save privacy, so a saves-only person would surface with nothing to preview.
+
+**Personal candidates:** (1) the user's Bluesky follows active in the reader network, (2) their Tangled follows likewise, (3) one hop inside the reader network: people followed by their Morgenblau/Skyreader follows. Ranked by gravity-decayed reader-network activity plus a taste-overlap bonus (shared canonical source keys), reason on every card ("you follow on Bluesky", "followed by @alice", "reads 4 of your sources").
+
+**Global/Trending:** ranked by reader-network follower count (`blue.morgen.graph.follow` + `app.skyreader.social.follow`) plus decayed share activity; same ≥3-distinct-repos bar.
+
+**Search:** the People tab opens with whole-network person search (Bluesky AppView typeahead), which replaces the bare handle-follow form as the manual path — suggestions and search are a convenience, never a gate. Search finds, it never follows directly: selecting a result materializes that person as an expanded card in place, with follow but no hide (hide is a suggestion signal; a searched person isn't a suggestion). The follow action is omitted when the result is self. Results with reader-network presence rank first and carry a taste hint; anyone else stays followable, but a presence-less result shows its emptiness honestly ("not in the reader network yet") instead of permitting a silent no-op follow.
+
+Already-followed people drop out; hide works identically to sources (same snooze mechanism, keyed by DID).
+
+### The user's own foreign records
+
+The user's own Skyreader/Glean subscriptions are wired into personal source suggestions ("For you") as regular candidates at the highest trust tier (self > reader-network follow), each carrying its reason ("you subscribe on Skyreader") and one-tap subscribe. Import becomes an organic, per-source act of curation rather than a bulk copy — this is the primary import path, and it fits the editor identity better than a wizard dumping 200 stale subscriptions into a pristine digest. A bulk import wizard (settings, with consent step) may ship later; it is out of discovery v1.
+
+**De-dup rule, all entry points:** a foreign record whose canonical source key matches an existing Morgenblau subscription is invisible everywhere — never suggested, never importable, silently skipped in bulk import. For saves/shares the dedup key is `itemUrl`.
+
+### Hiding and rotation
+
+- **Hide state is never a PDS record.** A hidden suggestion is a private negative taste signal; PDS records are public, so publishing it would leak taste and pollute the repo. Hides live in server SQLite only (`did`, canonical source key, `hidden_until`) — synced across the user's devices via the server, not portable to other apps, and that's fine for an ephemeral signal.
+- **Hide = snooze, never forever:** 30 days on first hide, 180 days when the same source is hidden again. No permanent-block concept and no management UI for hidden items.
+- **Fresh seeded rotation:** each uncached visit gets a random seed and freezes the ranking time. Within a score band (near-ties dominate at small network scale), the seed shuffles order without letting weaker bands jump stronger ones. The seed and ranking time travel in the pagination cursor, so manual pagination and tab switches within the one-hour in-memory cache keep one stable sequence. A hard reload starts a fresh sequence. A small pool or separated score bands may still produce the same first page. Future refinement, not v1: impression-based demotion of repeatedly ignored suggestions.
+
+### Presentation
+
+Sources and People are each **one unified list, no sections**, loaded eight suggestions at a time. Each page takes up to four personal-ranked cards followed by up to four trending-only cards; when one pool has fewer than four remaining, the other fills the open slots. Every eligible candidate can eventually appear. Trending is a per-card reason line ("Trending in the reader network", where the reader-network term earns its user-facing existence), suppressed by any personal signal. People trending mirrors sources delivery: one response, per-card trending flag, aggregate read failure degrades to personal-only. `GET /api/discover/sources` and `GET /api/discover/people` return `{ items, nextCursor? }`; the opaque, endpoint-specific cursor continues the frozen sequence, and these responses are never cached by HTTP intermediaries. The People tab runs top-to-bottom as find → consider → manage: search, then the unified suggestion list and its Load more button, then the user's follow list (the only unfollow surface). Suggestion lists are finite and allow deliberate manual pagination. There is no infinite scroll, so the user can still finish the page like the digest.
+
+**Cold start:** no follows and no subscriptions means no personal cards; the sources list still shows trending-only cards (language-filtered by app locale) plus the two manual affordances: add source by URL, follow by handle. No onboarding wizard.
+
+**Cards:** a source card shows favicon and title, a collapsible preview of its last 3 posts (lazily fetched, server-cached with a TTL, best-effort: the card renders fine without it; post titles link to the original site, candidates get no in-app reader since the preview's job is the subscribe decision, not reading), one reason line (the highest-ranked signal only, with contributor avatars), subscribe (reusing the existing add flow, incl. the standardfeed affordance per `<terminology>`), and hide. Subscribing keeps the card in place in an inert subscribed state rather than removing it. Person cards get follow, hide, and a small taste preview (a few source names they read, or their latest share) — a bare avatar gives no basis to judge someone's taste. Expanding a person card (same grammar as source cards) answers **writes / reads / shares**: up to 2 authored publications (subscribable — the follow contract's explicit act, given a home), 3–4 subscriptions (already-subscribed ones marked inert per the de-dup rule, novel ones one-tap subscribable), and their latest share (a preview of the Library payoff). Lazily fetched on expand, server-cached with a TTL, best-effort, like source post previews. Person cards expand for taste context and provide access to the full profile; person affordances elsewhere (reason avatars, Library sharers) continue to link there too.
+
+**Profile page** (`/profile/{handle-or-did}`, handle preferred in links, DID as the stable fallback): the full version of the person card. Header: avatar, display name, handle, Bluesky bio, follow/unfollow (hidden on self), and a reader-network meta line. Body: segmented **Writes | Shares | Reads** (Writes hidden when the person authors nothing — no dead tab), newest first, max 10 items per segment with load-more. Profile segments are archives the user chose to browse, so pagination is allowed; the no-infinite-scroll rule also governs suggestion surfaces and the digest. The page resolves for any identity; zero reader records renders the honest empty state, never an error. Saves are never shown (see `<saving-sharing>`).
+
+</discovery>
 
 ---
 
@@ -537,7 +626,9 @@ Simple and minimal.
 
 - Users can **save** individual articles to a separate saved-items view — stored as `blue.morgen.feed.save` records
 - Users can **share** articles with optional commentary — stored as `blue.morgen.feed.share` records
+- Share surfaces present shared items as readable links and never use raw record identifiers as labels.
 - Saves carry optional user-defined `tags` (e.g. `read-later`, `favorite`). Flat tag list, no folders or hierarchies. Filtering surfaces through Views.
+- Saves are **product-private**: the PDS records are technically public, but Morgenblau never renders another user's saves anywhere (profile pages, person cards, counts). Shares are the public voice; saves are the private shelf. Aggregate popularity counting (see `<lexicons>`) is the sole exception, and it never attributes a save to a person.
 
 </saving-sharing>
 

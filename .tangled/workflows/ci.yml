@@ -1,0 +1,29 @@
+when:
+  - event: ["push"]
+    branch: ["**"]
+  - event: ["pull_request"]
+    branch: ["main"]
+
+engine: "nixery"
+
+clone:
+  depth: 1
+
+dependencies:
+  nixpkgs:
+    - go
+    - gcc # go test -race links the TSAN runtime via cgo
+    - bun
+
+steps:
+  - name: "gofmt"
+    command: 'test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }'
+
+  - name: "go vet"
+    command: "go vet ./..."
+
+  - name: "go test (race)"
+    command: "go test -race ./..."
+
+  - name: "frontend lint + build"
+    command: "cd frontend && bun install --frozen-lockfile && bun run lint && bun run build"

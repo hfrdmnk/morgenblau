@@ -16,10 +16,10 @@ import (
 
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/middleware/auth"
+	"morgenblau/internal/safehttp"
 )
 
-// EntryReader reads entries, verifies subscription ownership, and looks up
-// whether the requester has saved this entry (for the reader's save button).
+// EntryReader reads entries, verifies subscription ownership, and looks up whether the requester saved this entry.
 type EntryReader interface {
 	GetFeedEntryBySlug(ctx context.Context, slug string) (db.FeedEntry, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error)
@@ -34,9 +34,7 @@ type EntryExtractWriter interface {
 	UpdateFeedEntryExtractedBody(ctx context.Context, arg db.UpdateFeedEntryExtractedBodyParams) error
 }
 
-// EntryHandler returns the full entry for a session user. The handler also
-// resolves the source title/site and the requester's saved-state for the
-// entry so the frontend doesn't need a second round-trip.
+// EntryHandler returns the full entry plus source metadata and saved-state, avoiding a second round-trip for the frontend.
 func EntryHandler(reader EntryReader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		entry, sub, feed, ok := loadAndAuthorize(w, r, reader)
@@ -49,12 +47,8 @@ func EntryHandler(reader EntryReader) http.Handler {
 	})
 }
 
-// EntryExtractHandler runs readability on entry.url, sanitizes the result,
-// persists it on the row, and returns the freshly-extracted entry. Subsequent
-// calls return the cached extraction without re-fetching.
-//
-// httpClient must be a safehttp-built client so attacker-controlled entry
-// URLs can't pivot to internal-network hosts.
+// EntryExtractHandler runs readability extraction on entry.url, sanitizes it, and caches the result.
+// httpClient must be a safehttp-built client, since entry.url is attacker-controlled and could pivot to internal hosts.
 func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter, httpClient *http.Client) http.Handler {
 	sanitizer := bluemonday.UGCPolicy()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -71,9 +65,7 @@ func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter, httpClie
 			return
 		}
 
-		// Path-less standardfeed documents have no canonical URL to extract
-		// from; their plaintext body was prefilled at ingest or lives in
-		// content_html. Return the entry as-is rather than fetching "".
+		// Path-less standardfeed documents have no canonical URL to extract from (body was prefilled at ingest), so return as-is rather than fetching "".
 		if entry.Url == "" {
 			writeJSON(w, entryRowToWire(entry, sub, feed, saved, shared))
 			return
@@ -82,7 +74,7 @@ func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter, httpClie
 		extracted, err := extractReadable(r.Context(), httpClient, entry.Url, sanitizer)
 		if err != nil {
 			slog.Warn("/api/entries/{id}/extract: extract failed", "url", entry.Url, "err", err)
-			http.Error(w, "extraction failed", http.StatusBadGateway)
+			writeError(w, http.StatusBadGateway, codeUpstreamError, "extraction failed")
 			return
 		}
 
@@ -97,48 +89,43 @@ func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter, httpClie
 	})
 }
 
-// loadAndAuthorize fetches the entry by slug, verifies the session user is
-// subscribed to its feed, and resolves feed metadata for the wire response.
-// Returns false (and writes the error) on any failure.
+// loadAndAuthorize fetches the entry by slug, verifies feed subscription, and resolves feed metadata, writing the error and returning false on any failure.
 func loadAndAuthorize(w http.ResponseWriter, r *http.Request, reader EntryReader) (db.FeedEntry, db.UserSubscription, db.Feed, bool) {
-	sess := auth.SessionFromContext(r.Context())
-	if sess == nil || sess.Data == nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+	sess, ok := requireSession(w, r)
+	if !ok {
 		return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 	}
 	slug := r.PathValue("slug")
 	if slug == "" {
-		http.Error(w, "invalid slug", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid slug")
 		return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 	}
 	entry, err := reader.GetFeedEntryBySlug(r.Context(), slug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "not found", http.StatusNotFound)
+			writeError(w, http.StatusNotFound, codeNotFound, "not found")
 			return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 		return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 	}
-	// Authorization: the requester must subscribe to this entry's feed.
+	// Not subscribed collapses to 404, same as every other missing-or-not-owned resource.
 	sub, err := reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
 		Did:     sess.Data.AccountDID.String(),
 		FeedUrl: entry.FeedUrl,
 	})
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 		}
-		http.Error(w, "forbidden", http.StatusForbidden)
+		writeError(w, http.StatusNotFound, codeNotFound, "not found")
 		return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 	}
-	// Feed lookup populates favicon + site URL for the reader header. A missing
-	// row is unexpected here (a subscription implies a feed row), but we don't
-	// fail the request — the frontend renders fallbacks.
+	// A missing feed row is unexpected (a subscription implies one) but doesn't fail the request; the frontend renders fallbacks.
 	feed, err := reader.GetFeed(r.Context(), entry.FeedUrl)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 		return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 	}
 	return entry, sub, feed, true
@@ -166,10 +153,7 @@ func entryRowToWire(row db.FeedEntry, sub db.UserSubscription, feed db.Feed, sav
 	}
 }
 
-// lookupSavedState returns the requester's save record for itemURL if one
-// exists. Missing row → nil (not saved). Any other error is logged and the
-// frontend gets a nil — the save button degrades to the unsaved state rather
-// than erroring out the page load.
+// lookupSavedState returns the save record for itemURL, or nil on a missing row or any other error (the save button degrades to unsaved rather than failing the page).
 func lookupSavedState(ctx context.Context, reader EntryReader, itemURL string) *SavedState {
 	sess := auth.SessionFromContext(ctx)
 	if sess == nil || sess.Data == nil {
@@ -188,11 +172,7 @@ func lookupSavedState(ctx context.Context, reader EntryReader, itemURL string) *
 	return &SavedState{Rkey: row.Rkey}
 }
 
-// lookupSharedState returns the requester's share record for this entry, if
-// one exists. The probe key follows the subscription kind: standardfeed shares
-// dedupe by the document at-uri (the entry guid), rss shares by item URL. A
-// missing row → nil (not shared); any other error degrades the share button to
-// its un-shared state rather than failing the page load.
+// lookupSharedState probes by document (standardfeed) or itemUrl (rss) per the subscription kind; a miss or error returns nil rather than failing the page.
 func lookupSharedState(ctx context.Context, reader EntryReader, sub db.UserSubscription, entry db.FeedEntry) *SharedState {
 	sess := auth.SessionFromContext(ctx)
 	if sess == nil || sess.Data == nil {
@@ -223,7 +203,7 @@ func extractReadable(ctx context.Context, client *http.Client, rawURL string, sa
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "Morgenblau/0.1 (+https://morgen.blue/about; bot@morgen.blue) Go-http-client/1.1")
+	req.Header.Set("User-Agent", safehttp.UserAgent)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err

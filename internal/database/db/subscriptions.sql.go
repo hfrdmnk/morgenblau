@@ -24,10 +24,13 @@ func (q *Queries) DeleteUserSubscription(ctx context.Context, arg DeleteUserSubs
 }
 
 const getFeed = `-- name: GetFeed :one
-SELECT feed_url, kind, site_url, title, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at
+SELECT feed_url, kind, site_url, title, language, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at, consecutive_failures, next_fetch_at
 FROM feeds WHERE feed_url = ?
 `
 
+// Column order matches the table's physical layout so sqlc reuses the Feed
+// model instead of minting a one-off row type (see
+// ListDiscoverCrawlSubscriptions for the same convention).
 func (q *Queries) GetFeed(ctx context.Context, feedUrl string) (Feed, error) {
 	row := q.db.QueryRowContext(ctx, getFeed, feedUrl)
 	var i Feed
@@ -36,6 +39,7 @@ func (q *Queries) GetFeed(ctx context.Context, feedUrl string) (Feed, error) {
 		&i.Kind,
 		&i.SiteUrl,
 		&i.Title,
+		&i.Language,
 		&i.Etag,
 		&i.LastModified,
 		&i.LastFetchedAt,
@@ -43,6 +47,8 @@ func (q *Queries) GetFeed(ctx context.Context, feedUrl string) (Feed, error) {
 		&i.IconFetchedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ConsecutiveFailures,
+		&i.NextFetchAt,
 	)
 	return i, err
 }
@@ -214,6 +220,43 @@ func (q *Queries) GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserS
 	return i, err
 }
 
+const listFeedLanguages = `-- name: ListFeedLanguages :many
+SELECT feed_url, language FROM feeds WHERE language IS NOT NULL
+`
+
+type ListFeedLanguagesRow struct {
+	FeedUrl  string  `json:"feed_url"`
+	Language *string `json:"language"`
+}
+
+// Discover trending's language-filter lookup (SPEC <discovery> "Global/
+// Trending ranking"): every Tier-2 source with a known detected language, in
+// one query rather than one per candidate. Tier-2 only holds feeds a
+// Morgenblau user actually subscribes to, so this table is small relative to
+// the network-wide trending aggregate.
+func (q *Queries) ListFeedLanguages(ctx context.Context) ([]ListFeedLanguagesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listFeedLanguages)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFeedLanguagesRow
+	for rows.Next() {
+		var i ListFeedLanguagesRow
+		if err := rows.Scan(&i.FeedUrl, &i.Language); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserSourcesWithStats = `-- name: ListUserSourcesWithStats :many
 SELECT
     us.did, us.rkey, us.at_uri, us.feed_url, us.kind, us.sidecar_rkey, us.title,
@@ -221,6 +264,8 @@ SELECT
     us.created_at, us.updated_at,
     f.site_url, f.icon_url,
     f.title AS catalog_title,
+    f.last_fetched_at,
+    COALESCE(f.consecutive_failures, 0) AS consecutive_failures,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
     COALESCE((SELECT MIN(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?1 AND fe.published_at < ?2) AS count_7d,
@@ -243,26 +288,28 @@ type ListUserSourcesWithStatsParams struct {
 }
 
 type ListUserSourcesWithStatsRow struct {
-	Did              string      `json:"did"`
-	Rkey             string      `json:"rkey"`
-	AtUri            string      `json:"at_uri"`
-	FeedUrl          string      `json:"feed_url"`
-	Kind             string      `json:"kind"`
-	SidecarRkey      *string     `json:"sidecar_rkey"`
-	Title            *string     `json:"title"`
-	IsPrimary        int64       `json:"is_primary"`
-	Tags             *string     `json:"tags"`
-	CreatedAt        string      `json:"created_at"`
-	UpdatedAt        string      `json:"updated_at"`
-	SiteUrl          *string     `json:"site_url"`
-	IconUrl          *string     `json:"icon_url"`
-	CatalogTitle     *string     `json:"catalog_title"`
-	LastPublishedAt  interface{} `json:"last_published_at"`
-	FirstPublishedAt interface{} `json:"first_published_at"`
-	Count7d          int64       `json:"count_7d"`
-	Count28d         int64       `json:"count_28d"`
-	Count56d         int64       `json:"count_56d"`
-	Count84d         int64       `json:"count_84d"`
+	Did                 string      `json:"did"`
+	Rkey                string      `json:"rkey"`
+	AtUri               string      `json:"at_uri"`
+	FeedUrl             string      `json:"feed_url"`
+	Kind                string      `json:"kind"`
+	SidecarRkey         *string     `json:"sidecar_rkey"`
+	Title               *string     `json:"title"`
+	IsPrimary           int64       `json:"is_primary"`
+	Tags                *string     `json:"tags"`
+	CreatedAt           string      `json:"created_at"`
+	UpdatedAt           string      `json:"updated_at"`
+	SiteUrl             *string     `json:"site_url"`
+	IconUrl             *string     `json:"icon_url"`
+	CatalogTitle        *string     `json:"catalog_title"`
+	LastFetchedAt       *string     `json:"last_fetched_at"`
+	ConsecutiveFailures int64       `json:"consecutive_failures"`
+	LastPublishedAt     interface{} `json:"last_published_at"`
+	FirstPublishedAt    interface{} `json:"first_published_at"`
+	Count7d             int64       `json:"count_7d"`
+	Count28d            int64       `json:"count_28d"`
+	Count56d            int64       `json:"count_56d"`
+	Count84d            int64       `json:"count_84d"`
 }
 
 // One row per subscription with feed metadata and windowed entry stats. The
@@ -299,6 +346,8 @@ func (q *Queries) ListUserSourcesWithStats(ctx context.Context, arg ListUserSour
 			&i.SiteUrl,
 			&i.IconUrl,
 			&i.CatalogTitle,
+			&i.LastFetchedAt,
+			&i.ConsecutiveFailures,
 			&i.LastPublishedAt,
 			&i.FirstPublishedAt,
 			&i.Count7d,
@@ -462,9 +511,33 @@ func (q *Queries) SetFeedIconURL(ctx context.Context, arg SetFeedIconURLParams) 
 	return err
 }
 
+const updateFeedFetchFailure = `-- name: UpdateFeedFetchFailure :exec
+UPDATE feeds
+SET consecutive_failures = ?, next_fetch_at = ?, updated_at = ?
+WHERE feed_url = ?
+`
+
+type UpdateFeedFetchFailureParams struct {
+	ConsecutiveFailures int64   `json:"consecutive_failures"`
+	NextFetchAt         *string `json:"next_fetch_at"`
+	UpdatedAt           string  `json:"updated_at"`
+	FeedUrl             string  `json:"feed_url"`
+}
+
+// SPEC <feed-sources> failure handling; success (UpdateFeedFetchState) resets both.
+func (q *Queries) UpdateFeedFetchFailure(ctx context.Context, arg UpdateFeedFetchFailureParams) error {
+	_, err := q.db.ExecContext(ctx, updateFeedFetchFailure,
+		arg.ConsecutiveFailures,
+		arg.NextFetchAt,
+		arg.UpdatedAt,
+		arg.FeedUrl,
+	)
+	return err
+}
+
 const updateFeedFetchState = `-- name: UpdateFeedFetchState :exec
 UPDATE feeds
-SET etag = ?, last_modified = ?, last_fetched_at = ?, updated_at = ?
+SET etag = ?, last_modified = ?, last_fetched_at = ?, updated_at = ?, consecutive_failures = 0, next_fetch_at = NULL
 WHERE feed_url = ?
 `
 
@@ -476,6 +549,7 @@ type UpdateFeedFetchStateParams struct {
 	FeedUrl       string  `json:"feed_url"`
 }
 
+// SPEC <feed-sources> failure handling: success resets the backoff counter and clears the skip stamp.
 func (q *Queries) UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchStateParams) error {
 	_, err := q.db.ExecContext(ctx, updateFeedFetchState,
 		arg.Etag,
@@ -488,11 +562,20 @@ func (q *Queries) UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchS
 }
 
 const upsertFeed = `-- name: UpsertFeed :exec
-INSERT INTO feeds (feed_url, kind, site_url, title, created_at, updated_at)
-VALUES (?, COALESCE(NULLIF(?6, ''), 'rss'), ?, ?, ?, ?)
+INSERT INTO feeds (feed_url, kind, site_url, title, language, created_at, updated_at)
+VALUES (
+    ?1,
+    COALESCE(NULLIF(?2, ''), 'rss'),
+    ?3,
+    ?4,
+    ?5,
+    ?6,
+    ?7
+)
 ON CONFLICT (feed_url) DO UPDATE SET
     site_url = COALESCE(NULLIF(excluded.site_url, ''), feeds.site_url),
     title = COALESCE(excluded.title, feeds.title),
+    language = COALESCE(excluded.language, feeds.language),
     updated_at = excluded.updated_at
 `
 
@@ -501,6 +584,7 @@ type UpsertFeedParams struct {
 	Kind      interface{} `json:"kind"`
 	SiteUrl   *string     `json:"site_url"`
 	Title     *string     `json:"title"`
+	Language  *string     `json:"language"`
 	CreatedAt string      `json:"created_at"`
 	UpdatedAt string      `json:"updated_at"`
 }
@@ -508,12 +592,20 @@ type UpsertFeedParams struct {
 // kind defaults to 'rss' via NULLIF so pre-standardfeed callers passing the
 // zero value keep working; it is never changed on conflict. title is the
 // cached publication name; COALESCE keeps rss callers (nil) from clobbering it.
+// language is the pipeline's freshly-detected value (discoverlang); COALESCE
+// keeps an inconclusive detection on this fetch from erasing a previously
+// known language (SPEC <discovery>: detection runs on entry content already
+// fetched, no dedicated network call).
+// All params are named (not positional): mixing sqlc.arg() with bare ? makes
+// sqlc emit non-contiguous placeholder numbers that modernc.org/sqlite can't
+// bind ("missing argument with index N").
 func (q *Queries) UpsertFeed(ctx context.Context, arg UpsertFeedParams) error {
 	_, err := q.db.ExecContext(ctx, upsertFeed,
 		arg.FeedUrl,
 		arg.Kind,
 		arg.SiteUrl,
 		arg.Title,
+		arg.Language,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -523,7 +615,19 @@ func (q *Queries) UpsertFeed(ctx context.Context, arg UpsertFeedParams) error {
 const upsertUserSubscription = `-- name: UpsertUserSubscription :exec
 INSERT INTO user_subscriptions (
     did, rkey, at_uri, feed_url, kind, sidecar_rkey, title, is_primary, tags, created_at, updated_at
-) VALUES (?, ?, ?, ?, COALESCE(NULLIF(?11, ''), 'rss'), ?, ?, ?, ?, ?, ?)
+) VALUES (
+    ?1,
+    ?2,
+    ?3,
+    ?4,
+    COALESCE(NULLIF(?5, ''), 'rss'),
+    ?6,
+    ?7,
+    ?8,
+    ?9,
+    ?10,
+    ?11
+)
 ON CONFLICT (did, rkey) DO UPDATE SET
     at_uri       = excluded.at_uri,
     feed_url     = excluded.feed_url,
@@ -548,6 +652,8 @@ type UpsertUserSubscriptionParams struct {
 	UpdatedAt   string      `json:"updated_at"`
 }
 
+// Fully named params (see UpsertFeed): avoids the mixed named/positional
+// numbering that breaks binding under modernc.org/sqlite.
 func (q *Queries) UpsertUserSubscription(ctx context.Context, arg UpsertUserSubscriptionParams) error {
 	_, err := q.db.ExecContext(ctx, upsertUserSubscription,
 		arg.Did,

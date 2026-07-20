@@ -1,11 +1,10 @@
 import {
-    Bookmark01Icon,
-    LinkSquare01Icon,
-    Loading03Icon,
-    MagicWand01Icon,
-    Share01Icon,
-} from '@hugeicons/core-free-icons';
-import { HugeiconsIcon } from '@hugeicons/react';
+    BookmarkIcon,
+    OpenIcon,
+    SendIcon,
+    SparkleIcon,
+    SpinnerIcon,
+} from '@proicons/react';
 import { useEffect, useState } from 'react';
 
 import type { SaveControl } from '@/hooks/use-save-toggle';
@@ -14,7 +13,7 @@ import { cn, safeHref } from '@/lib/utils';
 
 export type ExtractedToggleState = 'inactive' | 'active' | 'loading';
 
-export type ExtractedToggle = {
+type ExtractedToggle = {
     state: ExtractedToggleState;
     onClick: () => void;
 };
@@ -115,10 +114,7 @@ function RailIcons({
                     aria-label="Open original article"
                     className="inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
                 >
-                    <HugeiconsIcon
-                        icon={LinkSquare01Icon}
-                        className="size-[1.125rem]"
-                    />
+                    <OpenIcon className="size-[1.125rem]" />
                 </a>
             ) : null}
         </>
@@ -135,6 +131,7 @@ function ExtractedToggleIcon({
     const { displayed, swapping } = useDeferredState(state);
     const isLoading = displayed === 'loading';
     const isActive = displayed === 'active';
+    const Icon = isLoading ? SpinnerIcon : SparkleIcon;
 
     return (
         <button
@@ -155,8 +152,7 @@ function ExtractedToggleIcon({
                     : 'text-muted-foreground hover:text-foreground',
             )}
         >
-            <HugeiconsIcon
-                icon={isLoading ? Loading03Icon : MagicWand01Icon}
+            <Icon
                 className={cn(
                     'size-[1.125rem]',
                     isLoading && 'motion-safe:animate-spin',
@@ -188,7 +184,7 @@ function SaveRailButton({ saved, busy, onToggle }: SaveControl) {
                     : 'text-muted-foreground hover:text-foreground',
             )}
         >
-            <HugeiconsIcon icon={Bookmark01Icon} className="size-[1.125rem]" />
+            <BookmarkIcon className="size-[1.125rem]" />
         </button>
     );
 }
@@ -214,14 +210,13 @@ function ShareRailButton({ shared, busy, onToggle }: ShareControl) {
                     : 'text-muted-foreground hover:text-foreground',
             )}
         >
-            <HugeiconsIcon icon={Share01Icon} className="size-[1.125rem]" />
+            <SendIcon className="size-[1.125rem]" />
         </button>
     );
 }
 
-// Mirrors `target` with a swap-blur: on change the button blurs, `displayed`
-// catches up under the blur ~150ms later, and the blur lingers ~30ms past the
-// swap so the icon change stays masked. Reduced-motion users update instantly.
+// Mirrors `target` with a swap-blur: on change the button blurs, `displayed` catches up ~150ms later under
+// the blur, which lingers ~30ms past the swap to mask the icon change. Reduced-motion users update instantly.
 function useDeferredState<T>(target: T): { displayed: T; swapping: boolean } {
     const [displayed, setDisplayed] = useState(target);
     const [settling, setSettling] = useState(false);

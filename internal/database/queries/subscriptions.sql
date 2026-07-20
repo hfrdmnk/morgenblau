@@ -2,16 +2,43 @@
 -- kind defaults to 'rss' via NULLIF so pre-standardfeed callers passing the
 -- zero value keep working; it is never changed on conflict. title is the
 -- cached publication name; COALESCE keeps rss callers (nil) from clobbering it.
-INSERT INTO feeds (feed_url, kind, site_url, title, created_at, updated_at)
-VALUES (?, COALESCE(NULLIF(sqlc.arg(kind), ''), 'rss'), ?, ?, ?, ?)
+-- language is the pipeline's freshly-detected value (discoverlang); COALESCE
+-- keeps an inconclusive detection on this fetch from erasing a previously
+-- known language (SPEC <discovery>: detection runs on entry content already
+-- fetched, no dedicated network call).
+-- All params are named (not positional): mixing sqlc.arg() with bare ? makes
+-- sqlc emit non-contiguous placeholder numbers that modernc.org/sqlite can't
+-- bind ("missing argument with index N").
+INSERT INTO feeds (feed_url, kind, site_url, title, language, created_at, updated_at)
+VALUES (
+    sqlc.arg(feed_url),
+    COALESCE(NULLIF(sqlc.arg(kind), ''), 'rss'),
+    sqlc.arg(site_url),
+    sqlc.arg(title),
+    sqlc.arg(language),
+    sqlc.arg(created_at),
+    sqlc.arg(updated_at)
+)
 ON CONFLICT (feed_url) DO UPDATE SET
     site_url = COALESCE(NULLIF(excluded.site_url, ''), feeds.site_url),
     title = COALESCE(excluded.title, feeds.title),
+    language = COALESCE(excluded.language, feeds.language),
     updated_at = excluded.updated_at;
 
 -- name: GetFeed :one
-SELECT feed_url, kind, site_url, title, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at
+-- Column order matches the table's physical layout so sqlc reuses the Feed
+-- model instead of minting a one-off row type (see
+-- ListDiscoverCrawlSubscriptions for the same convention).
+SELECT feed_url, kind, site_url, title, language, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at, consecutive_failures, next_fetch_at
 FROM feeds WHERE feed_url = ?;
+
+-- name: ListFeedLanguages :many
+-- Discover trending's language-filter lookup (SPEC <discovery> "Global/
+-- Trending ranking"): every Tier-2 source with a known detected language, in
+-- one query rather than one per candidate. Tier-2 only holds feeds a
+-- Morgenblau user actually subscribes to, so this table is small relative to
+-- the network-wide trending aggregate.
+SELECT feed_url, language FROM feeds WHERE language IS NOT NULL;
 
 -- name: GetFeedIconURL :one
 -- Returns the stored icon URL for a feed. Drives the favicon-proxy SSRF guard:
@@ -24,14 +51,35 @@ SET icon_url = ?, icon_fetched_at = ?, updated_at = ?
 WHERE feed_url = ?;
 
 -- name: UpdateFeedFetchState :exec
+-- SPEC <feed-sources> failure handling: success resets the backoff counter and clears the skip stamp.
 UPDATE feeds
-SET etag = ?, last_modified = ?, last_fetched_at = ?, updated_at = ?
+SET etag = ?, last_modified = ?, last_fetched_at = ?, updated_at = ?, consecutive_failures = 0, next_fetch_at = NULL
+WHERE feed_url = ?;
+
+-- name: UpdateFeedFetchFailure :exec
+-- SPEC <feed-sources> failure handling; success (UpdateFeedFetchState) resets both.
+UPDATE feeds
+SET consecutive_failures = ?, next_fetch_at = ?, updated_at = ?
 WHERE feed_url = ?;
 
 -- name: UpsertUserSubscription :exec
+-- Fully named params (see UpsertFeed): avoids the mixed named/positional
+-- numbering that breaks binding under modernc.org/sqlite.
 INSERT INTO user_subscriptions (
     did, rkey, at_uri, feed_url, kind, sidecar_rkey, title, is_primary, tags, created_at, updated_at
-) VALUES (?, ?, ?, ?, COALESCE(NULLIF(sqlc.arg(kind), ''), 'rss'), ?, ?, ?, ?, ?, ?)
+) VALUES (
+    sqlc.arg(did),
+    sqlc.arg(rkey),
+    sqlc.arg(at_uri),
+    sqlc.arg(feed_url),
+    COALESCE(NULLIF(sqlc.arg(kind), ''), 'rss'),
+    sqlc.arg(sidecar_rkey),
+    sqlc.arg(title),
+    sqlc.arg(is_primary),
+    sqlc.arg(tags),
+    sqlc.arg(created_at),
+    sqlc.arg(updated_at)
+)
 ON CONFLICT (did, rkey) DO UPDATE SET
     at_uri       = excluded.at_uri,
     feed_url     = excluded.feed_url,
@@ -70,6 +118,8 @@ SELECT
     us.created_at, us.updated_at,
     f.site_url, f.icon_url,
     f.title AS catalog_title,
+    f.last_fetched_at,
+    COALESCE(f.consecutive_failures, 0) AS consecutive_failures,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
     COALESCE((SELECT MIN(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_7d) AND fe.published_at < sqlc.arg(now)) AS count_7d,

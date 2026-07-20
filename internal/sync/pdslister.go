@@ -16,18 +16,16 @@ const (
 	subscriptionCollection = lexicon.Subscription
 	saveCollection         = lexicon.Save
 	shareCollection        = lexicon.Share
+	followCollection       = lexicon.Follow
 )
 
-// Standardfeed collections read from the user's own repo. Existence records
-// for publication subscriptions and document shares; blue.morgen records are
-// their metadata sidecars.
+// Standardfeed collections hold existence records for subscriptions/shares; blue.morgen records are their metadata sidecars.
 const (
 	standardSubscriptionCollection = standardfeed.CollectionSubscription
 	standardRecommendCollection    = standardfeed.CollectionRecommend
 )
 
-// SessionPDSLister calls com.atproto.repo.listRecords against the session's
-// PDS, paging through cursors until exhausted.
+// SessionPDSLister pages com.atproto.repo.listRecords against the session's PDS until the cursor is exhausted.
 type SessionPDSLister struct{}
 
 type listRecordsResp struct {
@@ -41,8 +39,7 @@ type recordEntry struct {
 	Value map[string]any `json:"value"`
 }
 
-// listRecordsClient is the slice of *atclient.APIClient pageSubscriptions uses
-// — a tiny seam so tests can swap in an httptest-backed fake.
+// listRecordsClient is the slice of *atclient.APIClient pageSubscriptions uses, a seam for httptest-backed fakes in tests.
 type listRecordsClient interface {
 	Get(ctx context.Context, endpoint syntax.NSID, params map[string]any, out any) error
 }
@@ -81,7 +78,11 @@ func (SessionPDSLister) ListSaves(ctx context.Context, sess *oauth.ClientSession
 	}
 	out := make([]PDSSave, 0, len(records))
 	for _, r := range records {
-		out = append(out, toPDSSave(r))
+		s, ok := toPDSSave(r)
+		if !ok {
+			continue
+		}
+		out = append(out, s)
 	}
 	return out, nil
 }
@@ -99,6 +100,23 @@ func (SessionPDSLister) ListShares(ctx context.Context, sess *oauth.ClientSessio
 			continue
 		}
 		out = append(out, s)
+	}
+	return out, nil
+}
+
+func (SessionPDSLister) ListFollows(ctx context.Context, sess *oauth.ClientSession) ([]PDSFollow, error) {
+	records, err := pageRecords(ctx, sess.APIClient(), sess.Data.AccountDID.String(), followCollection)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PDSFollow, 0, len(records))
+	for _, r := range records {
+		f, ok := toPDSFollow(r)
+		if !ok {
+			slog.Warn("pdslister: skipping follow without subject", "uri", r.URI)
+			continue
+		}
+		out = append(out, f)
 	}
 	return out, nil
 }
@@ -129,8 +147,7 @@ func pageSubscriptions(ctx context.Context, client listRecordsClient, repo strin
 	for _, r := range records {
 		sub, ok := toPDSSubscription(r)
 		if !ok {
-			// Readers tolerate unknown source variants: skip and log, never
-			// treat them as deletes of something else.
+			// Unknown source variants are skipped and logged, never treated as deletes of something else.
 			slog.Warn("pdslister: skipping subscription with unknown source variant", "uri", r.URI)
 			continue
 		}
@@ -139,10 +156,8 @@ func pageSubscriptions(ctx context.Context, client listRecordsClient, repo strin
 	return out, nil
 }
 
-// pageRecords pulls every record in a collection from the repo, following
-// cursors until exhausted. Terminate only on empty cursor — an empty page with
-// a non-empty cursor is still a valid continuation, and stopping early would
-// let reconcile delete every local row not in the partial snapshot.
+// pageRecords terminates only on an empty cursor: an empty page with a cursor
+// set is still a valid continuation, and stopping early would let reconcile delete rows missing from a partial snapshot.
 func pageRecords(ctx context.Context, client listRecordsClient, repo, collection string) ([]recordEntry, error) {
 	var (
 		out    []recordEntry
@@ -174,13 +189,12 @@ const (
 	sourceTypeStandard = lexicon.SourceStandard
 )
 
-// toPDSSubscription maps a rev-2 record onto the trimmed shape, dispatching
-// on the required `source` open union. Returns false for records without a
-// recognizable variant (v1 flat shape, future variants) — callers skip those.
+// toPDSSubscription dispatches on the required source open union; returns false for v1 flat-shape or unrecognized future variants so callers skip them.
 func toPDSSubscription(r recordEntry) (PDSSubscription, bool) {
-	// TODO(blue.morgen lexicon): once published, validate r.Value against
-	// blue.morgen.feed.subscription with lexicon.LenientMode (read-path
-	// tolerates unknown fields from older producers). Reject malformed records.
+	if err := lexicon.ValidateRecordLenient(subscriptionCollection, r.Value); err != nil {
+		slog.Warn("pdslister: skipping subscription that failed lexicon validation", "uri", r.URI, "err", err)
+		return PDSSubscription{}, false
+	}
 	source, ok := r.Value["source"].(map[string]any)
 	if !ok {
 		return PDSSubscription{}, false
@@ -217,8 +231,7 @@ func toPDSSubscription(r recordEntry) (PDSSubscription, bool) {
 	return sub, true
 }
 
-// stringSlice extracts a []string from a decoded JSON array (which arrives as
-// []any), skipping any non-string members. Returns nil when v isn't an array.
+// stringSlice extracts []string from a decoded JSON array ([]any), skipping non-string members.
 func stringSlice(v any) []string {
 	raw, ok := v.([]any)
 	if !ok {
@@ -236,9 +249,12 @@ func stringSlice(v any) []string {
 	return out
 }
 
-func toPDSSave(r recordEntry) PDSSave {
-	// TODO(blue.morgen lexicon): validate r.Value against blue.morgen.feed.save
-	// once published. feedUrl is optional on the record.
+// toPDSSave maps a blue.morgen.feed.save record; itemUrl and createdAt are lexicon-required, feedUrl is optional.
+func toPDSSave(r recordEntry) (PDSSave, bool) {
+	if err := lexicon.ValidateRecordLenient(saveCollection, r.Value); err != nil {
+		slog.Warn("pdslister: skipping save that failed lexicon validation", "uri", r.URI, "err", err)
+		return PDSSave{}, false
+	}
 	itemURL, _ := r.Value["itemUrl"].(string)
 	feedURL, _ := r.Value["feedUrl"].(string)
 	createdAt, _ := r.Value["createdAt"].(string)
@@ -248,13 +264,11 @@ func toPDSSave(r recordEntry) PDSSave {
 		ItemURL:   itemURL,
 		FeedURL:   feedURL,
 		CreatedAt: createdAt,
-	}
+	}, true
 }
 
-// toPDSShare maps a blue.morgen.feed.share record. itemUrl is required by the
-// lexicon — a record without it is malformed, so skip and log. A document
-// marks the record as a standardfeed comment sidecar; its absence marks an
-// rss share. feedUrl/comment/createdAt are optional.
+// toPDSShare maps a blue.morgen.feed.share record; itemUrl is required. A
+// document field marks a standardfeed comment sidecar, its absence marks an rss share.
 func toPDSShare(r recordEntry) (PDSShare, bool) {
 	itemURL, _ := r.Value["itemUrl"].(string)
 	if itemURL == "" {
@@ -275,9 +289,22 @@ func toPDSShare(r recordEntry) (PDSShare, bool) {
 	}, true
 }
 
-// toPDSRecommend maps a site.standard.graph.recommend record — the existence
-// authority for a standardfeed share. document is required; without it there's
-// nothing to key on, so skip and log. createdAt is optional.
+// toPDSFollow maps a blue.morgen.graph.follow record; subject is lexicon-required, missing records are skipped.
+func toPDSFollow(r recordEntry) (PDSFollow, bool) {
+	subject, _ := r.Value["subject"].(string)
+	if subject == "" {
+		return PDSFollow{}, false
+	}
+	createdAt, _ := r.Value["createdAt"].(string)
+	return PDSFollow{
+		URI:        r.URI,
+		Rkey:       atprepo.RkeyFromATURI(r.URI),
+		SubjectDID: subject,
+		CreatedAt:  createdAt,
+	}, true
+}
+
+// toPDSRecommend maps a site.standard.graph.recommend record, the existence authority for a standardfeed share; document is required, createdAt optional.
 func toPDSRecommend(r recordEntry) (PDSRecommend, bool) {
 	document, _ := r.Value["document"].(string)
 	if document == "" {

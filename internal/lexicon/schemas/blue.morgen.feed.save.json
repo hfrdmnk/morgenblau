@@ -1,0 +1,61 @@
+{
+  "id": "blue.morgen.feed.save",
+  "defs": {
+    "main": {
+      "key": "tid",
+      "type": "record",
+      "record": {
+        "type": "object",
+        "required": [
+          "itemUrl",
+          "createdAt"
+        ],
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 640,
+              "maxGraphemes": 64
+            },
+            "maxLength": 10,
+            "description": "Free-form, user-defined tags (e.g. 'read-later', 'favorite'). No controlled vocabulary."
+          },
+          "facets": {
+            "type": "array",
+            "items": {
+              "ref": "app.bsky.richtext.facet",
+              "type": "ref"
+            },
+            "description": "Rich-text annotations (mentions, links, tags) over `comment`."
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 30000,
+            "description": "User's note on why they saved it.",
+            "maxGraphemes": 3000
+          },
+          "feedUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "URL of the source feed (optional provenance)."
+          },
+          "itemUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "URL of the saved item."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      },
+      "description": "A saved feed item for later reading."
+    }
+  },
+  "$type": "com.atproto.lexicon.schema",
+  "lexicon": 1
+}

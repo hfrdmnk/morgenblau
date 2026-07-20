@@ -1,6 +1,4 @@
-// Package profiles is a small in-memory LRU profile cache.
-// It hides identity resolution, PDS endpoint lookup, and the
-// app.bsky.actor.profile/self read behind a narrow Get/Refresh interface.
+// Package profiles is a small in-memory LRU cache that resolves a DID to a profile via identity + PDS lookup, behind Get/Refresh.
 package profiles
 
 import (
@@ -26,6 +24,14 @@ type Profile struct {
 	Handle      string  `json:"handle"`
 	DisplayName *string `json:"displayName"`
 	Avatar      *string `json:"avatar"`
+	Description *string `json:"description"`
+}
+
+// ProfileRecord is the subset of app.bsky.actor.profile/self a RecordFetcher parses.
+type ProfileRecord struct {
+	DisplayName *string
+	Avatar      *string
+	Description *string
 }
 
 // Resolver mirrors the slice of identity.Directory we use. Stubbed in tests.
@@ -33,22 +39,18 @@ type Resolver interface {
 	LookupDID(ctx context.Context, did syntax.DID) (*identity.Identity, error)
 }
 
-// RecordFetcher reads app.bsky.actor.profile/self from a given PDS endpoint.
-// Implementations must collapse "record absent" to (nil, nil, nil), not an
-// error — handle resolution is the only hard failure mode.
+// RecordFetcher reads app.bsky.actor.profile/self from a PDS endpoint; an absent record must return a zero ProfileRecord rather than an error.
 type RecordFetcher interface {
-	FetchProfile(ctx context.Context, did syntax.DID, pdsEndpoint string) (displayName, avatar *string, err error)
+	FetchProfile(ctx context.Context, did syntax.DID, pdsEndpoint string) (ProfileRecord, error)
 }
 
-// Cache resolves DIDs to a {did, handle, displayName, avatar} payload,
-// caching results in an expirable LRU. Concurrency-safe.
+// Cache resolves DIDs to a profile payload via an expirable LRU. Concurrency-safe.
 type Cache struct {
 	lru      *lru.LRU[string, Profile]
 	resolver Resolver
 	fetcher  RecordFetcher
 
-	// guards the in-flight singleflight map below — keeps two concurrent
-	// requests for the same DID from triggering two PDS round-trips.
+	// guards the in-flight singleflight map: prevents duplicate PDS round-trips for the same DID.
 	mu       sync.Mutex
 	inflight map[string]*inflight
 }
@@ -74,9 +76,7 @@ func NewWithOptions(resolver Resolver, fetcher RecordFetcher, capacity int, ttl 
 	}
 }
 
-// Get returns the profile for did, serving from cache if fresh. On miss it
-// resolves and back-fills synchronously. Two concurrent misses for the same
-// DID collapse to one upstream load (internal singleflight).
+// Get returns the profile for did, resolving and back-filling on a cache miss; concurrent misses for the same DID collapse to one upstream load.
 func (c *Cache) Get(ctx context.Context, did syntax.DID) (Profile, error) {
 	key := did.String()
 	if p, ok := c.lru.Get(key); ok {
@@ -85,9 +85,7 @@ func (c *Cache) Get(ctx context.Context, did syntax.DID) (Profile, error) {
 	return c.load(ctx, did, true)
 }
 
-// Refresh bypasses the cache and re-fetches. The freshly-loaded value is
-// then stored under the cache key. Used by the self-bypass path so users
-// see their own profile changes immediately after editing on Bluesky.
+// Refresh re-fetches bypassing the cache and re-stores the result; used by the self-view path so users see their own profile edits immediately.
 func (c *Cache) Refresh(ctx context.Context, did syntax.DID) (Profile, error) {
 	return c.load(ctx, did, false)
 }
@@ -133,8 +131,7 @@ func (c *Cache) load(ctx context.Context, did syntax.DID, useInflight bool) (Pro
 	return profile, err
 }
 
-// ErrHandleInvalid is returned when bidirectional handle verification fails.
-// Callers should surface a 500 — never display a sentinel handle to the user.
+// ErrHandleInvalid means bidirectional handle verification failed; callers must surface a 500, never a sentinel handle.
 var ErrHandleInvalid = errors.New("bidirectional handle verification failed")
 
 // ErrNoPDS is returned when the identity has no atproto_pds service endpoint.
@@ -156,14 +153,13 @@ func (c *Cache) fetch(ctx context.Context, did syntax.DID) (Profile, error) {
 	if endpoint == "" {
 		return p, nil
 	}
-	display, avatar, err := c.fetcher.FetchProfile(ctx, did, endpoint)
+	record, err := c.fetcher.FetchProfile(ctx, did, endpoint)
 	if err != nil {
-		// Profile record fetch failure is non-fatal — collapse to nulls so
-		// chrome still renders with handle. Handle resolution is the only
-		// hard failure mode per spec.
+		// Profile fetch failure is non-fatal: collapse to nulls so chrome still renders with the handle.
 		return p, nil
 	}
-	p.DisplayName = display
-	p.Avatar = avatar
+	p.DisplayName = record.DisplayName
+	p.Avatar = record.Avatar
+	p.Description = record.Description
 	return p, nil
 }

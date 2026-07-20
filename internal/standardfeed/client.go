@@ -6,6 +6,8 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+
+	"morgenblau/internal/atxrpc"
 )
 
 type getRecordResp struct {
@@ -25,8 +27,6 @@ type recordEntry struct {
 	Value map[string]any `json:"value"`
 }
 
-// repoRef is a resolved at-uri: the repo's DID, its PDS endpoint, and the
-// parsed uri itself.
 type repoRef struct {
 	did      syntax.DID
 	endpoint string
@@ -53,14 +53,10 @@ func (c *Client) resolveRepo(ctx context.Context, rawURI, wantCollection string)
 }
 
 func (c *Client) apiClient(endpoint string) *atclient.APIClient {
-	client := atclient.NewAPIClient(endpoint)
-	client.Client = c.http
-	return client
+	return atxrpc.New(endpoint, c.http)
 }
 
-// GetPublication fetches and maps a site.standard.publication record. The
-// returned URI is DID-normalized so it matches document site fields even when
-// the caller passed a handle-authority uri.
+// GetPublication fetches and maps a site.standard.publication record, DID-normalizing its URI.
 func (c *Client) GetPublication(ctx context.Context, rawURI string) (*Publication, error) {
 	ref, err := c.resolveRepo(ctx, rawURI, CollectionPublication)
 	if err != nil {
@@ -86,15 +82,21 @@ func (c *Client) GetPublication(ctx context.Context, rawURI string) (*Publicatio
 		uri = fmt.Sprintf("at://%s/%s/%s", ref.did, CollectionPublication, ref.uri.RecordKey())
 	}
 	pub := &Publication{
-		URI:  uri,
-		CID:  out.CID,
-		DID:  ref.did.String(),
-		Name: name,
-		URL:  trimTrailingSlash(pubURL),
+		URI:            uri,
+		CID:            out.CID,
+		DID:            ref.did.String(),
+		Name:           name,
+		URL:            trimTrailingSlash(pubURL),
+		ShowInDiscover: true,
 	}
 	pub.Description, _ = out.Value["description"].(string)
 	if cid := blobRefCID(out.Value["icon"]); cid != "" {
 		pub.IconURL = blobURL(ref.endpoint, ref.did, cid)
+	}
+	if prefs, ok := out.Value["preferences"].(map[string]any); ok {
+		if show, ok := prefs["showInDiscover"].(bool); ok {
+			pub.ShowInDiscover = show
+		}
 	}
 	return pub, nil
 }
@@ -122,12 +124,7 @@ func (c *Client) GetDocument(ctx context.Context, rawURI string) (*Document, err
 	return &doc, nil
 }
 
-// ListDocuments pages the publisher repo's site.standard.document collection
-// and returns the documents belonging to the given publication (site ==
-// pubURI). A repo can host several publications and loose documents; those
-// are filtered out here. Terminates only on empty cursor — stopping early
-// would let the sweep's diff hard-delete entries missing from a partial
-// snapshot.
+// ListDocuments returns pubURI's documents; it only terminates on an empty cursor, since stopping early would let the sweep's diff hard-delete entries missing from a partial snapshot.
 func (c *Client) ListDocuments(ctx context.Context, pubURI string) ([]Document, error) {
 	ref, err := c.resolveRepo(ctx, pubURI, CollectionPublication)
 	if err != nil {
@@ -135,9 +132,7 @@ func (c *Client) ListDocuments(ctx context.Context, pubURI string) ([]Document, 
 	}
 	client := c.apiClient(ref.endpoint)
 
-	// Documents reference the publication by its DID-form at-uri. The caller
-	// may have passed a handle authority (adopted verbatim from another app's
-	// subscription record), so match the site field against both forms.
+	// site stores the DID-form uri; pubURI may be handle-form, so match both.
 	didURI := fmt.Sprintf("at://%s/%s/%s", ref.did, CollectionPublication, ref.uri.RecordKey())
 
 	var (
@@ -168,6 +163,38 @@ func (c *Client) ListDocuments(ctx context.Context, pubURI string) ([]Document, 
 		}
 		cursor = resp.Cursor
 	}
+}
+
+// ListRecentDocuments returns up to limit of pubURI's documents from a single default-ordered page, no cursor
+// follow-up; listRecords defaults to rkey descending (newest first), and TID rkeys approximate creation order, so
+// this is a best-effort preview fetch (SPEC <discovery>), not the exhaustive listing ListDocuments needs for sweep diffing.
+func (c *Client) ListRecentDocuments(ctx context.Context, pubURI string, limit int) ([]Document, error) {
+	ref, err := c.resolveRepo(ctx, pubURI, CollectionPublication)
+	if err != nil {
+		return nil, err
+	}
+
+	// site stores the DID-form uri; pubURI may be handle-form, so match both.
+	didURI := fmt.Sprintf("at://%s/%s/%s", ref.did, CollectionPublication, ref.uri.RecordKey())
+
+	var resp listRecordsResp
+	params := map[string]any{
+		"repo":       ref.did.String(),
+		"collection": CollectionDocument,
+		"limit":      limit,
+	}
+	if err := c.apiClient(ref.endpoint).Get(ctx, syntax.NSID("com.atproto.repo.listRecords"), params, &resp); err != nil {
+		return nil, fmt.Errorf("standardfeed: listRecords %s: %w", pubURI, err)
+	}
+
+	var out []Document
+	for _, r := range resp.Records {
+		if site, _ := r.Value["site"].(string); site != pubURI && site != didURI {
+			continue
+		}
+		out = append(out, toDocument(r, ref))
+	}
+	return out, nil
 }
 
 func toDocument(r recordEntry, ref repoRef) Document {

@@ -1,10 +1,9 @@
 import {
-    AtIcon,
-    Edit02Icon,
     HourglassIcon,
-    Pulse01Icon,
-} from '@hugeicons/core-free-icons';
-import { HugeiconsIcon } from '@hugeicons/react';
+    MoonIcon,
+    PencilIcon,
+    PulseIcon,
+} from '@proicons/react';
 import {
     Fragment,
     useCallback,
@@ -13,6 +12,7 @@ import {
     useRef,
     useState,
 } from 'react';
+import { Link, useLocation } from 'wouter';
 
 import { Favicon } from '@/components/favicon';
 import { ListHighlight } from '@/components/list-highlight';
@@ -21,17 +21,20 @@ import {
     EditSourceDialog,
     type SourcePatch,
 } from '@/components/sources/edit-dialog';
+import { api } from '@/lib/api';
+import { toastMutationError } from '@/lib/mutation-toast';
 import { sourceHref } from '@/lib/paths';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { shortTimeAgo } from '@/lib/date';
 import { useDocumentTitle } from '@/hooks/use-document-title';
-import { useKeyboard } from '@/hooks/use-keyboard';
+import { useListNavKeyboard } from '@/hooks/use-list-nav-keyboard';
 import { useListNavigation } from '@/hooks/use-list-navigation';
 import {
     subscribeSubscriptionAdded,
     type AddedSubscription,
 } from '@/lib/subscription-events';
+import { mergeTagSuggestions } from '@/lib/tags';
 import { useJobsPoll } from '@/hooks/use-jobs-poll';
 
 type Frequency =
@@ -54,6 +57,8 @@ type Source = {
     faviconUrl?: string;
     frequency?: Frequency;
     lastPublishedAt?: string;
+    lastFetchedAt?: string;
+    muted?: boolean;
     primary?: boolean;
     tags?: string[];
     value: {
@@ -83,17 +88,14 @@ const EMPTY_SOURCES: Source[] = [];
 
 export function Sources() {
     useDocumentTitle('Sources');
+    const [, navigate] = useLocation();
     const [state, setState] = useState<State>({ kind: 'loading' });
     const [reloadTick, setReloadTick] = useState(0);
     const [hasPendingJobs, setHasPendingJobs] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
-        fetch('/api/subscriptions', { credentials: 'same-origin' })
-            .then((r) => {
-                if (!r.ok) throw new Error(String(r.status));
-                return r.json() as Promise<Source[]>;
-            })
+        api<Source[]>('/api/subscriptions')
             .then((records) => {
                 if (!cancelled) setState({ kind: 'ok', records });
             })
@@ -127,24 +129,21 @@ export function Sources() {
     }, []);
     useJobsPoll(hasPendingJobs, onJobsQuiet);
 
-    // Tag suggestions for the edit dialog: the distinct set already in use
-    // across the user's sources, deduped case-insensitively and sorted.
-    const tagSuggestions = useMemo(() => {
-        if (state.kind !== 'ok') return [];
-        const byLower = new Map<string, string>();
-        for (const record of state.records) {
-            for (const tag of record.tags ?? []) {
-                const key = tag.toLowerCase();
-                if (!byLower.has(key)) byLower.set(key, tag);
-            }
-        }
-        return [...byLower.values()].sort((a, b) => a.localeCompare(b));
-    }, [state]);
+    // Tag suggestions for the edit dialog: distinct tags already in use, deduped case-insensitively.
+    const tagSuggestions = useMemo(
+        () =>
+            state.kind === 'ok'
+                ? mergeTagSuggestions(
+                      state.records.flatMap((record) => record.tags ?? []),
+                  )
+                : [],
+        [state],
+    );
 
     const sortedRecords = useMemo(
         () =>
             state.kind === 'ok'
-                ? [...state.records].sort((a, b) =>
+                ? state.records.toSorted((a, b) =>
                       displayLabel(a).localeCompare(displayLabel(b)),
                   )
                 : EMPTY_SOURCES,
@@ -152,25 +151,25 @@ export function Sources() {
     );
 
     const listRef = useRef<HTMLDivElement>(null);
-    const onOpen = useCallback((s: Source) => {
-        window.location.href = sourceHref(s.rkey);
-    }, []);
+    const onOpen = useCallback(
+        (s: Source) => {
+            navigate(sourceHref(s.rkey));
+        },
+        [navigate],
+    );
     const nav = useListNavigation(sortedRecords, onOpen);
-    useKeyboard({
-        ArrowDown: () => nav.move(1),
-        ArrowUp: () => nav.move(-1),
-        Enter: () => nav.open(),
-        Escape: () => nav.clear(),
-    });
+    useListNavKeyboard(nav);
 
     const onPatch = async (rkey: string, patch: SourcePatch) => {
-        const resp = await fetch(`/api/subscriptions/${rkey}`, {
-            method: 'PATCH',
-            headers: { 'content-type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify(patch),
-        });
-        if (!resp.ok) return false;
+        try {
+            await api(`/api/subscriptions/${rkey}`, {
+                method: 'PATCH',
+                body: patch,
+            });
+        } catch (err) {
+            toastMutationError(err, "Couldn't save your changes. Try again.");
+            return false;
+        }
         const feedPatch = patch.feedUrl ? { feedUrl: patch.feedUrl } : {};
         setState((cur) => {
             if (cur.kind !== 'ok') return cur;
@@ -196,18 +195,18 @@ export function Sources() {
                 ),
             };
         });
-        // Re-pointing the feed dispatched a fetch for the new URL; poll until it
-        // lands so the row picks up the new feed's entries and cadence.
+        // Re-pointing the feed dispatched a fetch; poll until it lands so the row picks up new entries and cadence.
         if (patch.feedUrl) setHasPendingJobs(true);
         return true;
     };
 
     const onDelete = async (rkey: string) => {
-        const resp = await fetch(`/api/subscriptions/${rkey}`, {
-            method: 'DELETE',
-            credentials: 'same-origin',
-        });
-        if (!resp.ok) return false;
+        try {
+            await api(`/api/subscriptions/${rkey}`, { method: 'DELETE' });
+        } catch (err) {
+            toastMutationError(err, "Couldn't remove this source. Try again.");
+            return false;
+        }
         setState((cur) =>
             cur.kind === 'ok'
                 ? { ...cur, records: cur.records.filter((r) => r.rkey !== rkey) }
@@ -246,7 +245,7 @@ export function Sources() {
 
     return (
         <main className="mx-auto max-w-2xl px-6 py-8">
-            <div className="overflow-hidden rounded-xl bg-card">
+            <div className="overflow-hidden rounded-xl bg-card shadow-card">
                 <SourcesMasthead count={sortedRecords.length} />
                 <div
                     aria-hidden
@@ -344,8 +343,7 @@ function displayLabel(s: Source): string {
 
 function siteDomain(s: Source): string {
     const candidate = s.siteUrl || s.feedUrl;
-    // A standardfeed key is an at-uri; never show it as a "domain" (the site
-    // URL fills in after the first fetch).
+    // A standardfeed key is an at-uri; never show it as a "domain" (site URL fills in after first fetch).
     if (!candidate || candidate.startsWith('at://')) return '';
     try {
         return new URL(candidate).hostname.replace(/^www\./, '');
@@ -383,7 +381,7 @@ function SourceRow({
                 onMouseEnter={() => onActivate(index)}
                 className="relative flex items-start justify-between gap-3 px-5 py-4 transition-colors duration-200 ease-out has-[a:focus-visible]:outline-1 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-solid has-[a:focus-visible]:outline-ring"
             >
-                <a
+                <Link
                     href={sourceHref(source.rkey)}
                     aria-label={title}
                     className="absolute inset-0 outline-none"
@@ -398,27 +396,28 @@ function SourceRow({
                     </h3>
                     <div className="mt-2 flex items-center gap-3 text-xs font-light text-muted-foreground">
                         <span className="inline-flex items-center gap-1">
-                            <HugeiconsIcon
-                                icon={Pulse01Icon}
-                                className="size-3.5"
-                            />
+                            <PulseIcon className="size-3.5" />
                             {FREQUENCY_LABEL[frequency]}
                         </span>
                         {frequency !== 'noPosts' && source.lastPublishedAt ? (
                             <span className="inline-flex items-center gap-1">
-                                <HugeiconsIcon
-                                    icon={HourglassIcon}
-                                    className="size-3.5"
-                                />
+                                <HourglassIcon className="size-3.5" />
                                 {shortTimeAgo(source.lastPublishedAt)}
+                            </span>
+                        ) : null}
+                        {source.muted ? (
+                            <span className="inline-flex items-center gap-1">
+                                <MoonIcon className="size-3.5" />
+                                {source.lastFetchedAt
+                                    ? `Quiet · last update ${shortTimeAgo(source.lastFetchedAt)}`
+                                    : 'Quiet'}
                             </span>
                         ) : null}
                         {source.kind === 'standardfeed' ? (
                             <span className="inline-flex items-center gap-1">
-                                <HugeiconsIcon
-                                    icon={AtIcon}
-                                    className="size-3.5"
-                                />
+                                <span aria-hidden className="text-sm leading-none font-medium">
+                                    @
+                                </span>
                                 ATProto
                             </span>
                         ) : null}
@@ -432,10 +431,7 @@ function SourceRow({
                         className="text-muted-foreground"
                         onClick={() => setEditing(true)}
                     >
-                        <HugeiconsIcon
-                            icon={Edit02Icon}
-                            className="size-3.5"
-                        />
+                        <PencilIcon className="size-3.5" />
                     </Button>
                     <Separator orientation="vertical" className="h-5" />
                     <DeleteSourceButton

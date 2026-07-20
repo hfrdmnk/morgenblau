@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -23,9 +24,10 @@ func TestFetchWellKnown(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			var gotPath string
+			var gotPath, gotUA string
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				gotPath = r.URL.Path
+				gotUA = r.Header.Get("User-Agent")
 				w.WriteHeader(tc.status)
 				w.Write([]byte(tc.body))
 			}))
@@ -41,6 +43,9 @@ func TestFetchWellKnown(t *testing.T) {
 			}
 			if gotPath != "/.well-known/site.standard.publication" {
 				t.Fatalf("probe path = %q", gotPath)
+			}
+			if !strings.Contains(gotUA, "Morgenblau") {
+				t.Errorf("User-Agent = %q, want it to contain Morgenblau", gotUA)
 			}
 		})
 	}

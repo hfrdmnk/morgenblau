@@ -92,6 +92,12 @@ func TestClientMetadata_200JSON(t *testing.T) {
 	if scope == "" || scope[:7] != "atproto" {
 		t.Errorf("scope must start with atproto, got %q", scope)
 	}
+	if m["client_name"] != "Morgenblau" {
+		t.Errorf("client_name = %v, want Morgenblau", m["client_name"])
+	}
+	if m["client_uri"] != "https://app.example.com" {
+		t.Errorf("client_uri = %v, want https://app.example.com", m["client_uri"])
+	}
 }
 
 func TestClientMetadata_LoopbackHasNoJWKSURI(t *testing.T) {

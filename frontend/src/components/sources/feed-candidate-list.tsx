@@ -1,5 +1,4 @@
-import { AtIcon, Tick02Icon } from '@hugeicons/core-free-icons';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { CheckmarkIcon } from '@proicons/react';
 import type { Ref } from 'react';
 import { memo, useId } from 'react';
 
@@ -19,8 +18,6 @@ import { candidateKey, type FeedCandidate } from '@/lib/candidates';
 import { cn } from '@/lib/utils';
 import { youtubeShortsFreeFeedUrl } from '@/lib/youtube';
 
-export type { FeedCandidate };
-
 type Selection = {
     title: string;
     primary: boolean;
@@ -28,8 +25,7 @@ type Selection = {
     excludeShorts: boolean;
 };
 
-// Stable empty-array reference so unselected cards keep referential equality
-// across renders (the memo'd card compares props).
+// Stable empty-array reference so unselected cards keep referential equality across renders (memo compares props).
 const EMPTY_TAGS: string[] = [];
 
 type Props = {
@@ -209,8 +205,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                         disabled={isDisabled}
                         onChange={() => onToggle(candidate)}
                     />
-                    <HugeiconsIcon
-                        icon={Tick02Icon}
+                    <CheckmarkIcon
                         className="pointer-events-none absolute inset-0 m-auto size-3 text-primary-foreground opacity-0 peer-checked:opacity-100"
                     />
                 </span>
@@ -246,7 +241,9 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                                 tabIndex={0}
                                                 className="cursor-help"
                                             >
-                                                <HugeiconsIcon icon={AtIcon} />
+                                                <span aria-hidden className="text-xs leading-none font-semibold">
+                                                    @
+                                                </span>
                                                 Subscribe via ATProto
                                             </Badge>
                                         }

@@ -210,7 +210,7 @@ func TestSavesDelete_HappyPath_204(t *testing.T) {
 	}
 }
 
-func TestSavesDelete_OtherUserRkey_403(t *testing.T) {
+func TestSavesDelete_OtherUserRkey_404(t *testing.T) {
 	idx := newFakeSavesIndex()
 	idx.seed(db.UserSave{Did: "did:plc:bob", Rkey: "3la", ItemUrl: "https://x"})
 	pds := &fakePDS{}
@@ -220,8 +220,8 @@ func TestSavesDelete_OtherUserRkey_403(t *testing.T) {
 	req := withSession(httptest.NewRequest(http.MethodDelete, "/api/saves/3la", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
-	if rr.Code != http.StatusForbidden {
-		t.Errorf("status = %d, want 403", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 (collapsed with not-owned)", rr.Code)
 	}
 }
 
@@ -239,5 +239,28 @@ func TestSavesDelete_PDSFailure_502_NoLocalDelete(t *testing.T) {
 	}
 	if len(idx.deleted) != 0 {
 		t.Errorf("Tier-1 delete fired despite PDS failure: %v", idx.deleted)
+	}
+}
+
+func TestSavesCreate_InvalidRecord_500_NoWrite(t *testing.T) {
+	idx := newFakeSavesIndex()
+	pds := &fakePDS{}
+	h := SavesCreateHandler(idx, idx, pds)
+
+	req := withSession(httptest.NewRequest(http.MethodPost, "/api/saves", strings.NewReader(`{"itemUrl":"not-a-url"}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body = %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "invalid_record") {
+		t.Errorf("body = %q, want invalid_record code", rr.Body.String())
+	}
+	if pds.creates != 0 {
+		t.Errorf("PDS creates = %d, want 0 (validation must run before the write)", pds.creates)
+	}
+	if idx.upserts != 0 {
+		t.Errorf("Tier-1 upserts = %d, want 0", idx.upserts)
 	}
 }

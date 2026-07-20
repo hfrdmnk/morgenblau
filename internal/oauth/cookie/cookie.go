@@ -1,56 +1,40 @@
-// Package cookie seals (DID, session_id) into an authenticated cookie.
-//
-// AEAD: AES-256-GCM. The cookie value is base64url(nonce || ciphertext || tag).
-// Plaintext is "<did>\x00<sid>" — both are opaque strings to this package; no
-// length limits beyond AEAD's 64-bit input cap.
+// Package cookie seals (DID, session_id) pairs into an authenticated cookie
+// using AES-256-GCM: base64url(nonce || ciphertext || tag) over "<did>\x00<sid>".
 package cookie
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"encoding/base64"
-	"fmt"
 	"net/http"
 	"strings"
+
+	"morgenblau/internal/secret"
 )
 
 const (
 	cookieName = "mb_session"
 	maxAge     = 30 * 24 * 60 * 60 // 30 days
-	keySize    = 32                // AES-256
 )
 
-// Sealer mints and reads sealed session cookies.
+// Sealer mints and reads sealed session cookies over a secret.Keyset (supports key rotation).
 type Sealer struct {
-	aead cipher.AEAD
+	keyset *secret.Keyset
 }
 
-// New builds a Sealer from a 32-byte key. Use SESSION_COOKIE_KEY from env,
-// decoded with base64.
+// New builds a Sealer from a 32-byte key (SESSION_COOKIE_KEY from env, base64-decoded).
 func New(key []byte) (*Sealer, error) {
-	if len(key) != keySize {
-		return nil, fmt.Errorf("cookie key must be %d bytes (got %d)", keySize, len(key))
-	}
-	block, err := aes.NewCipher(key)
+	ks, err := secret.NewKeyset(key)
 	if err != nil {
-		return nil, fmt.Errorf("new cipher: %w", err)
+		return nil, err
 	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("new gcm: %w", err)
-	}
-	return &Sealer{aead: aead}, nil
+	return &Sealer{keyset: ks}, nil
 }
 
 // Set seals (did, sid) and writes the cookie on w.
 func (s *Sealer) Set(w http.ResponseWriter, did, sid string) {
-	plain := []byte(did + "\x00" + sid)
-	nonce := make([]byte, s.aead.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
+	sealed, err := s.keyset.Seal([]byte(did + "\x00" + sid))
+	if err != nil {
 		return
 	}
-	sealed := s.aead.Seal(nonce, nonce, plain, nil)
 	encoded := base64.RawURLEncoding.EncodeToString(sealed)
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
@@ -63,8 +47,7 @@ func (s *Sealer) Set(w http.ResponseWriter, did, sid string) {
 	})
 }
 
-// Get unseals the cookie. ok=false on any failure (missing, garbage,
-// tampered, wrong key) — callers treat this as "no session".
+// Get unseals the cookie; ok=false on any failure (missing, garbage, tampered, wrong key) means no session.
 func (s *Sealer) Get(r *http.Request) (did, sid string, ok bool) {
 	c, err := r.Cookie(cookieName)
 	if err != nil {
@@ -74,12 +57,7 @@ func (s *Sealer) Get(r *http.Request) (did, sid string, ok bool) {
 	if err != nil {
 		return "", "", false
 	}
-	ns := s.aead.NonceSize()
-	if len(sealed) < ns+s.aead.Overhead() {
-		return "", "", false
-	}
-	nonce, ct := sealed[:ns], sealed[ns:]
-	plain, err := s.aead.Open(nil, nonce, ct, nil)
+	plain, err := s.keyset.Open(sealed)
 	if err != nil {
 		return "", "", false
 	}

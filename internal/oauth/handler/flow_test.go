@@ -16,7 +16,7 @@ import (
 	"morgenblau/internal/oauth/cookie"
 )
 
-// fakeApp implements ClientApp for handler tests — no network, no AS.
+// fakeApp implements ClientApp for handler tests: no network, no AS.
 type fakeApp struct {
 	startURL    string
 	startErr    error
@@ -29,6 +29,7 @@ type fakeApp struct {
 	logoutDID syntax.DID
 	logoutSID string
 	logoutErr error
+	onLogout  func()
 }
 
 func (f *fakeApp) StartAuthFlow(_ context.Context, identifier string) (string, error) {
@@ -42,9 +43,26 @@ func (f *fakeApp) ProcessCallback(_ context.Context, params url.Values) (*oauth.
 }
 
 func (f *fakeApp) Logout(_ context.Context, did syntax.DID, sid string) error {
+	if f.onLogout != nil {
+		f.onLogout()
+	}
 	f.logoutDID = did
 	f.logoutSID = sid
 	return f.logoutErr
+}
+
+// spyLocker records lock acquisitions and whether the lock is currently held.
+type spyLocker struct {
+	calls   int
+	heldNow bool
+	key     string
+}
+
+func (l *spyLocker) LockSession(did syntax.DID, sid string) func() {
+	l.calls++
+	l.key = did.String() + "|" + sid
+	l.heldNow = true
+	return func() { l.heldNow = false }
 }
 
 func newSealer(t *testing.T) *cookie.Sealer {
@@ -177,7 +195,7 @@ func TestCallback_ProcessError_400_NoCookie(t *testing.T) {
 func TestLogout_ClearsCookie_RedirectsToRoot(t *testing.T) {
 	app := &fakeApp{}
 	sealer := newSealer(t)
-	h := LogoutHandler(app, sealer)
+	h := LogoutHandler(app, sealer, nil)
 
 	// pre-existing session cookie
 	setRR := httptest.NewRecorder()
@@ -213,10 +231,39 @@ func TestLogout_ClearsCookie_RedirectsToRoot(t *testing.T) {
 	}
 }
 
+func TestLogout_HoldsSessionLockAcrossLogout(t *testing.T) {
+	locker := &spyLocker{}
+	var heldDuringLogout bool
+	app := &fakeApp{onLogout: func() { heldDuringLogout = locker.heldNow }}
+	sealer := newSealer(t)
+	h := LogoutHandler(app, sealer, locker)
+
+	setRR := httptest.NewRecorder()
+	sealer.Set(setRR, "did:plc:abc", "sid-1")
+	req := httptest.NewRequest(http.MethodPost, "/oauth/logout", nil)
+	for _, c := range setRR.Result().Cookies() {
+		req.AddCookie(c)
+	}
+	h.ServeHTTP(httptest.NewRecorder(), req)
+
+	if locker.calls != 1 {
+		t.Errorf("LockSession calls = %d, want 1", locker.calls)
+	}
+	if !heldDuringLogout {
+		t.Error("Logout ran without holding the session lock")
+	}
+	if locker.heldNow {
+		t.Error("session lock not released after logout")
+	}
+	if locker.key != "did:plc:abc|sid-1" {
+		t.Errorf("lock key = %q, want did:plc:abc|sid-1", locker.key)
+	}
+}
+
 func TestLogout_NoCookie_StillRedirects(t *testing.T) {
 	app := &fakeApp{}
 	sealer := newSealer(t)
-	h := LogoutHandler(app, sealer)
+	h := LogoutHandler(app, sealer, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/logout", nil)
 	rr := httptest.NewRecorder()
@@ -233,7 +280,7 @@ func TestLogout_NoCookie_StillRedirects(t *testing.T) {
 func TestLogout_NonPOST_405(t *testing.T) {
 	app := &fakeApp{}
 	sealer := newSealer(t)
-	h := LogoutHandler(app, sealer)
+	h := LogoutHandler(app, sealer, nil)
 	req := httptest.NewRequest(http.MethodGet, "/oauth/logout", nil)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)

@@ -10,7 +10,6 @@ import (
 
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/jobs"
-	"morgenblau/internal/middleware/auth"
 )
 
 // DigestReader is the slice of *db.Queries the digest handler depends on.
@@ -19,10 +18,8 @@ type DigestReader interface {
 	ListAllEntriesForUser(ctx context.Context, did string) ([]db.ListAllEntriesForUserRow, error)
 }
 
-// EntryWire is the on-the-wire entry shape consumed by /consume and the entry
-// detail page. body is the sanitized HTML; the frontend treats it as trusted.
-// SavedState is only populated by the entry detail handler — the digest list
-// leaves it nil to avoid N+1 lookups.
+// EntryWire is the on-the-wire entry shape; Body is pre-sanitized HTML the frontend trusts as-is.
+// SavedState stays nil here (only the entry detail handler sets it) to avoid N+1 lookups on the digest list.
 type EntryWire struct {
 	ID          int64        `json:"id"`
 	EntrySlug   string       `json:"entrySlug"`
@@ -37,14 +34,12 @@ type EntryWire struct {
 	SharedState *SharedState `json:"sharedState"`
 }
 
-// SavedState mirrors the frontend's view: rkey identifies the PDS record so
-// the client can DELETE it on un-save.
+// SavedState mirrors the frontend's view; Rkey is what the client DELETEs on un-save.
 type SavedState struct {
 	Rkey string `json:"rkey"`
 }
 
-// SharedState mirrors SavedState for shares: rkey is the deletable record —
-// the recommend rkey for standardfeed shares, the share rkey for rss.
+// SharedState mirrors SavedState; Rkey is the recommend rkey for standardfeed shares, the share rkey for rss.
 type SharedState struct {
 	Rkey string `json:"rkey"`
 }
@@ -54,33 +49,27 @@ type SourceMeta struct {
 	Title      *string `json:"title"`
 	SiteURL    *string `json:"siteUrl"`
 	FaviconURL *string `json:"faviconUrl"`
-	// Rkey is the requester's subscription rkey for this feed. Only set on the
-	// reader path (entryRowToWire), where the subscription row is in hand; the
-	// digest/source-list paths leave it empty so it drops from their JSON.
+	// Rkey is only set on the reader path (entryRowToWire); digest/source-list leave it empty so it drops from JSON.
 	Rkey string `json:"rkey,omitempty"`
 }
 
-// DigestResponse adds in-flight metadata so the frontend can swap empty-state
-// copy without a second round-trip.
+// DigestResponse adds in-flight metadata so the frontend can swap empty-state copy without a second round-trip.
 type DigestResponse struct {
 	Date         string      `json:"date"`
 	Entries      []EntryWire `json:"entries"`
 	HasActiveJob bool        `json:"hasActiveJob"`
 }
 
-// JobsActiveProbe is the slice of jobs.Tracker the digest handler uses to
-// decide between in-flight and steady-state empty copy.
+// JobsActiveProbe is the slice of jobs.Tracker used to pick in-flight vs steady-state empty copy.
 type JobsActiveProbe interface {
 	ActiveForUser(did syntax.DID) *jobs.Job
 }
 
-// DigestHandler returns entries for ?date=YYYY-MM-DD (default: today UTC),
-// joined across the user's Tier-1 subscriptions.
+// DigestHandler returns entries for ?date=YYYY-MM-DD (default: today UTC), joined across the user's Tier-1 subscriptions.
 func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := auth.SessionFromContext(r.Context())
-		if sess == nil || sess.Data == nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+		sess, ok := requireSession(w, r)
+		if !ok {
 			return
 		}
 
@@ -91,14 +80,11 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe) http.Handler {
 		var responseDate string
 
 		if dateStr == "" {
-			// TODO: when no ?date param is provided, this should default to
-			// date=today (UTC). Currently returns all entries unbounded for
-			// debugging; remove this branch + the ListAllEntriesForUser sqlc
-			// query before v1.
+			// TODO: missing ?date returns all entries unbounded for debugging; default to today and drop this branch + ListAllEntriesForUser before v1.
 			rows, err := reader.ListAllEntriesForUser(r.Context(), did)
 			if err != nil {
 				slog.Warn("/api/digest: list-all failed", "err", err)
-				http.Error(w, "internal error", http.StatusInternalServerError)
+				writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 				return
 			}
 			entries = make([]EntryWire, 0, len(rows))
@@ -109,7 +95,7 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe) http.Handler {
 		} else {
 			parsed, err := time.Parse("2006-01-02", dateStr)
 			if err != nil {
-				http.Error(w, "invalid date (want YYYY-MM-DD)", http.StatusBadRequest)
+				writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid date (want YYYY-MM-DD)")
 				return
 			}
 			day := parsed.UTC()
@@ -122,7 +108,7 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe) http.Handler {
 			})
 			if err != nil {
 				slog.Warn("/api/digest: list failed", "err", err)
-				http.Error(w, "internal error", http.StatusInternalServerError)
+				writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 				return
 			}
 			entries = make([]EntryWire, 0, len(rows))
@@ -145,37 +131,74 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe) http.Handler {
 	})
 }
 
-func allEntriesRowToWire(row db.ListAllEntriesForUserRow) EntryWire {
+// entryListFields is the shared field set behind the entry-list row-to-wire mappers, since the three list queries differ only in filter, not shape.
+type entryListFields struct {
+	ID           int64
+	EntrySlug    string
+	Title        *string
+	Url          string
+	ContentType  string
+	PublishedAt  string
+	FeedUrl      string
+	FeedTitle    *string
+	CatalogTitle *string
+	FeedSiteUrl  *string
+	FeedIconUrl  *string
+	ContentHtml  *string
+	Metadata     *string
+}
+
+func entryListRowToWire(f entryListFields) EntryWire {
 	return EntryWire{
-		ID:          row.ID,
-		EntrySlug:   row.EntrySlug,
-		Title:       row.Title,
-		URL:         row.Url,
-		ContentType: row.ContentType,
-		PublishedAt: row.PublishedAt,
-		Source:      buildSourceMeta(row.FeedUrl, displayTitle(row.FeedTitle, row.CatalogTitle), row.FeedSiteUrl, row.FeedIconUrl),
-		Body:        row.ContentHtml,
-		Metadata:    row.Metadata,
+		ID:          f.ID,
+		EntrySlug:   f.EntrySlug,
+		Title:       f.Title,
+		URL:         f.Url,
+		ContentType: f.ContentType,
+		PublishedAt: f.PublishedAt,
+		Source:      buildSourceMeta(f.FeedUrl, displayTitle(f.FeedTitle, f.CatalogTitle), f.FeedSiteUrl, f.FeedIconUrl),
+		Body:        f.ContentHtml,
+		Metadata:    f.Metadata,
 	}
+}
+
+func allEntriesRowToWire(row db.ListAllEntriesForUserRow) EntryWire {
+	return entryListRowToWire(entryListFields{
+		ID:           row.ID,
+		EntrySlug:    row.EntrySlug,
+		Title:        row.Title,
+		Url:          row.Url,
+		ContentType:  row.ContentType,
+		PublishedAt:  row.PublishedAt,
+		FeedUrl:      row.FeedUrl,
+		FeedTitle:    row.FeedTitle,
+		CatalogTitle: row.CatalogTitle,
+		FeedSiteUrl:  row.FeedSiteUrl,
+		FeedIconUrl:  row.FeedIconUrl,
+		ContentHtml:  row.ContentHtml,
+		Metadata:     row.Metadata,
+	})
 }
 
 func digestRowToWire(row db.ListDigestForUserRow) EntryWire {
-	return EntryWire{
-		ID:          row.ID,
-		EntrySlug:   row.EntrySlug,
-		Title:       row.Title,
-		URL:         row.Url,
-		ContentType: row.ContentType,
-		PublishedAt: row.PublishedAt,
-		Source:      buildSourceMeta(row.FeedUrl, displayTitle(row.FeedTitle, row.CatalogTitle), row.FeedSiteUrl, row.FeedIconUrl),
-		Body:        row.ContentHtml,
-		Metadata:    row.Metadata,
-	}
+	return entryListRowToWire(entryListFields{
+		ID:           row.ID,
+		EntrySlug:    row.EntrySlug,
+		Title:        row.Title,
+		Url:          row.Url,
+		ContentType:  row.ContentType,
+		PublishedAt:  row.PublishedAt,
+		FeedUrl:      row.FeedUrl,
+		FeedTitle:    row.FeedTitle,
+		CatalogTitle: row.CatalogTitle,
+		FeedSiteUrl:  row.FeedSiteUrl,
+		FeedIconUrl:  row.FeedIconUrl,
+		ContentHtml:  row.ContentHtml,
+		Metadata:     row.Metadata,
+	})
 }
 
-// displayTitle prefers the user's per-subscription title over the catalog
-// title cached from the source itself (the publication name for standardfeed
-// sources; NULL for rss).
+// displayTitle prefers the user's per-subscription title over the catalog title (publication name for standardfeed, NULL for rss).
 func displayTitle(userTitle, catalogTitle *string) *string {
 	if userTitle != nil && *userTitle != "" {
 		return userTitle
@@ -183,9 +206,7 @@ func displayTitle(userTitle, catalogTitle *string) *string {
 	return catalogTitle
 }
 
-// buildSourceMeta returns the canonical favicon resolved by the sync pipeline,
-// or nil when discovery hasn't (or couldn't) populate one — the frontend
-// renders a placeholder in that case.
+// buildSourceMeta returns the sync-resolved favicon, or nil when discovery hasn't populated one (the frontend renders a placeholder).
 func buildSourceMeta(feedURL string, title, siteURL, feedIconURL *string) SourceMeta {
 	var favicon *string
 	if feedIconURL != nil && *feedIconURL != "" {

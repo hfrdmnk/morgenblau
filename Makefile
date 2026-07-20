@@ -40,6 +40,11 @@ test:
 	@echo "Testing..."
 	@go test ./... -v
 
+# Race detector over the whole tree — run before merging concurrency changes.
+test-race:
+	@echo "Testing (race)..."
+	@go test ./... -race
+
 clean:
 	@echo "Cleaning..."
 	@rm -f main main-linux-*
@@ -72,6 +77,11 @@ migrate-create:
 sqlc:
 	@sqlc generate
 
+# One-time per clone: activate the committed git hooks (.githooks/).
+hooks:
+	@git config core.hooksPath .githooks
+	@echo "core.hooksPath -> .githooks"
+
 # Live-reload Go only.
 watch:
 	@if command -v air > /dev/null; then \
@@ -87,4 +97,4 @@ watch:
 		fi; \
 	fi
 
-.PHONY: all build build-linux frontend-build run dev test clean watch migrate-up migrate-down migrate-status migrate-create sqlc
+.PHONY: all build build-linux frontend-build run dev test test-race clean watch migrate-up migrate-down migrate-status migrate-fresh migrate-create sqlc hooks

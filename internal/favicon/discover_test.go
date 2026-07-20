@@ -8,8 +8,7 @@ import (
 	"testing"
 )
 
-// fakeSite is a minimal multi-route httptest server: GET /<path> returns the
-// configured (status, content-type, body). Missing routes 404.
+// fakeSite is a minimal multi-route httptest server; GET /<path> returns the configured response, missing routes 404.
 type fakeSite struct {
 	*httptest.Server
 	routes map[string]route
@@ -75,52 +74,52 @@ func TestDiscover(t *testing.T) {
 		{
 			name: "shortcut icon",
 			routes: map[string]route{
-				"/":             {contentType: "text/html", body: htmlWithHead(`<link rel="shortcut icon" href="/short.ico">`)},
-				"/short.ico":    {contentType: icoCT, body: "ICO"},
-				"/favicon.ico":  {status: 404},
+				"/":            {contentType: "text/html", body: htmlWithHead(`<link rel="shortcut icon" href="/short.ico">`)},
+				"/short.ico":   {contentType: icoCT, body: "ICO"},
+				"/favicon.ico": {status: 404},
 			},
 			wantSlug: "/short.ico",
 		},
 		{
 			name: "apple-touch-icon wins over plain icon",
 			routes: map[string]route{
-				"/":          {contentType: "text/html", body: htmlWithHead(`<link rel="icon" href="/i.png"><link rel="apple-touch-icon" href="/a.png">`)},
-				"/a.png":     {contentType: pngCT, body: "PNG"},
-				"/i.png":     {contentType: pngCT, body: "PNG"},
+				"/":      {contentType: "text/html", body: htmlWithHead(`<link rel="icon" href="/i.png"><link rel="apple-touch-icon" href="/a.png">`)},
+				"/a.png": {contentType: pngCT, body: "PNG"},
+				"/i.png": {contentType: pngCT, body: "PNG"},
 			},
 			wantSlug: "/a.png",
 		},
 		{
 			name: "precomposed wins over apple-touch-icon",
 			routes: map[string]route{
-				"/":          {contentType: "text/html", body: htmlWithHead(`<link rel="apple-touch-icon" href="/a.png"><link rel="apple-touch-icon-precomposed" href="/p.png">`)},
-				"/a.png":     {contentType: pngCT, body: "PNG"},
-				"/p.png":     {contentType: pngCT, body: "PNG"},
+				"/":      {contentType: "text/html", body: htmlWithHead(`<link rel="apple-touch-icon" href="/a.png"><link rel="apple-touch-icon-precomposed" href="/p.png">`)},
+				"/a.png": {contentType: pngCT, body: "PNG"},
+				"/p.png": {contentType: pngCT, body: "PNG"},
 			},
 			wantSlug: "/p.png",
 		},
 		{
 			name: "SVG beats everything",
 			routes: map[string]route{
-				"/":         {contentType: "text/html", body: htmlWithHead(`<link rel="icon" type="image/svg+xml" href="/i.svg"><link rel="apple-touch-icon" href="/a.png">`)},
-				"/i.svg":    {contentType: svgCT, body: "<svg/>"},
-				"/a.png":    {contentType: pngCT, body: "PNG"},
+				"/":      {contentType: "text/html", body: htmlWithHead(`<link rel="icon" type="image/svg+xml" href="/i.svg"><link rel="apple-touch-icon" href="/a.png">`)},
+				"/i.svg": {contentType: svgCT, body: "<svg/>"},
+				"/a.png": {contentType: pngCT, body: "PNG"},
 			},
 			wantSlug: "/i.svg",
 		},
 		{
 			name: "largest sizes wins among same rel",
 			routes: map[string]route{
-				"/":         {contentType: "text/html", body: htmlWithHead(`<link rel="icon" sizes="32x32" href="/32.png"><link rel="icon" sizes="192x192" href="/192.png">`)},
-				"/192.png":  {contentType: pngCT, body: "PNG"},
-				"/32.png":   {contentType: pngCT, body: "PNG"},
+				"/":        {contentType: "text/html", body: htmlWithHead(`<link rel="icon" sizes="32x32" href="/32.png"><link rel="icon" sizes="192x192" href="/192.png">`)},
+				"/192.png": {contentType: pngCT, body: "PNG"},
+				"/32.png":  {contentType: pngCT, body: "PNG"},
 			},
 			wantSlug: "/192.png",
 		},
 		{
 			name: "relative href resolves against site",
 			routes: map[string]route{
-				"/":           {contentType: "text/html", body: htmlWithHead(`<link rel="icon" href="assets/icon.png">`)},
+				"/":                {contentType: "text/html", body: htmlWithHead(`<link rel="icon" href="assets/icon.png">`)},
 				"/assets/icon.png": {contentType: pngCT, body: "PNG"},
 			},
 			wantSlug: "/assets/icon.png",
@@ -186,9 +185,9 @@ func TestDiscover(t *testing.T) {
 		{
 			name: "mask-icon is ignored (Safari pinned-tab, would render black)",
 			routes: map[string]route{
-				"/":            {contentType: "text/html", body: htmlWithHead(`<link rel="mask-icon" href="/safari.svg" color="#000"><link rel="icon" href="/real.png">`)},
-				"/safari.svg":  {contentType: svgCT, body: "<svg/>"},
-				"/real.png":    {contentType: pngCT, body: "PNG"},
+				"/":           {contentType: "text/html", body: htmlWithHead(`<link rel="mask-icon" href="/safari.svg" color="#000"><link rel="icon" href="/real.png">`)},
+				"/safari.svg": {contentType: svgCT, body: "<svg/>"},
+				"/real.png":   {contentType: pngCT, body: "PNG"},
 			},
 			wantSlug: "/real.png",
 		},

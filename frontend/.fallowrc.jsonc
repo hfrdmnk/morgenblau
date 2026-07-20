@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  // Dev-only tools, both verified absent from dist. dialkit is imported from src/, but only via the
+  // DEV-gated lazy import in discover.tsx that rolldown eliminates; react-grab is loaded from
+  // index.html, which fallow doesn't scan. Neither breaks a --production install: we never run one.
+  "ignoreDependencies": ["dialkit", "react-grab"],
+  "overrides": [
+    {
+      // shadcn base-nova components ship their full API surface; unwired subcomponents are intentional
+      "files": ["src/components/ui/**"],
+      "rules": { "unused-exports": "off", "unused-types": "off" }
+    }
+  ]
+}

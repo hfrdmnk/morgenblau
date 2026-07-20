@@ -1,15 +1,17 @@
-import { Loading03Icon } from '@hugeicons/core-free-icons';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { SpinnerIcon } from '@proicons/react';
 import type { FormEvent, KeyboardEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { FeedCandidateList } from '@/components/sources/feed-candidate-list';
+import { ApiError, api } from '@/lib/api';
 import { candidateKey, type FeedCandidate } from '@/lib/candidates';
 import { InputError } from '@/components/input-error';
+import { ReauthNotice } from '@/components/reauth-notice';
 import {
     emitSubscriptionAdded,
     type AddedSubscription,
 } from '@/lib/subscription-events';
+import { mergeTagSuggestions } from '@/lib/tags';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -21,11 +23,9 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { PATHS } from '@/lib/paths';
 import { youtubeShortsFreeFeedUrl } from '@/lib/youtube';
 
-// feedUrl carries the catalog key: the feed URL for rss subscriptions, the
-// publication at-uri for ATProto ones.
+// feedUrl is the catalog key: feed URL for rss subscriptions, publication at-uri for ATProto.
 type ExistingFeedSubscription = { feedUrl: string; title: string | null };
 
 type DiscoverResult = {
@@ -39,17 +39,14 @@ type SubscriptionItem = {
     kind: 'rss' | 'standardfeed';
     feedUrl: string;
     publication?: string;
-    // User-editable display title. Prefilled from the resolver, then owned by
-    // the user (lexicon: blue.morgen.feed.subscription `title` is user-editable).
+    // User-editable title, prefilled from the resolver (blue.morgen.feed.subscription.title).
     title: string;
-    // The resolver's prefill: an ATProto item only sends its title when the
-    // user diverged from it (unchanged defaults mean no sidecar record).
+    // ATProto items only send title when it diverged from prefill; unchanged means no sidecar record.
     prefilledTitle: string;
     siteUrl: string;
     primary: boolean;
     tags: string[];
-    // UI-only: when true, submit the Shorts-free YouTube playlist feed instead
-    // of the channel feed. Resolved to the effective feedUrl at submit.
+    // UI-only: submits the Shorts-free playlist feed instead of the channel feed at submit.
     excludeShorts: boolean;
 };
 
@@ -73,9 +70,8 @@ function toItem(candidate: FeedCandidate): SubscriptionItem {
     };
 }
 
-// siblingKeyOf mirrors the server's sibling rule: lowercase host minus
-// "www." plus the path minus its trailing slash. rss candidates fall back
-// to the feed URL's bare host when no site URL is known.
+// siblingKeyOf mirrors the server's sibling rule: lowercase host minus "www."
+// plus path minus trailing slash. rss candidates fall back to the feed URL's host.
 function siblingKeyOf(candidate: FeedCandidate): string | null {
     const normalized = normalizeSiblingUrl(candidate.siteUrl ?? '');
     if (candidate.kind === 'standardfeed') {
@@ -177,35 +173,17 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         setDiscovering(true);
 
         try {
-            const response = await fetch('/api/subscriptions/resolve', {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({ url }),
-                signal: abort.signal,
-            });
-
-            if (!response.ok) {
-                if (response.status >= 500) {
-                    setDiscoverError('Couldn’t reach that URL. Try again?');
-                } else {
-                    const body = (await response
-                        .json()
-                        .catch(() => null)) as { message?: string } | null;
-                    setDiscoverError(body?.message ?? 'Discovery failed.');
-                }
-                return;
-            }
-
-            const result = (await response.json()) as DiscoverResult;
+            const result = await api<DiscoverResult>(
+                '/api/subscriptions/resolve',
+                { method: 'POST', body: { url }, signal: abort.signal },
+            );
             setCandidates(result.candidates);
             setExistingSubscriptions(result.existingSubscriptions);
 
             const existing = new Set(
                 result.existingSubscriptions.map((s) => s.feedUrl),
             );
-            // Fresh = not already subscribed, and not a sibling of an
-            // existing subscription of the other kind.
+            // Fresh = not already subscribed and not a cross-kind sibling of an existing subscription.
             const fresh = result.candidates.filter(
                 (c) => !existing.has(candidateKey(c)) && !c.subscribedVia,
             );
@@ -214,6 +192,14 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                 setSubscriptions([toItem(fresh[0])]);
             }
         } catch (err) {
+            if (err instanceof ApiError) {
+                setDiscoverError(
+                    err.status >= 500
+                        ? 'Couldn’t reach that URL. Try again?'
+                        : err.message,
+                );
+                return;
+            }
             if ((err as Error).name === 'AbortError') return;
             setDiscoverError('Couldn’t reach that URL. Try again?');
         } finally {
@@ -269,9 +255,8 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
             return;
         }
         let active = true;
-        fetch('/api/subscriptions/tags', { credentials: 'same-origin' })
-            .then((response) => (response.ok ? response.json() : null))
-            .then((body: { tags?: string[] } | null) => {
+        api<{ tags?: string[] }>('/api/subscriptions/tags')
+            .then((body) => {
                 if (active && body?.tags) {
                     setUserTags(body.tags);
                 }
@@ -298,8 +283,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         [subscriptions],
     );
 
-    // A candidate is blocked while its cross-kind sibling (same site, other
-    // kind) is selected — subscribing to both would duplicate the source.
+    // Blocked while a cross-kind sibling (same site) is selected, to avoid duplicate subscriptions.
     const siblingBlocked = useMemo(() => {
         const blocked = new Set<string>();
         if (!candidates) return blocked;
@@ -320,8 +304,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         return blocked;
     }, [candidates, selectedMap]);
 
-    // ATProto subscribes need the post-change OAuth grant; surface the calm
-    // re-auth note as soon as an ATProto candidate is selected.
+    // ATProto subscribes need the post-change OAuth grant, so surface the re-auth note once selected.
     const hasStandardSelected = subscriptions.some(
         (item) => item.kind === 'standardfeed',
     );
@@ -331,9 +314,8 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
             return;
         }
         let active = true;
-        fetch('/api/profiles/me', { credentials: 'same-origin' })
-            .then((response) => (response.ok ? response.json() : null))
-            .then((body: { needsReauth?: boolean } | null) => {
+        api<{ needsReauth?: boolean }>('/api/profiles/me')
+            .then((body) => {
                 if (active && body) {
                     setNeedsReauth(body.needsReauth === true);
                 }
@@ -344,22 +326,15 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         };
     }, [hasStandardSelected]);
 
-    // Suggestions = tags the user already uses ∪ tags added elsewhere in this
-    // dialog, deduped case-insensitively and sorted.
-    const tagSuggestions = useMemo(() => {
-        const byLower = new Map<string, string>();
-        for (const tag of userTags) {
-            const key = tag.toLowerCase();
-            if (!byLower.has(key)) byLower.set(key, tag);
-        }
-        for (const item of subscriptions) {
-            for (const tag of item.tags) {
-                const key = tag.toLowerCase();
-                if (!byLower.has(key)) byLower.set(key, tag);
-            }
-        }
-        return [...byLower.values()].sort((a, b) => a.localeCompare(b));
-    }, [userTags, subscriptions]);
+    // Tag suggestions = user's existing tags ∪ tags added in this dialog, deduped case-insensitively.
+    const tagSuggestions = useMemo(
+        () =>
+            mergeTagSuggestions(
+                userTags,
+                subscriptions.flatMap((item) => item.tags),
+            ),
+        [userTags, subscriptions],
+    );
 
     const existingByFeedUrl = useMemo(
         () =>
@@ -445,8 +420,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
 
         const payload = subscriptions.map((item) => {
             if (item.kind === 'standardfeed') {
-                // Send metadata only when the user diverged from the
-                // prefill — untouched defaults mean no sidecar record.
+                // Send title only when it diverged from the prefill; untouched defaults create no sidecar record.
                 const title = item.title.trim();
                 return {
                     publication: item.publication,
@@ -470,39 +444,13 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         });
 
         try {
-            const response = await fetch('/api/subscriptions', {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({ subscriptions: payload }),
-            });
-
-            if (!response.ok) {
-                const body = (await response.json().catch(() => null)) as {
-                    errors?: Record<string, string>;
-                    message?: string;
-                    code?: string;
-                } | null;
-                if (body?.code === 'reauth_required') {
-                    setNeedsReauth(true);
-                    setSubmitError(undefined);
-                    return;
-                }
-                if (body?.errors) {
-                    setFieldErrors(body.errors);
-                }
-                if (body?.message) {
-                    setSubmitError(body.message);
-                } else if (!body?.errors) {
-                    setSubmitError('Couldn’t add those sources. Try again?');
-                }
-                return;
-            }
-
-            const body = (await response.json().catch(() => null)) as {
+            const body = await api<{
                 records?: AddedSubscription[];
                 jobIds?: string[];
-            } | null;
+            }>('/api/subscriptions', {
+                method: 'POST',
+                body: { subscriptions: payload },
+            });
             emitSubscriptionAdded({
                 records: body?.records ?? [],
                 jobIds: body?.jobIds ?? [],
@@ -510,7 +458,20 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
 
             resetState();
             onOpenChange(false);
-        } catch {
+        } catch (err) {
+            if (err instanceof ApiError) {
+                if (err.isReauth) {
+                    setNeedsReauth(true);
+                    setSubmitError(undefined);
+                    return;
+                }
+                if (err.errors) {
+                    setFieldErrors(err.errors);
+                    return;
+                }
+                setSubmitError(err.message);
+                return;
+            }
             setSubmitError('Couldn’t add those sources. Try again?');
         } finally {
             setSubmitting(false);
@@ -576,10 +537,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                             >
                                 {discovering ? (
                                     <>
-                                        <HugeiconsIcon
-                                            icon={Loading03Icon}
-                                            className="motion-safe:animate-spin"
-                                        />
+                                        <SpinnerIcon className="motion-safe:animate-spin" />
                                         Finding…
                                     </>
                                 ) : (
@@ -659,22 +617,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                             );
                         })}
 
-                    {hasStandardSelected && needsReauth && (
-                        <p
-                            role="status"
-                            className="text-sm font-light text-muted-foreground"
-                        >
-                            Subscribing via ATProto needs one extra
-                            permission.{' '}
-                            <a
-                                href={PATHS.login}
-                                className="text-primary underline underline-offset-4"
-                            >
-                                Sign in again
-                            </a>{' '}
-                            to enable it.
-                        </p>
-                    )}
+                    {hasStandardSelected && needsReauth && <ReauthNotice />}
 
                     {topLevelError && <InputError message={topLevelError} />}
 
@@ -690,10 +633,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                         <Button type="submit" disabled={submitDisabled}>
                             {submitting ? (
                                 <>
-                                    <HugeiconsIcon
-                                        icon={Loading03Icon}
-                                        className="motion-safe:animate-spin"
-                                    />
+                                    <SpinnerIcon className="motion-safe:animate-spin" />
                                     Adding…
                                 </>
                             ) : (

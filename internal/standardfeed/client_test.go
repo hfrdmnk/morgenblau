@@ -10,6 +10,8 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+
+	"morgenblau/internal/safehttp"
 )
 
 type fakeResolver struct {
@@ -169,6 +171,98 @@ func TestGetPublication_Errors(t *testing.T) {
 	}
 }
 
+func TestGetPublication_SendsMorgenblauUserAgent(t *testing.T) {
+	pubURI := "at://" + pubDID + "/site.standard.publication/3abc"
+	var gotUA string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		json.NewEncoder(w).Encode(map[string]any{
+			"uri": pubURI,
+			"cid": "bafycid1",
+			"value": map[string]any{
+				"name": "Example Journal",
+				"url":  "https://example.com/",
+			},
+		})
+	})
+	client, _ := newClientAgainst(t, handler)
+
+	if _, err := client.GetPublication(context.Background(), pubURI); err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if gotUA != safehttp.UserAgent {
+		t.Errorf("User-Agent = %q, want %q", gotUA, safehttp.UserAgent)
+	}
+}
+
+func TestGetPublication_ShowInDiscoverDefaultsTrueWhenAbsent(t *testing.T) {
+	pubURI := "at://" + pubDID + "/site.standard.publication/3abc"
+	cases := []struct {
+		name  string
+		value map[string]any
+	}{
+		{
+			name: "no preferences key",
+			value: map[string]any{
+				"name": "Example Journal",
+				"url":  "https://example.com",
+			},
+		},
+		{
+			name: "preferences present without showInDiscover",
+			value: map[string]any{
+				"name":        "Example Journal",
+				"url":         "https://example.com",
+				"preferences": map[string]any{},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				json.NewEncoder(w).Encode(map[string]any{
+					"uri":   pubURI,
+					"cid":   "bafycid1",
+					"value": tc.value,
+				})
+			})
+			client, _ := newClientAgainst(t, handler)
+
+			pub, err := client.GetPublication(context.Background(), pubURI)
+			if err != nil {
+				t.Fatalf("GetPublication: %v", err)
+			}
+			if !pub.ShowInDiscover {
+				t.Errorf("ShowInDiscover = false, want true")
+			}
+		})
+	}
+}
+
+func TestGetPublication_ShowInDiscoverFalse(t *testing.T) {
+	pubURI := "at://" + pubDID + "/site.standard.publication/3abc"
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"uri": pubURI,
+			"cid": "bafycid1",
+			"value": map[string]any{
+				"name":        "Example Journal",
+				"url":         "https://example.com",
+				"preferences": map[string]any{"showInDiscover": false},
+			},
+		})
+	})
+	client, _ := newClientAgainst(t, handler)
+
+	pub, err := client.GetPublication(context.Background(), pubURI)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if pub.ShowInDiscover {
+		t.Errorf("ShowInDiscover = true, want false")
+	}
+}
+
 func TestGetDocument_MapsFields(t *testing.T) {
 	docURI := "at://" + pubDID + "/site.standard.document/3doc"
 	pubURI := "at://" + pubDID + "/site.standard.publication/3abc"
@@ -291,8 +385,6 @@ func TestListDocuments_PagesAndFilters(t *testing.T) {
 }
 
 func TestListDocuments_HandleAuthorityMatchesDIDSite(t *testing.T) {
-	// Caller passes a handle-authority publication uri, but documents' site
-	// fields use the DID form. The filter must still match them.
 	handlePub := "at://alice.example/site.standard.publication/3abc"
 	didPub := "at://" + pubDID + "/site.standard.publication/3abc"
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -330,5 +422,107 @@ func TestListDocuments_EmptyCollection(t *testing.T) {
 	}
 	if len(docs) != 0 {
 		t.Fatalf("expected no docs, got %+v", docs)
+	}
+}
+
+func TestListRecentDocuments_SingleDefaultOrderLimitedRequestNoCursorFollowUp(t *testing.T) {
+	pubURI := "at://" + pubDID + "/site.standard.publication/3abc"
+	var gotQuery map[string]string
+	var requestCount int
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		if r.URL.Path != "/xrpc/com.atproto.repo.listRecords" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		gotQuery = map[string]string{
+			"reverse": r.URL.Query().Get("reverse"),
+			"limit":   r.URL.Query().Get("limit"),
+			"cursor":  r.URL.Query().Get("cursor"),
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"records": []any{map[string]any{
+				"uri": "at://" + pubDID + "/site.standard.document/3one",
+				"cid": "cid-1",
+				"value": map[string]any{
+					"site": pubURI, "title": "Doc", "publishedAt": "2026-07-01T08:00:00Z",
+				},
+			}},
+			// A cursor in the response must be ignored: ListRecentDocuments never follows up.
+			"cursor": "would-be-page-2",
+		})
+	})
+	client, _ := newClientAgainst(t, handler)
+
+	docs, err := client.ListRecentDocuments(context.Background(), pubURI, 20)
+	if err != nil {
+		t.Fatalf("ListRecentDocuments: %v", err)
+	}
+	if requestCount != 1 {
+		t.Fatalf("requests = %d, want 1", requestCount)
+	}
+	// No reverse param: default listRecords order is rkey descending (newest first).
+	if gotQuery["reverse"] != "" || gotQuery["limit"] != "20" || gotQuery["cursor"] != "" {
+		t.Fatalf("listRecords params: %+v", gotQuery)
+	}
+	if len(docs) != 1 || docs[0].URI != "at://"+pubDID+"/site.standard.document/3one" {
+		t.Fatalf("docs: %+v", docs)
+	}
+}
+
+func TestListRecentDocuments_FiltersHandleAndDIDFormSite(t *testing.T) {
+	handlePub := "at://alice.example/site.standard.publication/3abc"
+	didPub := "at://" + pubDID + "/site.standard.publication/3abc"
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"records": []any{
+				map[string]any{
+					"uri":   "at://" + pubDID + "/site.standard.document/3one",
+					"cid":   "cid-1",
+					"value": map[string]any{"site": didPub, "title": "Doc", "publishedAt": "2026-07-01T08:00:00Z"},
+				},
+				map[string]any{
+					"uri":   "at://" + pubDID + "/site.standard.document/3two",
+					"cid":   "cid-2",
+					"value": map[string]any{"site": "https://other.example", "title": "Other", "publishedAt": "2026-07-01T08:00:00Z"},
+				},
+			},
+		})
+	})
+	client, _ := newClientAgainst(t, handler, "alice.example")
+
+	docs, err := client.ListRecentDocuments(context.Background(), handlePub, 20)
+	if err != nil {
+		t.Fatalf("ListRecentDocuments: %v", err)
+	}
+	if len(docs) != 1 || docs[0].URI != "at://"+pubDID+"/site.standard.document/3one" {
+		t.Fatalf("handle-authority pub should match DID-form site and filter the other publication's doc: %+v", docs)
+	}
+}
+
+func TestListRecentDocuments_EmptyCollection(t *testing.T) {
+	pubURI := "at://" + pubDID + "/site.standard.publication/3abc"
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"records": []any{}})
+	})
+	client, _ := newClientAgainst(t, handler)
+
+	docs, err := client.ListRecentDocuments(context.Background(), pubURI, 20)
+	if err != nil {
+		t.Fatalf("ListRecentDocuments: %v", err)
+	}
+	if len(docs) != 0 {
+		t.Fatalf("expected no docs, got %+v", docs)
+	}
+}
+
+func TestListRecentDocuments_UpstreamErrorPropagates(t *testing.T) {
+	pubURI := "at://" + pubDID + "/site.standard.publication/3abc"
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	client, _ := newClientAgainst(t, handler)
+
+	if _, err := client.ListRecentDocuments(context.Background(), pubURI, 20); err == nil {
+		t.Fatal("expected error")
 	}
 }

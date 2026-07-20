@@ -1,7 +1,5 @@
-// Package favicon resolves a website's best favicon URL by parsing its HTML
-// <head> for <link rel=icon|...> hints, with a /favicon.ico fallback. It only
-// returns URLs — it does not download or cache image bytes. The returned URL
-// has been validated to return a 2xx image response at discovery time.
+// Package favicon resolves a website's best favicon URL from its HTML
+// <link rel=icon> hints, falling back to /favicon.ico; it returns URLs only, never image bytes.
 package favicon
 
 import (
@@ -17,8 +15,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-// HTTPDoer is the minimal slice of *http.Client this package needs. Tests
-// inject a stub; production passes a configured *http.Client.
+// HTTPDoer is the minimal *http.Client slice this package needs; tests inject a stub.
 type HTTPDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
@@ -26,17 +23,12 @@ type HTTPDoer interface {
 const (
 	maxHTMLBytes = 256 << 10
 	maxIconBytes = 256 << 10
-	// PoliteUA uses Mozilla compatibility on purpose: a number of CDNs (notably
-	// Cloudflare) gate HTML and image responses on the absence of "Go-http-client"
-	// in the UA, while keeping /feed/ paths open. Favicon discovery loads a page
-	// the same way a browser would, so it advertises itself as browser-compatible
-	// while still naming the bot and a contact URL.
+	// PoliteUA mimics a browser: CDNs like Cloudflare gate HTML/image responses on
+	// absence of "Go-http-client" in the UA while leaving /feed/ paths open.
 	PoliteUA = "Mozilla/5.0 (compatible; Morgenblau/0.1; +https://morgen.blue/about)"
 )
 
-// Discover walks the site at siteURL and returns the best favicon URL it can
-// validate. Returns an error if no candidate (including the /favicon.ico
-// fallback) returns a 2xx image response.
+// Discover walks siteURL and returns the best validated favicon URL, or an error if no candidate (including /favicon.ico) returns 2xx.
 func Discover(ctx context.Context, client HTTPDoer, siteURL string) (string, error) {
 	base, err := url.Parse(strings.TrimSpace(siteURL))
 	if err != nil || base.Scheme == "" || base.Host == "" {
@@ -44,8 +36,7 @@ func Discover(ctx context.Context, client HTTPDoer, siteURL string) (string, err
 	}
 
 	candidates, finalURL := collectCandidates(ctx, client, base)
-	// The fallback origin is the final URL after redirects when available,
-	// otherwise the original site URL.
+	// Fallback origin is the final URL after redirects, or the original siteURL.
 	fallbackBase := base
 	if finalURL != nil {
 		fallbackBase = finalURL
@@ -112,8 +103,7 @@ func collectCandidates(ctx context.Context, client HTTPDoer, site *url.URL) ([]c
 	return extract(doc, finalURL), finalURL
 }
 
-// extract walks the parsed tree for <link> elements whose rel mentions any
-// icon variant, resolving hrefs against base.
+// extract walks the tree for <link> elements whose rel is an icon variant, resolving hrefs against base.
 func extract(n *html.Node, base *url.URL) []candidate {
 	var out []candidate
 	var walk func(*html.Node)
@@ -166,16 +156,9 @@ func candidateFromLink(n *html.Node, base *url.URL) (candidate, bool) {
 	}, true
 }
 
-// normalizedRel returns the recognized icon rel token (canonical form) or "".
-// rel is a space-separated token list; matching is case-insensitive.
-//
-// `mask-icon` is intentionally NOT recognized: Safari pinned-tab icons are
-// monochrome silhouettes designed to be tinted by the browser via the link's
-// `color=` attribute. Rendered as-is in an <img>, they collapse to solid black
-// (e.g. theverge.com, mitchellh.com). Matches Miniflux's rel allow-list.
+// normalizedRel returns the canonical icon rel token, or ""; mask-icon is excluded because Safari's monochrome pinned-tab icon renders solid black outside the browser's tinting.
 func normalizedRel(rel string) string {
-	// Order here doesn't determine ranking — that's in rank(). We just need to
-	// recognize that at least one token is an icon variant.
+	// Order here doesn't determine ranking (see rank()); this only checks that some token is an icon variant.
 	for tok := range strings.FieldsSeq(strings.ToLower(rel)) {
 		switch tok {
 		case "icon":
@@ -192,8 +175,7 @@ func normalizedRel(rel string) string {
 	return ""
 }
 
-// parseSizes extracts the largest dimension from a sizes attribute like
-// "32x32" or "192x192 16x16" or "any". Returns 0 if unknown.
+// parseSizes extracts the largest dimension from a sizes attribute (e.g. "32x32" or "any"); returns 0 if unknown.
 func parseSizes(s string) int {
 	if s == "" {
 		return 0
@@ -220,7 +202,7 @@ func parseSizes(s string) int {
 	return best
 }
 
-// rank sorts candidates best-first using: SVG → larger size → rel preference.
+// rank sorts candidates best-first: SVG, then larger size, then rel preference.
 func rank(cs []candidate) {
 	relWeight := func(r string) int {
 		switch r {
@@ -237,7 +219,7 @@ func rank(cs []candidate) {
 	isSVG := func(c candidate) bool {
 		return c.mimeType == "image/svg+xml" || strings.HasSuffix(strings.ToLower(c.href), ".svg")
 	}
-	// insertion sort — n is tiny in practice
+	// insertion sort; n is tiny in practice
 	for i := 1; i < len(cs); i++ {
 		j := i
 		for j > 0 && less(cs[j], cs[j-1], isSVG, relWeight) {
@@ -258,8 +240,7 @@ func less(a, b candidate, isSVG func(candidate) bool, weight func(string) int) b
 	return weight(a.rel) > weight(b.rel)
 }
 
-// validate confirms the URL returns a 2xx response with an image-shaped
-// Content-Type (or application/octet-stream, which some CDNs return for .ico).
+// validate confirms rawURL returns 2xx with an image Content-Type (or application/octet-stream, which some CDNs use for .ico).
 func validate(ctx context.Context, client HTTPDoer, rawURL string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {

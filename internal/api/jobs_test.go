@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,7 +69,7 @@ func TestJobsGet_404(t *testing.T) {
 	}
 }
 
-func TestJobsGet_403AcrossUsers(t *testing.T) {
+func TestJobsGet_404AcrossUsers(t *testing.T) {
 	src := &fakeJobSource{byID: map[string]*jobs.Job{
 		"abc": {ID: "abc", UserDID: "did:plc:bob"},
 	}}
@@ -77,8 +78,8 @@ func TestJobsGet_403AcrossUsers(t *testing.T) {
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/jobs/abc", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
-	if rr.Code != http.StatusForbidden {
-		t.Errorf("status = %d, want 403", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 (collapsed with unknown-job)", rr.Code)
 	}
 }
 
@@ -88,7 +89,7 @@ func TestJobsActive_NoneReturnsNull(t *testing.T) {
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/jobs/active", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
-	if rr.Body.String() != "null" {
+	if strings.TrimSpace(rr.Body.String()) != "null" {
 		t.Errorf("body = %q, want null", rr.Body.String())
 	}
 }

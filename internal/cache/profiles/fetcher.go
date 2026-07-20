@@ -6,38 +6,29 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+
+	"morgenblau/internal/atxrpc"
 )
 
-// PDSFetcher is the production RecordFetcher. It issues an unauthenticated
-// com.atproto.repo.getRecord against the subject's PDS for the
-// app.bsky.actor.profile/self record. Client is the safehttp client: the PDS
-// endpoint comes from an attacker-suppliable DID, so the fetch must be guarded.
+// PDSFetcher is the production RecordFetcher. Client must be the safehttp client: the PDS endpoint comes from an attacker-suppliable DID.
 type PDSFetcher struct {
 	Client *http.Client
 }
 
-// getRecordResp is the trimmed shape of com.atproto.repo.getRecord we care
-// about. Value is an opaque map so we can pull displayName/avatar by hand.
+// getRecordResp is the trimmed shape of com.atproto.repo.getRecord this package needs.
 type getRecordResp struct {
 	URI   string         `json:"uri"`
 	CID   string         `json:"cid"`
 	Value map[string]any `json:"value"`
 }
 
-// FetchProfile pulls app.bsky.actor.profile/self from the subject's PDS. A
-// "record not found" reply (the common case for users who never edited their
-// Bluesky profile) returns (nil, nil, nil) — the cache treats that the same
-// as a present-but-empty record.
-func (f PDSFetcher) FetchProfile(ctx context.Context, did syntax.DID, pdsEndpoint string) (*string, *string, error) {
+// FetchProfile pulls app.bsky.actor.profile/self from the subject's PDS. A "record not found" reply (common for users who never edited their Bluesky profile) returns a zero ProfileRecord, treated as present-but-empty.
+func (f PDSFetcher) FetchProfile(ctx context.Context, did syntax.DID, pdsEndpoint string) (ProfileRecord, error) {
 	if pdsEndpoint == "" {
-		return nil, nil, errors.New("empty PDS endpoint")
+		return ProfileRecord{}, errors.New("empty PDS endpoint")
 	}
-	client := atclient.NewAPIClient(pdsEndpoint)
-	if f.Client != nil {
-		client.Client = f.Client
-	}
+	client := atxrpc.New(pdsEndpoint, f.Client)
 	var out getRecordResp
 	params := map[string]any{
 		"repo":       did.String(),
@@ -45,25 +36,28 @@ func (f PDSFetcher) FetchProfile(ctx context.Context, did syntax.DID, pdsEndpoin
 		"rkey":       "self",
 	}
 	if err := client.Get(ctx, syntax.NSID("com.atproto.repo.getRecord"), params, &out); err != nil {
-		// Treat any error (missing record, malformed PDS, transient) as
-		// "no profile data available" — handler downgrades to nulls.
-		return nil, nil, err
+		// Any error here (missing record, malformed PDS, transient) means "no profile data available"; caller downgrades to nulls.
+		return ProfileRecord{}, err
 	}
 
-	var displayName, avatar *string
+	var record ProfileRecord
 	if v, ok := out.Value["displayName"].(string); ok && v != "" {
 		s := v
-		displayName = &s
+		record.DisplayName = &s
+	}
+	if v, ok := out.Value["description"].(string); ok && v != "" {
+		s := v
+		record.Description = &s
 	}
 	if blob, ok := out.Value["avatar"].(map[string]any); ok {
 		if ref, ok := blob["ref"].(map[string]any); ok {
 			if link, ok := ref["$link"].(string); ok && link != "" {
 				u := buildBlobURL(pdsEndpoint, did, link)
-				avatar = &u
+				record.Avatar = &u
 			}
 		}
 	}
-	return displayName, avatar, nil
+	return record, nil
 }
 
 func buildBlobURL(pdsEndpoint string, did syntax.DID, cid string) string {

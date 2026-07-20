@@ -15,8 +15,8 @@ import (
 
 type fakeSourceDetail struct {
 	rows    map[string]map[string]db.GetUserSourceWithStatsRow // did → rkey → row
-	subRows map[string]map[string]db.UserSubscription           // did → rkey → row
-	entries map[string][]db.ListEntriesForSourceRow             // feed_url → rows
+	subRows map[string]map[string]db.UserSubscription          // did → rkey → row
+	entries map[string][]db.ListEntriesForSourceRow            // feed_url → rows
 	err     error
 }
 

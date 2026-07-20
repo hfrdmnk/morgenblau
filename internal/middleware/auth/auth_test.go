@@ -3,9 +3,12 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -40,13 +43,11 @@ func (l *memoryLocker) LockSession(did syntax.DID, sid string) func() {
 	return m.Unlock
 }
 
-// noopLocker satisfies SessionLocker without serialising — for tests that
-// don't care about concurrency.
+// noopLocker satisfies SessionLocker without serialising, for tests that don't care about concurrency.
 type noopLocker struct{}
 
 func (noopLocker) LockSession(syntax.DID, string) func() { return func() {} }
 
-// fakeResumer satisfies the Resumer interface using a map.
 type fakeResumer struct {
 	sessions map[string]*oauth.ClientSession
 	err      error
@@ -116,7 +117,6 @@ func TestMiddleware_Table(t *testing.T) {
 	}
 
 	cases := []tcase{
-		// Infra allowlist — pass through, no auth required.
 		{name: "api/health unauthed", path: "/api/health", method: "GET", wantCode: 200, wantNext: true},
 		{name: "oauth-client-metadata", path: "/oauth-client-metadata.json", method: "GET", wantCode: 200, wantNext: true},
 		{name: "oauth-jwks", path: "/oauth-jwks.json", method: "GET", wantCode: 200, wantNext: true},
@@ -126,33 +126,32 @@ func TestMiddleware_Table(t *testing.T) {
 		{name: "static asset", path: "/assets/index-abc.js", method: "GET", wantCode: 200, wantNext: true},
 		{name: "favicon", path: "/favicon.svg", method: "GET", wantCode: 200, wantNext: true},
 
-		// Public product routes — pass when anon.
 		{name: "root unauthed", path: "/", method: "GET", wantCode: 200, wantNext: true},
 		{name: "login unauthed", path: "/login", method: "GET", wantCode: 200, wantNext: true},
 
-		// Public product routes with authedRedirect — 302 when authed.
 		{name: "root authed", path: "/", method: "GET", authed: true, wantCode: 302, wantNext: false, wantLoc: "/digest"},
 		{name: "login authed", path: "/login", method: "GET", authed: true, wantCode: 302, wantNext: false, wantLoc: "/digest"},
 
-		// Authed product routes — 302 /login when anon.
 		{name: "digest unauthed", path: "/digest", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
 		{name: "sources unauthed", path: "/sources", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
 		{name: "entry unauthed", path: "/entry", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
 
-		// Authed product routes — pass when authed.
 		{name: "digest authed", path: "/digest", method: "GET", authed: true, wantCode: 200, wantNext: true},
 		{name: "sources authed", path: "/sources", method: "GET", authed: true, wantCode: 200, wantNext: true},
 		{name: "entry authed", path: "/entry", method: "GET", authed: true, wantCode: 200, wantNext: true},
 
-		// Unknown SPA path — gated by default. Anon → /login, authed → pass.
 		{name: "unknown unauthed", path: "/anything", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
 		{name: "unknown authed", path: "/anything", method: "GET", authed: true, wantCode: 200, wantNext: true},
 
-		// Gated API — 401 (frontend needs a status code, not a redirect).
+		// Gated API: 401, frontend needs a status code rather than a redirect.
 		{name: "api me unauthed", path: "/api/me", method: "GET", wantCode: 401, wantNext: false},
 		{name: "api subscriptions unauthed", path: "/api/subscriptions", method: "GET", wantCode: 401, wantNext: false},
 
-		// Authed API — pass.
+		// Dotted last segments (handles, did:web) must not trip the static-asset heuristic on API paths.
+		{name: "api profile handle unauthed", path: "/api/profile/alice.example", method: "GET", wantCode: 401, wantNext: false},
+		{name: "api profile did:web unauthed", path: "/api/profiles/did:web:alice.example", method: "GET", wantCode: 401, wantNext: false},
+		{name: "api profile handle authed", path: "/api/profile/alice.example", method: "GET", authed: true, wantCode: 200, wantNext: true},
+
 		{name: "api me authed", path: "/api/me", method: "GET", authed: true, wantCode: 200, wantNext: true},
 	}
 
@@ -184,6 +183,51 @@ func TestMiddleware_Table(t *testing.T) {
 	}
 }
 
+// bodyReader reads the body and records the error, so a test can observe the MaxBytesReader cap.
+type bodyReader struct {
+	err error
+}
+
+func (b *bodyReader) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	_, b.err = io.ReadAll(r.Body)
+	if b.err != nil {
+		http.Error(w, "too big", http.StatusRequestEntityTooLarge)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func TestMiddleware_CapsAPIBodySize(t *testing.T) {
+	sealer := newSealer(t)
+	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
+	cookie := setSession(t, sealer, resumer, "did:plc:alice", "sid-1")
+	m := New(resumer, noopLocker{}, sealer)
+
+	oversized := &bodyReader{}
+	bigReq := httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(strings.Repeat("a", (1<<20)+1)))
+	bigReq.AddCookie(cookie)
+	m(oversized).ServeHTTP(httptest.NewRecorder(), bigReq)
+	if oversized.err == nil {
+		t.Fatal("expected body read to fail past the cap")
+	}
+	var maxErr *http.MaxBytesError
+	if !errors.As(oversized.err, &maxErr) {
+		t.Errorf("read error = %v, want *http.MaxBytesError", oversized.err)
+	}
+
+	normal := &bodyReader{}
+	okReq := httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(`{"ok":true}`))
+	okReq.AddCookie(cookie)
+	rr := httptest.NewRecorder()
+	m(normal).ServeHTTP(rr, okReq)
+	if normal.err != nil {
+		t.Errorf("normal body read failed: %v", normal.err)
+	}
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
+	}
+}
+
 func TestMiddleware_InjectsSessionIntoContext(t *testing.T) {
 	sealer := newSealer(t)
 	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
@@ -191,7 +235,6 @@ func TestMiddleware_InjectsSessionIntoContext(t *testing.T) {
 
 	next := &passthroughNext{}
 	m := New(resumer, noopLocker{}, sealer)
-	// /digest is authed → authed user passes through.
 	req := httptest.NewRequest(http.MethodGet, "/digest", nil)
 	req.AddCookie(cookie)
 	rr := httptest.NewRecorder()
@@ -215,7 +258,6 @@ func TestMiddleware_InvalidCookie_TreatedAsUnauthed(t *testing.T) {
 	next := &passthroughNext{}
 	m := New(resumer, noopLocker{}, sealer)
 
-	// Hit a gated path; a garbage cookie should be treated as anon and 302'd.
 	req := httptest.NewRequest(http.MethodGet, "/digest", nil)
 	req.AddCookie(&http.Cookie{Name: "mb_session", Value: "garbage"})
 	rr := httptest.NewRecorder()
@@ -229,12 +271,9 @@ func TestMiddleware_InvalidCookie_TreatedAsUnauthed(t *testing.T) {
 	}
 }
 
-// If ResumeSession fails (e.g. session row deleted, refresh token died),
-// treat the request as unauthed and clear the stale cookie.
 func TestMiddleware_ResumeFailure_RedirectsAndClearsCookie(t *testing.T) {
 	sealer := newSealer(t)
 	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}, err: fmt.Errorf("dead session")}
-	// install cookie pointing at a session the resumer can't find
 	setRR := httptest.NewRecorder()
 	sealer.Set(setRR, "did:plc:alice", "sid-1")
 	cookies := setRR.Result().Cookies()
@@ -266,8 +305,7 @@ func TestMiddleware_ResumeFailure_RedirectsAndClearsCookie(t *testing.T) {
 	}
 }
 
-// blockingResumer simulates a slow refresh — first caller blocks on a channel
-// until released. Tracks max concurrent in-flight resumes for assertion.
+// blockingResumer simulates a slow refresh, blocking until released, to assert max concurrent in-flight resumes.
 type blockingResumer struct {
 	mu               sync.Mutex
 	inFlight         int32
@@ -290,7 +328,87 @@ func (b *blockingResumer) ResumeSession(_ context.Context, _ syntax.DID, _ strin
 	return b.session, nil
 }
 
-func TestMiddleware_LockSerializesRefresh(t *testing.T) {
+// A mutating request holds the session lock across its handler so two never
+// overlap for the same session; otherwise both could refresh and one gets invalid_grant.
+func TestMiddleware_MutatingRequestsDoNotOverlapInNext(t *testing.T) {
+	sealer := newSealer(t)
+	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
+	cookie := setSession(t, sealer, resumer, "did:plc:alice", "sid-1")
+	m := New(resumer, newMemoryLocker(), sealer)
+
+	var inNext atomic.Int32
+	var overlapped atomic.Bool
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if inNext.Add(1) > 1 {
+			overlapped.Store(true)
+		}
+		time.Sleep(15 * time.Millisecond)
+		inNext.Add(-1)
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := m(next)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := httptest.NewRequest(http.MethodPost, "/api/subscriptions", nil)
+			req.AddCookie(cookie)
+			handler.ServeHTTP(httptest.NewRecorder(), req)
+		}()
+	}
+	wg.Wait()
+
+	if overlapped.Load() {
+		t.Error("mutating handlers for the same session overlapped (lock released before next)")
+	}
+}
+
+// Read-only requests take no lock, so they never queue behind a slow mutating request for the same session.
+func TestMiddleware_GETNotBlockedBySlowMutating(t *testing.T) {
+	sealer := newSealer(t)
+	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
+	cookie := setSession(t, sealer, resumer, "did:plc:alice", "sid-1")
+	m := New(resumer, newMemoryLocker(), sealer)
+
+	postEntered := make(chan struct{})
+	releasePost := make(chan struct{})
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			close(postEntered)
+			<-releasePost
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := m(next)
+
+	go func() {
+		req := httptest.NewRequest(http.MethodPost, "/api/subscriptions", nil)
+		req.AddCookie(cookie)
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+	}()
+	<-postEntered
+
+	getDone := make(chan struct{})
+	go func() {
+		req := httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil)
+		req.AddCookie(cookie)
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+		close(getDone)
+	}()
+
+	select {
+	case <-getDone:
+	case <-time.After(2 * time.Second):
+		close(releasePost)
+		t.Fatal("GET blocked behind an in-flight mutating request")
+	}
+	close(releasePost)
+}
+
+// The lock keeps only one concurrent request inside ResumeSession at a time.
+func TestMiddleware_LockSerializesMutatingResume(t *testing.T) {
 	sealer := newSealer(t)
 	did, _ := syntax.ParseDID("did:plc:alice")
 	resumer := &blockingResumer{
@@ -309,7 +427,7 @@ func TestMiddleware_LockSerializesRefresh(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req := httptest.NewRequest(http.MethodGet, "/digest", nil)
+			req := httptest.NewRequest(http.MethodPost, "/api/subscriptions", nil)
 			for _, c := range cookies {
 				req.AddCookie(c)
 			}
@@ -317,7 +435,7 @@ func TestMiddleware_LockSerializesRefresh(t *testing.T) {
 		}()
 	}
 
-	// Give goroutines time to enter — the lock should keep only one in resumer.
+	// Poll until the lock has let exactly one goroutine into resumer.
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		if atomic.LoadInt32(&resumer.inFlight) == 1 {
@@ -329,7 +447,6 @@ func TestMiddleware_LockSerializesRefresh(t *testing.T) {
 		t.Fatalf("expected exactly 1 concurrent resume, got %d", got)
 	}
 
-	// Release both in turn.
 	resumer.release <- struct{}{}
 	resumer.release <- struct{}{}
 	wg.Wait()
@@ -344,8 +461,7 @@ func TestMiddleware_LockSerializesRefresh(t *testing.T) {
 	}
 }
 
-// On a transient (ctx.Canceled / DeadlineExceeded) error, the cookie must
-// stay intact so the next request can retry.
+// A transient (ctx.Canceled / DeadlineExceeded) error must leave the cookie intact so the next request can retry.
 func TestMiddleware_TransientErrorKeepsCookie(t *testing.T) {
 	sealer := newSealer(t)
 	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}, err: context.Canceled}
@@ -366,6 +482,25 @@ func TestMiddleware_TransientErrorKeepsCookie(t *testing.T) {
 	for _, c := range rr.Result().Cookies() {
 		if c.Name == "mb_session" && c.MaxAge < 0 {
 			t.Error("cookie cleared on transient (ctx.Canceled) error")
+		}
+	}
+}
+
+// Follow create/delete write to the PDS like subscriptions/saves/shares, so they need the session lock; list (read) doesn't.
+func TestHoldsSessionLock_Follows(t *testing.T) {
+	cases := []struct {
+		method string
+		path   string
+		want   bool
+	}{
+		{http.MethodPost, "/api/follows", true},
+		{http.MethodDelete, "/api/follows/3fa", true},
+		{http.MethodGet, "/api/follows", false},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		if got := holdsSessionLock(req); got != tc.want {
+			t.Errorf("holdsSessionLock(%s %s) = %v, want %v", tc.method, tc.path, got, tc.want)
 		}
 	}
 }

@@ -1,6 +1,4 @@
-// Package standardfeed reads Standardfeed (site.standard.*) records from
-// publisher repos: identity-resolved, unauthenticated XRPC against the
-// publisher's PDS. It is the ingestion counterpart to RSS fetching — see
+// Package standardfeed reads site.standard.* records from publisher repos via unauthenticated XRPC.
 // SPEC <sync-architecture> Tier-2 kinds.
 package standardfeed
 
@@ -22,20 +20,19 @@ const (
 )
 
 // Publication is the trimmed shape of a site.standard.publication record.
-// URI is always DID-normalized (at://did:.../site.standard.publication/rkey)
-// so it can serve as the Tier-2 catalog key and match document site fields.
+// URI is DID-normalized so it matches document site fields regardless of the lookup authority.
 type Publication struct {
-	URI         string
-	CID         string
-	DID         string
-	Name        string
-	URL         string // base publication URL, trailing slash stripped
-	Description string
-	IconURL     string // com.atproto.sync.getBlob URL; empty when no icon
+	URI            string
+	CID            string
+	DID            string
+	Name           string
+	URL            string // base publication URL, trailing slash stripped
+	Description    string
+	IconURL        string // com.atproto.sync.getBlob URL; empty when no icon
+	ShowInDiscover bool
 }
 
-// Document is the trimmed shape of a site.standard.document record. Site is
-// either the publication at-uri or an https URL (loose document).
+// Document is the trimmed shape of a site.standard.document record; Site is the publication at-uri or an https URL for loose documents.
 type Document struct {
 	URI           string
 	CID           string
@@ -50,15 +47,13 @@ type Document struct {
 	CoverImageURL string
 }
 
-// Resolver is the slice of indigo's identity.Directory the client needs. The
-// at-uri authority may be a DID or a handle, so Lookup takes either.
+// Resolver is the identity lookup the client needs; atid may be a DID or a handle since at-uri authorities allow either.
 type Resolver interface {
 	Lookup(ctx context.Context, atid syntax.AtIdentifier) (*identity.Identity, error)
 }
 
-// Client reads records from arbitrary publisher repos. httpClient should be
-// the safehttp client: PDS endpoints come from attacker-controllable DID
-// documents, so every request must pass the SSRF guard.
+// Client reads records from arbitrary publisher repos. httpClient must be the
+// safehttp client: PDS endpoints come from attacker-controllable DID documents.
 type Client struct {
 	resolver Resolver
 	http     *http.Client
@@ -68,7 +63,6 @@ func NewClient(resolver Resolver, httpClient *http.Client) *Client {
 	return &Client{resolver: resolver, http: httpClient}
 }
 
-// blobURL builds the public com.atproto.sync.getBlob URL for a blob CID.
 func blobURL(pdsEndpoint string, did syntax.DID, cid string) string {
 	u, err := url.Parse(pdsEndpoint)
 	if err != nil {
@@ -82,7 +76,7 @@ func blobURL(pdsEndpoint string, did syntax.DID, cid string) string {
 	return u.String()
 }
 
-// blobRefCID pulls the $link CID out of a decoded blob field.
+// $link is atproto's blob-ref CID field.
 func blobRefCID(v any) string {
 	blob, ok := v.(map[string]any)
 	if !ok {
@@ -96,8 +90,7 @@ func blobRefCID(v any) string {
 	return link
 }
 
-// stringSlice extracts a []string from a decoded JSON array, skipping
-// non-string members. Returns nil when v isn't an array or ends up empty.
+// stringSlice skips non-string members instead of failing on malformed input.
 func stringSlice(v any) []string {
 	raw, ok := v.([]any)
 	if !ok {

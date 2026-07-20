@@ -4,8 +4,7 @@ import { safeHref } from '@/lib/utils';
 
 export type EntryActivation = { href: string; external: boolean };
 
-// Single source of truth for "what does activating this row do" — shared by the
-// rendered row and keyboard Enter so a click and Enter never diverge.
+// Single source of truth for what activating a row does, shared by the row and keyboard Enter so they never diverge.
 export function entryActivation(
     entry: Entry,
     from?: EntryFrom,
@@ -15,9 +14,7 @@ export function entryActivation(
     if (opensInReader) {
         return { href: entryHref(entry.entrySlug, from), external: false };
     }
-    // Microblogs render inline with no row-level target — a click does nothing,
-    // so Enter must not diverge by opening a new tab. The RowHeader link icon is
-    // the affordance for both pointer and keyboard.
+    // Microblogs render inline with no row-level target, so Enter must not diverge by opening a new tab; the RowHeader link icon is the affordance instead.
     if (entry.contentType === 'microblog') {
         return null;
     }

@@ -1,5 +1,4 @@
-import { Loading03Icon, Login03Icon } from '@hugeicons/core-free-icons';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowEnterIcon, SpinnerIcon } from '@proicons/react';
 import { useState } from 'react';
 
 import { InputError } from '@/components/input-error';
@@ -14,8 +13,7 @@ import { useDocumentTitle } from '@/hooks/use-document-title';
 import { AuthGoldenLayout } from '@/layouts/auth-golden-layout';
 import { PATHS } from '@/lib/paths';
 
-// Native form submit — no fetch, no preventDefault. The browser must navigate
-// to follow the AS redirect that /oauth/login responds with.
+// Native form submit, no fetch or preventDefault: the browser must navigate to follow the AS redirect from /oauth/login.
 export function Login() {
     useDocumentTitle('Sign in');
     const [handle, setHandle] = useState('');
@@ -73,12 +71,9 @@ export function Login() {
                                 data-test="login-submit"
                             >
                                 {pending ? (
-                                    <HugeiconsIcon
-                                        icon={Loading03Icon}
-                                        className="motion-safe:animate-spin"
-                                    />
+                                    <SpinnerIcon className="motion-safe:animate-spin" />
                                 ) : (
-                                    <HugeiconsIcon icon={Login03Icon} />
+                                    <ArrowEnterIcon />
                                 )}
                             </Button>
                         </div>

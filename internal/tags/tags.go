@@ -1,7 +1,5 @@
-// Package tags owns the on-disk serialization for a subscription's tag list:
-// a JSON array string in the user_subscriptions.tags column, NULL when empty.
-// Both the API write path and the sync reconcile path store tags, so the format
-// lives here to keep them from drifting.
+// Package tags serializes a subscription's tag list as a JSON array string
+// (NULL when empty) for the user_subscriptions.tags column.
 package tags
 
 import "encoding/json"
@@ -19,8 +17,7 @@ func Marshal(tags []string) *string {
 	return &s
 }
 
-// Unmarshal parses a stored JSON array string back into a slice. Returns nil on
-// a nil pointer, blank string, or parse error.
+// Unmarshal parses a stored tags string, returning nil on any parse failure.
 func Unmarshal(s *string) []string {
 	if s == nil || *s == "" {
 		return nil

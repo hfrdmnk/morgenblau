@@ -1,19 +1,11 @@
-import {
-    Delete02Icon,
-    HelpCircleIcon,
-    Loading03Icon,
-} from '@hugeicons/core-free-icons';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { DeleteIcon, QuestionCircleIcon, SpinnerIcon } from '@proicons/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-// Two-stage icon-morph: first click arms (Delete → red HelpCircle, scale-down
-// + blur switch), second click within the window confirms. Auto-cancels after
-// 3 s; click-outside or Escape also cancel. While the delete is in flight a
-// spinner shows; if it fails the button stays armed so the red state invites a
-// retry (on success the parent unmounts the row).
+// Two-stage confirm: first click arms, second confirms within a 3s auto-cancel window (click-outside/Escape also cancel).
+// A failed delete leaves the button armed so the red state invites a retry; success unmounts the row.
 export function DeleteSourceButton({
     onConfirm,
 }: {
@@ -32,10 +24,8 @@ export function DeleteSourceButton({
         }
     }, []);
 
-    // While armed (and not mid-delete) run the 3 s auto-cancel and the
-    // click-outside / Escape dismissers. Entering `deleting` tears them down so
-    // the in-flight request can't be cancelled out from under itself; a failure
-    // clears `deleting` and this re-arms the timer.
+    // Runs the 3s auto-cancel and dismissers only while armed and not mid-delete: entering `deleting` tears
+    // them down so the in-flight request can't be cancelled from under itself; a failure re-arms via this effect.
     useEffect(() => {
         if (!armed || deleting) return;
         const onDocClick = (e: MouseEvent) => {
@@ -89,8 +79,7 @@ export function DeleteSourceButton({
             }
         >
             <span className="relative grid size-3.5 place-items-center">
-                <HugeiconsIcon
-                    icon={Delete02Icon}
+                <DeleteIcon
                     className={cn(
                         'absolute size-3.5 transition-all duration-200 ease-in-out',
                         armed || deleting
@@ -98,8 +87,7 @@ export function DeleteSourceButton({
                             : 'scale-100 opacity-100 blur-0',
                     )}
                 />
-                <HugeiconsIcon
-                    icon={HelpCircleIcon}
+                <QuestionCircleIcon
                     className={cn(
                         'absolute size-3.5 transition-all duration-200 ease-in-out',
                         armed && !deleting
@@ -107,8 +95,7 @@ export function DeleteSourceButton({
                             : 'scale-50 opacity-0 blur-[3px]',
                     )}
                 />
-                <HugeiconsIcon
-                    icon={Loading03Icon}
+                <SpinnerIcon
                     className={cn(
                         'absolute size-3.5 transition-all duration-200 ease-in-out motion-safe:animate-spin',
                         deleting

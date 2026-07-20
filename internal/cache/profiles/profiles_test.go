@@ -2,7 +2,9 @@ package profiles
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -31,12 +33,13 @@ type fakeFetcher struct {
 	calls       int32
 	displayName *string
 	avatar      *string
+	description *string
 	err         error
 }
 
-func (f *fakeFetcher) FetchProfile(_ context.Context, _ syntax.DID, _ string) (*string, *string, error) {
+func (f *fakeFetcher) FetchProfile(_ context.Context, _ syntax.DID, _ string) (ProfileRecord, error) {
 	atomic.AddInt32(&f.calls, 1)
-	return f.displayName, f.avatar, f.err
+	return ProfileRecord{DisplayName: f.displayName, Avatar: f.avatar, Description: f.description}, f.err
 }
 
 func ptr(s string) *string { return &s }
@@ -64,7 +67,7 @@ func identityFor(t *testing.T, didStr, handleStr, pds string) (syntax.DID, *iden
 func TestCache_GetMissThenHit(t *testing.T) {
 	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
 	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
-	fet := &fakeFetcher{displayName: ptr("Alice"), avatar: ptr("https://service.example.com/avatar.jpg")}
+	fet := &fakeFetcher{displayName: ptr("Alice"), avatar: ptr("https://service.example.com/avatar.jpg"), description: ptr("Reads calmly.")}
 
 	c := New(res, fet)
 	p, err := c.Get(context.Background(), did)
@@ -74,8 +77,11 @@ func TestCache_GetMissThenHit(t *testing.T) {
 	if p.Handle != "user.example.com" || p.DisplayName == nil || *p.DisplayName != "Alice" {
 		t.Fatalf("first Get unexpected: %+v", p)
 	}
+	if p.Description == nil || *p.Description != "Reads calmly." {
+		t.Fatalf("Description = %v, want \"Reads calmly.\"", p.Description)
+	}
 
-	// Second Get should hit cache — no extra fetcher / resolver calls.
+	// Second Get should hit cache: no extra fetcher / resolver calls.
 	if _, err := c.Get(context.Background(), did); err != nil {
 		t.Fatalf("Get(2): %v", err)
 	}
@@ -122,11 +128,49 @@ func TestCache_MissingProfileRecordCollapsesToNulls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if p.DisplayName != nil || p.Avatar != nil {
+	if p.DisplayName != nil || p.Avatar != nil || p.Description != nil {
 		t.Errorf("expected nulls, got %+v", p)
 	}
 	if p.Handle != "user.example.com" {
 		t.Errorf("handle = %q, want user.example.com", p.Handle)
+	}
+}
+
+func TestCache_DescriptionInJSON(t *testing.T) {
+	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
+	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
+	fet := &fakeFetcher{description: ptr("Reads calmly.")}
+
+	c := New(res, fet)
+	p, err := c.Get(context.Background(), did)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	b, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if !strings.Contains(string(b), `"description":"Reads calmly."`) {
+		t.Errorf("json = %s, want description field", b)
+	}
+}
+
+func TestCache_DescriptionOmittedNullInJSON(t *testing.T) {
+	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
+	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
+	fet := &fakeFetcher{}
+
+	c := New(res, fet)
+	p, err := c.Get(context.Background(), did)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	b, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if !strings.Contains(string(b), `"description":null`) {
+		t.Errorf("json = %s, want null description field", b)
 	}
 }
 

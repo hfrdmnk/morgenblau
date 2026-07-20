@@ -3,8 +3,7 @@ import { useEffect, useRef } from 'react';
 export type KeyHandler = (event: KeyboardEvent) => void;
 export type KeyMap = Record<string, KeyHandler>;
 
-// Enter/Space activate the focused control natively, so we never hijack them
-// when a link or button has focus.
+// Enter/Space activate the focused control natively, so we never hijack them when a link or button has focus.
 const ACTIVATION_KEYS = new Set(['Enter', ' ']);
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -27,8 +26,7 @@ function isOverlayOpen(): boolean {
     );
 }
 
-// Page-scoped keyboard shortcuts. The map is read through a ref so callers can
-// pass a fresh object each render without re-subscribing the listener.
+// Read through a ref so callers can pass a fresh map each render without re-subscribing the listener.
 export function useKeyboard(map: KeyMap, enabled = true) {
     const mapRef = useRef(map);
 

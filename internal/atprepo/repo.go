@@ -1,6 +1,4 @@
-// Package atprepo provides a thin authenticated wrapper around the
-// com.atproto.repo.* XRPC endpoints (createRecord, putRecord, deleteRecord).
-// Hides the JSON shape of each call behind typed Go methods.
+// Package atprepo wraps the authenticated com.atproto.repo.* XRPC endpoints (createRecord, putRecord, deleteRecord) behind typed Go methods.
 package atprepo
 
 import (
@@ -11,8 +9,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 )
 
-// RkeyFromATURI extracts the rkey segment from an at-uri like
-// at://did:plc:alice/blue.morgen.feed.subscription/3la123.
+// RkeyFromATURI extracts the rkey segment from an at-uri like at://did:plc:alice/blue.morgen.feed.subscription/3la123.
 func RkeyFromATURI(uri string) string {
 	parts := strings.Split(uri, "/")
 	if len(parts) != 5 || parts[0] != "at:" || parts[1] != "" || parts[2] == "" || parts[3] == "" || parts[4] == "" {
@@ -27,8 +24,7 @@ type RecordRef struct {
 	CID string `json:"cid"`
 }
 
-// Writer is the slice of PDS operations the subscription endpoints use.
-// Production wires SessionWriter; handler tests inject a fake.
+// Writer is the slice of PDS operations the subscription endpoints use; production wires SessionWriter, tests inject a fake.
 type Writer interface {
 	CreateRecord(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID, record map[string]any) (*RecordRef, error)
 	PutRecord(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID, rkey string, record map[string]any) (*RecordRef, error)
@@ -42,8 +38,7 @@ type ListedRecord struct {
 	Value map[string]any `json:"value"`
 }
 
-// Lister pages a collection in the session user's own repo. Kept separate
-// from Writer so existing fakes don't grow a method they never call.
+// Lister pages a collection in the session user's own repo; kept separate from Writer so existing fakes don't grow an unused method.
 type Lister interface {
 	ListRecords(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID) ([]ListedRecord, error)
 }
@@ -102,9 +97,7 @@ type listRecordsResponse struct {
 	Cursor  string         `json:"cursor"`
 }
 
-// ListRecords pages com.atproto.repo.listRecords over the session user's own
-// repo. Terminates only on an empty cursor — an empty page with a cursor set
-// is a valid continuation, and stopping early would truncate the snapshot.
+// ListRecords pages com.atproto.repo.listRecords over the session user's own repo, terminating only on an empty cursor: an empty page with a cursor still set is a valid continuation, and stopping early would truncate the snapshot.
 func (SessionWriter) ListRecords(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID) ([]ListedRecord, error) {
 	var (
 		out    []ListedRecord

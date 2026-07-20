@@ -17,13 +17,11 @@ func rssRecordValue(feedURL string) map[string]any {
 			"$type":   "blue.morgen.feed.subscription#rssFeed",
 			"feedUrl": feedURL,
 		},
+		"createdAt": "2026-06-01T00:00:00Z",
 	}
 }
 
-// TestListSubscriptions_PagesUntilCursorEmpty asserts the lister keeps paging
-// past an empty page (cursor still set) and only stops when the cursor is
-// empty. An early stop would let reconcile delete every local row missed by
-// the partial snapshot.
+// TestListSubscriptions_PagesUntilCursorEmpty proves an early stop on cursor would let reconcile delete rows missed by a partial snapshot.
 func TestListSubscriptions_PagesUntilCursorEmpty(t *testing.T) {
 	page := 0
 	pages := []struct {
@@ -33,7 +31,7 @@ func TestListSubscriptions_PagesUntilCursorEmpty(t *testing.T) {
 		{records: []map[string]any{
 			{"uri": "at://x/c/r1", "cid": "b", "value": rssRecordValue("https://a/feed")},
 		}, cursor: "c1"},
-		// Empty page but cursor still set — must NOT terminate paging.
+		// Empty page but cursor still set: must NOT terminate paging.
 		{records: nil, cursor: "c2"},
 		{records: []map[string]any{
 			{"uri": "at://x/c/r3", "cid": "b", "value": rssRecordValue("https://b/feed")},
@@ -109,8 +107,9 @@ func TestToPDSSubscription_RSSVariant(t *testing.T) {
 				"feedUrl": "https://example.com/feed",
 				"siteUrl": "https://example.com",
 			},
-			"title":   "Example",
-			"primary": true,
+			"title":     "Example",
+			"primary":   true,
+			"createdAt": "2026-06-01T00:00:00Z",
 			// JSON arrays decode to []any, so tags land as []any{string...}.
 			"tags": []any{"tech", "design"},
 		},
@@ -150,7 +149,8 @@ func TestToPDSSubscription_StandardPublicationVariant(t *testing.T) {
 				"$type":       "blue.morgen.feed.subscription#standardPublication",
 				"publication": "at://did:plc:pub/site.standard.publication/3p",
 			},
-			"title": "My Title",
+			"title":     "My Title",
+			"createdAt": "2026-06-01T00:00:00Z",
 		},
 	})
 	if !ok {
@@ -195,7 +195,7 @@ func TestToPDSSubscription_SkipsUnrecognizableRecords(t *testing.T) {
 }
 
 func TestToPDSSave_Mapping(t *testing.T) {
-	got := toPDSSave(recordEntry{
+	got, ok := toPDSSave(recordEntry{
 		URI: "at://did:plc:alice/blue.morgen.feed.save/3sk",
 		CID: "bafy",
 		Value: map[string]any{
@@ -204,6 +204,9 @@ func TestToPDSSave_Mapping(t *testing.T) {
 			"createdAt": "2026-06-01T00:00:00Z",
 		},
 	})
+	if !ok {
+		t.Fatal("expected ok for a valid save record")
+	}
 	if got.Rkey != "3sk" {
 		t.Errorf("Rkey = %q", got.Rkey)
 	}
@@ -218,20 +221,34 @@ func TestToPDSSave_Mapping(t *testing.T) {
 	}
 }
 
-func TestToPDSSave_MissingOptionalFields(t *testing.T) {
-	got := toPDSSave(recordEntry{
-		URI:   "at://did:plc:alice/blue.morgen.feed.save/3sk",
-		Value: map[string]any{"itemUrl": "https://example.com/post"},
+func TestToPDSSave_MissingOptionalFeedURL(t *testing.T) {
+	got, ok := toPDSSave(recordEntry{
+		URI: "at://did:plc:alice/blue.morgen.feed.save/3sk",
+		Value: map[string]any{
+			"itemUrl":   "https://example.com/post",
+			"createdAt": "2026-06-01T00:00:00Z",
+		},
 	})
+	if !ok {
+		t.Fatal("expected ok when only the optional feedUrl is absent")
+	}
 	if got.ItemURL != "https://example.com/post" {
 		t.Errorf("ItemURL = %q", got.ItemURL)
 	}
-	// feedUrl and createdAt are optional on the save record.
+	// feedUrl is optional on the save record.
 	if got.FeedURL != "" {
 		t.Errorf("FeedURL = %q, want empty", got.FeedURL)
 	}
-	if got.CreatedAt != "" {
-		t.Errorf("CreatedAt = %q, want empty", got.CreatedAt)
+}
+
+// TestToPDSSave_SkipsRecordMissingRequiredField proves lexicon validation rejects a save record missing the required createdAt field.
+func TestToPDSSave_SkipsRecordMissingRequiredField(t *testing.T) {
+	_, ok := toPDSSave(recordEntry{
+		URI:   "at://did:plc:alice/blue.morgen.feed.save/3sk",
+		Value: map[string]any{"itemUrl": "https://example.com/post"},
+	})
+	if ok {
+		t.Fatal("expected record missing required createdAt to be skipped")
 	}
 }
 
@@ -304,6 +321,34 @@ func TestToPDSRecommend_Mapping(t *testing.T) {
 	}
 }
 
+func TestToPDSFollow_Mapping(t *testing.T) {
+	got, ok := toPDSFollow(recordEntry{
+		URI: "at://did:plc:alice/blue.morgen.graph.follow/3fa",
+		Value: map[string]any{
+			"subject":   "did:plc:bob",
+			"createdAt": "2026-06-01T00:00:00Z",
+		},
+	})
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if got.Rkey != "3fa" || got.SubjectDID != "did:plc:bob" {
+		t.Errorf("got = %+v", got)
+	}
+	if got.CreatedAt != "2026-06-01T00:00:00Z" {
+		t.Errorf("CreatedAt = %q", got.CreatedAt)
+	}
+}
+
+func TestToPDSFollow_MissingSubjectSkipped(t *testing.T) {
+	if _, ok := toPDSFollow(recordEntry{
+		URI:   "at://did:plc:alice/blue.morgen.graph.follow/3fa",
+		Value: map[string]any{"createdAt": "2026-06-01T00:00:00Z"},
+	}); ok {
+		t.Error("expected skip: subject is required by the lexicon")
+	}
+}
+
 func TestToPDSRecommend_MissingDocumentSkipped(t *testing.T) {
 	if _, ok := toPDSRecommend(recordEntry{
 		URI:   "at://did:plc:alice/site.standard.graph.recommend/3rec",
@@ -313,21 +358,20 @@ func TestToPDSRecommend_MissingDocumentSkipped(t *testing.T) {
 	}
 }
 
-func TestToPDSSubscription_TagsSkipsNonStrings(t *testing.T) {
-	got, ok := toPDSSubscription(recordEntry{
+// TestToPDSSubscription_InvalidTagType_Skipped proves a non-string tag element fails lexicon validation and skips the whole record, not just that element.
+func TestToPDSSubscription_InvalidTagType_Skipped(t *testing.T) {
+	_, ok := toPDSSubscription(recordEntry{
 		URI: "at://did:plc:example/blue.morgen.feed.subscription/3la",
 		Value: map[string]any{
 			"source": map[string]any{
 				"$type":   "blue.morgen.feed.subscription#rssFeed",
 				"feedUrl": "https://example.com/feed",
 			},
-			"tags": []any{"keep", 42, nil, "also"},
+			"createdAt": "2026-06-01T00:00:00Z",
+			"tags":      []any{"keep", 42, nil, "also"},
 		},
 	})
-	if !ok {
-		t.Fatal("expected ok")
-	}
-	if len(got.Tags) != 2 || got.Tags[0] != "keep" || got.Tags[1] != "also" {
-		t.Errorf("tags = %v, want [keep also]", got.Tags)
+	if ok {
+		t.Fatal("expected record with a non-string tag element to be skipped")
 	}
 }

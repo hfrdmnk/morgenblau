@@ -17,11 +17,12 @@ import (
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 )
 
-// Config is the resolved OAuth client config plus the JWKS URI that
-// the metadata handler should advertise (only set in metadata-URL mode).
+// Config is the resolved OAuth client config plus consent-screen metadata and JWKS URI (metadata-URL mode only).
 type Config struct {
-	Indigo  *oauth.ClientConfig
-	JWKSURI string // advertised in client metadata when non-empty
+	Indigo     *oauth.ClientConfig
+	JWKSURI    string // advertised in client metadata when non-empty
+	ClientName string // advertised as client_name when non-empty
+	ClientURI  string // advertised as client_uri when non-empty
 }
 
 // FromOS reads from the process environment.
@@ -33,7 +34,6 @@ func FromOS() (*Config, error) {
 		"BLUESKY_OAUTH_CLIENT_URI",
 		"BLUESKY_CLIENT_ID",
 		"BLUESKY_REDIRECT",
-		"APP_URL",
 	}
 	env := make(map[string]string, len(keys))
 	for _, k := range keys {
@@ -42,11 +42,7 @@ func FromOS() (*Config, error) {
 	return Load(env)
 }
 
-// Load builds the config from an in-memory env map. Useful for tests.
-//
-// When BLUESKY_CLIENT_ID is empty, returns a localhost-loopback config
-// (no network calls). When set, returns a metadata-URL config — the
-// caller is responsible for serving the metadata document at that URL.
+// Load builds the config from an in-memory env map; empty BLUESKY_CLIENT_ID yields a loopback config, otherwise a metadata-URL config (caller must serve the metadata document).
 func Load(env map[string]string) (*Config, error) {
 	scope := strings.TrimSpace(env["BLUESKY_OAUTH_SCOPE"])
 	if scope == "" {
@@ -66,6 +62,7 @@ func Load(env map[string]string) (*Config, error) {
 	var ic oauth.ClientConfig
 	var jwksURI string
 	if clientID == "" {
+		// atproto spec reserves client_id=http://localhost for public clients, so no secret here.
 		ic = oauth.NewLocalhostConfig("http://127.0.0.1:8000/oauth/callback", scopes)
 	} else {
 		redirect := strings.TrimSpace(env["BLUESKY_REDIRECT"])
@@ -77,13 +74,17 @@ func Load(env map[string]string) (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("derive jwks_uri: %w", err)
 		}
+		if err := ic.SetClientSecret(priv, "primary"); err != nil {
+			return nil, fmt.Errorf("set client secret: %w", err)
+		}
 	}
 
-	if err := ic.SetClientSecret(priv, "primary"); err != nil {
-		return nil, fmt.Errorf("set client secret: %w", err)
-	}
-
-	return &Config{Indigo: &ic, JWKSURI: jwksURI}, nil
+	return &Config{
+		Indigo:     &ic,
+		JWKSURI:    jwksURI,
+		ClientName: strings.TrimSpace(env["BLUESKY_OAUTH_CLIENT_NAME"]),
+		ClientURI:  strings.TrimSpace(env["BLUESKY_OAUTH_CLIENT_URI"]),
+	}, nil
 }
 
 func deriveJWKSURI(clientID string) (string, error) {
@@ -97,11 +98,7 @@ func deriveJWKSURI(clientID string) (string, error) {
 	return u.String(), nil
 }
 
-// parsePrivateKey takes the base64-encoded PEM PKCS#8 form produced by
-//
-//	openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt | openssl base64 -A | pbcopy
-//
-// and returns an indigo atcrypto P-256 private key.
+// parsePrivateKey expects the base64-encoded PEM PKCS#8 form (see openssl pkcs8 -topk8 -nocrypt).
 func parsePrivateKey(encoded string) (atcrypto.PrivateKey, error) {
 	encoded = strings.TrimSpace(encoded)
 	if encoded == "" {

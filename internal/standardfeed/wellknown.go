@@ -8,15 +8,14 @@ import (
 	"strings"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
+
+	"morgenblau/internal/safehttp"
 )
 
 const wellKnownPath = "/.well-known/site.standard.publication"
 
-// FetchWellKnown probes a site for its Standardfeed publication: GET
-// https://<host>/.well-known/site.standard.publication, whose body is the
-// publication's at-uri as plain text. A miss (non-200, unparsable body,
-// wrong collection) returns ("", nil) — the probe is best-effort and callers
-// treat miss and transport error alike.
+// FetchWellKnown GETs /.well-known/site.standard.publication for the at-uri.
+// A miss (bad status, body, or collection) returns ("", nil): the probe is best-effort.
 func (c *Client) FetchWellKnown(ctx context.Context, siteURL string) (string, error) {
 	base, err := url.Parse(siteURL)
 	if err != nil || base.Host == "" {
@@ -32,6 +31,7 @@ func (c *Client) FetchWellKnown(ctx context.Context, siteURL string) (string, er
 	if err != nil {
 		return "", nil
 	}
+	req.Header.Set("User-Agent", safehttp.UserAgent)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return "", err

@@ -6,7 +6,7 @@ import { PATHS } from '@/lib/paths';
 
 // The Go middleware gates the page server-side, so by the time we mount here
 // we expect to be authed. The 'anon' branch only fires if the session died
-// between the server gate and the /api/profiles/me fetch — defensively reload.
+// between the server gate and the /api/profiles/me fetch, so defensively reload.
 export function MeProvider({ children }: { children: ReactNode }) {
     const state = useMe();
 

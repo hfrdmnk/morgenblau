@@ -25,7 +25,7 @@ Edition does the structure. Morning sets the tone. Structure stays austere; warm
 - **`atmosphere-blue`** is the single product accent, for intent only: the primary action, a focus ring, a moment of discovery. Never chrome, never decoration.
 - The brand imagery orients on **nature**, in its full range: landscape, water, sky, season, any hour.
 - No single mood is mandated. A cool blue hour, a warm dawn, grey overcast, deep dusk all belong, as long as the feeling stays calm and unhurried. The only constant the imagery holds is calm.
-- Category markers stay product-level, one color per content type: leaf-green (longform), sunset-orange (micropost), coral-red (video), aurora-purple (podcast). Each appears only on its own type.
+- Category markers stay product-level, one color per content type: leaf-green (longform), sunset-orange (micropost), coral-red (video). Each appears only on its own type.
 
 ## Typography
 

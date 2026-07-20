@@ -14,23 +14,25 @@ import (
 	"morgenblau/internal/oauth/cookie"
 )
 
-// ClientApp is the slice of indigo's *oauth.ClientApp this package depends on.
-// Keeping it an interface lets handler tests stub the OAuth dance without
-// reaching for a real authorization server.
+// ClientApp is the slice of indigo's *oauth.ClientApp this package depends on, narrow so tests can stub the OAuth dance.
 type ClientApp interface {
 	StartAuthFlow(ctx context.Context, identifier string) (string, error)
 	ProcessCallback(ctx context.Context, params url.Values) (*oauth.ClientSessionData, error)
 	Logout(ctx context.Context, did syntax.DID, sessionID string) error
 }
 
-// LoginSyncStarter fires a fire-and-forget refresh job after a successful
-// OAuth callback. Optional — when nil, the callback simply skips the sync.
+// LoginSyncStarter fires a fire-and-forget refresh job after login; nil disables it.
 type LoginSyncStarter interface {
 	StartLoginRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error)
 }
 
-// LoginHandler reads the `handle` form field, kicks off the OAuth dance,
-// and redirects the user to the AS authorize URL.
+// SessionLocker serialises a session's (did, sid) refresh cycle; Logout holds
+// it so an in-flight refresh persist can't resurrect the row it just deleted.
+type SessionLocker interface {
+	LockSession(did syntax.DID, sid string) func()
+}
+
+// LoginHandler reads the handle field and redirects to the AS authorize URL.
 func LoginHandler(app ClientApp) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -49,16 +51,14 @@ func LoginHandler(app ClientApp) http.Handler {
 		redirectURL, err := app.StartAuthFlow(r.Context(), handle)
 		if err != nil {
 			slog.Warn("StartAuthFlow failed", "err", err)
-			http.Error(w, "could not start sign-in: "+err.Error(), http.StatusBadRequest)
+			http.Error(w, "could not start sign-in", http.StatusBadRequest)
 			return
 		}
 		http.Redirect(w, r, redirectURL, http.StatusFound)
 	})
 }
 
-// CallbackHandler completes the OAuth dance and sets the session cookie.
-// When a LoginSyncStarter is provided, the callback fires a sync_user job
-// (trigger=login) so the refresh pill on /consume picks it up immediately.
+// CallbackHandler completes the OAuth dance, sets the session cookie, and (if starter is set) fires a sync_user job so /consume's refresh pill updates immediately.
 func CallbackHandler(app ClientApp, sealer *cookie.Sealer, starter LoginSyncStarter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, err := app.ProcessCallback(r.Context(), r.URL.Query())
@@ -83,10 +83,8 @@ func CallbackHandler(app ClientApp, sealer *cookie.Sealer, starter LoginSyncStar
 	})
 }
 
-// LogoutHandler revokes at the AS (best-effort), deletes the server-side
-// session, clears the cookie, and redirects to /. The public welcome lives
-// there; an authed user would be bounced from /login by the route table.
-func LogoutHandler(app ClientApp, sealer *cookie.Sealer) http.Handler {
+// LogoutHandler revokes at the AS (best-effort), deletes the session, clears the cookie, and redirects to / (an authed /login redirect would just bounce back).
+func LogoutHandler(app ClientApp, sealer *cookie.Sealer, locker SessionLocker) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -96,6 +94,11 @@ func LogoutHandler(app ClientApp, sealer *cookie.Sealer) http.Handler {
 		if ok {
 			did, err := syntax.ParseDID(didStr)
 			if err == nil {
+				// Hold the lock across Logout so an in-flight refresh persist can't resurrect the row we just deleted.
+				if locker != nil {
+					unlock := locker.LockSession(did, sid)
+					defer unlock()
+				}
 				if err := app.Logout(r.Context(), did, sid); err != nil {
 					slog.Warn("Logout failed (cookie cleared anyway)", "err", err)
 				}

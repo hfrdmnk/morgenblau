@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -14,14 +13,12 @@ import (
 
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
-	"morgenblau/internal/middleware/auth"
+	"morgenblau/internal/lexicon"
 )
 
 const saveCollection = "blue.morgen.feed.save"
 
-// SaveWire is the on-the-wire shape returned by POST. Frontend only needs
-// rkey to drive the saved-state UI; uri/cid included so downstream consumers
-// (e.g. a future library page) can hydrate without a second lookup.
+// SaveWire is the on-the-wire shape returned by POST; uri/cid ride along so a future library page can hydrate without a second lookup.
 type SaveWire struct {
 	URI       string `json:"uri"`
 	CID       string `json:"cid,omitempty"`
@@ -31,8 +28,7 @@ type SaveWire struct {
 	CreatedAt string `json:"createdAt"`
 }
 
-// SavesIndexReader is the slice of db.Queries the create/delete handlers
-// use for reads. Defined as an interface so handler tests can stub the DB.
+// SavesIndexReader is the slice of db.Queries the create/delete handlers use for reads.
 type SavesIndexReader interface {
 	GetUserSave(ctx context.Context, arg db.GetUserSaveParams) (db.UserSave, error)
 	GetUserSaveByItemURL(ctx context.Context, arg db.GetUserSaveByItemURLParams) (db.UserSave, error)
@@ -51,31 +47,25 @@ type savesCreateRequest struct {
 	FeedURL string `json:"feedUrl"`
 }
 
-// SavesCreateHandler writes a blue.morgen.feed.save record to the user's PDS
-// and mirrors it into the Tier-1 cache. Idempotent on (did, itemUrl): a second
-// call returns the existing record without a PDS hit.
+// SavesCreateHandler writes a save record to the PDS and mirrors it into the Tier-1 cache; idempotent on (did, itemUrl).
 func SavesCreateHandler(reader SavesIndexReader, writer SavesIndexWriter, pds atprepo.Writer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := auth.SessionFromContext(r.Context())
-		if sess == nil || sess.Data == nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+		sess, ok := requireSession(w, r)
+		if !ok {
 			return
 		}
 		var body savesCreateRequest
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "invalid json", http.StatusBadRequest)
+		if !decodeJSON(w, r, &body) {
 			return
 		}
 		body.ItemURL = strings.TrimSpace(body.ItemURL)
 		body.FeedURL = strings.TrimSpace(body.FeedURL)
 		if body.ItemURL == "" {
-			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"message": "itemUrl is required"})
+			writeError(w, http.StatusBadRequest, codeInvalidRequest, "itemUrl is required")
 			return
 		}
 		didStr := sess.Data.AccountDID.String()
 
-		// Step 1: dedupe. If a Tier-1 row already maps this DID to this
-		// itemUrl, return the existing record idempotently.
 		if existing, err := reader.GetUserSaveByItemURL(r.Context(), db.GetUserSaveByItemURLParams{
 			Did:     didStr,
 			ItemUrl: body.ItemURL,
@@ -84,11 +74,10 @@ func SavesCreateHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 			return
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			slog.Warn("/api/saves: dedupe probe failed", "err", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
 
-		// Step 2: PDS write.
 		now := time.Now().UTC().Format(time.RFC3339)
 		record := map[string]any{
 			"itemUrl":   body.ItemURL,
@@ -97,17 +86,19 @@ func SavesCreateHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 		if body.FeedURL != "" {
 			record["feedUrl"] = body.FeedURL
 		}
-		// TODO(blue.morgen lexicon): validate against the published
-		// blue.morgen.feed.save schema once it's resolvable on the network.
+		if err := lexicon.ValidateRecord(saveCollection, record); err != nil {
+			slog.Warn("/api/saves: record failed lexicon validation", "err", err)
+			writeError(w, http.StatusInternalServerError, codeInvalidRecord, "internal error")
+			return
+		}
 		ref, err := pds.CreateRecord(r.Context(), sess, syntax.NSID(saveCollection), record)
 		if err != nil {
 			slog.Warn("/api/saves: PDS create failed", "err", err)
-			http.Error(w, "upstream PDS error", http.StatusBadGateway)
+			writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
 			return
 		}
 		rkey := atprepo.RkeyFromATURI(ref.URI)
 
-		// Step 3: Tier-1 cache upsert.
 		if err := writer.UpsertUserSave(r.Context(), db.UpsertUserSaveParams{
 			Did:       didStr,
 			Rkey:      rkey,
@@ -117,8 +108,7 @@ func SavesCreateHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 			CreatedAt: now,
 			UpdatedAt: now,
 		}); err != nil {
-			// PDS write already succeeded — log and continue. A later sync_user
-			// will reconcile the local cache.
+			// PDS write already succeeded; log and continue, a later sync_user reconciles the local cache.
 			slog.Warn("/api/saves: Tier-1 upsert failed (PDS write succeeded)", "err", err)
 		}
 
@@ -138,32 +128,30 @@ func SavesCreateHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 // SavesDeleteHandler tombstones the PDS record and removes the Tier-1 row.
 func SavesDeleteHandler(reader SavesIndexReader, writer SavesIndexWriter, pds atprepo.Writer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := auth.SessionFromContext(r.Context())
-		if sess == nil || sess.Data == nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+		sess, ok := requireSession(w, r)
+		if !ok {
 			return
 		}
 		rkey := r.PathValue("rkey")
 		if rkey == "" {
-			http.Error(w, "rkey is required", http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, codeInvalidRequest, "rkey is required")
 			return
 		}
 		didStr := sess.Data.AccountDID.String()
 		_, err := reader.GetUserSave(r.Context(), db.GetUserSaveParams{Did: didStr, Rkey: rkey})
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				// Collapse "not yours" and "doesn't exist" to 403 to avoid
-				// leaking existence — same pattern as subscriptions DELETE.
-				http.Error(w, "forbidden", http.StatusForbidden)
+				// Collapse "not yours" and "doesn't exist" to 404 to avoid leaking existence.
+				writeError(w, http.StatusNotFound, codeNotFound, "not found")
 				return
 			}
 			slog.Warn("/api/saves DELETE: load failed", "err", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
 		if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(saveCollection), rkey); err != nil {
 			slog.Warn("/api/saves DELETE: PDS delete failed", "err", err)
-			http.Error(w, "upstream PDS error", http.StatusBadGateway)
+			writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
 			return
 		}
 		if err := writer.DeleteUserSave(r.Context(), db.DeleteUserSaveParams{Did: didStr, Rkey: rkey}); err != nil {

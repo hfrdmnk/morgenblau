@@ -1,11 +1,11 @@
 import {
-    ArrowLeft01Icon,
-    Edit02Icon,
+    ArrowLeftIcon,
     HourglassIcon,
-    Pulse01Icon,
-} from '@hugeicons/core-free-icons';
-import { HugeiconsIcon } from '@hugeicons/react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+    PencilIcon,
+    PulseIcon,
+} from '@proicons/react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useParams } from 'wouter';
 
 import { Newspaper } from '@/components/digest-rows';
 import type { Entry } from '@/components/digest-rows';
@@ -20,11 +20,11 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { shortTimeAgo } from '@/lib/date';
 import { useDocumentTitle } from '@/hooks/use-document-title';
-import { useKeyboard } from '@/hooks/use-keyboard';
-import { useListNavigation } from '@/hooks/use-list-navigation';
-import { entryActivation } from '@/lib/entry-nav';
+import { useEntryNavigation } from '@/hooks/use-entry-navigation';
+import { useGoBackOr } from '@/hooks/use-go-back-or';
+import { api } from '@/lib/api';
+import { toastMutationError } from '@/lib/mutation-toast';
 import { PATHS } from '@/lib/paths';
-import { goBackOr } from '@/lib/utils';
 
 type Frequency =
     | 'new'
@@ -65,16 +65,8 @@ type State =
     | { kind: 'ok'; detail: SourceDetail; entries: Entry[] }
     | { kind: 'error' };
 
-function rkeyFromLocation(): string | null {
-    const prefix = `${PATHS.sources}/`;
-    const path = window.location.pathname;
-    if (!path.startsWith(prefix)) return null;
-    const rkey = path.slice(prefix.length);
-    return rkey.length > 0 ? rkey : null;
-}
-
 export function Source() {
-    const rkey = rkeyFromLocation();
+    const { rkey } = useParams<{ rkey: string }>();
     const [state, setState] = useState<State>(
         rkey ? { kind: 'loading' } : { kind: 'error' },
     );
@@ -89,18 +81,10 @@ export function Source() {
         let cancelled = false;
         const load = async () => {
             try {
-                const [detailRes, entriesRes] = await Promise.all([
-                    fetch(`/api/subscriptions/${rkey}`, {
-                        credentials: 'same-origin',
-                    }),
-                    fetch(`/api/subscriptions/${rkey}/entries`, {
-                        credentials: 'same-origin',
-                    }),
+                const [detail, entries] = await Promise.all([
+                    api<SourceDetail>(`/api/subscriptions/${rkey}`),
+                    api<Entry[]>(`/api/subscriptions/${rkey}/entries`),
                 ]);
-                if (!detailRes.ok) throw new Error(String(detailRes.status));
-                if (!entriesRes.ok) throw new Error(String(entriesRes.status));
-                const detail = (await detailRes.json()) as SourceDetail;
-                const entries = (await entriesRes.json()) as Entry[];
                 if (!cancelled) setState({ kind: 'ok', detail, entries });
             } catch {
                 if (!cancelled) setState({ kind: 'error' });
@@ -163,30 +147,13 @@ function SourceView({
     onPatched: (patch: SourcePatch) => void;
     onReload: () => void;
 }) {
+    const [, navigate] = useLocation();
     const [editing, setEditing] = useState(false);
     const entryFrom = useMemo(
         () => ({ sourceRkey: detail.rkey }),
         [detail.rkey],
     );
-    const onOpen = useCallback(
-        (entry: Entry) => {
-            const target = entryActivation(entry, entryFrom);
-            if (!target) return;
-            if (target.external) {
-                window.open(target.href, '_blank', 'noopener,noreferrer');
-            } else {
-                window.location.href = target.href;
-            }
-        },
-        [entryFrom],
-    );
-    const nav = useListNavigation(entries, onOpen);
-
-    useKeyboard({
-        ArrowDown: () => nav.move(1),
-        ArrowUp: () => nav.move(-1),
-        Enter: () => nav.open(),
-        Escape: () => nav.clear(),
+    const nav = useEntryNavigation(entries, entryFrom, {
         r: () => onReload(),
     });
 
@@ -196,24 +163,27 @@ function SourceView({
     const frequency = detail.frequency ?? 'noPosts';
 
     const onPatch = async (patch: SourcePatch) => {
-        const resp = await fetch(`/api/subscriptions/${detail.rkey}`, {
-            method: 'PATCH',
-            headers: { 'content-type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify(patch),
-        });
-        if (!resp.ok) return false;
+        try {
+            await api(`/api/subscriptions/${detail.rkey}`, {
+                method: 'PATCH',
+                body: patch,
+            });
+        } catch (err) {
+            toastMutationError(err, "Couldn't save your changes. Try again.");
+            return false;
+        }
         onPatched(patch);
         return true;
     };
 
     const onDelete = async () => {
-        const resp = await fetch(`/api/subscriptions/${detail.rkey}`, {
-            method: 'DELETE',
-            credentials: 'same-origin',
-        });
-        if (!resp.ok) return false;
-        window.location.href = PATHS.sources;
+        try {
+            await api(`/api/subscriptions/${detail.rkey}`, { method: 'DELETE' });
+        } catch (err) {
+            toastMutationError(err, "Couldn't remove this source. Try again.");
+            return false;
+        }
+        navigate(PATHS.sources);
         return true;
     };
 
@@ -241,10 +211,7 @@ function SourceView({
                             className="text-muted-foreground"
                             onClick={() => setEditing(true)}
                         >
-                            <HugeiconsIcon
-                                icon={Edit02Icon}
-                                className="size-3.5"
-                            />
+                            <PencilIcon className="size-3.5" />
                         </Button>
                         <Separator orientation="vertical" className="h-5" />
                         <DeleteSourceButton onConfirm={onDelete} />
@@ -290,20 +257,14 @@ function StatRow({
         <dl className="grid grid-cols-4 gap-3 font-sans text-sm">
             <Stat label="Frequency">
                 <span className="inline-flex items-center gap-1.5">
-                    <HugeiconsIcon
-                        icon={Pulse01Icon}
-                        className="size-3.5 shrink-0 text-muted-foreground"
-                    />
+                    <PulseIcon className="size-3.5 shrink-0 text-muted-foreground" />
                     {FREQUENCY_LABEL[frequency]}
                 </span>
             </Stat>
             <Stat label="Last post">
                 {detail.lastPublishedAt ? (
                     <span className="inline-flex items-center gap-1.5">
-                        <HugeiconsIcon
-                            icon={HourglassIcon}
-                            className="size-3.5 shrink-0 text-muted-foreground"
-                        />
+                        <HourglassIcon className="size-3.5 shrink-0 text-muted-foreground" />
                         {shortTimeAgo(detail.lastPublishedAt)}
                     </span>
                 ) : (
@@ -359,7 +320,7 @@ function SourceSkeleton() {
                 </div>
             </header>
 
-            <article className="overflow-hidden rounded-xl bg-card">
+            <article className="overflow-hidden rounded-xl bg-card shadow-card">
                 <ul className="flex flex-col">
                     {Array.from({ length: 4 }).map((_, index) => (
                         <li key={index}>
@@ -387,6 +348,7 @@ function SourceSkeleton() {
 }
 
 function BackButton() {
+    const goBackOr = useGoBackOr();
     return (
         <a
             href={PATHS.sources}
@@ -400,7 +362,7 @@ function BackButton() {
             }}
             className="absolute top-1/2 right-full mr-2 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
         >
-            <HugeiconsIcon icon={ArrowLeft01Icon} className="size-5" />
+            <ArrowLeftIcon className="size-5" />
         </a>
     );
 }

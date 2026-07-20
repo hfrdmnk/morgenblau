@@ -1,0 +1,57 @@
+{
+  "id": "blue.morgen.feed.share",
+  "defs": {
+    "main": {
+      "key": "tid",
+      "type": "record",
+      "record": {
+        "type": "object",
+        "required": [
+          "itemUrl",
+          "createdAt"
+        ],
+        "properties": {
+          "facets": {
+            "type": "array",
+            "items": {
+              "ref": "app.bsky.richtext.facet",
+              "type": "ref"
+            },
+            "description": "Rich-text annotations (mentions, links, tags) over `comment`."
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 30000,
+            "description": "User's commentary on the share.",
+            "maxGraphemes": 3000
+          },
+          "feedUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "URL of the source feed (optional provenance)."
+          },
+          "itemUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "URL of the shared item."
+          },
+          "document": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of the site.standard.document this share refers to, when the item is a Standardfeed document. Joins the share to its paired recommend record."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      },
+      "description": "A shared feed item. Broadcasts 'I like this' with optional commentary. For Standardfeed documents this is the lazy comment sidecar of a site.standard.graph.recommend record."
+    }
+  },
+  "$type": "com.atproto.lexicon.schema",
+  "lexicon": 1,
+  "revision": 2
+}

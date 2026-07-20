@@ -1,5 +1,4 @@
-import { Loading03Icon } from '@hugeicons/core-free-icons';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { SpinnerIcon } from '@proicons/react';
 import { useCallback, useState } from 'react';
 import type { FormEvent } from 'react';
 
@@ -41,8 +40,7 @@ type Props = {
     onSave: (patch: SourcePatch) => Promise<boolean>;
 };
 
-// EditSourceDialog mirrors AddSourceDialog's chrome — title, a primary toggle,
-// and tags. Delete lives on the row, not here.
+// EditSourceDialog mirrors AddSourceDialog's chrome; delete lives on the row, not here.
 export function EditSourceDialog({
     open,
     onOpenChange,
@@ -53,8 +51,7 @@ export function EditSourceDialog({
     tagSuggestions,
     onSave,
 }: Props) {
-    // Exclude-Shorts applies only to YouTube uploads feeds; its state is encoded
-    // in the feed URL (channel form vs UULF playlist form), not a stored flag.
+    // Exclude-Shorts applies only to YouTube feeds; its state is encoded in the feed URL, not a stored flag.
     const channelFeedUrl = youtubeChannelFeedUrl(initialFeedUrl);
     const isYoutube = channelFeedUrl !== null;
     const initialExcludeShorts = isYoutubeShortsFreeFeedUrl(initialFeedUrl);
@@ -80,11 +77,9 @@ export function EditSourceDialog({
     const submit = async (event: FormEvent) => {
         event.preventDefault();
         if (saving) return;
-        // Keep the existing title rather than wiping it to empty; the backend
-        // no-ops the PATCH if title, primary, and tags are all unchanged.
+        // Keep the existing title rather than wiping it to empty; the backend no-ops the PATCH if unchanged.
         const nextTitle = title.trim() || initialTitle;
-        // Re-point the feed only when the Shorts toggle actually moved, so an
-        // untouched save never churns the URL or triggers a needless re-fetch.
+        // Re-point the feed only when the Shorts toggle moved, so an untouched save never triggers a re-fetch.
         let feedUrl: string | undefined;
         if (
             isYoutube &&
@@ -200,10 +195,7 @@ export function EditSourceDialog({
                         <Button type="submit" disabled={saving}>
                             {saving ? (
                                 <>
-                                    <HugeiconsIcon
-                                        icon={Loading03Icon}
-                                        className="motion-safe:animate-spin"
-                                    />
+                                    <SpinnerIcon className="motion-safe:animate-spin" />
                                     Saving…
                                 </>
                             ) : (

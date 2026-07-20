@@ -13,10 +13,7 @@ import (
 	"testing"
 )
 
-// genP256B64PEM returns a freshly-generated P-256 PKCS#8 PEM, base64-encoded —
-// matching the format produced by the .env.example generation command:
-//
-//	openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl base64 -A
+// genP256B64PEM mirrors the .env.example key generation command (openssl genpkey -algorithm EC | base64).
 func genP256B64PEM(t *testing.T) string {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -51,7 +48,6 @@ func baseEnv(t *testing.T) map[string]string {
 		"BLUESKY_OAUTH_SCOPE":       "atproto repo:blue.morgen.feed.subscription repo:blue.morgen.feed.save repo:blue.morgen.feed.share repo:blue.morgen.graph.follow",
 		"BLUESKY_OAUTH_CLIENT_NAME": "Morgenblau",
 		"BLUESKY_OAUTH_CLIENT_URI":  "https://app.example.com",
-		"APP_URL":                   "https://app.example.com",
 	}
 }
 
@@ -66,8 +62,26 @@ func TestLoad_LoopbackWhenClientIDEmpty(t *testing.T) {
 	if !strings.HasPrefix(cfg.Indigo.ClientID, "http://localhost") {
 		t.Errorf("loopback client_id expected to start with http://localhost, got %q", cfg.Indigo.ClientID)
 	}
-	if !cfg.Indigo.IsConfidential() {
-		t.Errorf("expected confidential (loopback still has private key configured)")
+	// atproto spec reserves client_id=http://localhost for public, secret-less clients.
+	if cfg.Indigo.IsConfidential() {
+		t.Errorf("expected public loopback client, got confidential")
+	}
+}
+
+func TestLoad_WiresClientNameAndURI(t *testing.T) {
+	env := baseEnv(t)
+	env["BLUESKY_CLIENT_ID"] = "https://app.example.com/oauth-client-metadata.json"
+	env["BLUESKY_REDIRECT"] = "https://app.example.com/oauth/callback"
+
+	cfg, err := Load(env)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ClientName != "Morgenblau" {
+		t.Errorf("ClientName = %q, want Morgenblau", cfg.ClientName)
+	}
+	if cfg.ClientURI != "https://app.example.com" {
+		t.Errorf("ClientURI = %q, want https://app.example.com", cfg.ClientURI)
 	}
 }
 
@@ -139,8 +153,7 @@ func TestLoad_RejectsScopeWithoutAtproto(t *testing.T) {
 	}
 }
 
-// In confidential mode, the JWKS must publish only the public half.
-// This is a regression guard against ever shipping the private d scalar.
+// Regression guard: confidential-mode JWKS must publish only the public half, never the private d scalar.
 func TestLoad_PublicJWKSHasNoPrivateMaterial(t *testing.T) {
 	env := baseEnv(t)
 	env["BLUESKY_CLIENT_ID"] = "https://app.example.com/oauth-client-metadata.json"
@@ -178,10 +191,12 @@ func TestLoad_PublicJWKSHasNoPrivateMaterial(t *testing.T) {
 	}
 }
 
-// Sanity: the loaded key is recoverable as an ecdh.PrivateKey of curve P-256.
-// This pins the parse path: base64 → PEM → PKCS8 → ECDSA P-256 → atcrypto.
+// Pins the parse path: base64 -> PEM -> PKCS8 -> ECDSA P-256 -> atcrypto.
 func TestLoad_KeyRoundTripsThroughECDH(t *testing.T) {
+	// Metadata-URL (confidential) mode carries the private key; loopback (public) does not.
 	env := baseEnv(t)
+	env["BLUESKY_CLIENT_ID"] = "https://app.example.com/oauth-client-metadata.json"
+	env["BLUESKY_REDIRECT"] = "https://app.example.com/oauth/callback"
 	cfg, err := Load(env)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -189,7 +204,6 @@ func TestLoad_KeyRoundTripsThroughECDH(t *testing.T) {
 	if cfg.Indigo.PrivateKey == nil {
 		t.Fatal("private key not set on config")
 	}
-	// Re-decode the env value independently to confirm the parse pipeline.
 	pemBytes, _ := base64.StdEncoding.DecodeString(env["BLUESKY_OAUTH_PRIVATE_KEY"])
 	block, _ := pem.Decode(pemBytes)
 	if block == nil {

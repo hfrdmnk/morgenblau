@@ -1,16 +1,18 @@
 import { useState } from 'react';
 
-import { classifyShareResponse } from '@/lib/share-response';
+import { useOptimisticRecord } from '@/hooks/use-optimistic-record';
+import { api, classifyMutationError, type MutationErrorKind } from '@/lib/api';
 
 export type ShareToggle = {
     initial: { rkey: string } | null;
     entrySlug: string;
-    // A path-less Standardfeed document can't take a comment (the server 422s),
-    // so the composer hides the note field for it.
+    // A path-less Standardfeed document can't take a comment (server 422s), so the composer hides the note field.
     canComment: boolean;
 };
 
-export type ShareError = 'reauth' | 'failed';
+// Aliases keep existing callers (library.tsx) on one import site for share errors.
+export type ShareError = MutationErrorKind;
+export const classifyShareError = classifyMutationError;
 
 export type ShareControl = {
     shared: boolean;
@@ -23,57 +25,22 @@ export type ShareControl = {
     submit: (comment: string) => void;
 };
 
-type ShareStatus = 'idle' | 'shared';
-
-// Owns the share state machine. Sharing opens a composer (optional comment)
-// then POSTs; un-sharing is a direct optimistic DELETE, mirroring the save
-// toggle so the rail button and any future shortcut share one source of truth.
+// Sharing opens a composer then POSTs; unsharing is a direct optimistic DELETE, mirroring the save toggle so all callers share one source of truth.
 export function useShareToggle(toggle: ShareToggle): ShareControl {
-    const [status, setStatus] = useState<ShareStatus>(
-        toggle.initial ? 'shared' : 'idle',
-    );
-    const [rkey, setRkey] = useState<string | null>(
-        toggle.initial?.rkey ?? null,
-    );
-    const [busy, setBusy] = useState(false);
     const [composerOpen, setComposerOpen] = useState(false);
     const [error, setError] = useState<ShareError | null>(null);
+    const record = useOptimisticRecord({
+        initial: toggle.initial,
+        deletePath: (rkey) => `/api/shares/${encodeURIComponent(rkey)}`,
+        onDeleteError: (err) => setError(classifyShareError(err)),
+    });
 
     const closeComposer = () => setComposerOpen(false);
 
     const onToggle = () => {
-        if (busy) return;
-        if (status === 'shared') {
-            if (!rkey) return;
-            const previousRkey = rkey;
-            setBusy(true);
-            setStatus('idle');
-            setRkey(null);
-            fetch(`/api/shares/${encodeURIComponent(previousRkey)}`, {
-                method: 'DELETE',
-                credentials: 'same-origin',
-            })
-                .then(async (r) => {
-                    const outcome = classifyShareResponse(
-                        r.status,
-                        r.status === 403
-                            ? ((await r.json().catch(() => null)) as {
-                                  code?: string;
-                              } | null)
-                            : null,
-                    );
-                    if (outcome !== 'ok') {
-                        setStatus('shared');
-                        setRkey(previousRkey);
-                        setError(outcome);
-                    }
-                })
-                .catch(() => {
-                    setStatus('shared');
-                    setRkey(previousRkey);
-                    setError('failed');
-                })
-                .finally(() => setBusy(false));
+        if (record.busy) return;
+        if (record.active) {
+            record.remove();
             return;
         }
         setError(null);
@@ -81,44 +48,31 @@ export function useShareToggle(toggle: ShareToggle): ShareControl {
     };
 
     const submit = (comment: string) => {
-        if (busy) return;
-        setBusy(true);
+        if (record.busy) return;
+        record.setBusy(true);
         setError(null);
         const trimmed = comment.trim();
-        fetch('/api/shares', {
+        api<{ rkey: string }>('/api/shares', {
             method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+            body: {
                 entrySlug: toggle.entrySlug,
                 comment: trimmed || undefined,
-            }),
+            },
         })
-            .then(async (r) => {
-                const outcome = classifyShareResponse(
-                    r.status,
-                    r.status === 403
-                        ? ((await r.json().catch(() => null)) as {
-                              code?: string;
-                          } | null)
-                        : null,
-                );
-                if (outcome !== 'ok') {
-                    setError(outcome);
-                    return;
-                }
-                const payload = (await r.json()) as { rkey: string };
-                setStatus('shared');
-                setRkey(payload.rkey);
+            .then((payload) => {
+                record.setActive(true);
+                record.setRkey(payload.rkey);
                 setComposerOpen(false);
             })
-            .catch(() => setError('failed'))
-            .finally(() => setBusy(false));
+            .catch((err) => {
+                setError(classifyShareError(err));
+            })
+            .finally(() => record.setBusy(false));
     };
 
     return {
-        shared: status === 'shared',
-        busy,
+        shared: record.active,
+        busy: record.busy,
         canComment: toggle.canComment,
         composerOpen,
         error,

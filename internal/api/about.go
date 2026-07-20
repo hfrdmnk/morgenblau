@@ -17,8 +17,7 @@ when fetching upstream feeds with a contact address (<a href="mailto:bot@morgen.
 </html>
 `
 
-// AboutHandler serves the static /about page referenced by the fetcher's
-// User-Agent header (SPEC fetcher posture). Public, no auth.
+// AboutHandler serves the static /about page linked from the fetcher's User-Agent header (SPEC <feed-sources>). Public, no auth.
 func AboutHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

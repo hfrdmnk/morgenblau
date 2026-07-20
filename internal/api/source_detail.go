@@ -9,17 +9,12 @@ import (
 	"time"
 
 	"morgenblau/internal/database/db"
-	"morgenblau/internal/middleware/auth"
-	"morgenblau/internal/tags"
 )
 
-// sourceEntriesLimit caps the per-source entry list. 200 matches the brief —
-// pagination beyond that is deferred until a real source bumps the ceiling.
+// sourceEntriesLimit caps the per-source entry list at 200; pagination is deferred until a real source needs more.
 const sourceEntriesLimit int64 = 200
 
-// SubscriptionDetailWire extends the list wire with the per-source stats the
-// detail page renders. Keeping it distinct from SubscriptionWire avoids
-// growing the list response with fields that would always be zero.
+// SubscriptionDetailWire extends the list wire with detail-page stats, kept separate so the list response doesn't carry always-zero fields.
 type SubscriptionDetailWire struct {
 	SubscriptionWire
 	TotalEntries int64 `json:"totalEntries"`
@@ -32,25 +27,21 @@ type SourceDetailReader interface {
 }
 
 // SourceEntriesReader is the narrow read used by SubscriptionEntriesHandler.
-// Two queries: ownership (subscription lookup) and the entry list itself.
 type SourceEntriesReader interface {
 	GetUserSubscription(ctx context.Context, arg db.GetUserSubscriptionParams) (db.UserSubscription, error)
 	ListEntriesForSource(ctx context.Context, arg db.ListEntriesForSourceParams) ([]db.ListEntriesForSourceRow, error)
 }
 
-// SubscriptionGetHandler returns one user's subscription joined with its feed
-// stats: windowed counts, total_entries, saved_by_you. The frequency bucket
-// is computed here (same rule as the list endpoint).
+// SubscriptionGetHandler returns a subscription with feed stats; the frequency bucket uses the same rule as the list endpoint.
 func SubscriptionGetHandler(reader SourceDetailReader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := auth.SessionFromContext(r.Context())
-		if sess == nil || sess.Data == nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+		sess, ok := requireSession(w, r)
+		if !ok {
 			return
 		}
 		rkey := r.PathValue("rkey")
 		if rkey == "" {
-			http.Error(w, "invalid rkey", http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid rkey")
 			return
 		}
 
@@ -70,7 +61,7 @@ func SubscriptionGetHandler(reader SourceDetailReader) http.Handler {
 				return
 			}
 			slog.Warn("/api/subscriptions/{rkey}: lookup failed", "err", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
 
@@ -78,19 +69,16 @@ func SubscriptionGetHandler(reader SourceDetailReader) http.Handler {
 	})
 }
 
-// SubscriptionEntriesHandler returns up to sourceEntriesLimit newest entries
-// for the given subscription. Ownership is verified explicitly so the
-// requester can't probe other users' rkeys via the entry list endpoint.
+// SubscriptionEntriesHandler returns up to sourceEntriesLimit newest entries; ownership is verified explicitly so a requester can't probe other users' rkeys.
 func SubscriptionEntriesHandler(reader SourceEntriesReader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := auth.SessionFromContext(r.Context())
-		if sess == nil || sess.Data == nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+		sess, ok := requireSession(w, r)
+		if !ok {
 			return
 		}
 		rkey := r.PathValue("rkey")
 		if rkey == "" {
-			http.Error(w, "invalid rkey", http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid rkey")
 			return
 		}
 		didStr := sess.Data.AccountDID.String()
@@ -105,7 +93,7 @@ func SubscriptionEntriesHandler(reader SourceEntriesReader) http.Handler {
 				return
 			}
 			slog.Warn("/api/subscriptions/{rkey}/entries: ownership lookup failed", "err", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
 
@@ -116,7 +104,7 @@ func SubscriptionEntriesHandler(reader SourceEntriesReader) http.Handler {
 		})
 		if err != nil {
 			slog.Warn("/api/subscriptions/{rkey}/entries: list failed", "err", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
 		out := make([]EntryWire, 0, len(rows))
@@ -128,51 +116,24 @@ func SubscriptionEntriesHandler(reader SourceEntriesReader) http.Handler {
 }
 
 func sourceDetailRowToWire(row db.GetUserSourceWithStatsRow, now time.Time) SubscriptionDetailWire {
-	value := map[string]any{"source": sourceUnion(row.Kind, row.FeedUrl, derefStr(row.SiteUrl))}
-	title := ""
-	if row.Title != nil {
-		value["title"] = *row.Title
-		title = *row.Title
-	}
-	if title == "" && row.CatalogTitle != nil {
-		title = *row.CatalogTitle
-	}
-	siteURL := ""
-	if row.SiteUrl != nil {
-		siteURL = *row.SiteUrl
-	}
-	faviconURL := ""
-	if row.IconUrl != nil {
-		faviconURL = *row.IconUrl
-	}
-	primary := row.IsPrimary != 0
-	tagList := tags.Unmarshal(row.Tags)
-	if primary {
-		value["primary"] = true
-	}
-	if len(tagList) > 0 {
-		value["tags"] = tagList
-	}
-	lastPublished := asString(row.LastPublishedAt)
-	firstPublished := asString(row.FirstPublishedAt)
-	kind := wireKind(row.Kind)
-	wire := SubscriptionWire{
-		URI:             row.AtUri,
-		Value:           value,
-		Rkey:            row.Rkey,
-		Kind:            kind,
-		FeedURL:         row.FeedUrl,
-		Title:           title,
-		SiteURL:         siteURL,
-		FaviconURL:      faviconURL,
-		Frequency:       frequencyBucket(firstPublished, row.Count7d, row.Count28d, row.Count56d, row.Count84d, now),
-		LastPublishedAt: lastPublished,
-		Primary:         primary,
-		Tags:            tagList,
-	}
-	if kind == "standardfeed" {
-		wire.Publication = row.FeedUrl
-	}
+	wire := subscriptionStatsRowToWire(subscriptionStatsFields{
+		Rkey:             row.Rkey,
+		AtUri:            row.AtUri,
+		FeedUrl:          row.FeedUrl,
+		Kind:             row.Kind,
+		Title:            row.Title,
+		IsPrimary:        row.IsPrimary,
+		Tags:             row.Tags,
+		SiteUrl:          row.SiteUrl,
+		IconUrl:          row.IconUrl,
+		CatalogTitle:     row.CatalogTitle,
+		LastPublishedAt:  row.LastPublishedAt,
+		FirstPublishedAt: row.FirstPublishedAt,
+		Count7d:          row.Count7d,
+		Count28d:         row.Count28d,
+		Count56d:         row.Count56d,
+		Count84d:         row.Count84d,
+	}, now)
 	return SubscriptionDetailWire{
 		SubscriptionWire: wire,
 		TotalEntries:     row.TotalEntries,
@@ -181,15 +142,19 @@ func sourceDetailRowToWire(row db.GetUserSourceWithStatsRow, now time.Time) Subs
 }
 
 func sourceEntryRowToWire(row db.ListEntriesForSourceRow) EntryWire {
-	return EntryWire{
-		ID:          row.ID,
-		EntrySlug:   row.EntrySlug,
-		Title:       row.Title,
-		URL:         row.Url,
-		ContentType: row.ContentType,
-		PublishedAt: row.PublishedAt,
-		Source:      buildSourceMeta(row.FeedUrl, displayTitle(row.FeedTitle, row.CatalogTitle), row.FeedSiteUrl, row.FeedIconUrl),
-		Body:        row.ContentHtml,
-		Metadata:    row.Metadata,
-	}
+	return entryListRowToWire(entryListFields{
+		ID:           row.ID,
+		EntrySlug:    row.EntrySlug,
+		Title:        row.Title,
+		Url:          row.Url,
+		ContentType:  row.ContentType,
+		PublishedAt:  row.PublishedAt,
+		FeedUrl:      row.FeedUrl,
+		FeedTitle:    row.FeedTitle,
+		CatalogTitle: row.CatalogTitle,
+		FeedSiteUrl:  row.FeedSiteUrl,
+		FeedIconUrl:  row.FeedIconUrl,
+		ContentHtml:  row.ContentHtml,
+		Metadata:     row.Metadata,
+	})
 }

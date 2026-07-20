@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/safehttp"
 )
 
 type fakeEntryReader struct {
@@ -253,8 +254,7 @@ func TestEntry_SharedState_Populated(t *testing.T) {
 }
 
 func TestEntry_SharedState_Standardfeed_UsesDocumentProbe(t *testing.T) {
-	// For a standardfeed entry, sharedState must probe by document (the guid),
-	// not by itemUrl. The itemUrl probe is left empty so a wrong dispatch misses.
+	// sharedState must probe by document for standardfeed; the itemUrl probe stays empty so a wrong dispatch would miss.
 	entry := entryFixture()
 	entry.Guid = "at://did:plc:pub/site.standard.document/3doc"
 	r := &fakeEntryReader{
@@ -283,7 +283,7 @@ func TestEntry_SharedState_Standardfeed_UsesDocumentProbe(t *testing.T) {
 	}
 }
 
-func TestEntry_NotSubscribed_403(t *testing.T) {
+func TestEntry_NotSubscribed_404(t *testing.T) {
 	r := &fakeEntryReader{entry: entryFixture(), subOK: false}
 	mux := http.NewServeMux()
 	mux.Handle("GET /api/entries/{slug}", EntryHandler(r))
@@ -291,8 +291,8 @@ func TestEntry_NotSubscribed_403(t *testing.T) {
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/abc1234567", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
-	if rr.Code != http.StatusForbidden {
-		t.Errorf("status = %d, want 403", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 (collapsed with not-owned)", rr.Code)
 	}
 }
 
@@ -343,8 +343,7 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestEntryExtract_PathlessDocument_NoFetch(t *testing.T) {
-	// A path-less standardfeed document has no URL to fetch; extract must return
-	// the entry without any HTTP request (an empty-URL fetch would 502).
+	// A path-less document has no URL to fetch; extract must return the entry without any HTTP request (an empty URL would 502).
 	entry := entryFixture()
 	entry.Url = ""
 	fetches := 0
@@ -377,7 +376,9 @@ func TestEntryExtract_PathlessDocument_NoFetch(t *testing.T) {
 }
 
 func TestEntryExtract_FreshExtraction_Success(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	var gotUA string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(`<!doctype html>
 <html>
@@ -429,6 +430,9 @@ func TestEntryExtract_FreshExtraction_Success(t *testing.T) {
 	}
 	if got.Body == nil || *got.Body != *r.updatedBody {
 		t.Errorf("response body = %v, want persisted extraction", got.Body)
+	}
+	if gotUA != safehttp.UserAgent {
+		t.Errorf("User-Agent = %q, want %q", gotUA, safehttp.UserAgent)
 	}
 }
 

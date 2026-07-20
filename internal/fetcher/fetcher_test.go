@@ -15,8 +15,7 @@ import (
 	"morgenblau/internal/safehttp"
 )
 
-// newTestFetcher returns a Fetcher whose transport permits 127.0.0.1 so
-// httptest.NewServer (which binds to loopback) is reachable.
+// newTestFetcher allows loopback so httptest.NewServer is reachable.
 func newTestFetcher() *Fetcher {
 	return New(WithSafeHTTPOptions(safehttp.WithAllowLoopback()))
 }
@@ -128,7 +127,6 @@ func TestFetch_RedirectCap(t *testing.T) {
 
 func TestFetch_BodyCap(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		// MaxBodyBytes + 100 bytes of garbage.
 		w.Header().Set("Content-Type", "application/rss+xml")
 		_, _ = w.Write(make([]byte, MaxBodyBytes+100))
 	}))
@@ -168,8 +166,7 @@ func TestFetch_Singleflight_CollapsesConcurrent(t *testing.T) {
 	}
 }
 
-// Two different hosts should run concurrently; three requests to the same
-// host serialize behind PerHostCap.
+// TestFetch_PerHostCap: two hosts run concurrently; requests to the same host serialize behind PerHostCap.
 func TestFetch_PerHostCap(t *testing.T) {
 	const slow = 100 * time.Millisecond
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -184,7 +181,7 @@ func TestFetch_PerHostCap(t *testing.T) {
 
 	f := newTestFetcher()
 
-	// Two parallel hosts — should finish within ~slow.
+	// Two parallel hosts should finish within ~slow.
 	t0 := time.Now()
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -202,7 +199,7 @@ func TestFetch_PerHostCap(t *testing.T) {
 		t.Errorf("two hosts ran serially: %v (want < %v)", parallel, 2*slow)
 	}
 
-	// Three requests on the *same* host — PerHostCap=2 → at least ~2*slow.
+	// Three requests on the same host: PerHostCap=2, so this takes at least ~2*slow.
 	t1 := time.Now()
 	var wg2 sync.WaitGroup
 	for i := 0; i < 3; i++ {
@@ -220,6 +217,94 @@ func TestFetch_PerHostCap(t *testing.T) {
 	}
 }
 
+func TestFetch_HTTPError_429WithRetryAfterSeconds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "120")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	_, err := newTestFetcher().Fetch(context.Background(), srv.URL, FeedState{})
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("err = %v, want *HTTPError", err)
+	}
+	if httpErr.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("StatusCode = %d, want %d", httpErr.StatusCode, http.StatusTooManyRequests)
+	}
+	if httpErr.RetryAfter != 2*time.Minute {
+		t.Errorf("RetryAfter = %v, want %v", httpErr.RetryAfter, 2*time.Minute)
+	}
+}
+
+func TestFetch_HTTPError_503WithRetryAfterDate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", time.Now().Add(90*time.Second).UTC().Format(http.TimeFormat))
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	_, err := newTestFetcher().Fetch(context.Background(), srv.URL, FeedState{})
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("err = %v, want *HTTPError", err)
+	}
+	if httpErr.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("StatusCode = %d, want %d", httpErr.StatusCode, http.StatusServiceUnavailable)
+	}
+	if httpErr.RetryAfter <= 0 {
+		t.Errorf("RetryAfter = %v, want > 0", httpErr.RetryAfter)
+	}
+}
+
+func TestFetch_HTTPError_500NoRetryAfter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	_, err := newTestFetcher().Fetch(context.Background(), srv.URL, FeedState{})
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("err = %v, want *HTTPError", err)
+	}
+	if httpErr.RetryAfter != 0 {
+		t.Errorf("RetryAfter = %v, want 0", httpErr.RetryAfter)
+	}
+	if err.Error() != "fetcher: upstream 500" {
+		t.Errorf("err.Error() = %q, want %q", err.Error(), "fetcher: upstream 500")
+	}
+}
+
+func TestParseRetryAfter(t *testing.T) {
+	now := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name string
+		v    string
+		want time.Duration
+		ok   bool
+	}{
+		{"delta seconds", "120", 120 * time.Second, true},
+		{"http-date", now.Add(90 * time.Second).UTC().Format(http.TimeFormat), 90 * time.Second, true},
+		{"absent", "", 0, false},
+		{"garbage", "not-a-date-or-number", 0, false},
+		{"negative seconds", "-5", 0, false},
+		{"past date", now.Add(-time.Hour).UTC().Format(http.TimeFormat), 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := ParseRetryAfter(tc.v, now)
+			if ok != tc.ok {
+				t.Errorf("ok = %v, want %v", ok, tc.ok)
+			}
+			if got != tc.want {
+				t.Errorf("duration = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestFetch_TimeoutClassified(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(150 * time.Millisecond)
@@ -228,8 +313,7 @@ func TestFetch_TimeoutClassified(t *testing.T) {
 	defer srv.Close()
 
 	f := newTestFetcher()
-	// Cheap way to force timeout without rewriting the public client knob:
-	// give the request a 50ms context.
+	// Force a timeout via a 50ms context rather than exposing a client knob.
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
@@ -237,9 +321,7 @@ func TestFetch_TimeoutClassified(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
-	// Context cancellation comes back as context.DeadlineExceeded inside the
-	// http.Client wrapping. We accept either explicit ErrTimeout or the
-	// underlying DeadlineExceeded — both are valid signals.
+	// http.Client wraps context cancellation as context.DeadlineExceeded, so we accept either that or ErrTimeout.
 	if !errors.Is(err, ErrTimeout) && !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("err = %v, want timeout-like", err)
 	}

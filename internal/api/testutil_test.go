@@ -10,11 +10,7 @@ import (
 	"morgenblau/internal/oauth/scopes"
 )
 
-// withSession injects an oauth.ClientSession into the request context the
-// same shape the auth middleware would inject. Used by handler tests so they
-// don't need a real cookie / store / OAuth dance. The session carries no
-// scopes — the grant shape of a session minted before the standardfeed
-// scope change.
+// withSession injects a scope-less oauth.ClientSession (the pre-standardfeed grant shape) into the context, sparing tests a real OAuth dance.
 func withSession(req *http.Request, did string, sid string) *http.Request {
 	d, _ := syntax.ParseDID(did)
 	sess := &oauth.ClientSession{
@@ -23,8 +19,7 @@ func withSession(req *http.Request, did string, sid string) *http.Request {
 	return req.WithContext(auth.WithSession(req.Context(), sess))
 }
 
-// withStandardWriteSession is withSession plus the site.standard.graph.*
-// write scopes — a session minted after the scope change.
+// withStandardWriteSession is withSession plus the site.standard.graph.* write scopes (the post-scope-change grant shape).
 func withStandardWriteSession(req *http.Request, did string, sid string) *http.Request {
 	d, _ := syntax.ParseDID(did)
 	sess := &oauth.ClientSession{
@@ -36,3 +31,5 @@ func withStandardWriteSession(req *http.Request, did string, sid string) *http.R
 	}
 	return req.WithContext(auth.WithSession(req.Context(), sess))
 }
+
+func ptrString(s string) *string { return &s }

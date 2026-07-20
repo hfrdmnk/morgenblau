@@ -1,16 +1,5 @@
-// Package auth wraps an http.Handler with session-cookie gating.
-//
-// Routing decisions per request:
-//   - Infrastructure paths (OAuth dance, /api/health, static assets) pass
-//     through regardless of auth state.
-//   - Public product routes: anon passes; authed → 302 to authedRedirect
-//     when set, else passes.
-//   - Authed product routes: anon → 302 /login; authed passes.
-//   - Unknown SPA paths: anon → 302 /login (matches authed-route gating).
-//   - Unknown /api/* paths gated and unauthed: 401 (FE needs a status code).
-//
-// Authed requests get the *oauth.ClientSession injected into the request
-// context for downstream handlers.
+// Package auth wraps an http.Handler with session-cookie gating. Unauthed API
+// paths get 401 (frontend needs a status code); unauthed SPA paths redirect to /login.
 package auth
 
 import (
@@ -31,37 +20,40 @@ type Resumer interface {
 	ResumeSession(ctx context.Context, did syntax.DID, sessionID string) (*oauth.ClientSession, error)
 }
 
-// SessionLocker serialises GetSession → refresh → SaveSession for a single
-// (did, sid). Required because indigo doesn't coalesce refreshes internally —
-// two concurrent expired-session requests can both refresh, and the loser's
-// invalid_grant boots a still-valid user.
+// SessionLocker serialises the refresh cycle for a single (did, sid); indigo doesn't coalesce refreshes, so concurrent expired-session requests can boot a valid user.
 type SessionLocker interface {
 	LockSession(did syntax.DID, sid string) func()
 }
 
-// Middleware returns an http.Handler middleware.
 type Middleware func(http.Handler) http.Handler
 
-// New builds the gating middleware. Only public SPA paths are named here;
-// every other product path is authed by default.
+// maxAPIBodyBytes caps JSON bodies at 1 MB, clearing the largest legitimate payload (batch subscription create) with headroom.
+const maxAPIBodyBytes = 1 << 20
+
+// New builds the gating middleware; every path is authed by default except the named public/infra routes.
 func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
 
-			// Try to resume any session present on the cookie. Failures
-			// (missing, garbage, tampered, dead row) all collapse to
-			// "unauthed" — and we clear the cookie on dead-row to stop
-			// the user bouncing through resume failures forever.
+			// Caps bodies before decode so a large payload can't exhaust memory; api.decodeJSON turns the overflow into a 413.
+			if strings.HasPrefix(path, "/api/") {
+				r.Body = http.MaxBytesReader(w, r.Body, maxAPIBodyBytes)
+			}
+
+			// Resume failures (missing, garbage, tampered, dead row) collapse to unauthed; dead-row also clears the cookie so retries don't loop forever.
 			var sess *oauth.ClientSession
 			didStr, sid, ok := sealer.Get(r)
 			if ok {
 				if did, err := syntax.ParseDID(didStr); err == nil {
-					// Serialise concurrent refreshes for the same (did, sid) so
-					// the loser of a race doesn't see invalid_grant.
-					unlock := locker.LockSession(did, sid)
+					// Only requests that make authenticated PDS calls can trigger a
+					// lazy refresh or DPoP-nonce rotation mid-handler, so only they
+					// hold the lock, spanning next.ServeHTTP so refreshed tokens persist first.
+					if holdsSessionLock(r) {
+						unlock := locker.LockSession(did, sid)
+						defer unlock()
+					}
 					s, err := resumer.ResumeSession(r.Context(), did, sid)
-					unlock()
 					switch {
 					case err == nil:
 						sess = s
@@ -76,7 +68,6 @@ func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer) Middlewar
 				}
 			}
 
-			// Public product route: authed → maybe redirect, else pass.
 			if redirect, isPublic := publicRoutes[path]; isPublic {
 				if sess != nil && redirect != "" {
 					http.Redirect(w, r, redirect, http.StatusFound)
@@ -86,20 +77,16 @@ func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer) Middlewar
 				return
 			}
 
-			// Infrastructure allowlist (OAuth dance, health, assets).
 			if isInfra(path) {
 				serve(next, w, r, sess)
 				return
 			}
 
-			// Everything else is gated by default — covers authed product
-			// routes and unknown SPA paths alike.
 			if sess != nil {
 				serve(next, w, r, sess)
 				return
 			}
 
-			// Unauthed, gated. API paths get a status code; SPA paths get a redirect.
 			if strings.HasPrefix(path, "/api/") {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
@@ -107,6 +94,23 @@ func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer) Middlewar
 			http.Redirect(w, r, "/login", http.StatusFound)
 		})
 	}
+}
+
+// holdsSessionLock must mirror the PDS-mutating routes in server/routes.go; subscriptions/resolve, digest/refresh, and entries/extract don't write to the PDS.
+func holdsSessionLock(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodPost, http.MethodPatch, http.MethodDelete:
+	default:
+		return false
+	}
+	p := r.URL.Path
+	if p == "/api/subscriptions/resolve" {
+		return false
+	}
+	return strings.HasPrefix(p, "/api/subscriptions") ||
+		strings.HasPrefix(p, "/api/saves") ||
+		strings.HasPrefix(p, "/api/shares") ||
+		strings.HasPrefix(p, "/api/follows")
 }
 
 func serve(next http.Handler, w http.ResponseWriter, r *http.Request, sess *oauth.ClientSession) {
@@ -123,7 +127,6 @@ var publicRoutes = map[string]string{
 	"/about": "",
 }
 
-// Infrastructure paths that bypass auth entirely. These are not product routes.
 var infraExact = map[string]struct{}{
 	"/api/health":     {},
 	"/oauth/login":    {},
@@ -147,8 +150,11 @@ func isInfra(path string) bool {
 			return true
 		}
 	}
-	// Static assets are anything with a file extension in the last segment —
-	// /favicon.svg, /icons.svg, /oauth-client-metadata.json, /robots.txt, etc.
+	// Dotted-last-segment means a root-level static file (/favicon.svg), but API
+	// paths carry dotted handles and did:web identifiers, so they never qualify.
+	if strings.HasPrefix(path, "/api/") {
+		return false
+	}
 	last := strings.LastIndex(path, "/")
 	if last >= 0 && strings.Contains(path[last:], ".") {
 		return true
@@ -158,16 +164,12 @@ func isInfra(path string) bool {
 
 type contextKey struct{}
 
-// WithSession returns a child context carrying sess. Exported so callers
-// (including tests) can inject a session in context without going through
-// the middleware.
+// WithSession returns a context carrying sess; exported so tests can inject a session without going through the middleware.
 func WithSession(ctx context.Context, sess *oauth.ClientSession) context.Context {
 	return context.WithValue(ctx, contextKey{}, sess)
 }
 
-// SessionFromContext returns the *oauth.ClientSession injected by the
-// middleware. Returns nil if none — but in handlers behind the middleware
-// on a gated path this should never happen.
+// SessionFromContext returns the injected session, nil if absent (shouldn't happen on a gated path behind the middleware).
 func SessionFromContext(ctx context.Context) *oauth.ClientSession {
 	v, _ := ctx.Value(contextKey{}).(*oauth.ClientSession)
 	return v

@@ -1,3 +1,5 @@
+import { useLocation } from 'wouter';
+
 import { AppLogoIcon } from '@/components/app-logo-icon';
 import { Button } from '@/components/ui/button';
 import { useDocumentTitle } from '@/hooks/use-document-title';
@@ -5,6 +7,7 @@ import { PATHS } from '@/lib/paths';
 
 export function Welcome() {
     useDocumentTitle();
+    const [, navigate] = useLocation();
 
     return (
         <div className="min-h-svh bg-background p-6">
@@ -22,7 +25,7 @@ export function Welcome() {
                     <Button
                         variant="ghost-on-gradient"
                         className="text-base"
-                        onClick={() => window.location.assign(PATHS.login)}
+                        onClick={() => navigate(PATHS.login)}
                     >
                         Begin
                     </Button>

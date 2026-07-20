@@ -35,10 +35,17 @@ CREATE INDEX feed_entries_feed_url_published_at_idx
 CREATE INDEX feed_entries_guid_idx
     ON feed_entries (guid);
 
+-- Tier-2 itemUrl fallback resolution (SPEC <discovery> Signal ordering: an
+-- item reaction with no feedUrl/document provenance resolves via its cached
+-- entry's own url). Without this index that lookup is a full table scan.
+CREATE INDEX feed_entries_url_idx
+    ON feed_entries (url);
+
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
+DROP INDEX IF EXISTS feed_entries_url_idx;
 DROP INDEX IF EXISTS feed_entries_guid_idx;
 DROP INDEX IF EXISTS feed_entries_feed_url_published_at_idx;
 DROP INDEX IF EXISTS feed_entries_published_at_idx;

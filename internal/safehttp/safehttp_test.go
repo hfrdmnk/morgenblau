@@ -11,6 +11,15 @@ import (
 	"time"
 )
 
+func TestUserAgent_IdentifiesMorgenblau(t *testing.T) {
+	if !strings.Contains(UserAgent, "Morgenblau/") {
+		t.Errorf("UserAgent = %q, want it to contain %q", UserAgent, "Morgenblau/")
+	}
+	if !strings.Contains(UserAgent, "+https://morgen.blue/about") {
+		t.Errorf("UserAgent = %q, want it to contain %q", UserAgent, "+https://morgen.blue/about")
+	}
+}
+
 func TestValidator_Blocks(t *testing.T) {
 	cases := []struct {
 		name string
@@ -63,10 +72,7 @@ func TestValidator_Allows(t *testing.T) {
 	}
 }
 
-// TestNewClient_BlocksBlockedIPs sends a request to each disallowed IP and
-// confirms the dial is refused (no socket opens, no request leaves). 0 port
-// means the dial would race with a connection refused if it weren't blocked;
-// we assert the error string includes our marker so we know it's ours.
+// Port 0 makes an unblocked dial fail with connection-refused too, so we assert the safehttp: marker to confirm our block fired.
 func TestNewClient_BlocksBlockedIPs(t *testing.T) {
 	cases := []string{
 		"http://127.0.0.1:1/",
@@ -95,8 +101,7 @@ func TestNewClient_BlocksBlockedIPs(t *testing.T) {
 	}
 }
 
-// A redirect to a non-http scheme is rejected by CheckRedirect even before
-// the next-hop dial.
+// A redirect to a non-http scheme is rejected by CheckRedirect before any dial.
 func TestNewClient_RejectsRedirectToBadScheme(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "file:///etc/passwd", http.StatusFound)
@@ -113,13 +118,10 @@ func TestNewClient_RejectsRedirectToBadScheme(t *testing.T) {
 	}
 }
 
-// A redirect to a blocked IP is rejected at the next-hop dial step. The
-// dialer's Control callback runs on every dial, including redirect dials, so
-// a hostile server that 302s to 127.0.0.1 can't pivot the client.
+// The dialer's Control callback runs on every dial, including redirect dials, so a 302 to 127.0.0.1 can't pivot the client.
 func TestNewClient_RejectsRedirectToBlockedIP(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Redirect to a private RFC1918 IP. WithAllowLoopback only opens 127/8,
-		// so the private-range block on the next dial still fires.
+		// WithAllowLoopback only opens 127/8, so this private RFC1918 redirect still gets blocked.
 		http.Redirect(w, r, "http://10.0.0.1:1/", http.StatusFound)
 	}))
 	defer srv.Close()
@@ -137,7 +139,7 @@ func TestNewClient_RejectsRedirectToBlockedIP(t *testing.T) {
 func TestNewClient_RedirectCap(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Always redirect — exceeds the cap.
+		// Always redirect, exceeding the cap.
 		http.Redirect(w, r, "/next"+r.URL.Path, http.StatusFound)
 	})
 	srv := httptest.NewServer(mux)

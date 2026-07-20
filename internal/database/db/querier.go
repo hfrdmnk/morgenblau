@@ -9,23 +9,70 @@ import (
 )
 
 type Querier interface {
+	CountDiscoverHidesForUser(ctx context.Context, did string) (int64, error)
 	DeleteAuthRequest(ctx context.Context, state string) error
+	DeleteDiscoverCrawlAdjacentFollows(ctx context.Context, did string) error
+	DeleteDiscoverCrawlAuthored(ctx context.Context, followedDid string) error
+	DeleteDiscoverCrawlFollows(ctx context.Context, followedDid string) error
+	DeleteDiscoverCrawlOwnForeignSubscriptions(ctx context.Context, did string) error
+	DeleteDiscoverCrawlShares(ctx context.Context, followedDid string) error
+	DeleteDiscoverCrawlSubscriptions(ctx context.Context, followedDid string) error
+	DeleteDiscoverSourcePosts(ctx context.Context, sourceKey string) error
+	DeleteDiscoverTrendingFollowsForRepo(ctx context.Context, repoDid string) error
+	DeleteDiscoverTrendingSignalsForRepo(ctx context.Context, repoDid string) error
 	DeleteExpiredAuthRequests(ctx context.Context, expiresAt string) (int64, error)
 	DeleteFeedEntry(ctx context.Context, arg DeleteFeedEntryParams) error
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
+	DeleteUserFollow(ctx context.Context, arg DeleteUserFollowParams) error
 	DeleteUserSave(ctx context.Context, arg DeleteUserSaveParams) error
 	DeleteUserShare(ctx context.Context, arg DeleteUserShareParams) error
 	DeleteUserSubscription(ctx context.Context, arg DeleteUserSubscriptionParams) error
 	GetAuthRequest(ctx context.Context, state string) (GetAuthRequestRow, error)
+	GetDiscoverBatchState(ctx context.Context) (DiscoverBatchState, error)
+	GetDiscoverCrawlAdjacentState(ctx context.Context, did string) (DiscoverCrawlAdjacentState, error)
+	GetDiscoverCrawlAuthoredState(ctx context.Context, followedDid string) (DiscoverCrawlAuthoredState, error)
+	GetDiscoverCrawlFollowState(ctx context.Context, followedDid string) (DiscoverCrawlFollowState, error)
+	GetDiscoverCrawlOwnForeignState(ctx context.Context, did string) (DiscoverCrawlOwnForeignState, error)
+	GetDiscoverCrawlShareState(ctx context.Context, followedDid string) (DiscoverCrawlShareState, error)
+	GetDiscoverCrawlState(ctx context.Context, followedDid string) (DiscoverCrawlState, error)
+	// Site-URL fallback for on-demand favicon discovery when the resolution cache misses.
+	GetDiscoverCrawlSubscriptionSiteURLByKey(ctx context.Context, canonicalKey string) (*string, error)
+	GetDiscoverHide(ctx context.Context, arg GetDiscoverHideParams) (DiscoverHide, error)
+	GetDiscoverPublicationResolution(ctx context.Context, publicationUri string) (DiscoverPublicationResolution, error)
+	GetDiscoverPublicationResolutionByCanonicalKey(ctx context.Context, canonicalKey *string) (DiscoverPublicationResolution, error)
+	// Fallback lookup for the favicon proxy when a candidate isn't in the feeds table yet (not subscribed).
+	GetDiscoverSourceFaviconURL(ctx context.Context, sourceKey string) (*string, error)
+	GetDiscoverSourcePostsState(ctx context.Context, sourceKey string) (DiscoverSourcePostsState, error)
+	// Backfills a reaction-only rss candidate's title/siteUrl (SPEC <discovery>);
+	// deliberately not gated by the min-3-repo trending bar used in
+	// ListDiscoverTrendingSignalsAboveBar, since a title only needs one
+	// contributing repo, unlike a trending card.
+	GetDiscoverTrendingSignalTitle(ctx context.Context, sourceKey string) (GetDiscoverTrendingSignalTitleRow, error)
+	// Column order matches the table's physical layout so sqlc reuses the Feed
+	// model instead of minting a one-off row type (see
+	// ListDiscoverCrawlSubscriptions for the same convention).
 	GetFeed(ctx context.Context, feedUrl string) (Feed, error)
 	GetFeedEntryBySlug(ctx context.Context, entrySlug string) (FeedEntry, error)
+	GetFeedEntryShareMetadataByDocument(ctx context.Context, guid string) (GetFeedEntryShareMetadataByDocumentRow, error)
+	GetFeedEntryShareMetadataByItemURL(ctx context.Context, url string) (GetFeedEntryShareMetadataByItemURLRow, error)
 	// Reconcile backfills a comment-less share's item_url from its cached entry.
 	// Standardfeed document guids (the document at-uri) are globally unique.
 	GetFeedEntryURLByGuid(ctx context.Context, guid string) (string, error)
 	// Returns the stored icon URL for a feed. Drives the favicon-proxy SSRF guard:
 	// the proxy only streams URLs the sync pipeline has already vetted.
 	GetFeedIconURL(ctx context.Context, feedUrl string) (*string, error)
+	// Discover signal resolution (SPEC <discovery>): a reaction's document
+	// at-uri (standardfeed provenance) maps straight to its source's feed_url
+	// when the entry is cached.
+	GetFeedURLByGuid(ctx context.Context, guid string) (string, error)
+	// Discover signal resolution, Tier-2 fallback (SPEC <discovery>): a reaction
+	// carrying only itemUrl resolves to its source via the cached entry's own
+	// url match.
+	GetFeedURLByItemURL(ctx context.Context, url string) (string, error)
 	GetSession(ctx context.Context, arg GetSessionParams) ([]byte, error)
+	GetShareMetadataCache(ctx context.Context, targetKey string) (ShareMetadataCache, error)
+	GetUserFollow(ctx context.Context, arg GetUserFollowParams) (UserFollow, error)
+	GetUserFollowBySubjectDID(ctx context.Context, arg GetUserFollowBySubjectDIDParams) (UserFollow, error)
 	GetUserSave(ctx context.Context, arg GetUserSaveParams) (UserSave, error)
 	GetUserSaveByItemURL(ctx context.Context, arg GetUserSaveByItemURLParams) (UserSave, error)
 	GetUserShare(ctx context.Context, arg GetUserShareParams) (UserShare, error)
@@ -38,15 +85,86 @@ type Querier interface {
 	GetUserSourceWithStats(ctx context.Context, arg GetUserSourceWithStatsParams) (GetUserSourceWithStatsRow, error)
 	GetUserSubscription(ctx context.Context, arg GetUserSubscriptionParams) (UserSubscription, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserSubscriptionByFeedURLParams) (UserSubscription, error)
+	InsertDiscoverCrawlAdjacentFollow(ctx context.Context, arg InsertDiscoverCrawlAdjacentFollowParams) error
+	InsertDiscoverCrawlAuthored(ctx context.Context, arg InsertDiscoverCrawlAuthoredParams) error
+	InsertDiscoverCrawlFollow(ctx context.Context, arg InsertDiscoverCrawlFollowParams) error
+	InsertDiscoverCrawlOwnForeignSubscription(ctx context.Context, arg InsertDiscoverCrawlOwnForeignSubscriptionParams) error
+	InsertDiscoverCrawlShare(ctx context.Context, arg InsertDiscoverCrawlShareParams) error
+	InsertDiscoverCrawlSubscription(ctx context.Context, arg InsertDiscoverCrawlSubscriptionParams) error
+	InsertDiscoverSourcePost(ctx context.Context, arg InsertDiscoverSourcePostParams) error
+	InsertDiscoverTrendingFollow(ctx context.Context, arg InsertDiscoverTrendingFollowParams) error
+	InsertDiscoverTrendingSignal(ctx context.Context, arg InsertDiscoverTrendingSignalParams) error
+	// Scoped by did in the query itself (never fetch-then-compare in handlers).
+	ListActiveDiscoverHides(ctx context.Context, arg ListActiveDiscoverHidesParams) ([]string, error)
 	ListAllEntriesForUser(ctx context.Context, did string) ([]ListAllEntriesForUserRow, error)
 	ListAllFeedURLs(ctx context.Context) ([]string, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
+	ListDiscoverCrawlAdjacentFollows(ctx context.Context, did string) ([]DiscoverCrawlAdjacentFollow, error)
+	// Returns every cached outcome, verified and not; callers filter to verified-only in Go (authored_store.go), keeping this query free to surface all outcomes for a future retry policy.
+	ListDiscoverCrawlAuthored(ctx context.Context, followedDid string) ([]DiscoverCrawlAuthored, error)
+	ListDiscoverCrawlFollows(ctx context.Context, followedDid string) ([]DiscoverCrawlFollow, error)
+	// Column order matches the table's physical layout so sqlc reuses the
+	// DiscoverCrawlOwnForeignSubscription model instead of minting a one-off row type.
+	ListDiscoverCrawlOwnForeignSubscriptions(ctx context.Context, did string) ([]DiscoverCrawlOwnForeignSubscription, error)
+	ListDiscoverCrawlShares(ctx context.Context, followedDid string) ([]DiscoverCrawlShare, error)
+	// Column order matches the table's physical layout so sqlc reuses the
+	// DiscoverCrawlSubscription model instead of minting a one-off row type.
+	ListDiscoverCrawlSubscriptions(ctx context.Context, followedDid string) ([]DiscoverCrawlSubscription, error)
+	ListDiscoverSourcePosts(ctx context.Context, sourceKey string) ([]DiscoverSourcePost, error)
+	// Whole-table read; kept for callers that genuinely need every row (see
+	// internal/discoverbatch's write-path tests). The trending handler reads
+	// ListDiscoverTrendingFollowsAboveBar instead (see that query's comment).
+	ListDiscoverTrendingFollows(ctx context.Context) ([]DiscoverTrendingFollow, error)
+	// Bounds the trending-people read to subject_dids with followers from at
+	// least min_distinct_repos distinct repos (SPEC <discovery> People
+	// "Global/Trending": "same >=3-distinct-repos bar") instead of loading the
+	// whole network table; scoring for the surviving candidates still happens
+	// in Go via RankPeopleTrending, which keeps its own MinDistinctRepos check
+	// as defense in depth. Written as a correlated WHERE subquery rather than
+	// GROUP BY/HAVING because sqlc's SQLite parameter binder (v1.31.1) doesn't
+	// detect placeholders inside a HAVING clause and silently drops them,
+	// producing a param-less query that would panic at call time.
+	ListDiscoverTrendingFollowsAboveBar(ctx context.Context, minDistinctRepos int64) ([]DiscoverTrendingFollow, error)
+	// Whole-table read; kept for callers that genuinely need every row (see
+	// internal/discoverbatch's write-path tests). The trending handler reads
+	// ListDiscoverTrendingSignalsAboveBar instead (see that query's comment).
+	ListDiscoverTrendingSignals(ctx context.Context) ([]DiscoverTrendingSignal, error)
+	// Bounds the trending-sources read to source_keys with signals from at
+	// least min_distinct_repos distinct repos (SPEC <discovery> "Quality bar")
+	// instead of loading the whole network table; grouping/scoring for the
+	// surviving candidates still happens in Go via RankTrending, which keeps
+	// its own MinDistinctRepos check as defense in depth. Written as a
+	// correlated WHERE subquery rather than GROUP BY/HAVING because sqlc's
+	// SQLite parameter binder (v1.31.1) doesn't detect placeholders inside a
+	// HAVING clause and silently drops them, producing a param-less query that
+	// would panic at call time.
+	ListDiscoverTrendingSignalsAboveBar(ctx context.Context, minDistinctRepos int64) ([]DiscoverTrendingSignal, error)
+	// Bounds the People trending eligibility read (SPEC <discovery> People
+	// "Eligibility") to repos that are themselves subject_dids clearing the
+	// follower quality bar in discover_trending_follows, instead of loading the
+	// whole signals table to test each candidate's reader-network presence.
+	// Same correlated-subquery shape as ListDiscoverTrendingSignalsAboveBar,
+	// for the same sqlc HAVING-placeholder reason.
+	// signal_kind != 'save' is the save-privacy invariant: a save-only subject
+	// must never clear eligibility (SPEC <discovery> People "Eligibility":
+	// "Saves don't confer eligibility").
+	ListDiscoverTrendingSignalsForEligibleSubjects(ctx context.Context, minDistinctRepos int64) ([]DiscoverTrendingSignal, error)
 	// Entries from a single feed, newest first, bounded by limit. The join to
 	// user_subscriptions doubles as an ownership filter; the handler still
 	// distinguishes "not subscribed" from "no posts" via a separate lookup.
 	ListEntriesForSource(ctx context.Context, arg ListEntriesForSourceParams) ([]ListEntriesForSourceRow, error)
 	ListFeedEntriesForDiff(ctx context.Context, feedUrl string) ([]ListFeedEntriesForDiffRow, error)
+	// Discover trending's language-filter lookup (SPEC <discovery> "Global/
+	// Trending ranking"): every Tier-2 source with a known detected language, in
+	// one query rather than one per candidate. Tier-2 only holds feeds a
+	// Morgenblau user actually subscribes to, so this table is small relative to
+	// the network-wide trending aggregate.
+	ListFeedLanguages(ctx context.Context) ([]ListFeedLanguagesRow, error)
 	ListFeedURLsForUser(ctx context.Context, did string) ([]string, error)
+	ListUserFollows(ctx context.Context, did string) ([]UserFollow, error)
+	// Snapshot of a user's local follow index, used by sync_user to diff against
+	// the PDS and reconcile inserts/deletes.
+	ListUserFollowsForSync(ctx context.Context, did string) ([]ListUserFollowsForSyncRow, error)
 	// Snapshot of a user's local save index, used by sync_user to diff against the
 	// PDS and reconcile inserts/deletes.
 	ListUserSavesForSync(ctx context.Context, did string) ([]ListUserSavesForSyncRow, error)
@@ -69,23 +187,78 @@ type Querier interface {
 	// resolve handler can flag candidates that point at the same site under the
 	// other kind (rss vs standardfeed).
 	ListUserSubscriptionsWithSiteURL(ctx context.Context, did string) ([]ListUserSubscriptionsWithSiteURLRow, error)
+	// Reader-network presence for a batch of AppView typeahead DIDs (SPEC
+	// <discovery> People "Search" + "Eligibility"). Returns only the DIDs that
+	// have at least one non-save signal row; the caller folds the result into a
+	// map[string]bool, so a DID absent from the result is absent from the network.
+	// signal_kind != 'save' is the save-privacy invariant: a save-only person must
+	// not badge, or the badge would leak that they save (SPEC <discovery> People
+	// "Eligibility": "Saves don't confer eligibility").
+	//
+	// Uses sqlc.slice for a single batched read. The repo has never used
+	// sqlc.slice before; if `make sqlc` mishandles it, switch the caller to
+	// PersonSearchPresenceOne below, called once per DID (typeahead is capped at
+	// ~10 results, so the sequential cost is trivial).
+	PersonSearchPresence(ctx context.Context, dids []string) ([]string, error)
+	// Per-DID fallback for PersonSearchPresence when sqlc.slice codegen misbehaves;
+	// same save-free presence test, called sequentially over the <=10 hits.
+	PersonSearchPresenceOne(ctx context.Context, repoDid string) (bool, error)
+	// Up to `limit` publication titles for a present person's search badge (SPEC
+	// <discovery> People "Search"). Drawn from subscribe/author signal rows only:
+	// never 'share', never 'save'. A taste hint previews what the person reads or
+	// publishes, and save rows are invisible under save privacy. Distinct titles,
+	// most-recent signal first with a title tiebreak so the pick is deterministic.
+	PersonSearchTasteHints(ctx context.Context, arg PersonSearchTasteHintsParams) ([]*string, error)
 	PutAuthRequest(ctx context.Context, arg PutAuthRequestParams) error
 	PutSession(ctx context.Context, arg PutSessionParams) error
+	// Never touches favicon_url or the posts ladder: a discovery failure is orthogonal to both.
+	RecordDiscoverSourceFaviconDiscoveryFailure(ctx context.Context, arg RecordDiscoverSourceFaviconDiscoveryFailureParams) error
+	// Never touches fetched_at/favicon_url on conflict: a transient failure must not erase a prior success's payload (stale-while-error).
+	RecordDiscoverSourcePostsFailure(ctx context.Context, arg RecordDiscoverSourcePostsFailureParams) error
+	// Preserve the last successful payload so a transient failure serves stale metadata.
+	RecordShareMetadataFailure(ctx context.Context, arg RecordShareMetadataFailureParams) error
 	SetFeedIconURL(ctx context.Context, arg SetFeedIconURLParams) error
 	UpdateFeedEntryExtractedBody(ctx context.Context, arg UpdateFeedEntryExtractedBodyParams) error
+	// SPEC <feed-sources> failure handling; success (UpdateFeedFetchState) resets both.
+	UpdateFeedFetchFailure(ctx context.Context, arg UpdateFeedFetchFailureParams) error
+	// SPEC <feed-sources> failure handling: success resets the backoff counter and clears the skip stamp.
 	UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchStateParams) error
+	UpsertDiscoverBatchState(ctx context.Context, lastRunAt string) error
+	UpsertDiscoverCrawlAdjacentState(ctx context.Context, arg UpsertDiscoverCrawlAdjacentStateParams) error
+	UpsertDiscoverCrawlAuthoredState(ctx context.Context, arg UpsertDiscoverCrawlAuthoredStateParams) error
+	UpsertDiscoverCrawlFollowState(ctx context.Context, arg UpsertDiscoverCrawlFollowStateParams) error
+	UpsertDiscoverCrawlOwnForeignState(ctx context.Context, arg UpsertDiscoverCrawlOwnForeignStateParams) error
+	UpsertDiscoverCrawlShareState(ctx context.Context, arg UpsertDiscoverCrawlShareStateParams) error
+	UpsertDiscoverCrawlState(ctx context.Context, arg UpsertDiscoverCrawlStateParams) error
+	UpsertDiscoverHide(ctx context.Context, arg UpsertDiscoverHideParams) error
+	UpsertDiscoverPublicationResolution(ctx context.Context, arg UpsertDiscoverPublicationResolutionParams) error
+	// On-demand discovery success; only touches the favicon columns, never the posts ladder (fetched_at/failure_count/next_retry_at).
+	UpsertDiscoverSourceFaviconURL(ctx context.Context, arg UpsertDiscoverSourceFaviconURLParams) error
+	// Every success resets the failure ladder: a recovered source deserves a fresh backoff clock next time it fails.
+	UpsertDiscoverSourcePostsState(ctx context.Context, arg UpsertDiscoverSourcePostsStateParams) error
 	// kind defaults to 'rss' via NULLIF so pre-standardfeed callers passing the
 	// zero value keep working; it is never changed on conflict. title is the
 	// cached publication name; COALESCE keeps rss callers (nil) from clobbering it.
+	// language is the pipeline's freshly-detected value (discoverlang); COALESCE
+	// keeps an inconclusive detection on this fetch from erasing a previously
+	// known language (SPEC <discovery>: detection runs on entry content already
+	// fetched, no dedicated network call).
+	// All params are named (not positional): mixing sqlc.arg() with bare ? makes
+	// sqlc emit non-contiguous placeholder numbers that modernc.org/sqlite can't
+	// bind ("missing argument with index N").
 	UpsertFeed(ctx context.Context, arg UpsertFeedParams) error
 	UpsertFeedEntry(ctx context.Context, arg UpsertFeedEntryParams) error
+	UpsertShareMetadataSuccess(ctx context.Context, arg UpsertShareMetadataSuccessParams) error
 	// Standardfeed counterpart to UpsertFeedEntry. Unlike the rss upsert it owns
 	// extracted_body and record_cid on conflict: a CID change must reset the
 	// cached readability body (path-ful docs pass NULL) or refresh the plaintext
 	// fallback (path-less docs pass the new textContent).
 	UpsertStandardfeedEntry(ctx context.Context, arg UpsertStandardfeedEntryParams) error
+	UpsertUserFollow(ctx context.Context, arg UpsertUserFollowParams) error
 	UpsertUserSave(ctx context.Context, arg UpsertUserSaveParams) error
 	UpsertUserShare(ctx context.Context, arg UpsertUserShareParams) error
+	// Fully named params (see UpsertFeed): avoids the mixed named/positional
+	// numbering that breaks binding under modernc.org/sqlite.
 	UpsertUserSubscription(ctx context.Context, arg UpsertUserSubscriptionParams) error
 }
 

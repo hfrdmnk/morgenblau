@@ -10,14 +10,9 @@ export type ListNavigation = {
     scrollKey: number;
 };
 
-// One active index shared by pointer hover and keyboard selection, so the two can
-// never paint competing highlights. Pointer enters set `active` and mark the input
-// mode; keyboard `move` does the same and bumps `scrollKey` so the list scrolls on
-// keyboard travel but stays put under the mouse.
-//
-// The highlight is intentionally a sighted-only power-user layer: it moves a
-// purely visual index, not DOM focus or aria-activedescendant. Rows are real
-// links, so assistive tech navigates the list fully by Tab / reading order.
+// One active index shared by pointer and keyboard so they never paint competing highlights;
+// keyboard `move` bumps `scrollKey` so the list scrolls on keyboard travel but stays put under the mouse.
+// The highlight is a sighted-only visual layer, not DOM focus or aria-activedescendant: rows are real links, so assistive tech navigates via Tab.
 export function useListNavigation<T>(
     items: readonly T[],
     onOpen: (item: T, index: number) => void,
@@ -26,8 +21,7 @@ export function useListNavigation<T>(
     const [scrollKey, setScrollKey] = useState(0);
     const mode = useRef<'pointer' | 'keyboard'>('pointer');
 
-    // Drop the selection when the list changes (day switch, refetch). Adjusting
-    // during render avoids a setState-in-effect cascade.
+    // Adjust-during-render (not setState-in-effect) drops the selection when the list changes (day switch, refetch).
     const [prevItems, setPrevItems] = useState(items);
     if (items !== prevItems) {
         setPrevItems(items);
@@ -55,8 +49,7 @@ export function useListNavigation<T>(
         setActiveState(index);
     }, []);
 
-    // Mouse left the list: drop the highlight only if the mouse owns it, so a
-    // keyboard selection survives the pointer wandering away.
+    // Only drop the highlight if the mouse owns it, so a keyboard selection survives the pointer wandering away.
     const clearPointer = useCallback(() => {
         if (mode.current === 'pointer') setActiveState(null);
     }, []);

@@ -146,10 +146,7 @@ func TestCreateRecord_PropagatesUpstreamError(t *testing.T) {
 	}
 }
 
-// TestListRecords_PagesUntilCursorEmpty mirrors the pdslister contract: an
-// empty page with a non-empty cursor is a valid continuation; only an empty
-// cursor terminates. Stopping early would make the DELETE sweep miss
-// duplicate standard records.
+// TestListRecords_PagesUntilCursorEmpty checks the pagination contract: an empty page with a non-empty cursor must continue, since stopping early would make the DELETE sweep miss duplicate records.
 func TestListRecords_PagesUntilCursorEmpty(t *testing.T) {
 	page := 0
 	pages := []struct {

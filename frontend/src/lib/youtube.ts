@@ -1,4 +1,3 @@
-// Parses a YouTube uploads-feed URL (…/feeds/videos.xml on a youtube.com host).
 function parseYoutubeFeed(feedUrl: string): URL | null {
     let url: URL;
     try {
@@ -16,9 +15,7 @@ function parseYoutubeFeed(feedUrl: string): URL | null {
     return url;
 }
 
-// Maps a YouTube channel feed (…?channel_id=UC…) to the uploads-without-Shorts
-// playlist feed (…?playlist_id=UULF…). The UC→UULF swap selects the long-form
-// uploads playlist, which omits Shorts. Returns null when feedUrl isn't a channel feed.
+// UC→UULF selects YouTube's long-form uploads playlist (omits Shorts); null when feedUrl isn't a channel feed.
 export function youtubeShortsFreeFeedUrl(feedUrl: string): string | null {
     const url = parseYoutubeFeed(feedUrl);
     if (!url) {
@@ -31,9 +28,7 @@ export function youtubeShortsFreeFeedUrl(feedUrl: string): string | null {
     return `${url.origin}${url.pathname}?playlist_id=UULF${channelId.slice(2)}`;
 }
 
-// Normalizes a YouTube uploads feed — channel form or shorts-free playlist form —
-// back to the canonical channel feed. Inverse of youtubeShortsFreeFeedUrl. Returns
-// null when feedUrl isn't a YouTube uploads feed.
+// Inverse of youtubeShortsFreeFeedUrl; null when feedUrl isn't a YouTube uploads feed.
 export function youtubeChannelFeedUrl(feedUrl: string): string | null {
     const url = parseYoutubeFeed(feedUrl);
     if (!url) {

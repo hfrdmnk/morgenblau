@@ -11,8 +11,7 @@ import (
 	"morgenblau/frontend"
 )
 
-// spaHandler serves the React frontend. In local dev it reverse-proxies to the
-// Vite dev server so HMR works; in any other env it serves the embedded build.
+// spaHandler reverse-proxies to Vite in local dev (for HMR); otherwise serves the embedded build.
 func spaHandler() http.Handler {
 	if os.Getenv("APP_ENV") == "local" {
 		return viteProxyHandler()
@@ -41,9 +40,7 @@ func embeddedDistHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clean := strings.TrimPrefix(r.URL.Path, "/")
 
-		// Serve the requested file if it exists, with a cache policy keyed on
-		// the path. Vite content-hashes everything under /assets/, so those are
-		// safe to cache forever; other root files get a modest TTL.
+		// Vite content-hashes /assets/* so those cache forever; other files get a modest TTL.
 		if clean != "" {
 			if _, err := fs.Stat(dist, clean); err == nil {
 				if strings.HasPrefix(r.URL.Path, "/assets/") {
@@ -56,10 +53,7 @@ func embeddedDistHandler() http.Handler {
 			}
 		}
 
-		// Root and every unknown path fall back to the index.html shell.
-		// no-cache (not no-store) makes the browser revalidate so a new deploy's
-		// hashed asset references are picked up, while keeping the page
-		// bfcache-eligible for instant back/forward navigation.
+		// Unknown paths fall back to index.html; no-cache (not no-store) forces revalidation for new deploys while keeping the page bfcache-eligible.
 		w.Header().Set("Cache-Control", "no-cache")
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = "/"

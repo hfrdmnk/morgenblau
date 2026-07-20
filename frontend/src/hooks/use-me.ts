@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { api } from '@/lib/api';
 import { safeHref } from '@/lib/utils';
 
 export type Me = {
@@ -26,23 +27,18 @@ export function useMe(): MeState {
 
     useEffect(() => {
         let cancelled = false;
-        fetch('/api/profiles/me')
-            .then((r) => (r.ok ? (r.json() as Promise<MeResponse>) : null))
+        api<MeResponse>('/api/profiles/me')
             .then((data) => {
                 if (cancelled) return;
-                setState(
-                    data
-                        ? {
-                              kind: 'authed',
-                              me: {
-                                  did: data.did,
-                                  handle: data.handle,
-                                  avatar: safeHref(data.avatar) ?? null,
-                                  displayName: data.displayName ?? null,
-                              },
-                          }
-                        : { kind: 'anon' },
-                );
+                setState({
+                    kind: 'authed',
+                    me: {
+                        did: data.did,
+                        handle: data.handle,
+                        avatar: safeHref(data.avatar) ?? null,
+                        displayName: data.displayName ?? null,
+                    },
+                });
             })
             .catch(() => {
                 if (!cancelled) setState({ kind: 'anon' });

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/sharemeta"
 )
 
 const (
@@ -145,6 +147,30 @@ func TestSharesCreate_RSS_SingleRecord(t *testing.T) {
 	}
 }
 
+func TestSharesCreate_RSS_InvalidRecord_500_NoWrite(t *testing.T) {
+	idx := newShareIndex()
+	entry := rssEntry()
+	entry.Url = "not-a-url"
+	idx.entry = entry
+	idx.sub = db.UserSubscription{Did: shareDID, Kind: "rss", FeedUrl: shareRSSFeed}
+	pds := &fakePDS{}
+
+	rr := postShare(t, idx, pds, false, `{"entrySlug":"post"}`)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500: %s", rr.Code, rr.Body)
+	}
+	if !strings.Contains(rr.Body.String(), "invalid_record") {
+		t.Errorf("body = %q, want invalid_record code", rr.Body.String())
+	}
+	if pds.creates != 0 {
+		t.Errorf("creates = %d, want 0 (validation must run before the write)", pds.creates)
+	}
+	if len(idx.upserts) != 0 {
+		t.Errorf("upserts = %+v, want none", idx.upserts)
+	}
+}
+
 func TestSharesCreate_RSS_NoURL_422(t *testing.T) {
 	idx := newShareIndex()
 	entry := rssEntry()
@@ -164,8 +190,7 @@ func TestSharesCreate_RSS_NoURL_422(t *testing.T) {
 }
 
 func TestSharesCreate_Standardfeed_SidecarFails_502_NoLocalUpsert(t *testing.T) {
-	// Recommend created, comment sidecar create fails: the handler 502s WITHOUT
-	// a local upsert, leaving the recommend durable for reconcile to adopt.
+	// Recommend created, sidecar create fails: handler 502s without a local upsert, leaving the recommend durable for reconcile to adopt.
 	idx := newShareIndex()
 	idx.entry = stdEntry("https://pub.example/doc")
 	idx.sub = db.UserSubscription{Did: shareDID, Kind: "standardfeed", FeedUrl: stdPubURI}
@@ -185,8 +210,6 @@ func TestSharesCreate_Standardfeed_SidecarFails_502_NoLocalUpsert(t *testing.T) 
 }
 
 func TestSharesCreate_Standardfeed_IdempotentByDocument(t *testing.T) {
-	// A second recommend of the same document returns the existing row (200),
-	// no PDS write.
 	idx := newShareIndex()
 	idx.entry = stdEntry("https://pub.example/doc")
 	idx.sub = db.UserSubscription{Did: shareDID, Kind: "standardfeed", FeedUrl: stdPubURI}
@@ -249,7 +272,7 @@ func TestSharesCreate_Standardfeed_RecommendPlusComment(t *testing.T) {
 	if pds.creates != 2 {
 		t.Fatalf("creates = %d, want 2 (recommend + sidecar)", pds.creates)
 	}
-	// Recommend FIRST — its rkey is the local row's rkey.
+	// Recommend first: its rkey becomes the local row's rkey.
 	if pds.created[0].collection != recommendCollection {
 		t.Errorf("first create = %q, want recommend", pds.created[0].collection)
 	}
@@ -289,7 +312,7 @@ func TestSharesCreate_Standardfeed_PathlessWithComment_422(t *testing.T) {
 
 func TestSharesCreate_Standardfeed_PathlessNoComment_RecommendOK(t *testing.T) {
 	idx := newShareIndex()
-	idx.entry = stdEntry("") // path-less, but no comment ⇒ recommend allowed
+	idx.entry = stdEntry("") // path-less, no comment: recommend allowed
 	idx.sub = db.UserSubscription{Did: shareDID, Kind: "standardfeed", FeedUrl: stdPubURI}
 	pds := &fakePDS{}
 
@@ -347,7 +370,7 @@ func TestSharesCreate_Idempotent_NoPDSHit(t *testing.T) {
 	}
 }
 
-func TestSharesCreate_NotSubscribed_403(t *testing.T) {
+func TestSharesCreate_NotSubscribed_404(t *testing.T) {
 	idx := newShareIndex()
 	idx.entry = rssEntry()
 	idx.subErr = sql.ErrNoRows
@@ -355,8 +378,8 @@ func TestSharesCreate_NotSubscribed_403(t *testing.T) {
 
 	rr := postShare(t, idx, pds, false, `{"entrySlug":"post"}`)
 
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (collapsed with unknown-entry)", rr.Code)
 	}
 	if pds.creates != 0 {
 		t.Errorf("unauthorized share hit the PDS")
@@ -448,7 +471,6 @@ func TestSharesDelete_Standardfeed_RecommendAndSidecar(t *testing.T) {
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204", rr.Code)
 	}
-	// Recommend deleted, plus the comment sidecar.
 	if len(pds.deleted) != 2 {
 		t.Fatalf("PDS deletes = %v, want recommend + sidecar", pds.deleted)
 	}
@@ -464,8 +486,7 @@ func TestSharesDelete_Standardfeed_RecommendAndSidecar(t *testing.T) {
 }
 
 func TestSharesDelete_Standardfeed_SweepsDuplicateRecommends(t *testing.T) {
-	// A duplicate recommend for the same document (written by another app) must
-	// also be deleted, or the next reconcile re-adopts it and the share returns.
+	// A duplicate recommend (written by another app) must also be deleted, or reconcile re-adopts it and resurrects the share.
 	idx := newShareIndex()
 	idx.byRkey["3rec"] = db.UserShare{
 		Did: shareDID, Rkey: "3rec", Kind: "standardfeed", Document: ptrString(docGuid),
@@ -509,14 +530,14 @@ func TestSharesDelete_Standardfeed_StaleScope_403(t *testing.T) {
 	}
 }
 
-func TestSharesDelete_NotFound_403(t *testing.T) {
+func TestSharesDelete_NotFound_404(t *testing.T) {
 	idx := newShareIndex()
 	pds := &fakePDS{}
 
 	rr := deleteShare(t, idx, pds, false, "ghost")
 
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403 (collapsed with not-yours)", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (collapsed with not-yours)", rr.Code)
 	}
 }
 
@@ -532,16 +553,26 @@ func TestSharesList(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/shares", nil)
 	req = withSession(req, shareDID, "sid-1")
 	rr := httptest.NewRecorder()
-	SharesListHandler(idx).ServeHTTP(rr, req)
+	metadata := noShareMetadata()
+	metadata.byKey["https://x/post"] = sharemeta.Metadata{
+		Title: "An RSS article", TargetURL: "https://x/final", EntrySlug: "rss-article",
+	}
+	SharesListHandler(idx, metadata).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
 	}
-	body := rr.Body.String()
-	if !strings.Contains(body, "A Title") || !strings.Contains(body, "a-title") {
-		t.Errorf("body missing entry join fields: %q", body)
+	var got []ShareWire
+	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
 	}
-	if !strings.Contains(body, "https://x/post") {
-		t.Errorf("body missing rss itemUrl: %q", body)
+	if len(got) != 2 {
+		t.Fatalf("shares = %+v", got)
+	}
+	if got[0].Title != "A Title" || got[0].EntrySlug != "a-title" {
+		t.Errorf("standardfeed share = %+v", got[0])
+	}
+	if got[1].ItemURL != "https://x/post" || got[1].Title != "An RSS article" || got[1].TargetURL != "https://x/final" || got[1].EntrySlug != "rss-article" {
+		t.Errorf("rss share = %+v", got[1])
 	}
 }

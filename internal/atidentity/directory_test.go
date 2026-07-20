@@ -18,9 +18,7 @@ func (s *sentinelTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, errSentinel
 }
 
-// Guarded must route identity HTTP fetches through the injected client. The
-// B1 SSRF bug was that resolution used indigo's default unguarded client
-// instead; this pins the wiring (safehttp's own tests prove the IP guard).
+// Guarded must route identity HTTP fetches through the injected client; this pins the wiring, since falling back to an unguarded client would defeat the SSRF guard.
 func TestGuarded_UsesInjectedClient(t *testing.T) {
 	tr := &sentinelTransport{}
 	dir := Guarded(&http.Client{Transport: tr})

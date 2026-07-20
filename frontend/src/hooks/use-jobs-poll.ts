@@ -1,9 +1,8 @@
 import { useEffect } from 'react';
 
-// Polls /api/jobs/active while `active` is true. Fires `onQuiet` on every
-// transition from "a job exists" to "no jobs"; the caller is responsible for
-// flipping `active` off (typically by re-fetching state that derives it) so
-// the loop tears down.
+import { api } from '@/lib/api';
+
+// Fires `onQuiet` on each "job exists" to "no jobs" transition; caller must flip `active` off (e.g. by re-fetching) to tear down the loop.
 export function useJobsPoll(
     active: boolean,
     onQuiet: () => void,
@@ -17,15 +16,7 @@ export function useJobsPoll(
 
         const tick = async () => {
             try {
-                const r = await fetch('/api/jobs/active', {
-                    credentials: 'same-origin',
-                });
-                if (cancelled) return;
-                if (!r.ok) {
-                    timer = setTimeout(tick, intervalMs);
-                    return;
-                }
-                const body = (await r.json().catch(() => null)) as unknown;
+                const body = await api<unknown>('/api/jobs/active');
                 if (cancelled) return;
                 if (body === null) {
                     if (!firedQuiet) {

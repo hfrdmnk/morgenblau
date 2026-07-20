@@ -1,13 +1,9 @@
-// Package feedfinder turns any pasted URL into a list of feed candidates.
-// Hides the strategy stack: HTML link-rel-alternate, YouTube channel mapping,
-// Apple Podcasts iTunes Lookup. Each candidate carries the canonical feedUrl,
-// a best-guess title, and the originating site URL.
+// Package feedfinder turns a pasted URL into feed candidates via HTML link-rel and YouTube channel mapping.
 package feedfinder
 
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,16 +15,14 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/mmcdole/gofeed"
 
+	"morgenblau/internal/safehttp"
 	"morgenblau/internal/standardfeed"
 )
 
-// maxFeedSniffBytes caps body reads on the direct-feed passthrough path so a
-// hostile or huge feed can't blow up resolve.
+// maxFeedSniffBytes caps body reads on the passthrough path against a hostile or huge feed.
 const maxFeedSniffBytes = 4 << 20
 
-// Candidate is one feed the user could subscribe to. All fields are best-
-// effort. rss candidates guarantee FeedURL; standardfeed candidates (Kind
-// "standardfeed") guarantee Publication instead and carry no FeedURL.
+// Candidate is one feed to subscribe to; rss kind guarantees FeedURL, standardfeed kind guarantees Publication and carries no FeedURL.
 type Candidate struct {
 	FeedURL     string `json:"feedUrl,omitempty"`
 	Kind        string `json:"kind,omitempty"` // "" (rss) | "standardfeed"
@@ -38,15 +32,12 @@ type Candidate struct {
 	SiteURL     string `json:"siteUrl,omitempty"`
 }
 
-// HTTPDoer is the minimal slice of *http.Client the finder uses. Production
-// wires the polite fetcher; tests inject a canned RoundTripper.
+// HTTPDoer is the minimal *http.Client method set the finder needs.
 type HTTPDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-// StandardResolver is the slice of *standardfeed.Client the finder needs for
-// ATProto publication discovery. It lives on the finder (not the handler)
-// because the article-link probe needs it mid-flow: document → site → publication.
+// StandardResolver lives on Finder because the article-link probe needs it mid-flow: document → site → publication.
 type StandardResolver interface {
 	GetPublication(ctx context.Context, uri string) (*standardfeed.Publication, error)
 	GetDocument(ctx context.Context, uri string) (*standardfeed.Document, error)
@@ -56,28 +47,29 @@ type StandardResolver interface {
 // Finder resolves URLs to feed candidates.
 type Finder struct {
 	client HTTPDoer
-	// itunesBase is overridable in tests so we don't have to hit Apple.
-	itunesBase string
 	// standard enables the Standardfeed probes; nil turns them off.
 	standard StandardResolver
 }
 
 // New builds a Finder using the given HTTP client.
 func New(client HTTPDoer) *Finder {
-	return &Finder{client: client, itunesBase: "https://itunes.apple.com/lookup"}
+	return &Finder{client: client}
 }
 
-// WithITunesBase swaps the iTunes Lookup base URL — for tests.
-func (f *Finder) WithITunesBase(base string) *Finder {
-	f.itunesBase = base
-	return f
-}
-
-// WithStandardResolver enables Standardfeed publication discovery: at-uri
-// passthrough, the well-known probe, and the article link-tag chain.
+// WithStandardResolver enables Standardfeed publication discovery (at-uri passthrough, well-known probe, article link-tag chain).
 func (f *Finder) WithStandardResolver(r StandardResolver) *Finder {
 	f.standard = r
 	return f
+}
+
+// newGET builds a GET request identified as Morgenblau's outbound bot traffic.
+func newGET(ctx context.Context, rawURL string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", safehttp.UserAgent)
+	return req, nil
 }
 
 // feed content types we recognize as "this URL is already a feed."
@@ -90,8 +82,7 @@ var feedContentTypes = map[string]struct{}{
 	"application/xml":       {},
 }
 
-// Resolve walks the strategy stack and returns candidates. An unresolvable
-// URL returns nil, nil — empty list, no error. Network failures bubble up.
+// Resolve walks the strategy stack; an unresolvable URL returns nil, nil while network failures bubble up.
 func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -112,9 +103,7 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 		raw = u.String()
 	}
 
-	// Strategy 2 (YouTube) and 3 (Apple Podcasts) are recognized before
-	// fetching because they have stable URL shapes — saves a round-trip
-	// when we already know what to do.
+	// YouTube is checked before fetching since its URL shape is stable, avoiding a round-trip.
 	if host := strings.ToLower(u.Host); strings.HasSuffix(host, "youtube.com") || host == "youtu.be" {
 		c, err := f.resolveYouTube(ctx, u)
 		if err != nil {
@@ -124,19 +113,9 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 			return []Candidate{*c}, nil
 		}
 	}
-	if strings.Contains(strings.ToLower(u.Host), "podcasts.apple.com") {
-		c, err := f.resolveApplePodcasts(ctx, u)
-		if err != nil {
-			return nil, err
-		}
-		if c != nil {
-			return []Candidate{*c}, nil
-		}
-	}
 
-	// The well-known publication probe runs concurrently with the HTML
-	// fetch below; its result merges in after link-rel extraction. Buffered
-	// so an early return (passthrough, error) never blocks the goroutine.
+	// The well-known probe runs concurrently with the HTML fetch below and merges in after link-rel extraction.
+	// It's buffered so an early return (passthrough, error) never blocks the goroutine.
 	var wellKnown chan string
 	if f.standard != nil {
 		origin := (&url.URL{Scheme: u.Scheme, Host: u.Host}).String()
@@ -150,9 +129,7 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 		}()
 	}
 
-	// Strategy 1 (and passthrough): fetch the URL, inspect content-type and
-	// HTML link-rel-alternate.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+	req, err := newGET(ctx, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -164,8 +141,7 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 
 	ct := strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0])
 	if _, isFeed := feedContentTypes[strings.ToLower(ct)]; isFeed {
-		// Passthrough — user pasted a direct feed URL. Parse the body to
-		// pull the canonical <title> so the dialog can prefill.
+		// Passthrough: parse the body for the canonical title so the dialog can prefill.
 		return []Candidate{{FeedURL: raw, ContentType: ct, SiteURL: raw, Title: sniffFeedTitle(resp.Body)}}, nil
 	}
 
@@ -183,8 +159,7 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 		if wkURI := <-wellKnown; wkURI != "" {
 			pubURIs = append(pubURIs, wkURI)
 		}
-		// Article pages carry <link rel="site.standard.document"> — chase
-		// document → site → publication.
+		// Article pages carry <link rel="site.standard.document">; chase document → site → publication.
 		if docURI := extractStandardDocLink(doc); docURI != "" {
 			if sdoc, err := f.standard.GetDocument(ctx, docURI); err == nil && strings.HasPrefix(sdoc.Site, "at://") {
 				pubURIs = append(pubURIs, sdoc.Site)
@@ -195,10 +170,8 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 	return out, nil
 }
 
-// resolveATURI handles a pasted at-uri: a publication resolves directly, a
-// document resolves through its site. Other collections yield no candidates.
-// Resolution errors bubble up — an explicit paste deserves feedback, unlike
-// the best-effort probes.
+// resolveATURI resolves a pasted at-uri: publication directly, document via its site, other collections yield nothing.
+// Errors bubble up here, unlike the best-effort probes elsewhere, since an explicit paste deserves feedback.
 func (f *Finder) resolveATURI(ctx context.Context, raw string) ([]Candidate, error) {
 	uri, err := syntax.ParseATURI(raw)
 	if err != nil {
@@ -217,7 +190,7 @@ func (f *Finder) resolveATURI(ctx context.Context, raw string) ([]Candidate, err
 			return nil, err
 		}
 		if !strings.HasPrefix(doc.Site, "at://") {
-			// A loose document publishes to an https site, not a publication.
+			// A loose document's site is an https URL, so there's no publication to resolve.
 			return nil, nil
 		}
 		pub, err := f.standard.GetPublication(ctx, doc.Site)
@@ -229,10 +202,7 @@ func (f *Finder) resolveATURI(ctx context.Context, raw string) ([]Candidate, err
 	return nil, nil
 }
 
-// publicationCandidates resolves publication at-uris into candidates,
-// deduping by the client's DID-normalized URI (well-known may return the
-// handle form while a document's site uses the DID form). Failures are
-// skipped — probes stay best-effort.
+// publicationCandidates dedupes by DID-normalized URI, since well-known may return the handle form while a document's site uses the DID form; failures are skipped as probes stay best-effort.
 func (f *Finder) publicationCandidates(ctx context.Context, uris []string) []Candidate {
 	var out []Candidate
 	seen := make(map[string]struct{}, len(uris))
@@ -259,8 +229,7 @@ func publicationCandidate(pub *standardfeed.Publication) Candidate {
 	}
 }
 
-// extractStandardDocLink pulls the first <link rel="site.standard.document">
-// at-uri from an article page.
+// extractStandardDocLink pulls the first <link rel="site.standard.document"> at-uri from an article page.
 func extractStandardDocLink(doc *goquery.Document) string {
 	href, _ := doc.Find("link[rel='site.standard.document']").First().Attr("href")
 	href = strings.TrimSpace(href)
@@ -270,9 +239,7 @@ func extractStandardDocLink(doc *goquery.Document) string {
 	return href
 }
 
-// sniffFeedTitle reads up to maxFeedSniffBytes from a direct-feed response
-// body and returns the parsed canonical title. Returns "" if the body can't
-// be read or parsed — caller falls back to an empty title.
+// sniffFeedTitle returns the feed's title, or empty if the body can't be read or parsed.
 func sniffFeedTitle(body io.Reader) string {
 	buf, err := io.ReadAll(io.LimitReader(body, maxFeedSniffBytes))
 	if err != nil {
@@ -315,14 +282,11 @@ func extractLinkRels(doc *goquery.Document, base *url.URL) []Candidate {
 
 // --- YouTube ---
 
-// channelIDRe matches the `?channel_id=...` query feed shape we emit.
+// ytChannelPath matches a /channel/<id> URL path.
 var ytChannelPath = regexp.MustCompile(`^/channel/([A-Za-z0-9_-]+)$`)
 
-// ytChannelIDInHTML matches the three places YouTube embeds the channel ID
-// on a channel page: the `"channelId":"UC..."` JS blob (full page render),
-// `/channel/UC...` (canonical link, og:url, …), and `channel_id=UC...` (the
-// RSS feed link). The consent-bypass landing page we get without cookies
-// only has the latter two, so all three forms are needed.
+// ytChannelIDInHTML matches the channel ID via JS blob, canonical /channel/ link, or channel_id= feed link.
+// The cookie-less consent-bypass page only has the latter two, so all three forms are needed.
 var ytChannelIDInHTML = regexp.MustCompile(`(?:"channelId":"|/channel/|channel_id=)(UC[A-Za-z0-9_-]{20,})`)
 
 func (f *Finder) resolveYouTube(ctx context.Context, u *url.URL) (*Candidate, error) {
@@ -334,7 +298,7 @@ func (f *Finder) resolveYouTube(ctx context.Context, u *url.URL) (*Candidate, er
 	case strings.HasPrefix(path, "/@"),
 		strings.HasPrefix(path, "/c/"),
 		strings.HasPrefix(path, "/user/"):
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+		req, err := newGET(ctx, u.String())
 		if err != nil {
 			return nil, err
 		}
@@ -352,10 +316,7 @@ func (f *Finder) resolveYouTube(ctx context.Context, u *url.URL) (*Candidate, er
 		if err != nil {
 			return nil, err
 		}
-		// First match wins; the canonical <link> / og:url / feed link all
-		// precede user-generated content (titles, descriptions, comments)
-		// on every YouTube page shape we've seen, so the channel's own ID
-		// is matched before any embedded third-party UC… string.
+		// First match wins: canonical link, og:url, and feed link precede user content on every YouTube shape seen.
 		if m := ytChannelIDInHTML.FindSubmatch(body); m != nil {
 			channelID = string(m[1])
 		}
@@ -368,10 +329,9 @@ func (f *Finder) resolveYouTube(ctx context.Context, u *url.URL) (*Candidate, er
 	return cand, nil
 }
 
-// fetchYTFeedTitle pulls the Atom feed and returns its <title>. Best-effort —
-// any error yields an empty string and the dialog falls back to the feed URL.
+// fetchYTFeedTitle is best-effort: any error returns an empty string and the dialog falls back to the feed URL.
 func (f *Finder) fetchYTFeedTitle(ctx context.Context, feedURL string) string {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, nil)
+	req, err := newGET(ctx, feedURL)
 	if err != nil {
 		return ""
 	}
@@ -393,47 +353,4 @@ func ytFeedCandidate(channelID string, u *url.URL) *Candidate {
 		ContentType: "application/atom+xml",
 		SiteURL:     u.String(),
 	}
-}
-
-// --- Apple Podcasts ---
-
-var applePodcastsIDRe = regexp.MustCompile(`/id(\d+)`)
-
-type itunesLookupResp struct {
-	Results []struct {
-		FeedURL    string `json:"feedUrl"`
-		Title      string `json:"collectionName"`
-		ArtistName string `json:"artistName"`
-	} `json:"results"`
-}
-
-func (f *Finder) resolveApplePodcasts(ctx context.Context, u *url.URL) (*Candidate, error) {
-	m := applePodcastsIDRe.FindStringSubmatch(u.Path)
-	if m == nil {
-		return nil, nil
-	}
-	lookupURL := f.itunesBase + "?id=" + m[1]
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, lookupURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := f.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	var parsed itunesLookupResp
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, fmt.Errorf("itunes lookup: %w", err)
-	}
-	if len(parsed.Results) == 0 || parsed.Results[0].FeedURL == "" {
-		return nil, nil
-	}
-	r := parsed.Results[0]
-	return &Candidate{
-		FeedURL:     r.FeedURL,
-		Title:       r.Title,
-		ContentType: "application/rss+xml",
-		SiteURL:     u.String(),
-	}, nil
 }

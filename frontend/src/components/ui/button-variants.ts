@@ -10,7 +10,7 @@ export const buttonVariants = cva(
                 secondary: 'bg-overlay-2 text-foreground hover:bg-overlay-3',
                 ghost: 'hover:bg-overlay-2 hover:text-foreground aria-expanded:bg-overlay-2 aria-expanded:text-foreground',
                 'ghost-on-gradient':
-                    'border border-white/30 bg-white/10 bg-clip-padding text-white hover:bg-white/20 outline-white/80',
+                    'bg-white/10 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.3)] hover:bg-white/20 outline-white/80',
                 destructive:
                     'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40',
                 link: 'text-primary underline-offset-4 hover:underline',
@@ -28,11 +28,26 @@ export const buttonVariants = cva(
                     'size-8 rounded-lg in-data-[slot=button-group]:rounded-lg',
                 'icon-lg': 'size-11',
             },
+            iconTint: {
+                none: '',
+                primary: '[&_svg]:text-primary',
+                success: '[&_svg]:text-success',
+                error: '[&_svg]:text-destructive',
+            },
         },
         defaultVariants: {
             variant: 'default',
             size: 'default',
+            iconTint: 'none',
         },
+        compoundVariants: [
+            // ghost rest label is muted, warming to foreground on hover (ghost already hovers to foreground)
+            {
+                variant: 'ghost',
+                iconTint: ['primary', 'success', 'error'],
+                class: 'text-muted-foreground',
+            },
+        ],
     },
 );
 

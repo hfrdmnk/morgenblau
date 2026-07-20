@@ -20,8 +20,7 @@ func (l fakeFeedLister) ListAllFeedURLs(_ context.Context) ([]string, error) {
 	return l.urls, l.err
 }
 
-// recordingFetcher records every URL it was asked to fetch and fails on the
-// ones in failOn — used to prove one dead feed doesn't abort the sweep.
+// recordingFetcher records every URL fetched and fails on the ones in failOn.
 type recordingFetcher struct {
 	mu     sync.Mutex
 	seen   []string
@@ -162,7 +161,7 @@ func TestRefreshAll_RespectsConcurrencyLimit(t *testing.T) {
 
 func TestRefreshAll_ContextCancellationStops(t *testing.T) {
 	urls := []string{"https://a/feed", "https://b/feed"}
-	bf := newBlockingFetcher() // never released; only ctx can unblock it
+	bf := newBlockingFetcher() // never released, only ctx can unblock it
 	r := NewGlobalRefresher(fakeFeedLister{urls: urls}, bf)
 
 	ctx, cancel := context.WithCancel(context.Background())

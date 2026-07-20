@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -15,30 +14,23 @@ import (
 )
 
 // ProfileSource is the slice of *profiles.Cache the handlers depend on.
-// Stubbed in tests; production wires the real cache.
 type ProfileSource interface {
 	Get(ctx context.Context, did syntax.DID) (profiles.Profile, error)
 	Refresh(ctx context.Context, did syntax.DID) (profiles.Profile, error)
 }
 
-// meResponse is the session user's profile plus session-health flags the
-// frontend needs for calm prompting.
+// meResponse is the session user's profile plus session-health flags for calm prompting.
 type meResponse struct {
 	profiles.Profile
-	// NeedsReauth is true when the session's grant predates the standardfeed
-	// scopes — standard-record writes will 403 until the user re-logs-in.
+	// NeedsReauth is true when the session predates the standardfeed scopes; standard-record writes will 403 until the user re-logs-in.
 	NeedsReauth bool `json:"needsReauth"`
 }
 
-// MeProfileHandler returns the session user's profile {did, handle,
-// displayName, avatar} plus needsReauth. Self-bypass is implicit: always
-// Refresh so user-driven Bluesky profile edits surface immediately.
+// MeProfileHandler returns the session user's profile plus needsReauth; always refreshes so Bluesky profile edits surface immediately.
 func MeProfileHandler(src ProfileSource) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := auth.SessionFromContext(r.Context())
-		if sess == nil || sess.Data == nil {
-			slog.Error("/api/profiles/me: no session in context (middleware bypassed?)")
-			http.Error(w, "internal error", http.StatusInternalServerError)
+		sess, ok := requireSession(w, r)
+		if !ok {
 			return
 		}
 		p, err := src.Refresh(r.Context(), sess.Data.AccountDID)
@@ -48,22 +40,20 @@ func MeProfileHandler(src ProfileSource) http.Handler {
 			} else {
 				slog.Warn("/api/profiles/me: profile load failed", "did", sess.Data.AccountDID, "err", err)
 			}
-			http.Error(w, "could not resolve identity", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "could not resolve identity")
 			return
 		}
 		writeJSON(w, meResponse{Profile: p, NeedsReauth: !scopes.HasStandardWrite(sess)})
 	})
 }
 
-// ProfileByDIDHandler resolves any DID through the cache. The session's own
-// DID transparently delegates to the self-bypass path so /api/profiles/{me}
-// stays consistent with /api/profiles/me.
+// ProfileByDIDHandler resolves any DID through the cache, delegating to self-bypass when it's the session's own DID so results stay consistent with /api/profiles/me.
 func ProfileByDIDHandler(src ProfileSource) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw := r.PathValue("did")
 		did, err := syntax.ParseDID(raw)
 		if err != nil {
-			http.Error(w, "invalid did", http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid did")
 			return
 		}
 
@@ -78,14 +68,9 @@ func ProfileByDIDHandler(src ProfileSource) http.Handler {
 		}
 		if err != nil {
 			slog.Warn("/api/profiles/{did}: profile load failed", "did", did, "err", err)
-			http.Error(w, "could not resolve identity", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "could not resolve identity")
 			return
 		}
 		writeJSON(w, profile)
 	})
-}
-
-func writeJSON(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(v)
 }

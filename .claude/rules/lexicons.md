@@ -1,0 +1,1 @@
+../../lexicons/AGENTS.md

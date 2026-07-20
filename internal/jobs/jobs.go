@@ -1,7 +1,4 @@
-// Package jobs is the in-memory tracker the refresh-pill polls against.
-// Lifecycle status only — no counts, no progress percentages (SPEC
-// <feed-sources>). Finished jobs GC after a short retention window so
-// /api/jobs/active doesn't accumulate ghosts.
+// Package jobs is the in-memory tracker the refresh-pill polls against. Lifecycle status only, no counts (SPEC <feed-sources>).
 package jobs
 
 import (
@@ -14,8 +11,7 @@ import (
 	"github.com/oklog/ulid/v2"
 )
 
-// Status is the lifecycle state of a job. Intentionally minimal — anything
-// finer-grained breaks the calm-brand promise ("no counts, no progress").
+// Status is the lifecycle state of a job, intentionally minimal to preserve the calm-brand promise of no progress detail.
 type Status string
 
 const (
@@ -53,8 +49,7 @@ type Job struct {
 	FinishedAt time.Time `json:"finishedAt,omitempty"`
 }
 
-// Default GC retention — finished jobs disappear from ActiveForUser after
-// this window so subsequent reloads of /consume don't see ghost pills.
+// DefaultRetention keeps finished jobs around briefly so /consume reloads don't see ghost pills before GC.
 const DefaultRetention = 5 * time.Minute
 
 // ErrNotFound is returned by Get for unknown ids.
@@ -87,9 +82,7 @@ func NewWithOptions(retention time.Duration, now func() time.Time) *Tracker {
 	}
 }
 
-// Create registers a new job in pending state and returns its id. The caller
-// is expected to call SetRunning when work starts and SetDone / SetFailed at
-// the end.
+// Create registers a new job in pending state; callers must follow with SetRunning then SetDone or SetFailed.
 func (t *Tracker) Create(kind Kind, userDID syntax.DID, trigger Trigger) *Job {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -106,9 +99,7 @@ func (t *Tracker) Create(kind Kind, userDID syntax.DID, trigger Trigger) *Job {
 	return j
 }
 
-// CreateOrReturnExisting atomically returns the in-flight (kind, did) job
-// within the guard window if one exists, otherwise creates a new pending job
-// and returns it. The boolean is true when an existing job was returned.
+// CreateOrReturnExisting atomically dedupes concurrent triggers for the same (kind, did) within the guard window instead of creating duplicate jobs.
 func (t *Tracker) CreateOrReturnExisting(kind Kind, userDID syntax.DID, trigger Trigger, guard time.Duration) (*Job, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -180,9 +171,7 @@ func (t *Tracker) Get(id string, userDID syntax.DID) (*Job, error) {
 	return cloneJob(j), nil
 }
 
-// ActiveForUser returns the most recent in-flight job for the user (any one
-// of pending/running). Returns nil if none. Finished jobs older than the
-// retention window are GC'd here too — keeps the polling fast path tidy.
+// ActiveForUser returns the most recent pending/running job for the user, or nil; also runs GC to keep the polling path free of stale jobs.
 func (t *Tracker) ActiveForUser(userDID syntax.DID) *Job {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -206,8 +195,7 @@ func (t *Tracker) ActiveForUser(userDID syntax.DID) *Job {
 	return cloneJob(best)
 }
 
-// GC sweeps finished jobs older than the retention window. Called
-// automatically from ActiveForUser, exposed for direct test invocation.
+// GC sweeps finished jobs older than the retention window; exposed separately for direct test invocation.
 func (t *Tracker) GC() {
 	t.mu.Lock()
 	defer t.mu.Unlock()

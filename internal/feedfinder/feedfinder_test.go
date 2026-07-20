@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -72,7 +71,7 @@ func TestResolve_PassthroughDirectFeedURL(t *testing.T) {
 }
 
 func TestResolve_PassthroughExtractsCanonicalTitle(t *testing.T) {
-	// Mastodon-style direct RSS feed — body parse should yield <channel><title>.
+	// Mastodon-style direct RSS feed; body parse should yield <channel><title>.
 	const body = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
@@ -133,9 +132,7 @@ func TestResolve_YouTube_ChannelDirect(t *testing.T) {
 }
 
 func TestResolve_YouTube_HandlePath_ConsentBypass(t *testing.T) {
-	// YouTube redirects un-cookied requests to a consent-bypass page that
-	// only embeds the channel ID in canonical / og:url / feed link attrs,
-	// not in the `"channelId":"..."` JS blob.
+	// YouTube's consent-bypass page (no cookies) embeds the channel ID only in canonical/og:url/feed-link attrs, not the JS blob.
 	const channelHTML = `<html><head>
 <link rel="canonical" href="https://www.youtube.com/channel/UCwxyzABCDEFGHIJKLMNopq">
 <link rel="alternate" type="application/rss+xml" title="RSS" href="https://www.youtube.com/feeds/videos.xml?channel_id=UCwxyzABCDEFGHIJKLMNopq">
@@ -184,8 +181,6 @@ func TestResolve_YouTube_HandlePath(t *testing.T) {
 }
 
 func TestResolve_YouTube_FeedFetchFailure_StillReturnsCandidate(t *testing.T) {
-	// fetchYTFeedTitle is best-effort: if the feed fetch errors or returns
-	// a non-2xx, the candidate is still returned with an empty title.
 	finder := New(&http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
 		if strings.HasPrefix(r.URL.Path, "/feeds/videos.xml") {
 			return &http.Response{StatusCode: 500, Body: io.NopCloser(strings.NewReader("boom"))}
@@ -209,10 +204,7 @@ func TestResolve_YouTube_FeedFetchFailure_StillReturnsCandidate(t *testing.T) {
 }
 
 func TestResolve_YouTube_HandlePath_FirstMatchWins(t *testing.T) {
-	// Pins the regex contract: the first UC… in document order is chosen.
-	// On every YouTube page shape, the canonical <link> / og:url / feed
-	// link precede any user-generated content that might also contain a
-	// /channel/UC… (e.g. an embed pointing at another channel).
+	// Pins the regex contract: canonical link/og:url/feed link precede user content like an embed pointing at another channel.
 	const channelHTML = `<html><head>
 <link rel="canonical" href="https://www.youtube.com/channel/UCcanonicalAAAAAAAAAAAA">
 <link rel="alternate" type="application/rss+xml" href="https://www.youtube.com/feeds/videos.xml?channel_id=UCcanonicalAAAAAAAAAAAA">
@@ -240,10 +232,9 @@ func TestResolve_YouTube_HandlePath_FirstMatchWins(t *testing.T) {
 }
 
 func TestResolve_YouTube_HandlePath_NonOK_NoCandidate(t *testing.T) {
-	// A non-2xx response on the channel page must not feed the regex; the
-	// resolver returns no YouTube candidate and falls through to generic.
+	// A non-2xx response must not feed the regex; falls through to generic resolution.
 	finder := New(&http.Client{Transport: roundTripperFunc(func(_ *http.Request) *http.Response {
-		// Error page that happens to mention a UC… string — must be ignored.
+		// Error page happens to mention a UC… string but must be ignored.
 		return &http.Response{
 			StatusCode: 404,
 			Header:     http.Header{"Content-Type": []string{"text/html"}},
@@ -260,31 +251,42 @@ func TestResolve_YouTube_HandlePath_NonOK_NoCandidate(t *testing.T) {
 	}
 }
 
-func TestResolve_ApplePodcasts(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/lookup", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("id") != "1234567" {
-			t.Errorf("id = %q", r.URL.Query().Get("id"))
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"results":[{"feedUrl":"https://feeds.example.com/show.rss","collectionName":"Example Show"}]}`))
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
+func TestResolve_SendsMorgenblauUserAgent(t *testing.T) {
+	var gotUA string
+	finder := New(&http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
+		gotUA = r.Header.Get("User-Agent")
+		return resp(htmlWithFeeds, "text/html; charset=utf-8")
+	})})
 
-	finder := New(http.DefaultClient).WithITunesBase(srv.URL + "/lookup")
-	cands, err := finder.Resolve(context.Background(), "https://podcasts.apple.com/us/podcast/example-show/id1234567")
-	if err != nil {
+	if _, err := finder.Resolve(context.Background(), "https://example.test/blog"); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if !strings.Contains(gotUA, "Morgenblau") {
+		t.Errorf("User-Agent = %q, want it to contain Morgenblau", gotUA)
+	}
+}
+
+func TestResolve_YouTube_SendsMorgenblauUserAgent(t *testing.T) {
+	// Handle-path resolution hits both the channel-scrape request and the feed-title fetch.
+	var gotUAs []string
+	finder := New(&http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
+		gotUAs = append(gotUAs, r.Header.Get("User-Agent"))
+		if strings.HasPrefix(r.URL.Path, "/feeds/videos.xml") {
+			return resp(ytAtomFeed, "application/atom+xml")
+		}
+		return resp(`<html><body><script>var x = {"channelId":"UCabcdefghijklmnopqrstuv"}</script></body></html>`, "text/html")
+	})})
+
+	if _, err := finder.Resolve(context.Background(), "https://www.youtube.com/@example-creator"); err != nil {
 		t.Fatal(err)
 	}
-	if len(cands) != 1 {
-		t.Fatalf("len = %d", len(cands))
+	if len(gotUAs) != 2 {
+		t.Fatalf("requests made = %d, want 2", len(gotUAs))
 	}
-	if cands[0].FeedURL != "https://feeds.example.com/show.rss" {
-		t.Errorf("FeedURL = %q", cands[0].FeedURL)
-	}
-	if cands[0].Title != "Example Show" {
-		t.Errorf("Title = %q", cands[0].Title)
+	for _, ua := range gotUAs {
+		if !strings.Contains(ua, "Morgenblau") {
+			t.Errorf("User-Agent = %q, want it to contain Morgenblau", ua)
+		}
 	}
 }
 

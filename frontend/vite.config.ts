@@ -24,5 +24,15 @@ export default defineConfig(({ mode }) => {
         '/api': `http://localhost:${apiPort}`,
       },
     },
+    build: {
+      // Route split alone still left one >500kB chunk; splitting vendor code out clears the warning.
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [{ name: 'vendor', test: /node_modules/ }],
+          },
+        },
+      },
+    },
   }
 })

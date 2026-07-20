@@ -57,8 +57,8 @@
     --color-leaf-green: oklch(0.7856 0.1479 139.64);
     --color-sunset-orange: oklch(0.7856 0.1479 57.72);
     --color-coral-red: oklch(0.6915 0.2121 22.14);
-    --color-aurora-purple: oklch(0.6903 0.256 314.86);
     --color-sand-brown: oklch(0.9579 0.0301 69.05);
+    --color-success: oklch(0.723 0.219 149.58);
 
     --color-brand: var(--color-atmosphere-blue);
 
@@ -66,8 +66,13 @@
     --text-2xs--line-height: calc(0.875 / 0.625);
 
     --shadow-popover:
+        0 0 0 1px var(--border),
         0 1px 2px oklch(0 0 0 / 0.04),
         0 8px 24px -6px oklch(0 0 0 / 0.08);
+    --shadow-card:
+        0 0 0 1px var(--border),
+        0 1px 2px -1px oklch(0 0 0 / 0.06),
+        0 2px 4px 0 oklch(0 0 0 / 0.04);
 }
 
 @theme inline {
@@ -185,8 +190,13 @@
         --sidebar-ring: var(--color-atmosphere-blue);
 
         --shadow-popover:
+            0 0 0 1px var(--border),
             0 2px 6px oklch(0 0 0 / 0.32),
             0 12px 28px -8px oklch(0 0 0 / 0.42);
+        --shadow-card:
+            0 0 0 1px var(--border),
+            0 1px 2px -1px oklch(0 0 0 / 0.28),
+            0 2px 4px 0 oklch(0 0 0 / 0.20);
     }
 }
 
@@ -299,40 +309,7 @@
     }
 }
 
-/*
- * Cross-document View Transitions — digest ↔ reader. The app navigates
- * between server-rendered routes, not within a client router, so we opt in
- * to cross-document transitions and animate the root group on both sides.
- * Browsers that don't support `@view-transition { navigation }` simply
- * fall back to a normal navigation.
- */
-@view-transition {
-    navigation: auto;
-}
-
-@keyframes view-root-out {
-    to {
-        opacity: 0;
-        filter: blur(12px);
-    }
-}
-
-@keyframes view-root-in {
-    from {
-        opacity: 0;
-        filter: blur(12px);
-    }
-}
-
-::view-transition-old(root) {
-    animation: view-root-out 400ms cubic-bezier(0.215, 0.61, 0.355, 1) both;
-}
-
-::view-transition-new(root) {
-    animation: view-root-in 400ms cubic-bezier(0.215, 0.61, 0.355, 1) both;
-}
-
-/* Strip-internal date changes: don't blur the whole page. */
+/* Strip-internal date changes: suppress the UA's default root cross-fade. */
 html[data-strip-transition] ::view-transition-old(root),
 html[data-strip-transition] ::view-transition-new(root) {
     animation: none;
@@ -380,9 +357,7 @@ html[data-strip-transition] ::view-transition-group(*) {
     }
 }
 
-/* The hugeicons free set ships outline bookmarks only. Flood-fill the path
- * with currentColor while saved so the toggle reads as the classic
- * filled-bookmark state. CSS wins over the path's `fill="none"` attribute. */
+/* ProIcons' BookmarkIcon is outline-only, so the saved state flood-fills the path to read as a filled bookmark. */
 .rail-icon-btn[data-saved] svg path {
     fill: currentColor;
 }
@@ -400,5 +375,56 @@ html[data-strip-transition] ::view-transition-group(*) {
             transform 150ms cubic-bezier(0.23, 1, 0.32, 1),
             height 150ms cubic-bezier(0.23, 1, 0.32, 1),
             opacity 120ms ease;
+    }
+}
+
+@keyframes discover-subscribe-pop {
+    0% {
+        transform: scale(1);
+    }
+
+    45% {
+        transform: scale(1.12);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+@utility animate-discover-subscribe-pop {
+    animation: discover-subscribe-pop 400ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .animate-discover-subscribe-pop {
+        animation: none;
+    }
+}
+
+/* The cut's CSS-side clocks. motion-transitions.ts owns these same values for its tweens and phase timers; every clock has to keep the same beat or the timers land mid-tween. */
+:root {
+    --cut-split-ms: 320ms;
+    --cut-divider-ms: 140ms;
+}
+
+/* Divider remounts full-bleed after a card merge; retract settles it into its resting mx-6 inset. */
+@keyframes discover-divider-retract {
+    from {
+        margin-inline: 0;
+    }
+
+    to {
+        margin-inline: 1.5rem;
+    }
+}
+
+@utility animate-discover-divider-retract {
+    animation: discover-divider-retract var(--cut-divider-ms) cubic-bezier(0.645, 0.045, 0.355, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .animate-discover-divider-retract {
+        animation: none;
     }
 }

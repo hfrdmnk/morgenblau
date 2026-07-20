@@ -1,9 +1,5 @@
-import {
-    LogoutSquare01Icon,
-    PlusSignIcon,
-    Refresh04Icon,
-} from '@hugeicons/core-free-icons';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { AddIcon, ArrowExportIcon, ArrowSyncIcon } from '@proicons/react';
+import { Link, useLocation } from 'wouter';
 
 import { useAuthedMe } from '@/hooks/use-authed-me';
 import {
@@ -45,7 +41,7 @@ type Props = {
 const ICON_ACTION_CLASS = 'hover:bg-transparent hover:text-primary';
 
 export function AppChrome({ onAddSourceClick }: Props) {
-    const pathname = window.location.pathname;
+    const [pathname] = useLocation();
     const me = useAuthedMe();
     const refresh = useChromeRefresh();
     const calendar = useChromeCalendar();
@@ -59,7 +55,7 @@ export function AppChrome({ onAddSourceClick }: Props) {
                         pathname.startsWith(`${tab.href}/`);
 
                     return (
-                        <a
+                        <Link
                             key={tab.href}
                             href={tab.href}
                             aria-current={isActive ? 'page' : undefined}
@@ -77,7 +73,7 @@ export function AppChrome({ onAddSourceClick }: Props) {
                                     className="absolute -bottom-2 left-1/2 size-1 -translate-x-1/2 rounded-full bg-primary"
                                 />
                             )}
-                        </a>
+                        </Link>
                     );
                 })}
             </nav>
@@ -102,7 +98,7 @@ export function AppChrome({ onAddSourceClick }: Props) {
                     aria-label="Add source"
                     onClick={onAddSourceClick}
                 >
-                    <HugeiconsIcon icon={PlusSignIcon} className="size-5" />
+                    <AddIcon className="size-5" />
                 </Button>
                 <Button
                     variant="ghost"
@@ -112,8 +108,7 @@ export function AppChrome({ onAddSourceClick }: Props) {
                     disabled={!refresh || refresh.busy}
                     onClick={() => refresh?.onRefresh()}
                 >
-                    <HugeiconsIcon
-                        icon={Refresh04Icon}
+                    <ArrowSyncIcon
                         className={cn(
                             'size-5',
                             refresh?.busy && 'motion-safe:animate-spin',
@@ -148,7 +143,7 @@ export function AppChrome({ onAddSourceClick }: Props) {
                                 type="submit"
                                 className="flex w-full items-center gap-2"
                             >
-                                <HugeiconsIcon icon={LogoutSquare01Icon} />
+                                <ArrowExportIcon />
                                 Log out
                             </button>
                         </DropdownMenuItem>

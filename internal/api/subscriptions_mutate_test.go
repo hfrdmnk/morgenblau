@@ -89,7 +89,7 @@ func TestSubscriptionsPatch_NoDiff_NoOp(t *testing.T) {
 	}
 }
 
-func TestSubscriptionsPatch_OtherUserRkey_403(t *testing.T) {
+func TestSubscriptionsPatch_OtherUserRkey_404(t *testing.T) {
 	idx := newRkeyIndex()
 	idx.seed("did:plc:bob", "3la", "https://x")
 	pds := &fakePDS{}
@@ -100,8 +100,8 @@ func TestSubscriptionsPatch_OtherUserRkey_403(t *testing.T) {
 		strings.NewReader(`{"title":"new"}`)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
-	if rr.Code != http.StatusForbidden {
-		t.Errorf("status = %d, want 403", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 (collapsed with not-owned)", rr.Code)
 	}
 }
 
@@ -275,8 +275,7 @@ func TestSubscriptionsPatch_SamePrimaryAndTags_NoOp(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
 
-	// Resubmit identical values (tags in different order should normalize equal? No —
-	// order is significant for tags; we resubmit the SAME order to assert no-op).
+	// Tags are order-sensitive, so this resubmits the same order to assert a no-op.
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
 		strings.NewReader(`{"primary":true,"tags":["News","Tech"]}`)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -312,7 +311,7 @@ func TestSubscriptionsDelete_HappyPath_204(t *testing.T) {
 	}
 }
 
-func TestSubscriptionsDelete_OtherUserRkey_403(t *testing.T) {
+func TestSubscriptionsDelete_OtherUserRkey_404(t *testing.T) {
 	idx := newRkeyIndex()
 	idx.seed("did:plc:bob", "3la", "https://x")
 	pds := &fakePDS{}
@@ -322,8 +321,8 @@ func TestSubscriptionsDelete_OtherUserRkey_403(t *testing.T) {
 	req := withSession(httptest.NewRequest(http.MethodDelete, "/api/subscriptions/3la", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
-	if rr.Code != http.StatusForbidden {
-		t.Errorf("status = %d, want 403", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 (collapsed with not-owned)", rr.Code)
 	}
 }
 
@@ -347,8 +346,7 @@ func TestSubscriptionsDelete_PDSFailure_502(t *testing.T) {
 
 // --- standardfeed PATCH/DELETE ---
 
-// seedStandardRow returns a Tier-1 row for a standardfeed subscription; the
-// rkey is the standard record's, the at-uri points at the standard collection.
+// seedStandardRow returns a Tier-1 row for a standardfeed subscription; the rkey and at-uri are the standard record's, not a sidecar's.
 func seedStandardRow(sidecarRkey *string) db.UserSubscription {
 	return db.UserSubscription{
 		Did:         "did:plc:alice",
@@ -382,9 +380,7 @@ func TestSubscriptionsPatch_Standardfeed_RejectsFeedURL_400(t *testing.T) {
 	}
 }
 
-// A metadata edit on a standardfeed source lazily creates the blue.morgen
-// sidecar. No scope gate: the sidecar rides the old blue.morgen grant, so
-// this runs on a scope-less session on purpose.
+// A metadata edit lazily creates the blue.morgen sidecar under the old grant, no new scope needed, so this runs on a scope-less session on purpose.
 func TestSubscriptionsPatch_Standardfeed_FirstEdit_CreatesSidecar(t *testing.T) {
 	idx := newRkeyIndex()
 	idx.seedRow(seedStandardRow(nil))
@@ -483,9 +479,9 @@ func TestSubscriptionsDelete_Standardfeed_SweepsDuplicatesAndSidecar(t *testing.
 	pds := &fakePDS{listed: map[string][]atprepo.ListedRecord{
 		standardSubCollection: {
 			{URI: "at://did:plc:alice/" + standardSubCollection + "/3std", Value: map[string]any{"publication": testPublication}},
-			// A duplicate written by another app — must be swept too.
+			// A duplicate written by another app; must be swept too.
 			{URI: "at://did:plc:alice/" + standardSubCollection + "/3dup", Value: map[string]any{"publication": testPublication}},
-			// A different publication — must survive.
+			// A different publication; must survive.
 			{URI: "at://did:plc:alice/" + standardSubCollection + "/3other", Value: map[string]any{"publication": "at://did:plc:other/site.standard.publication/3x"}},
 		},
 	}}
@@ -558,10 +554,7 @@ func TestSubscriptionsDelete_Standardfeed_ListFailure_502(t *testing.T) {
 	}
 }
 
-// Re-pointing a subscription to a different feed (the YouTube "exclude Shorts"
-// toggle on edit) must rewrite the PDS record, create the Tier-2 catalog row,
-// re-key the Tier-1 row, and dispatch a fetch for the new feed — preserving the
-// existing title/primary/tags.
+// The YouTube "exclude Shorts" toggle re-points a subscription to a different feed URL on edit.
 func TestSubscriptionsPatch_FeedURLChange_RepointsAndDispatches(t *testing.T) {
 	const channel = "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc"
 	const playlist = "https://www.youtube.com/feeds/videos.xml?playlist_id=UULFabc"
@@ -737,5 +730,30 @@ func TestSubscriptionsPatch_FeedURLChange_Conflict_409(t *testing.T) {
 	}
 	if len(disp.dispatched) != 0 {
 		t.Errorf("dispatch despite conflict: %v", disp.dispatched)
+	}
+}
+
+// TestSubscriptionsPatch_InvalidRecord_500_NoWrite proves an over-cap title (>128 graphemes) is rejected before the PDS put, not merely logged.
+func TestSubscriptionsPatch_InvalidRecord_500_NoWrite(t *testing.T) {
+	idx := newRkeyIndex()
+	idx.seed("did:plc:alice", "3la", "https://example.test/feed.xml")
+	pds := &fakePDS{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+
+	overlong := strings.Repeat("x", 200) // > maxGraphemes:128
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
+		strings.NewReader(`{"title":"`+overlong+`"}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body = %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "invalid_record") {
+		t.Errorf("body = %q, want invalid_record code", rr.Body.String())
+	}
+	if pds.puts != 0 {
+		t.Errorf("PDS puts = %d, want 0 (validation must run before the write)", pds.puts)
 	}
 }

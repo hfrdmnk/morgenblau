@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"path/filepath"
 	"sync"
@@ -14,11 +15,11 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+
+	"morgenblau/internal/secret"
 )
 
-// schemaSQL — keep in sync with internal/database/migrations/*_oauth_tables.sql.
-// Reading the migration file directly would couple the test to disk layout;
-// inlining keeps the test hermetic.
+// schemaSQL mirrors internal/database/migrations/*_oauth_tables.sql; inlined to keep the test hermetic.
 const schemaSQL = `
 CREATE TABLE oauth_sessions (
     did         TEXT NOT NULL,
@@ -52,6 +53,24 @@ func newMemDB(t *testing.T) *sql.DB {
 	return db
 }
 
+func testKeyset(t *testing.T) *secret.Keyset {
+	t.Helper()
+	key := make([]byte, secret.KeySize)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatal(err)
+	}
+	ks, err := secret.NewKeyset(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ks
+}
+
+func newStore(t *testing.T) *Store {
+	t.Helper()
+	return New(newMemDB(t), testKeyset(t))
+}
+
 func sampleSession(did string, sid string) oauth.ClientSessionData {
 	d, _ := syntax.ParseDID(did)
 	return oauth.ClientSessionData{
@@ -80,10 +99,8 @@ func sampleAuthRequest(state string) oauth.AuthRequestData {
 	}
 }
 
-// --- Sessions ---
-
 func TestSession_PutGet_RoundTrip(t *testing.T) {
-	s := New(newMemDB(t))
+	s := newStore(t)
 	ctx := context.Background()
 	in := sampleSession("did:plc:alice", "sid-1")
 	if err := s.SaveSession(ctx, in); err != nil {
@@ -102,7 +119,7 @@ func TestSession_PutGet_RoundTrip(t *testing.T) {
 }
 
 func TestSession_Get_UnknownReturnsErr(t *testing.T) {
-	s := New(newMemDB(t))
+	s := newStore(t)
 	d, _ := syntax.ParseDID("did:plc:nobody")
 	_, err := s.GetSession(context.Background(), d, "missing")
 	if err == nil {
@@ -111,7 +128,7 @@ func TestSession_Get_UnknownReturnsErr(t *testing.T) {
 }
 
 func TestSession_MultipleSessionsPerDID(t *testing.T) {
-	s := New(newMemDB(t))
+	s := newStore(t)
 	ctx := context.Background()
 	a := sampleSession("did:plc:alice", "sid-1")
 	b := sampleSession("did:plc:alice", "sid-2")
@@ -144,7 +161,7 @@ func TestSession_MultipleSessionsPerDID(t *testing.T) {
 }
 
 func TestSession_SaveUpserts(t *testing.T) {
-	s := New(newMemDB(t))
+	s := newStore(t)
 	ctx := context.Background()
 	in := sampleSession("did:plc:alice", "sid-1")
 	if err := s.SaveSession(ctx, in); err != nil {
@@ -163,10 +180,8 @@ func TestSession_SaveUpserts(t *testing.T) {
 	}
 }
 
-// --- Auth requests ---
-
 func TestAuthRequest_PutGet_RoundTrip(t *testing.T) {
-	s := New(newMemDB(t))
+	s := newStore(t)
 	ctx := context.Background()
 	in := sampleAuthRequest("state-1")
 	if err := s.SaveAuthRequestInfo(ctx, in); err != nil {
@@ -182,7 +197,7 @@ func TestAuthRequest_PutGet_RoundTrip(t *testing.T) {
 }
 
 func TestAuthRequest_Get_UnknownReturnsErr(t *testing.T) {
-	s := New(newMemDB(t))
+	s := newStore(t)
 	_, err := s.GetAuthRequestInfo(context.Background(), "missing")
 	if err == nil {
 		t.Fatal("expected error for missing auth request")
@@ -190,7 +205,7 @@ func TestAuthRequest_Get_UnknownReturnsErr(t *testing.T) {
 }
 
 func TestAuthRequest_Delete(t *testing.T) {
-	s := New(newMemDB(t))
+	s := newStore(t)
 	ctx := context.Background()
 	in := sampleAuthRequest("state-1")
 	if err := s.SaveAuthRequestInfo(ctx, in); err != nil {
@@ -204,15 +219,11 @@ func TestAuthRequest_Delete(t *testing.T) {
 	}
 }
 
-// Behavior: GetAuthRequestInfo returns an error for rows whose expires_at is
-// in the past. The PRD lets us pick — pin GC-driven cleanup AND skip-if-expired
-// at read time so callers never accidentally consume a stale request.
+// Read-time expiry check backs GC-driven cleanup, so callers never consume a stale request.
 func TestAuthRequest_ExpiredNotReturned(t *testing.T) {
-	s := New(newMemDB(t))
+	s := newStore(t)
 	ctx := context.Background()
 	in := sampleAuthRequest("state-old")
-	// Save normally, then backdate expires_at directly to simulate a row that
-	// has aged past the 10-minute window.
 	if err := s.SaveAuthRequestInfo(ctx, in); err != nil {
 		t.Fatal(err)
 	}
@@ -228,9 +239,8 @@ func TestAuthRequest_ExpiredNotReturned(t *testing.T) {
 	}
 }
 
-// GC sweep deletes rows where expires_at < now.
 func TestAuthRequest_GCDeletesExpired(t *testing.T) {
-	s := New(newMemDB(t))
+	s := newStore(t)
 	ctx := context.Background()
 	if err := s.SaveAuthRequestInfo(ctx, sampleAuthRequest("fresh")); err != nil {
 		t.Fatal(err)
@@ -254,20 +264,14 @@ func TestAuthRequest_GCDeletesExpired(t *testing.T) {
 		t.Errorf("GCExpired returned %d, want 1", n)
 	}
 
-	// fresh still present (under SaveAuthRequestInfo's 10-min default)
 	if _, err := s.GetAuthRequestInfo(ctx, "fresh"); err != nil {
 		t.Errorf("fresh row should still exist: %v", err)
 	}
 }
 
-// --- Refresh-race lock ---
-
-// SafeRefresh wraps a "fetch session, decide if refresh needed, refresh,
-// save" cycle in a per-(did,sid) mutex. Two concurrent goroutines for the
-// same key serialize; the second goroutine sees the refreshed tokens and
-// skips its own refresh. Exactly one refresh round-trips to the AS.
+// Two goroutines racing the same key see exactly one refresh; the loser reads the winner's fresh token.
 func TestLockSession_OnlyOneRefresh_SameKey(t *testing.T) {
-	s := New(newMemDB(t))
+	s := newStore(t)
 	ctx := context.Background()
 	in := sampleSession("did:plc:alice", "sid-1")
 	in.AccessToken = "stale"
@@ -319,11 +323,9 @@ func TestLockSession_OnlyOneRefresh_SameKey(t *testing.T) {
 	}
 }
 
-// Concurrent calls for DIFFERENT (did, sid) pairs do NOT serialize.
-// We prove this by having two goroutines hold their respective locks for
-// longer than the test timeout would allow if they were globally serialized.
+// Independent (did, sid) pairs must not serialize their locks.
 func TestLockSession_IndependentKeysRunInParallel(t *testing.T) {
-	s := New(newMemDB(t))
+	s := newStore(t)
 	didA, _ := syntax.ParseDID("did:plc:alice")
 	didB, _ := syntax.ParseDID("did:plc:bob")
 
@@ -356,17 +358,14 @@ func TestLockSession_IndependentKeysRunInParallel(t *testing.T) {
 	wg.Wait()
 	elapsed := time.Since(t0)
 
-	// If the locks were shared, the two 100ms holds would serialize → ≥ 200ms.
-	// In parallel, ≈ 100ms. Allow generous slack for CI scheduling.
+	// Shared locks would force ≥200ms serial; parallel finishes in ~100ms (slack for CI scheduling).
 	if elapsed > 180*time.Millisecond {
 		t.Errorf("independent keys serialized (elapsed %v, holds %v)", elapsed, hold)
 	}
 }
 
-// Indigo's ClientAuthStore contract requires upsert semantics on SaveSession.
-// Pin that explicitly — losing it is a silent regression.
-func TestSession_DataBlobIsValidJSON(t *testing.T) {
-	s := New(newMemDB(t))
+func TestSession_DataBlobIsEncrypted(t *testing.T) {
+	s := newStore(t)
 	ctx := context.Background()
 	in := sampleSession("did:plc:alice", "sid-1")
 	if err := s.SaveSession(ctx, in); err != nil {
@@ -380,12 +379,43 @@ func TestSession_DataBlobIsValidJSON(t *testing.T) {
 	if err := row.Scan(&raw); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.HasPrefix(raw, []byte("{")) {
-		t.Errorf("session blob doesn't look like JSON: %s", raw[:min(40, len(raw))])
+	if bytes.HasPrefix(raw, []byte("{")) {
+		t.Errorf("session blob is plaintext JSON at rest: %s", raw[:min(40, len(raw))])
+	}
+	if bytes.Contains(raw, []byte(in.AccessToken)) || bytes.Contains(raw, []byte(in.RefreshToken)) {
+		t.Error("session blob leaks token material at rest")
 	}
 }
 
-// Sanity: the SQLite store satisfies indigo's ClientAuthStore interface.
+// Rotated keyset [newKey, oldKey] must still decrypt a session sealed under oldKey (the SESSION_STORE_KEYS rotation path).
+func TestStore_KeyRotation_ReadsOldSession(t *testing.T) {
+	db := newMemDB(t)
+	ctx := context.Background()
+
+	oldKey := make([]byte, secret.KeySize)
+	if _, err := rand.Read(oldKey); err != nil {
+		t.Fatal(err)
+	}
+	oldSet, _ := secret.NewKeyset(oldKey)
+	in := sampleSession("did:plc:alice", "sid-1")
+	if err := New(db, oldSet).SaveSession(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+
+	newKey := make([]byte, secret.KeySize)
+	if _, err := rand.Read(newKey); err != nil {
+		t.Fatal(err)
+	}
+	rotated, _ := secret.NewKeyset(newKey, oldKey)
+	got, err := New(db, rotated).GetSession(ctx, in.AccountDID, in.SessionID)
+	if err != nil {
+		t.Fatalf("rotated store couldn't read old session: %v", err)
+	}
+	if got.AccessToken != in.AccessToken {
+		t.Errorf("token mismatch after rotation: %q", got.AccessToken)
+	}
+}
+
 func TestSatisfiesInterface(t *testing.T) {
 	var _ oauth.ClientAuthStore = (*Store)(nil)
 }

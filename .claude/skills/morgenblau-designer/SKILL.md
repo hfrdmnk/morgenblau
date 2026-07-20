@@ -15,18 +15,18 @@ Keep the craft bar high (taste, not concrete examples): Linear's precision, Fami
 
 ## Surface layers — closer = _lighter_
 
-Morgenblau inverts the common "shadows signal elevation" pattern. Closeness to the user is expressed by **luminance**, not shadow. Surfaces rise toward the user by getting lighter.
+Morgenblau inverts the common "shadows signal elevation" pattern. Closeness to the user is expressed by **luminance**, not shadow; the box-shadow described below draws an edge and carries no elevation meaning. Surfaces rise toward the user by getting lighter.
 
-| Level      | Light surface | Dark surface | Border            | Example                                               |
-| ---------- | ------------- | ------------ | ----------------- | ----------------------------------------------------- |
-| **0 base** | gray-100      | gray-950     | none              | the page background and app chrome, behind everything |
-| **1 card** | white         | gray-800     | hairline `border` | a card on the base (digest, sources, source, login)   |
+| Level      | Light surface | Dark surface | Edge          | Example                                               |
+| ---------- | ------------- | ------------ | ------------- | ----------------------------------------------------- |
+| **0 base** | gray-100      | gray-950     | none          | the page background and app chrome, behind everything |
+| **1 card** | white         | gray-800     | `shadow-card` | a card on the base (digest, sources, source, login)   |
 
 There are **two solid surface levels only**, and they are the only solid grays in the system. The base (0) is everything behind, including the nav chrome; a card (1) is anything sitting on it. Everything _above_ the card (controls, hovers, inner wells, the contents of popovers and dialogs) is an **alpha overlay**, covered in the next section, never a third solid level. (Until mid-2026 there was a third level and a framed "Window" container above the base; both retired.)
 
 **Principle:** the same direction in both modes, closer is lighter. In light mode the card climbs to white; in dark mode it climbs from near-black toward mid-gray.
 
-**Borders are reserved for card-level surfaces and dividers.** A card (and its kin: dialogs, popovers, dropdowns) carries a single hairline `border-border` (alpha black 8% in light, white 10% in dark); rules and separators use the same token. Controls never get a border; they read by fill.
+**The outer edge of any raised or floating surface is a layered box-shadow, never a `border`.** Cards, dialogs, popovers, dropdowns, tooltips, comboboxes: every one of them draws its outer edge with a hairline `0 0 0 1px var(--border)` ring folded into the shadow, plus soft depth layers underneath (technique: [jakub.kr](https://jakub.kr/writing/details-that-make-interfaces-feel-better#use-shadows-instead-of-borders)). Two tokens carry it: `shadow-card` for solid card surfaces, `shadow-popover` for floating ones. A real `border` is reserved for *inner* rules and dividers (`divide-border`, `border-t`); it never draws an outer edge. Controls never get a border either; they read by fill.
 
 **Level is just base-versus-card, expressed directly.** A card paints its own surface with `bg-card`; the base is `bg-background`. There is no `LevelContext`, and controls do not read a level. Overlays composite against whatever sits beneath them, so the same control class is correct on the base, on a card, or inside a dialog.
 
@@ -65,7 +65,7 @@ Error and invalid states (`aria-invalid`): an input gains a 1 px `ring-destructi
 
 ## Color
 
-Morgenblau's palette is almost entirely monochrome, with two exceptions: one **brand accent** and four **category markers**.
+Morgenblau's palette is almost entirely monochrome, with two exceptions: one **brand accent** and three **category markers**.
 
 | Token             | Role                                                                                    |
 | ----------------- | --------------------------------------------------------------------------------------- |
@@ -73,7 +73,6 @@ Morgenblau's palette is almost entirely monochrome, with two exceptions: one **b
 | `leaf-green`      | longform / blogpost category                                                            |
 | `sunset-orange`   | micropost category                                                                      |
 | `coral-red`       | video category                                                                          |
-| `aurora-purple`   | podcast category                                                                        |
 | `sand-brown`      | **sunrise-horizon only** — gradient endpoints. Never text. Never surfaces.              |
 
 **Rules of use:**
@@ -202,12 +201,13 @@ Lives in `BRAND.md` at the repo root. Not duplicated here.
 
 ## Icons
 
-- **Library:** Hugeicons (React).
+- **Library:** ProIcons (React), via `@proicons/react`. Direct named imports, no wrapper component: `import { BookmarkIcon } from '@proicons/react'`, rendered `<BookmarkIcon className="size-[1.125rem]" />`.
 - **Variant: stroke.** Solid and two-tone feel heavy next to the calm typography.
 - **Sizes:** 1 rem (tight inline, e.g. inside small buttons or chip adornments), 1.125 rem (standard inline with body text), 1.25 rem (primary navigation, app chrome).
-- **Stroke weight:** Hugeicons' stroke default (1.5 px). Do not override.
+- **Stroke weight:** ProIcons' stroke default (1.5 px). Do not override.
 - **Color: `currentColor`.** Icons inherit the text color of their surrounding context — primary, secondary, or atmosphere-blue depending on where they sit. Icons almost never need their own color token.
 - **Pairing with text:** `inline-flex items-center gap-[0.5em]`.
+- **The ATProto `@` badge is a styled text glyph, not an icon.** ProIcons has no at-sign glyph.
 
 ---
 
@@ -224,7 +224,9 @@ If a Morgenblau design exhibits any of these, something has gone wrong:
 - **Staggered card entrances on digest load.** All content arrives together.
 - **A third button variant** (solid, black, dark). Two variants carry every action. Critical actions earn emphasis through copy and placement, not louder buttons.
 - **Solid level-keyed control grays.** A control painted with a fixed `gray-N` (a `bg-gray-100` secondary button, a `gray-700` input) instead of an overlay. It vanishes on a same-gray surface and forces level bookkeeping. Controls tint; only the base and the card are solid.
-- **A border on a control.** Inputs, buttons, switches, and chip fields carry no border; they read by fill. Borders belong to cards (and their dialog / popover kin) and to dividers, nowhere else.
+- **A border on a control.** Inputs, buttons, switches, and chip fields carry no border; they read by fill.
+- **A `border` (or bare `ring-border`) on a surface's outer edge.** Cards, dialogs, popovers, dropdowns, tooltips, and comboboxes draw their outer edge with `shadow-card` / `shadow-popover`, never a `border`. Borders are reserved for inner rules and dividers (`divide-border`, `border-t`).
+  - Not a surface edge: a decorative inset ring on media, like the avatar's `after:ring-1 after:ring-inset after:ring-border`. That accents the image, not the component's outer boundary.
 - **Newsreader (or any serif) in product UI.** Serif belongs to long-form reader body copy only. Using `font-serif` for titles, captions, UI chrome, or marketing breaks the metaphor; the reader stops feeling like a place. (The brand wordmark is a separate lockup set in Newsreader italic; see `BRAND.md`.)
 - **Hand-drawn, script, or decorative _typefaces_.** The product type is Geist + Newsreader; no third typeface. (The editor's-hand marks defined in `BRAND.md` are illustration, not type, and are allowed where that doc permits them.)
 - **Unread counts, progress indicators, "X items left" badges.** These are anti-Morgenblau.

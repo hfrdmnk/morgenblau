@@ -8,9 +8,9 @@ import {
     useRegisterChromeRefresh,
 } from '@/hooks/use-chrome-refresh';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { useEntryNavigation } from '@/hooks/use-entry-navigation';
 import { useJobsPoll } from '@/hooks/use-jobs-poll';
-import { useKeyboard } from '@/hooks/use-keyboard';
-import { useListNavigation } from '@/hooks/use-list-navigation';
+import { api } from '@/lib/api';
 import {
     addDays,
     formatISODate,
@@ -18,7 +18,6 @@ import {
     parseISODate,
     startOfLocalDay,
 } from '@/lib/date';
-import { entryActivation } from '@/lib/entry-nav';
 import { subscribeSubscriptionAdded } from '@/lib/subscription-events';
 
 type DigestResponse = {
@@ -45,8 +44,7 @@ export function Digest() {
     const [reloadTick, setReloadTick] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
 
-    // Clean up the URL once on mount if the inbound date param was invalid
-    // or in the future. readDateFromURL already clamped to today.
+    // Clean up the URL once on mount if the date param was invalid or in the future; readDateFromURL already clamped it.
     useEffect(() => {
         const raw = new URLSearchParams(window.location.search).get('date');
         if (raw === null) return;
@@ -70,9 +68,7 @@ export function Digest() {
         const load = async () => {
             try {
                 const url = `/api/digest?date=${encodeURIComponent(formatISODate(selectedDate))}`;
-                const r = await fetch(url, { credentials: 'same-origin' });
-                if (!r.ok) throw new Error(String(r.status));
-                const data = (await r.json()) as DigestResponse;
+                const data = await api<DigestResponse>(url);
                 if (cancelled) return;
                 setState({
                     kind: 'ok',
@@ -108,10 +104,7 @@ export function Digest() {
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
         try {
-            await fetch('/api/digest/refresh', {
-                method: 'POST',
-                credentials: 'same-origin',
-            });
+            await api('/api/digest/refresh', { method: 'POST' });
         } catch {
             // The poll/reload below will surface fetch outcomes; ignore here.
         }
@@ -138,10 +131,7 @@ export function Digest() {
         onSelect: handleSelectDate,
     });
 
-    const entries = useMemo(
-        () => (state.kind === 'ok' ? state.entries : EMPTY_ENTRIES),
-        [state],
-    );
+    const entries = state.kind === 'ok' ? state.entries : EMPTY_ENTRIES;
     const entryFrom = useMemo(
         () =>
             isSameDay(selectedDate, today)
@@ -149,25 +139,7 @@ export function Digest() {
                 : { date: formatISODate(selectedDate) },
         [selectedDate, today],
     );
-    const onOpen = useCallback(
-        (entry: Entry) => {
-            const target = entryActivation(entry, entryFrom);
-            if (!target) return;
-            if (target.external) {
-                window.open(target.href, '_blank', 'noopener,noreferrer');
-            } else {
-                window.location.href = target.href;
-            }
-        },
-        [entryFrom],
-    );
-    const nav = useListNavigation(entries, onOpen);
-
-    useKeyboard({
-        ArrowDown: () => nav.move(1),
-        ArrowUp: () => nav.move(-1),
-        Enter: () => nav.open(),
-        Escape: () => nav.clear(),
+    const nav = useEntryNavigation(entries, entryFrom, {
         ArrowLeft: () => handleSelectDate(addDays(selectedDate, -1)),
         ArrowRight: () => {
             const next = addDays(selectedDate, 1);
@@ -189,19 +161,6 @@ export function Digest() {
                         lead="Couldn't load the digest."
                         detail="Try refreshing in a moment."
                     />
-                ) : state.entries.length === 0 ? (
-                    <EmptyMessage
-                        lead={
-                            state.hasActiveJob
-                                ? 'Brewing your first edition…'
-                                : 'Nothing new this morning.'
-                        }
-                        detail={
-                            state.hasActiveJob
-                                ? "This won't take long."
-                                : 'Enjoy your coffee.'
-                        }
-                    />
                 ) : (
                     <Newspaper
                         entries={entries}
@@ -209,6 +168,17 @@ export function Digest() {
                         today={today}
                         entryFrom={entryFrom}
                         nav={nav}
+                        emptyState={
+                            hasActiveJob
+                                ? {
+                                      lead: 'Brewing your first edition…',
+                                      detail: "This won't take long.",
+                                  }
+                                : {
+                                      lead: 'Nothing new this morning.',
+                                      detail: 'Enjoy your coffee.',
+                                  }
+                        }
                     />
                 )}
         </div>
@@ -229,7 +199,7 @@ function DigestSkeleton() {
         <article
             aria-busy
             aria-label="Loading digest"
-            className="overflow-hidden rounded-xl bg-card"
+            className="overflow-hidden rounded-xl bg-card shadow-card"
         >
             <ul className="flex flex-col">
                 {Array.from({ length: 6 }).map((_, index) => (

@@ -15,9 +15,7 @@ const (
 	handlePub = "at://blog.example.test/site.standard.publication/3pub"
 )
 
-// fakeStandard is a canned StandardResolver. Publications are keyed by the
-// REQUESTED uri (handle- or DID-form) and return the DID-normalized shape,
-// mirroring the real client's normalization.
+// fakeStandard keys publications by the requested uri (handle or DID form) but returns them DID-normalized, mirroring the real client.
 type fakeStandard struct {
 	pubs         map[string]*standardfeed.Publication
 	docs         map[string]*standardfeed.Document
@@ -114,7 +112,7 @@ func TestResolve_WellKnownMissOrError_RSSOnly(t *testing.T) {
 
 func TestResolve_ATURIPassthrough_Publication(t *testing.T) {
 	std := &fakeStandard{pubs: map[string]*standardfeed.Publication{pubURI: normalizedPub()}}
-	// Any HTTP request would be a bug — at-uris resolve via the PDS client.
+	// Any HTTP request here would be a bug; at-uris resolve via the PDS client.
 	finder := New(&http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
 		t.Fatalf("unexpected HTTP request: %s", r.URL)
 		return nil
@@ -209,8 +207,7 @@ func TestResolve_ArticleDocLinkTag_ResolvesPublication(t *testing.T) {
 }
 
 func TestResolve_WellKnownAndDocLink_DedupeByNormalizedURI(t *testing.T) {
-	// Well-known returns the handle-form uri, the document's site is the
-	// DID-form — both normalize to the same publication.
+	// Well-known returns the handle-form uri, the document's site the DID-form; both normalize to the same publication.
 	std := &fakeStandard{
 		pubs: map[string]*standardfeed.Publication{
 			pubURI:    normalizedPub(),

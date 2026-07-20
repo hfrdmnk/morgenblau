@@ -16,37 +16,78 @@ import (
 )
 
 type fakeStore struct {
-	mu           sync.Mutex
-	rows         map[string]map[string]db.ListUserSubscriptionsForSyncRow // did -> rkey -> row
-	deletes      []string
-	upserts      int
-	upsertParams map[string]db.UpsertUserSubscriptionParams // rkey -> last params
-	feedUps      int
-	feedParams   []db.UpsertFeedParams
-	feedErr      func(feedURL string) error
-	saves            map[string]map[string]db.ListUserSavesForSyncRow // did -> rkey -> row
-	saveDeletes      []string
-	saveUpserts      int
-	saveUpsertParams map[string]db.UpsertUserSaveParams // rkey -> last params
-	shares            map[string]map[string]db.ListUserSharesForSyncRow // did -> rkey -> row
-	shareDeletes      []string
-	shareUpsertParams map[string]db.UpsertUserShareParams // rkey -> last params
-	// ops is a single ordered log across deletes and upserts (both subs and
-	// shares) so tests can assert deletes run before a rekeyed upsert — the
-	// property real SQLite's unique constraint enforces but the maps above lose.
+	mu                 sync.Mutex
+	rows               map[string]map[string]db.ListUserSubscriptionsForSyncRow // did -> rkey -> row
+	deletes            []string
+	upserts            int
+	upsertParams       map[string]db.UpsertUserSubscriptionParams // rkey -> last params
+	feedUps            int
+	feedParams         []db.UpsertFeedParams
+	feedErr            func(feedURL string) error
+	saves              map[string]map[string]db.ListUserSavesForSyncRow // did -> rkey -> row
+	saveDeletes        []string
+	saveUpserts        int
+	saveUpsertParams   map[string]db.UpsertUserSaveParams                // rkey -> last params
+	shares             map[string]map[string]db.ListUserSharesForSyncRow // did -> rkey -> row
+	shareDeletes       []string
+	shareUpsertParams  map[string]db.UpsertUserShareParams                // rkey -> last params
+	follows            map[string]map[string]db.ListUserFollowsForSyncRow // did -> rkey -> row
+	followDeletes      []string
+	followUpserts      int
+	followUpsertParams map[string]db.UpsertUserFollowParams // rkey -> last params
+	// ops is a single ordered log across deletes and upserts so tests can assert delete-before-rekeyed-upsert ordering, which the maps above lose.
 	ops       []string
 	entryURLs map[string]string // guid -> cached feed_entries.url
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		rows:              map[string]map[string]db.ListUserSubscriptionsForSyncRow{},
-		upsertParams:      map[string]db.UpsertUserSubscriptionParams{},
-		saves:             map[string]map[string]db.ListUserSavesForSyncRow{},
-		saveUpsertParams:  map[string]db.UpsertUserSaveParams{},
-		shares:            map[string]map[string]db.ListUserSharesForSyncRow{},
-		shareUpsertParams: map[string]db.UpsertUserShareParams{},
+		rows:               map[string]map[string]db.ListUserSubscriptionsForSyncRow{},
+		upsertParams:       map[string]db.UpsertUserSubscriptionParams{},
+		saves:              map[string]map[string]db.ListUserSavesForSyncRow{},
+		saveUpsertParams:   map[string]db.UpsertUserSaveParams{},
+		shares:             map[string]map[string]db.ListUserSharesForSyncRow{},
+		shareUpsertParams:  map[string]db.UpsertUserShareParams{},
+		follows:            map[string]map[string]db.ListUserFollowsForSyncRow{},
+		followUpsertParams: map[string]db.UpsertUserFollowParams{},
 	}
+}
+
+func (s *fakeStore) ListUserFollowsForSync(_ context.Context, did string) ([]db.ListUserFollowsForSyncRow, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows := make([]db.ListUserFollowsForSyncRow, 0, len(s.follows[did]))
+	for _, r := range s.follows[did] {
+		rows = append(rows, r)
+	}
+	return rows, nil
+}
+
+func (s *fakeStore) UpsertUserFollow(_ context.Context, arg db.UpsertUserFollowParams) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.followUpserts++
+	s.followUpsertParams[arg.Rkey] = arg
+	if _, ok := s.follows[arg.Did]; !ok {
+		s.follows[arg.Did] = map[string]db.ListUserFollowsForSyncRow{}
+	}
+	s.follows[arg.Did][arg.Rkey] = db.ListUserFollowsForSyncRow{
+		Did:        arg.Did,
+		Rkey:       arg.Rkey,
+		AtUri:      arg.AtUri,
+		SubjectDid: arg.SubjectDid,
+	}
+	return nil
+}
+
+func (s *fakeStore) DeleteUserFollow(_ context.Context, arg db.DeleteUserFollowParams) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.followDeletes = append(s.followDeletes, arg.Rkey)
+	if m, ok := s.follows[arg.Did]; ok {
+		delete(m, arg.Rkey)
+	}
+	return nil
 }
 
 func (s *fakeStore) ListUserSharesForSync(_ context.Context, did string) ([]db.ListUserSharesForSyncRow, error) {
@@ -208,6 +249,8 @@ type fakeLister struct {
 	sharesErr     error
 	recommends    []PDSRecommend
 	recommendsErr error
+	follows       []PDSFollow
+	followsErr    error
 }
 
 func (f *fakeLister) ListSubscriptions(_ context.Context, _ *oauth.ClientSession) ([]PDSSubscription, error) {
@@ -232,6 +275,10 @@ func (f *fakeLister) ListShares(_ context.Context, _ *oauth.ClientSession) ([]PD
 
 func (f *fakeLister) ListRecommends(_ context.Context, _ *oauth.ClientSession) ([]PDSRecommend, error) {
 	return f.recommends, f.recommendsErr
+}
+
+func (f *fakeLister) ListFollows(_ context.Context, _ *oauth.ClientSession) ([]PDSFollow, error) {
+	return f.follows, f.followsErr
 }
 
 type countingFetcher struct {
@@ -265,6 +312,29 @@ func newSession(did string) *oauth.ClientSession {
 	}
 }
 
+func TestSyncUser_ReconcileFollows_RunsInDualTrack(t *testing.T) {
+	store := newFakeStore()
+	lister := &fakeLister{follows: []PDSFollow{
+		{URI: "at://x/f/3fa", Rkey: "3fa", SubjectDID: "did:plc:bob", CreatedAt: "2026-07-01T00:00:00Z"},
+	}}
+	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
+	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+		t.Fatal(err)
+	}
+	if store.followUpserts != 1 {
+		t.Errorf("followUpserts = %d, want 1", store.followUpserts)
+	}
+}
+
+func TestSyncUser_ReconcileFollowsFailure_DoesNotFailRun(t *testing.T) {
+	store := newFakeStore()
+	lister := &fakeLister{followsErr: errors.New("pds down")}
+	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
+	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+		t.Fatalf("runDualTrack failed on a follows-only error: %v", err)
+	}
+}
+
 func TestSyncUser_ReconcileApplies_InsertsAndDeletes(t *testing.T) {
 	store := newFakeStore()
 	store.rows["did:plc:alice"] = map[string]db.ListUserSubscriptionsForSyncRow{
@@ -287,10 +357,6 @@ func TestSyncUser_ReconcileApplies_InsertsAndDeletes(t *testing.T) {
 	}
 }
 
-// TestSyncUser_ReconcilePreservesPrimaryAndTags guards the regression where the
-// mirror dropped primary/tags: the PDS is the source of truth, so reconcile must
-// carry both onto the Tier-1 upsert. A remote record with them set writes them
-// through; a remote record without them writes zero values (correct, not a wipe).
 func TestSyncUser_ReconcilePreservesPrimaryAndTags(t *testing.T) {
 	store := newFakeStore()
 	lister := &fakeLister{subs: []PDSSubscription{
@@ -319,60 +385,7 @@ func TestSyncUser_ReconcilePreservesPrimaryAndTags(t *testing.T) {
 	}
 }
 
-func TestSyncUser_ReconcileSaves_InsertsAndDeletes(t *testing.T) {
-	store := newFakeStore()
-	// A local save the PDS no longer has → should be deleted.
-	store.saves["did:plc:alice"] = map[string]db.ListUserSavesForSyncRow{
-		"goneA": {Did: "did:plc:alice", Rkey: "goneA", AtUri: "at://x/s/goneA", ItemUrl: "https://item/old"},
-	}
-	feed := "https://feed/new"
-	lister := &fakeLister{saves: []PDSSave{
-		{URI: "at://x/s/newB", Rkey: "newB", ItemURL: "https://item/new", FeedURL: feed, CreatedAt: "2026-06-01T00:00:00Z"},
-	}}
-	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
-
-	if err := eng.reconcileSaves(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
-		t.Fatal(err)
-	}
-
-	if store.saveUpserts != 1 {
-		t.Errorf("saveUpserts = %d, want 1", store.saveUpserts)
-	}
-	if got, ok := store.saves["did:plc:alice"]["newB"]; !ok {
-		t.Error("remote save newB was not inserted locally")
-	} else if got.ItemUrl != "https://item/new" || got.FeedUrl == nil || *got.FeedUrl != feed {
-		t.Errorf("inserted save = %+v, want item/new + feed/new", got)
-	}
-	if len(store.saveDeletes) != 1 || store.saveDeletes[0] != "goneA" {
-		t.Errorf("saveDeletes = %v, want [goneA]", store.saveDeletes)
-	}
-	if _, ok := store.saves["did:plc:alice"]["goneA"]; ok {
-		t.Error("stale local save goneA was not deleted")
-	}
-}
-
-// TestSyncUser_ReconcileSaves_EmptyCreatedAtFallsBackToNow guards the fallback:
-// a save record without createdAt must still get a non-empty timestamp so the
-// local row's ordering column is never blank.
-func TestSyncUser_ReconcileSaves_EmptyCreatedAtFallsBackToNow(t *testing.T) {
-	store := newFakeStore()
-	lister := &fakeLister{saves: []PDSSave{
-		{URI: "at://x/s/noDate", Rkey: "noDate", ItemURL: "https://item/x", CreatedAt: ""},
-	}}
-	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
-	if err := eng.reconcileSaves(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
-		t.Fatal(err)
-	}
-	got := store.saveUpsertParams["noDate"]
-	if got.CreatedAt == "" {
-		t.Error("CreatedAt is empty; want the now-fallback timestamp")
-	}
-}
-
 func TestSyncUser_DualTrackParallelism(t *testing.T) {
-	// Configure the lister and fetcher to each take ~80ms. If sync_user runs
-	// them sequentially, total wall-clock would approach 160ms+ish; in parallel,
-	// it should finish around max(80, 80) + some scheduling fuzz.
 	const delay = 80 * time.Millisecond
 
 	store := newFakeStore()
@@ -411,11 +424,9 @@ func TestSyncUser_Phase2FetchesOnlyNewURLs(t *testing.T) {
 	}
 
 	seen := fetcher.seen()
-	// Both URLs should be fetched: old via Phase 1B (snapshot), new via Phase 2.
 	if len(seen) != 2 {
 		t.Errorf("fetches = %v, want both URLs", seen)
 	}
-	// And `old` should only appear once, not twice.
 	oldCount := 0
 	for _, u := range seen {
 		if u == "https://old" {
@@ -428,9 +439,7 @@ func TestSyncUser_Phase2FetchesOnlyNewURLs(t *testing.T) {
 }
 
 func TestSyncUser_FK_NotCalledOnTier2Failure(t *testing.T) {
-	// When Tier-2 UpsertFeed fails for a newly-discovered URL, Phase 2 must
-	// NOT fetch (and downstream UpsertFeedEntry) — otherwise the FK
-	// feed_entries.feed_url → feeds.feed_url violates silently.
+	// A fetch on Tier-2 UpsertFeed failure would silently violate the feed_entries.feed_url FK.
 	store := newFakeStore()
 	store.feedErr = func(url string) error {
 		if url == "https://broken/feed" {
@@ -453,7 +462,6 @@ func TestSyncUser_FK_NotCalledOnTier2Failure(t *testing.T) {
 			t.Errorf("broken URL was fetched: would have hit FK violation; fetched = %v", fetcher.seen())
 		}
 	}
-	// The good URL should still be fetched via Phase 2.
 	found := false
 	for _, u := range fetcher.seen() {
 		if u == "https://ok/feed" {
@@ -473,8 +481,6 @@ func TestSyncUser_InFlightGuard_Coalesces(t *testing.T) {
 
 	did := mustDID("did:plc:alice")
 
-	// The first call sets the job running; the second within the guard should
-	// return the same id rather than start a new job.
 	id1, _ := eng.SyncUser(context.Background(), did, "sid-1", jobs.TriggerLogin)
 	id2, _ := eng.SyncUser(context.Background(), did, "sid-1", jobs.TriggerLogin)
 	if id1 != id2 {
@@ -484,7 +490,6 @@ func TestSyncUser_InFlightGuard_Coalesces(t *testing.T) {
 
 func TestSyncUser_ShutdownWaitsForRun(t *testing.T) {
 	store := newFakeStore()
-	// Slow lister so the run goroutine is still in flight when Shutdown fires.
 	lister := &fakeLister{delay: 200 * time.Millisecond, subs: []PDSSubscription{
 		{URI: "at://x/a/k1", Kind: "rss", Rkey: "k1", FeedURL: "https://example.com/feed"},
 	}}
@@ -509,8 +514,7 @@ func TestSyncUser_ShutdownWaitsForRun(t *testing.T) {
 	if elapsed < lister.delay {
 		t.Errorf("Shutdown returned in %v; expected to block at least %v", elapsed, lister.delay)
 	}
-	// After Shutdown returns, the job must be in a terminal state — the run
-	// goroutine has had its chance to update the tracker.
+	// Shutdown returning means the run goroutine already had its chance to update the tracker.
 	j, err := tracker.Get(id, mustDID("did:plc:alice"))
 	if err != nil {
 		t.Fatalf("tracker.Get: %v", err)
@@ -539,6 +543,111 @@ func TestOrchestrator_ShutdownDeadlineExceeded(t *testing.T) {
 	defer cancel()
 	if err := orch.Shutdown(shutdownCtx); err == nil {
 		t.Fatal("Shutdown returned nil; want ctx error")
+	}
+}
+
+// spyLocker records lock acquisitions and whether the lock is currently held.
+type spyLocker struct {
+	calls   atomic.Int32
+	heldNow atomic.Bool
+	lastKey string
+}
+
+func (l *spyLocker) LockSession(did syntax.DID, sid string) func() {
+	l.calls.Add(1)
+	l.lastKey = did.String() + "|" + sid
+	l.heldNow.Store(true)
+	return func() { l.heldNow.Store(false) }
+}
+
+// recordingResumer records whether the session lock is held at resume time, to prove resume and the eager refresh share one continuous lock hold.
+type recordingResumer struct {
+	locker       *spyLocker
+	heldAtResume bool
+	err          error
+}
+
+func (r *recordingResumer) ResumeSession(_ context.Context, did syntax.DID, sid string) (*oauth.ClientSession, error) {
+	if r.locker != nil {
+		r.heldAtResume = r.locker.heldNow.Load()
+	}
+	if r.err != nil {
+		return nil, r.err
+	}
+	return &oauth.ClientSession{Data: &oauth.ClientSessionData{AccountDID: did, SessionID: sid}}, nil
+}
+
+// A resume outside the lock lets the request path rotate the refresh token before the engine refreshes, so the eager refresh would no-op on a stale token.
+func TestEngine_ResumeAndRefresh_SharesOneLockHold(t *testing.T) {
+	locker := &spyLocker{}
+	res := &recordingResumer{locker: locker}
+	eng := NewEngine(jobs.New(), newFakeStore(), &fakeLister{}, &countingFetcher{}, res, nil).WithLocker(locker)
+
+	var refreshCalls int
+	var heldAtRefresh bool
+	eng.refreshSession = func(context.Context, *oauth.ClientSession) error {
+		refreshCalls++
+		heldAtRefresh = locker.heldNow.Load()
+		return nil
+	}
+
+	sess, err := eng.resumeAndRefresh(context.Background(), mustDID("did:plc:alice"), "sid-1")
+	if err != nil {
+		t.Fatalf("resumeAndRefresh: %v", err)
+	}
+	if sess == nil {
+		t.Fatal("nil session")
+	}
+	if !res.heldAtResume {
+		t.Error("resume ran outside the session lock — the refresh race is open")
+	}
+	if refreshCalls != 1 || !heldAtRefresh {
+		t.Errorf("refresh calls=%d heldAtRefresh=%v; want one refresh under the held lock", refreshCalls, heldAtRefresh)
+	}
+	if got := locker.calls.Load(); got != 1 {
+		t.Errorf("LockSession calls = %d, want 1 continuous hold across resume+refresh", got)
+	}
+	if locker.heldNow.Load() {
+		t.Error("lock not released after resumeAndRefresh")
+	}
+	if locker.lastKey != "did:plc:alice|sid-1" {
+		t.Errorf("lock key = %q, want did:plc:alice|sid-1", locker.lastKey)
+	}
+}
+
+func TestEngine_ResumeAndRefresh_NilLockerSkipsRefresh(t *testing.T) {
+	res := &recordingResumer{}
+	eng := NewEngine(jobs.New(), newFakeStore(), &fakeLister{}, &countingFetcher{}, res, nil)
+	refreshed := false
+	eng.refreshSession = func(context.Context, *oauth.ClientSession) error {
+		refreshed = true
+		return nil
+	}
+	if _, err := eng.resumeAndRefresh(context.Background(), mustDID("did:plc:alice"), "sid-1"); err != nil {
+		t.Fatalf("resumeAndRefresh: %v", err)
+	}
+	if refreshed {
+		t.Error("refresh should be skipped when no locker is installed")
+	}
+}
+
+func TestEngine_ResumeAndRefresh_ResumeErrorPropagatesAndSkipsRefresh(t *testing.T) {
+	locker := &spyLocker{}
+	res := &recordingResumer{locker: locker, err: errors.New("session not found")}
+	eng := NewEngine(jobs.New(), newFakeStore(), &fakeLister{}, &countingFetcher{}, res, nil).WithLocker(locker)
+	refreshed := false
+	eng.refreshSession = func(context.Context, *oauth.ClientSession) error {
+		refreshed = true
+		return nil
+	}
+	if _, err := eng.resumeAndRefresh(context.Background(), mustDID("did:plc:alice"), "sid-1"); err == nil {
+		t.Fatal("resumeAndRefresh: want error, got nil")
+	}
+	if refreshed {
+		t.Error("refresh must not run when resume fails")
+	}
+	if locker.heldNow.Load() {
+		t.Error("lock not released on resume error")
 	}
 }
 

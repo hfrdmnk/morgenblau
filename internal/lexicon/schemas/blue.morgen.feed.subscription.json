@@ -1,0 +1,87 @@
+{
+  "id": "blue.morgen.feed.subscription",
+  "defs": {
+    "main": {
+      "key": "tid",
+      "type": "record",
+      "record": {
+        "type": "object",
+        "required": [
+          "source",
+          "createdAt"
+        ],
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 640,
+              "maxGraphemes": 64
+            },
+            "maxLength": 10,
+            "description": "Free-form, user-defined tags. No controlled vocabulary."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 1280,
+            "description": "Display title. Auto-prefilled from the source, user-editable.",
+            "maxGraphemes": 128
+          },
+          "source": {
+            "refs": [
+              "#rssFeed",
+              "#standardPublication"
+            ],
+            "type": "union",
+            "description": "Identity of the subscribed source. Open union; readers tolerate unknown variants."
+          },
+          "primary": {
+            "type": "boolean",
+            "description": "Whether the source receives special treatment in the digest."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      },
+      "description": "A subscription to a content source, identified by the source union: an RSS/Atom feed or a Standardfeed publication."
+    },
+    "rssFeed": {
+      "type": "object",
+      "required": [
+        "feedUrl"
+      ],
+      "properties": {
+        "feedUrl": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2048,
+          "description": "URL of the RSS/Atom feed."
+        },
+        "siteUrl": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2048,
+          "description": "Human-facing site URL associated with the feed."
+        }
+      }
+    },
+    "standardPublication": {
+      "type": "object",
+      "required": [
+        "publication"
+      ],
+      "properties": {
+        "publication": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "AT-URI of the site.standard.publication record. This subscription is a metadata sidecar; the paired site.standard.graph.subscription record is the existence authority."
+        }
+      }
+    }
+  },
+  "$type": "com.atproto.lexicon.schema",
+  "lexicon": 1,
+  "revision": 2
+}

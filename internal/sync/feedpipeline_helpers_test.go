@@ -34,9 +34,7 @@ func TestChooseTime(t *testing.T) {
 	published := time.Date(2026, 5, 15, 10, 0, 0, 0, time.UTC)
 	updated := time.Date(2026, 5, 16, 10, 0, 0, 0, time.UTC)
 	fallback := time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC)
-	// Bluesky's RSS emits pubDate without a weekday prefix and without
-	// seconds (e.g. "24 May 2026 20:02 +0200"), which gofeed cannot parse —
-	// see internal/sync/feedpipeline.go chooseTime for the manual fallback.
+	// Bluesky's RSS pubDate lacks a weekday prefix and seconds; gofeed can't parse it, see chooseTime's manual fallback.
 	bskyOffset := time.Date(2026, 5, 24, 18, 2, 0, 0, time.UTC) // 20:02 +0200
 	bskyUTC := time.Date(2026, 5, 25, 14, 43, 0, 0, time.UTC)
 	cases := []struct {
@@ -89,7 +87,6 @@ func TestClassifyContentType(t *testing.T) {
 	}{
 		{name: "youtube host", feedURL: "https://www.youtube.com/feeds/videos.xml", item: &gofeed.Item{Title: "Video"}, want: "video"},
 		{name: "youtu.be host", feedURL: "https://youtu.be/feed", item: &gofeed.Item{Title: "Video"}, want: "video"},
-		{name: "audio enclosure", feedURL: "https://example.com/feed", item: &gofeed.Item{Title: "Audio", Enclosures: []*gofeed.Enclosure{{Type: "audio/mpeg"}}}, want: "podcast"},
 		{name: "video enclosure", feedURL: "https://example.com/feed", item: &gofeed.Item{Title: "Video", Enclosures: []*gofeed.Enclosure{{Type: "video/mp4"}}}, want: "video"},
 		{name: "empty title", feedURL: "https://example.com/feed", item: &gofeed.Item{}, want: "microblog"},
 		{name: "default", feedURL: "https://example.com/feed", item: &gofeed.Item{Title: "Post"}, want: "blogpost"},

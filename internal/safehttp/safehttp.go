@@ -1,7 +1,5 @@
-// Package safehttp builds *http.Client values that refuse to connect to
-// loopback, link-local, private, multicast, or unspecified addresses. Used by
-// every outbound-fetch path that accepts attacker-influenced URLs so a hostile
-// feed or redirect can't pivot the server into its own internal network.
+// Package safehttp builds *http.Client values that block loopback, link-local,
+// private, multicast, and unspecified addresses so hostile URLs can't pivot into the internal network.
 package safehttp
 
 import (
@@ -14,6 +12,9 @@ import (
 	"time"
 )
 
+// UserAgent identifies Morgenblau's outbound bot traffic so operators can attribute and contact us.
+const UserAgent = "Morgenblau/0.1 (+https://morgen.blue/about; bot@morgen.blue) Go-http-client/1.1"
+
 // ErrBlockedAddress is returned when a resolved IP fails the safety check.
 var ErrBlockedAddress = errors.New("safehttp: blocked address")
 
@@ -23,16 +24,14 @@ var ErrTooManyRedirects = errors.New("safehttp: too many redirects")
 // ErrBlockedScheme is returned when a redirect target isn't http or https.
 var ErrBlockedScheme = errors.New("safehttp: blocked scheme")
 
-// Option configures NewClient. The only public option is WithAllowLoopback,
-// for tests that need to hit httptest.NewServer (which binds to 127.0.0.1).
+// Option configures NewClient; the only public option, WithAllowLoopback, is for tests hitting httptest.NewServer (127.0.0.1).
 type Option func(*options)
 
 type options struct {
 	allowLoopback bool
 }
 
-// WithAllowLoopback permits connections to loopback addresses. Test-only —
-// production never sets this.
+// WithAllowLoopback permits loopback connections; test-only, production never sets this.
 func WithAllowLoopback() Option {
 	return func(o *options) { o.allowLoopback = true }
 }
@@ -60,9 +59,7 @@ func Validator(ip net.IP) error {
 	return nil
 }
 
-// NewClient builds an *http.Client whose Dialer's Control callback rejects
-// disallowed peer IPs at TCP-dial time (so DNS-rebinding can't slip past)
-// and whose CheckRedirect caps hops and re-validates each next-hop scheme.
+// NewClient rejects disallowed peer IPs at TCP-dial time (defeating DNS-rebinding) and caps/revalidates redirects via CheckRedirect.
 func NewClient(timeout time.Duration, maxRedirects int, opts ...Option) *http.Client {
 	cfg := options{}
 	for _, opt := range opts {
@@ -113,4 +110,3 @@ func NewClient(timeout time.Duration, maxRedirects int, opts ...Option) *http.Cl
 		},
 	}
 }
-

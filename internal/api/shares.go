@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -16,7 +15,7 @@ import (
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/lexicon"
-	"morgenblau/internal/middleware/auth"
+	"morgenblau/internal/sharemeta"
 	"morgenblau/internal/standardfeed"
 )
 
@@ -25,14 +24,10 @@ const (
 	recommendCollection = standardfeed.CollectionRecommend
 )
 
-// maxCommentGraphemes mirrors the blue.morgen.feed.share lexicon's comment cap.
-// Rune-count is close enough without a full Unicode segmentation dep — same
-// approximation normalizeTags uses.
+// maxCommentGraphemes mirrors the share lexicon's comment cap; rune count approximates graphemes, same as normalizeTags.
 const maxCommentGraphemes = 3000
 
-// ShareWire is the on-the-wire share shape. POST returns the freshly-created
-// record; GET /api/shares returns the list with entry title/slug joined in for
-// document shares whose entry is still cached.
+// ShareWire is the on-the-wire share shape; GET /api/shares additionally joins entry title/slug when cached.
 type ShareWire struct {
 	URI       string `json:"uri,omitempty"`
 	CID       string `json:"cid,omitempty"`
@@ -43,6 +38,7 @@ type ShareWire struct {
 	Comment   string `json:"comment,omitempty"`
 	CreatedAt string `json:"createdAt"`
 	Title     string `json:"title,omitempty"`
+	TargetURL string `json:"targetUrl,omitempty"`
 	EntrySlug string `json:"entrySlug,omitempty"`
 }
 
@@ -69,45 +65,36 @@ type sharesCreateRequest struct {
 	Comment   string `json:"comment"`
 }
 
-// SharesCreateHandler shares a feed item. The subscription's kind selects the
-// record model: an rss item becomes a single blue.morgen.feed.share record; a
-// Standardfeed document becomes a site.standard.graph.recommend existence
-// record plus a lazy blue.morgen.feed.share comment sidecar (only when the user
-// wrote a comment). Idempotent per (did, itemUrl) for rss and (did, document)
-// for standardfeed.
+// SharesCreateHandler picks the record model by subscription kind: rss writes one share record; standardfeed writes a recommend plus a lazy comment sidecar. Idempotent on itemUrl (rss) or document (standardfeed).
 func SharesCreateHandler(reader SharesIndexReader, writer SharesIndexWriter, pds atprepo.Writer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := auth.SessionFromContext(r.Context())
-		if sess == nil || sess.Data == nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+		sess, ok := requireSession(w, r)
+		if !ok {
 			return
 		}
 		var body sharesCreateRequest
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "invalid json", http.StatusBadRequest)
+		if !decodeJSON(w, r, &body) {
 			return
 		}
 		body.EntrySlug = strings.TrimSpace(body.EntrySlug)
 		body.Comment = strings.TrimSpace(body.Comment)
 		if body.EntrySlug == "" {
-			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"message": "entrySlug is required"})
+			writeError(w, http.StatusBadRequest, codeInvalidRequest, "entrySlug is required")
 			return
 		}
 		if len([]rune(body.Comment)) > maxCommentGraphemes {
-			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"message": "comment is too long"})
+			writeError(w, http.StatusBadRequest, codeInvalidRequest, "comment is too long")
 			return
 		}
 
-		// Load + authorize: the entry must exist and the requester must be
-		// subscribed to its feed. The subscription's kind picks the record model.
 		entry, err := reader.GetFeedEntryBySlug(r.Context(), body.EntrySlug)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				http.Error(w, "not found", http.StatusNotFound)
+				writeError(w, http.StatusNotFound, codeNotFound, "not found")
 				return
 			}
 			slog.Warn("/api/shares: entry load failed", "err", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
 		sub, err := reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
@@ -116,11 +103,12 @@ func SharesCreateHandler(reader SharesIndexReader, writer SharesIndexWriter, pds
 		})
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				http.Error(w, "forbidden", http.StatusForbidden)
+				// Not subscribed collapses to 404, same as every other missing-or-not-owned resource.
+				writeError(w, http.StatusNotFound, codeNotFound, "not found")
 				return
 			}
 			slog.Warn("/api/shares: authorize failed", "err", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
 
@@ -140,12 +128,9 @@ func shareRSS(
 ) {
 	didStr := sess.Data.AccountDID.String()
 
-	// itemUrl is lexicon-required and the dedupe key; a link-less entry would
-	// write an invalid record that never dedupes, so repeat POSTs would pile up.
+	// itemUrl is lexicon-required and the dedupe key; without it, repeat POSTs would each write an undeduped invalid record.
 	if entry.Url == "" {
-		writeJSONStatus(w, http.StatusUnprocessableEntity, map[string]string{
-			"message": "this item has no link to share",
-		})
+		writeError(w, http.StatusUnprocessableEntity, codeUnprocessable, "this item has no link to share")
 		return
 	}
 
@@ -158,7 +143,7 @@ func shareRSS(
 		return
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		slog.Warn("/api/shares: rss dedupe probe failed", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 		return
 	}
 
@@ -169,10 +154,15 @@ func shareRSS(
 	if comment != "" {
 		record["comment"] = comment
 	}
+	if err := lexicon.ValidateRecord(shareCollection, record); err != nil {
+		slog.Warn("/api/shares: rss record failed lexicon validation", "err", err)
+		writeError(w, http.StatusInternalServerError, codeInvalidRecord, "internal error")
+		return
+	}
 	ref, err := pds.CreateRecord(r.Context(), sess, syntax.NSID(shareCollection), record)
 	if err != nil {
 		slog.Warn("/api/shares: rss PDS create failed", "err", err)
-		http.Error(w, "upstream PDS error", http.StatusBadGateway)
+		writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
 		return
 	}
 	rkey := atprepo.RkeyFromATURI(ref.URI)
@@ -199,6 +189,9 @@ func shareRSS(
 		ItemURL:   entry.Url,
 		Comment:   comment,
 		CreatedAt: now,
+		Title:     derefStr(entry.Title),
+		TargetURL: entry.Url,
+		EntrySlug: entry.EntrySlug,
 	})
 }
 
@@ -211,10 +204,9 @@ func shareStandardfeed(
 		return
 	}
 	didStr := sess.Data.AccountDID.String()
-	document := entry.Guid // the entry guid IS the document at-uri
+	document := entry.Guid // the entry guid is the document at-uri
 
-	// Dedupe on (did, document): a second recommend of the same document is
-	// idempotent, comment or not.
+	// Dedupe on (did, document): a second recommend of the same document is idempotent, comment or not.
 	if existing, err := reader.GetUserShareByDocument(r.Context(), db.GetUserShareByDocumentParams{
 		Did:      didStr,
 		Document: &document,
@@ -223,28 +215,24 @@ func shareStandardfeed(
 		return
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		slog.Warn("/api/shares: standardfeed dedupe probe failed", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 		return
 	}
 
-	// A path-less document has no URL to satisfy the comment sidecar's required
-	// itemUrl. Recommend-only is fine; recommend + comment is not.
+	// A path-less document has no URL for the comment sidecar's required itemUrl, so recommend-only is fine but recommend+comment is not.
 	if entry.Url == "" && comment != "" {
-		writeJSONStatus(w, http.StatusUnprocessableEntity, map[string]string{
-			"message": "this document has no link to comment on; share it without a comment",
-		})
+		writeError(w, http.StatusUnprocessableEntity, codeUnprocessable, "this document has no link to comment on; share it without a comment")
 		return
 	}
 
-	// Recommend FIRST — the existence authority. If the sidecar then fails, the
-	// recommend is already durable and reconcile adopts it comment-less.
+	// Recommend is created first (the existence authority); if the sidecar then fails, reconcile can still adopt the durable recommend comment-less.
 	recRef, err := pds.CreateRecord(r.Context(), sess, syntax.NSID(recommendCollection), map[string]any{
 		"document":  document,
 		"createdAt": now,
 	})
 	if err != nil {
 		slog.Warn("/api/shares: recommend PDS create failed", "err", err)
-		http.Error(w, "upstream PDS error", http.StatusBadGateway)
+		writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
 		return
 	}
 	recRkey := atprepo.RkeyFromATURI(recRef.URI)
@@ -260,10 +248,15 @@ func shareStandardfeed(
 		if entry.FeedUrl != "" {
 			record["feedUrl"] = entry.FeedUrl
 		}
+		if err := lexicon.ValidateRecord(shareCollection, record); err != nil {
+			slog.Warn("/api/shares: comment sidecar record failed lexicon validation", "err", err)
+			writeError(w, http.StatusInternalServerError, codeInvalidRecord, "internal error")
+			return
+		}
 		scRef, err := pds.CreateRecord(r.Context(), sess, syntax.NSID(shareCollection), record)
 		if err != nil {
 			slog.Warn("/api/shares: comment sidecar PDS create failed", "err", err)
-			http.Error(w, "upstream PDS error", http.StatusBadGateway)
+			writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
 			return
 		}
 		rk := atprepo.RkeyFromATURI(scRef.URI)
@@ -295,37 +288,36 @@ func shareStandardfeed(
 		Document:  document,
 		Comment:   comment,
 		CreatedAt: now,
+		Title:     derefStr(entry.Title),
+		TargetURL: entry.Url,
+		EntrySlug: entry.EntrySlug,
 	})
 }
 
 // --- DELETE /api/shares/{rkey} ---
 
-// SharesDeleteHandler tombstones the share on the PDS and removes the local row.
-// For standardfeed shares it deletes EVERY recommend matching the document
-// (a duplicate written by another app would otherwise resurrect the share on the
-// next reconcile) plus the comment sidecar.
+// SharesDeleteHandler tombstones the share; for standardfeed it also sweeps every recommend for the document (a stray duplicate would let reconcile resurrect the share) plus the comment sidecar.
 func SharesDeleteHandler(reader SharesIndexReader, writer SharesIndexWriter, pds RepoWriterLister) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := auth.SessionFromContext(r.Context())
-		if sess == nil || sess.Data == nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+		sess, ok := requireSession(w, r)
+		if !ok {
 			return
 		}
 		rkey := r.PathValue("rkey")
 		if rkey == "" {
-			http.Error(w, "rkey is required", http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, codeInvalidRequest, "rkey is required")
 			return
 		}
 		didStr := sess.Data.AccountDID.String()
 		row, err := reader.GetUserShare(r.Context(), db.GetUserShareParams{Did: didStr, Rkey: rkey})
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				// Collapse "not yours" and "doesn't exist" to 403, same as saves.
-				http.Error(w, "forbidden", http.StatusForbidden)
+				// Collapse "not yours" and "doesn't exist" to 404, same as saves.
+				writeError(w, http.StatusNotFound, codeNotFound, "not found")
 				return
 			}
 			slog.Warn("/api/shares DELETE: load failed", "err", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
 
@@ -333,13 +325,12 @@ func SharesDeleteHandler(reader SharesIndexReader, writer SharesIndexWriter, pds
 			if !requireStandardWrite(w, sess) {
 				return
 			}
-			// Sweep every recommend for this document; leaving a duplicate would
-			// let the next reconcile re-adopt it and resurrect the share.
+			// Leaving a duplicate recommend would let the next reconcile re-adopt it and resurrect the share.
 			document := derefStr(row.Document)
 			records, err := pds.ListRecords(r.Context(), sess, syntax.NSID(recommendCollection))
 			if err != nil {
 				slog.Warn("/api/shares DELETE: recommend list failed", "err", err)
-				http.Error(w, "upstream PDS error", http.StatusBadGateway)
+				writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
 				return
 			}
 			for _, rec := range records {
@@ -348,20 +339,20 @@ func SharesDeleteHandler(reader SharesIndexReader, writer SharesIndexWriter, pds
 				}
 				if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(recommendCollection), atprepo.RkeyFromATURI(rec.URI)); err != nil {
 					slog.Warn("/api/shares DELETE: recommend PDS delete failed", "uri", rec.URI, "err", err)
-					http.Error(w, "upstream PDS error", http.StatusBadGateway)
+					writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
 					return
 				}
 			}
 			if row.SidecarRkey != nil && *row.SidecarRkey != "" {
 				if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(shareCollection), *row.SidecarRkey); err != nil {
 					slog.Warn("/api/shares DELETE: sidecar PDS delete failed", "err", err)
-					http.Error(w, "upstream PDS error", http.StatusBadGateway)
+					writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
 					return
 				}
 			}
 		} else if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(shareCollection), rkey); err != nil {
 			slog.Warn("/api/shares DELETE: rss PDS delete failed", "err", err)
-			http.Error(w, "upstream PDS error", http.StatusBadGateway)
+			writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
 			return
 		}
 
@@ -374,25 +365,29 @@ func SharesDeleteHandler(reader SharesIndexReader, writer SharesIndexWriter, pds
 
 // --- GET /api/shares ---
 
-// SharesListHandler returns the user's shares, newest first. Document shares
-// carry the joined entry title/slug when the entry is still cached; dead
-// entries fall back to itemUrl/document display on the frontend.
-func SharesListHandler(reader SharesIndexReader) http.Handler {
+// SharesListHandler returns the user's shares, newest first, joining entry title/slug when the entry is still cached.
+func SharesListHandler(reader SharesIndexReader, metadata ShareMetadataResolver) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := auth.SessionFromContext(r.Context())
-		if sess == nil || sess.Data == nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+		sess, ok := requireSession(w, r)
+		if !ok {
 			return
 		}
 		rows, err := reader.ListUserShares(r.Context(), sess.Data.AccountDID.String())
 		if err != nil {
 			slog.Warn("/api/shares GET: list failed", "err", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
+		targets := make([]sharemeta.Target, len(rows))
+		for i, row := range rows {
+			targets[i] = sharemeta.Target{
+				ItemURL: derefStr(row.ItemUrl), Document: derefStr(row.Document),
+			}
+		}
+		resolved := resolveShareMetadata(r.Context(), metadata, targets)
 		out := make([]ShareWire, 0, len(rows))
-		for _, row := range rows {
-			out = append(out, shareListRowToWire(row))
+		for i, row := range rows {
+			out = append(out, shareListRowToWire(row, resolved[i]))
 		}
 		writeJSON(w, out)
 	})
@@ -410,8 +405,8 @@ func shareRowToWire(row db.UserShare) ShareWire {
 	}
 }
 
-func shareListRowToWire(row db.ListUserSharesRow) ShareWire {
-	return ShareWire{
+func shareListRowToWire(row db.ListUserSharesRow, metadata sharemeta.Metadata) ShareWire {
+	wire := ShareWire{
 		URI:       row.AtUri,
 		Rkey:      row.Rkey,
 		Kind:      wireKind(row.Kind),
@@ -422,6 +417,16 @@ func shareListRowToWire(row db.ListUserSharesRow) ShareWire {
 		Title:     derefStr(row.EntryTitle),
 		EntrySlug: derefStr(row.EntrySlug),
 	}
+	if metadata.Title != "" {
+		wire.Title = metadata.Title
+	}
+	if metadata.TargetURL != "" {
+		wire.TargetURL = metadata.TargetURL
+	}
+	if metadata.EntrySlug != "" {
+		wire.EntrySlug = metadata.EntrySlug
+	}
+	return wire
 }
 
 func derefStr(s *string) string {

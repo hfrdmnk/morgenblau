@@ -1,13 +1,10 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 
-// Vertical breathing room between the pill and the row edges. Horizontal inset is
-// handled by `inset-x-2` on the element so it stays a plain Tailwind concern.
+// Vertical breathing room between the pill and row edges; horizontal inset is handled by inset-x-2 in the class instead.
 const VGAP = 6;
 
-// A single highlight that tracks the active row across a list. It measures the
-// `[data-nav-row]` element at `active` and parks itself over it; on `scrollKey`
-// change (keyboard travel only) it brings that row into view.
+// ListHighlight tracks the active row via [data-nav-row]; scrollKey changes (keyboard only) bring it into view.
 export function ListHighlight({
     containerRef,
     active,
@@ -69,7 +66,7 @@ export function ListHighlight({
         <div
             ref={pillRef}
             aria-hidden
-            className="list-highlight pointer-events-none absolute inset-x-2 top-0 z-0 rounded-lg bg-overlay-2 opacity-0 will-change-transform"
+            className="list-highlight pointer-events-none absolute inset-x-2 top-0 z-0 rounded-lg bg-overlay-1 opacity-0 will-change-transform"
         />
     );
 }

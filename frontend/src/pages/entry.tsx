@@ -1,23 +1,29 @@
-import { Cancel01Icon, PlayIcon } from '@hugeicons/core-free-icons';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { PlayIcon } from '@proicons/react';
 import DOMPurify from 'dompurify';
 import { useEffect, useMemo, useState } from 'react';
+import { Link, useParams, useSearch } from 'wouter';
 
 import { Favicon } from '@/components/favicon';
+import { ReaderBody } from '@/components/reader-body';
 import { ReaderRail } from '@/components/reader-rail';
 import type { ExtractedToggleState } from '@/components/reader-rail';
+import { ReaderHeader, ReaderShell } from '@/components/reader-shell';
 import { ShareComposer } from '@/components/share-composer';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { useGoBackOr } from '@/hooks/use-go-back-or';
 import { useKeyboard } from '@/hooks/use-keyboard';
 import { useSaveToggle } from '@/hooks/use-save-toggle';
 import type { SavedToggle } from '@/hooks/use-save-toggle';
 import { useShareToggle } from '@/hooks/use-share-toggle';
 import type { ShareToggle } from '@/hooks/use-share-toggle';
-import { digestHref, PATHS, sourceHref } from '@/lib/paths';
-import { cn, goBackOr, safeHref } from '@/lib/utils';
+import { api } from '@/lib/api';
+import { formatDate } from '@/lib/date';
+import { readAuthor } from '@/lib/entry-meta';
+import { digestHref, sourceHref } from '@/lib/paths';
+import { cn, hostnameOf, safeHref } from '@/lib/utils';
 
-type ContentType = 'blogpost' | 'microblog' | 'video' | 'podcast';
+type ContentType = 'blogpost' | 'microblog' | 'video';
 
 type Source = {
     feedUrl: string;
@@ -51,16 +57,8 @@ type State =
 
 type Override = 'auto' | 'feed' | 'extracted';
 
-function slugFromLocation(): string | null {
-    const path = window.location.pathname;
-    const prefix = `${PATHS.entry}/`;
-    if (!path.startsWith(prefix)) return null;
-    const slug = path.slice(prefix.length);
-    return slug.length > 0 ? slug : null;
-}
-
-function backHrefFromLocation(): string {
-    const params = new URLSearchParams(window.location.search);
+function backHrefFromLocation(search: string): string {
+    const params = new URLSearchParams(search);
     const rkey = params.get('fromSource');
     if (rkey && /^[A-Za-z0-9._~-]+$/.test(rkey)) {
         return sourceHref(rkey);
@@ -73,7 +71,9 @@ function backHrefFromLocation(): string {
 }
 
 export function Entry() {
-    const slug = slugFromLocation();
+    const { slug } = useParams<{ slug: string }>();
+    const search = useSearch();
+    const backHref = backHrefFromLocation(search);
     const [state, setState] = useState<State>(
         slug ? { kind: 'loading' } : { kind: 'error' },
     );
@@ -87,11 +87,7 @@ export function Entry() {
         let cancelled = false;
         const load = async () => {
             try {
-                const r = await fetch(`/api/entries/${slug}`, {
-                    credentials: 'same-origin',
-                });
-                if (!r.ok) throw new Error(String(r.status));
-                const entry = (await r.json()) as Entry;
+                const entry = await api<Entry>(`/api/entries/${slug}`);
                 if (!cancelled) setState({ kind: 'ok', entry });
             } catch {
                 if (!cancelled) setState({ kind: 'error' });
@@ -105,70 +101,31 @@ export function Entry() {
 
     if (state.kind === 'loading') {
         return (
-            <Shell>
+            <ReaderShell backHref={backHref}>
                 <p className="text-muted-foreground">Loading…</p>
-            </Shell>
+            </ReaderShell>
         );
     }
 
     if (state.kind === 'error') {
         return (
-            <Shell>
+            <ReaderShell backHref={backHref}>
                 <p className="text-muted-foreground">
                     Couldn't open this entry.
                 </p>
-            </Shell>
+            </ReaderShell>
         );
     }
 
     if (state.entry.contentType === 'video') {
-        return <WatchView entry={state.entry} />;
+        return <WatchView entry={state.entry} backHref={backHref} />;
     }
 
-    return <ReaderView entry={state.entry} />;
+    return <ReaderView entry={state.entry} backHref={backHref} />;
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
-    return (
-        <div className="min-h-svh bg-card">
-            <Header />
-            <article className="mx-auto w-full max-w-2xl px-4 pt-8 pb-24 sm:px-6">
-                {children}
-            </article>
-        </div>
-    );
-}
-
-function Header() {
-    const back = backHrefFromLocation();
-    return (
-        <header className="sticky top-0 z-10 flex h-14 items-center px-4 sm:px-6">
-            <a
-                href={back}
-                aria-label="Back"
-                onClick={(e) => {
-                    // Keep href for middle-click / open-in-new-tab; a plain click
-                    // prefers history.back() to restore scroll + reverse transition.
-                    if (
-                        e.metaKey ||
-                        e.ctrlKey ||
-                        e.shiftKey ||
-                        e.button !== 0
-                    ) {
-                        return;
-                    }
-                    e.preventDefault();
-                    goBackOr(back);
-                }}
-                className="inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
-            >
-                <HugeiconsIcon icon={Cancel01Icon} className="size-5" />
-            </a>
-        </header>
-    );
-}
-
-function ReaderView({ entry }: { entry: Entry }) {
+function ReaderView({ entry, backHref }: { entry: Entry; backHref: string }) {
+    const goBackOr = useGoBackOr();
     const [override, setOverride] = useState<Override>('auto');
     const [loading, setLoading] = useState(false);
     const [manualFailed, setManualFailed] = useState(false);
@@ -198,13 +155,8 @@ function ReaderView({ entry }: { entry: Entry }) {
         }
 
         setLoading(true);
-        fetch(`/api/entries/${entry.entrySlug}/extract`, {
-            method: 'POST',
-            credentials: 'same-origin',
-        })
-            .then(async (r) => {
-                if (!r.ok) throw new Error(String(r.status));
-                const next = (await r.json()) as Entry;
+        api<Entry>(`/api/entries/${entry.entrySlug}/extract`, { method: 'POST' })
+            .then((next) => {
                 const nextBody = next.body ?? '';
                 if (nextBody !== '') {
                     setExtracted(nextBody);
@@ -225,8 +177,7 @@ function ReaderView({ entry }: { entry: Entry }) {
           : entry.body;
 
     const sourceLink = safeHref(entry.url);
-    // A path-less Standardfeed document has no canonical URL: nothing to save
-    // by (the save index keys on itemUrl) and no note the share can attach to.
+    // A path-less Standardfeed doc has no canonical URL: no save index key (itemUrl), no share comment target.
     const canSave = entry.url !== '';
     const savedToggle: SavedToggle = {
         initial: entry.savedState,
@@ -243,7 +194,7 @@ function ReaderView({ entry }: { entry: Entry }) {
 
     useKeyboard({
         Escape: () => {
-            goBackOr(backHrefFromLocation());
+            goBackOr(backHref);
         },
         b: () => {
             if (canSave) save.onToggle();
@@ -258,7 +209,7 @@ function ReaderView({ entry }: { entry: Entry }) {
 
     return (
         <div className="min-h-svh bg-card">
-            <Header />
+            <ReaderHeader backHref={backHref} />
             <ReaderRail
                 sourceUrl={sourceLink ?? null}
                 extractedToggle={{ state: toggleState, onClick: onToggleClick }}
@@ -287,7 +238,8 @@ function ReaderView({ entry }: { entry: Entry }) {
     );
 }
 
-function WatchView({ entry }: { entry: Entry }) {
+function WatchView({ entry, backHref }: { entry: Entry; backHref: string }) {
+    const goBackOr = useGoBackOr();
     const embed = useMemo(() => resolveVideoEmbed(entry.url), [entry.url]);
     const sourceLink = safeHref(entry.url);
     const savedToggle: SavedToggle = {
@@ -305,7 +257,7 @@ function WatchView({ entry }: { entry: Entry }) {
 
     useKeyboard({
         Escape: () => {
-            goBackOr(backHrefFromLocation());
+            goBackOr(backHref);
         },
         b: () => save.onToggle(),
         o: () => {
@@ -317,7 +269,7 @@ function WatchView({ entry }: { entry: Entry }) {
 
     return (
         <div className="min-h-svh bg-card">
-            <Header />
+            <ReaderHeader backHref={backHref} />
             <ReaderRail
                 sourceUrl={sourceLink ?? null}
                 save={save}
@@ -417,10 +369,7 @@ function VideoPlayer({
                 className="absolute inset-0 flex items-center justify-center"
             >
                 <span className="inline-flex size-16 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-lg transition-colors duration-200 ease-out group-hover:bg-black/50">
-                    <HugeiconsIcon
-                        icon={PlayIcon}
-                        className="size-7 translate-x-[1px]"
-                    />
+                    <PlayIcon className="size-7 translate-x-[1px]" />
                 </span>
             </span>
         </button>
@@ -448,12 +397,12 @@ function FeedLine({ source }: { source: Source }) {
     );
     if (source.rkey) {
         return (
-            <a
+            <Link
                 href={sourceHref(source.rkey)}
                 className="flex w-fit items-center gap-2 rounded-sm font-sans text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
             >
                 {content}
-            </a>
+            </Link>
         );
     }
     return (
@@ -475,18 +424,6 @@ function Byline({ entry }: { entry: Entry }) {
         <p className="font-sans text-sm font-light text-muted-foreground">
             {bits.join(' · ')}
         </p>
-    );
-}
-
-// Body is server-sanitized (bluemonday UGC) at ingest. DOMPurify runs as
-// client-side defense-in-depth so a server-side regression can't escape.
-function ReaderBody({ html }: { html: string }) {
-    const clean = useMemo(() => DOMPurify.sanitize(html), [html]);
-    return (
-        <div
-            className="font-serif text-base leading-relaxed text-foreground [&_a]:text-primary [&_a]:underline-offset-4 [&_a:hover]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_h2]:mt-8 [&_h2]:mb-3 [&_h2]:font-sans [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:font-sans [&_img]:rounded-2xl [&_ol]:mb-5 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-5 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-muted [&_pre]:p-4 [&_pre]:font-mono [&_pre]:text-sm [&_ul]:mb-5 [&_ul]:list-disc [&_ul]:pl-6"
-            dangerouslySetInnerHTML={{ __html: clean }}
-        />
     );
 }
 
@@ -513,38 +450,6 @@ function ManualFailureFallback({ sourceUrl }: { sourceUrl: string }) {
             </a>
         </div>
     );
-}
-
-function readAuthor(metadata: string | null | undefined): string | null {
-    if (!metadata) return null;
-    try {
-        const parsed = JSON.parse(metadata) as { author?: unknown };
-        return typeof parsed.author === 'string' ? parsed.author : null;
-    } catch {
-        return null;
-    }
-}
-
-function hostnameOf(url: string): string | null {
-    try {
-        const u = new URL(url);
-        return u.hostname.replace(/^www\./, '');
-    } catch {
-        return null;
-    }
-}
-
-function formatDate(iso: string): string {
-    try {
-        const d = new Date(iso);
-        return d.toLocaleDateString(undefined, {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-        });
-    } catch {
-        return iso;
-    }
 }
 
 // Mirrors VideoEmbed.php: resolves a YouTube URL to embed + thumbnail.

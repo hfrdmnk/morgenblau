@@ -1,5 +1,4 @@
-import { ArrowRight02Icon } from '@hugeicons/core-free-icons';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowRightIcon } from '@proicons/react';
 import type { CSSProperties } from 'react';
 import { useLayoutEffect, useRef, useState } from 'react';
 
@@ -234,7 +233,7 @@ function TodayAnchor({
                 'inline-flex items-center gap-1 opacity-50 transition duration-200',
                 'hover:text-atmosphere-blue group-hover/strip:opacity-100',
             )}>
-                <HugeiconsIcon icon={ArrowRight02Icon} className="size-3.5" />
+                <ArrowRightIcon className="size-3.5" />
                 <span className="leading-none">today</span>
             </span>
         </button>

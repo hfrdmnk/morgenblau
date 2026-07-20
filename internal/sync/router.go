@@ -5,10 +5,7 @@ import (
 	"strings"
 )
 
-// SourceRouter implements FeedFetcher over the whole Tier-2 catalog. The
-// catalog key is self-describing — publication at-uris carry the at://
-// scheme, feed URLs are http(s) — so no DB read is needed to route, and
-// GlobalRefresher, fetchAll, and StartFetchOneFeed stay untouched.
+// SourceRouter implements FeedFetcher over Tier-2; the key is self-describing (at:// vs http(s)), so no DB read is needed to route.
 type SourceRouter struct {
 	rss      FeedFetcher
 	standard FeedFetcher

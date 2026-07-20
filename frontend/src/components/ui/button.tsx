@@ -8,12 +8,16 @@ function Button({
     className,
     variant = 'default',
     size = 'default',
+    iconTint = 'none',
     ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
     return (
         <ButtonPrimitive
             data-slot="button"
-            className={cn(buttonVariants({ variant, size }), className)}
+            className={cn(
+                buttonVariants({ variant, size, iconTint }),
+                className,
+            )}
             {...props}
         />
     );

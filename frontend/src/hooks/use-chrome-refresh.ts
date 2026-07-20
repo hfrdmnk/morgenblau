@@ -8,7 +8,7 @@ export type CalendarNav = {
     onSelect: (date: Date) => void;
 };
 
-export type ChromeActionsContextValue = {
+type ChromeActionsContextValue = {
     refresh: RefreshAction | null;
     setRefresh: (action: RefreshAction | null) => void;
     calendar: CalendarNav | null;

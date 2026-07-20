@@ -1,7 +1,5 @@
 // Package scopes inspects the granted OAuth scopes of a resumed session.
-// Indigo persists the token response's scope list on the session and never
-// widens it on refresh, so a session minted before a scope change carries the
-// old grant until the user re-authenticates.
+// Indigo never widens the scope grant on refresh, so a stale session keeps its old grant until re-auth.
 package scopes
 
 import (
@@ -15,11 +13,8 @@ const (
 	StandardRecommend    = "repo:site.standard.graph.recommend"
 )
 
-// HasStandardWrite reports whether the session's grant covers writing both
-// site.standard.graph.* collections. The two scopes are plain repo: grants
-// requested alongside the permission set, so a literal check suffices — no
-// permission-set expansion involved. Nil or empty Scopes reads as stale
-// (worst case: one extra re-auth prompt).
+// HasStandardWrite reports whether the grant covers both site.standard.graph.*
+// scopes; both are plain repo: grants, so a literal check suffices and nil/empty just reads as stale.
 func HasStandardWrite(sess *oauth.ClientSession) bool {
 	if sess == nil || sess.Data == nil {
 		return false

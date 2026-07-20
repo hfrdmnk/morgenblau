@@ -1,5 +1,4 @@
-// Package sync orchestrates the dual-track refresh: PDS reconcile + fan-out
-// fetch.
+// Package sync orchestrates the dual-track refresh: PDS reconcile + fan-out fetch.
 package sync
 
 import (
@@ -46,9 +45,7 @@ func New(tracker *jobs.Tracker, fetcher FeedFetcher, engine *Engine) *Orchestrat
 	return o
 }
 
-// Shutdown cancels the orchestrator's parent ctx and waits for in-flight
-// goroutines to finish. Returns ctx.Err() if the wait deadline trips before
-// the WaitGroup drains.
+// Shutdown cancels the orchestrator's parent ctx and waits for in-flight goroutines to finish, returning ctx.Err() if the wait deadline trips first.
 func (o *Orchestrator) Shutdown(ctx context.Context) error {
 	o.cancel()
 	done := make(chan struct{})
@@ -72,8 +69,7 @@ func (o *Orchestrator) StartManualRefresh(ctx context.Context, did syntax.DID, s
 	return o.engine.SyncUser(ctx, did, sessionID, jobs.TriggerManual)
 }
 
-// StartLoginRefresh is the entrypoint OAuth callback uses. Same code path as
-// manual; trigger metadata differs.
+// StartLoginRefresh is the entrypoint the OAuth callback uses; same path as manual, trigger metadata differs.
 func (o *Orchestrator) StartLoginRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error) {
 	if o.engine == nil {
 		return "", ErrNoEngine
@@ -81,9 +77,7 @@ func (o *Orchestrator) StartLoginRefresh(ctx context.Context, did syntax.DID, se
 	return o.engine.SyncUser(ctx, did, sessionID, jobs.TriggerLogin)
 }
 
-// StartFetchOneFeed creates a fetch_one_feed job for feedURL and dispatches
-// it through the configured FeedFetcher. Used by the add-source path so the
-// refresh pill activates the moment a user adds a source.
+// StartFetchOneFeed creates a fetch_one_feed job so the refresh pill activates the moment a user adds a source.
 func (o *Orchestrator) StartFetchOneFeed(did syntax.DID, feedURL string) string {
 	j := o.jobs.Create(jobs.KindFetchOneFeed, did, jobs.TriggerAddFeed)
 	o.wg.Add(1)

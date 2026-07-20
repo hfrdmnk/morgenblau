@@ -2,31 +2,41 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "github.com/joho/godotenv/autoload"
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
+	"github.com/bluesky-social/indigo/atproto/identity"
 
 	"morgenblau/internal/atidentity"
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/cache/profiles"
 	"morgenblau/internal/database"
 	dbqueries "morgenblau/internal/database/db"
+	"morgenblau/internal/discoverbatch"
+	"morgenblau/internal/discovercrawl"
+	"morgenblau/internal/discoverfavicon"
+	"morgenblau/internal/discoverperson"
+	"morgenblau/internal/discoverposts"
 	"morgenblau/internal/feedfinder"
 	"morgenblau/internal/fetcher"
 	"morgenblau/internal/jobs"
+	"morgenblau/internal/leafletfeed"
 	"morgenblau/internal/oauth/config"
 	"morgenblau/internal/oauth/cookie"
 	"morgenblau/internal/oauth/store"
+	"morgenblau/internal/personsearch"
 	"morgenblau/internal/safehttp"
+	"morgenblau/internal/secret"
+	"morgenblau/internal/sharemeta"
 	"morgenblau/internal/standardfeed"
 	internalsync "morgenblau/internal/sync"
 )
@@ -34,26 +44,36 @@ import (
 type Server struct {
 	port int
 
-	db         *sql.DB
-	queries    *dbqueries.Queries
-	oauthCfg   *config.Config
-	oauthApp   *oauth.ClientApp
-	store      *store.Store
-	sealer     *cookie.Sealer
-	profiles   *profiles.Cache
-	jobs       *jobs.Tracker
-	sync       *internalsync.Orchestrator
-	fetcher    *fetcher.Fetcher
-	feedfinder *feedfinder.Finder
-	safeClient *http.Client
+	db                 *database.DB
+	qr                 *dbqueries.Queries
+	qw                 *dbqueries.Queries
+	oauthCfg           *config.Config
+	oauthApp           *oauth.ClientApp
+	store              *store.Store
+	sealer             *cookie.Sealer
+	profiles           *profiles.Cache
+	identityDir        identity.Directory
+	jobs               *jobs.Tracker
+	sync               *internalsync.Orchestrator
+	fetcher            *fetcher.Fetcher
+	feedfinder         *feedfinder.Finder
+	safeClient         *http.Client
+	discover           *discovercrawl.CachedCrawler
+	discoverAuthored   *discovercrawl.CachedAuthoredCrawler
+	discoverShares     *discovercrawl.CachedShareCrawler
+	discoverAdjacent   *discovercrawl.CachedAdjacentFollowCrawler
+	discoverOwnForeign *discovercrawl.CachedOwnForeignCrawler
+	discoverFollows    *discovercrawl.CachedReaderFollowCrawler
+	discoverPosts      *discoverposts.CachedFetcher
+	discoverFavicon    *discoverfavicon.Resolver
+	peopleSearcher     *personsearch.Searcher
+	personInspector    *discoverperson.Inspector
+	shareMetadata      *sharemeta.Resolver
 
 	gcCancel context.CancelFunc
 }
 
-// NewServer builds the HTTP server and returns a cleanup func the caller must
-// invoke after http.Server.Shutdown returns: it drains in-flight sync writes and
-// closes the database. The drain can't hang off server.RegisterOnShutdown because
-// net/http fires those as detached goroutines it never waits for.
+// NewServer returns a cleanup func the caller must run after Shutdown returns (draining sync writes, closing the DB); it can't hang off server.RegisterOnShutdown, since net/http fires those as unwaited detached goroutines.
 func NewServer() (*http.Server, func(context.Context) error, error) {
 	port := 8000
 	if raw := os.Getenv("PORT"); raw != "" {
@@ -73,6 +93,24 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		fetchMinutes = n
 	}
 
+	// SPEC <discovery>: daily cadence is deliberate; 0 disables, same convention as FETCH_INTERVAL_MINUTES.
+	discoverBatchHours := 24
+	if raw := os.Getenv("DISCOVER_BATCH_INTERVAL_HOURS"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid DISCOVER_BATCH_INTERVAL_HOURS %q: %w", raw, err)
+		}
+		discoverBatchHours = n
+	}
+	relayHost := os.Getenv("DISCOVER_RELAY_HOST")
+	if relayHost == "" {
+		relayHost = discoverbatch.DefaultRelayHost
+	}
+	appviewHost := os.Getenv("APPVIEW_HOST")
+	if appviewHost == "" {
+		appviewHost = "https://public.api.bsky.app"
+	}
+
 	db, err := database.Open()
 	if err != nil {
 		return nil, nil, fmt.Errorf("open database: %w", err)
@@ -88,51 +126,100 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		return nil, nil, fmt.Errorf("load cookie sealer: %w", err)
 	}
 
-	st := store.New(db)
-	oauthApp := oauth.NewClientApp(oauthCfg.Indigo, st)
+	keyset, err := loadSessionKeyset()
+	if err != nil {
+		return nil, nil, fmt.Errorf("load session keyset: %w", err)
+	}
+
+	// Writer pool: session store, pipelines, sync engine (all mutate). Reader pool: read-only handlers and refresher.
+	qw := dbqueries.New(db.Writer)
+	qr := dbqueries.New(db.Reader)
+
+	st := store.New(db.Writer, keyset)
+
+	safeClient := safehttp.NewClient(30*time.Second, 5)
+	identityDir := atidentity.Guarded(safeClient)
+	oauthApp := newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
 
 	gcCtx, gcCancel := context.WithCancel(context.Background())
 	go runAuthRequestGC(gcCtx, st)
 
-	safeClient := safehttp.NewClient(30*time.Second, 5)
-	identityDir := atidentity.Guarded(safeClient)
 	profileCache := profiles.New(identityDir, profiles.PDSFetcher{Client: safeClient})
 	tracker := jobs.New()
 	go runJobsGC(gcCtx, tracker)
 	fetcherInst := fetcher.New()
-	queries := dbqueries.New(db)
-	pipeline := internalsync.NewFeedPipeline(fetcherInst, queries)
+	pipeline := internalsync.NewFeedPipeline(fetcherInst, qw).WithTxRunner(db.Writer)
 	stdClient := standardfeed.NewClient(identityDir, safeClient)
+	shareMetadataFetcher := sharemeta.NewFetcher(stdClient, safeClient)
+	shareMetadata := sharemeta.NewResolver(qr, qr, shareMetadataFetcher, sharemeta.DefaultTTL).WithTxRunner(db.Writer)
+	postsFetcher := discoverposts.NewFetcher(fetcherInst, stdClient).WithPublicationResolutions(qr)
+	discoverPosts := discoverposts.NewCachedFetcher(postsFetcher, qr, discoverposts.DefaultTTL).WithTxRunner(db.Writer)
+	discoverFavicon := discoverfavicon.NewResolver(qr, qr, qr, discoverfavicon.NewHTTPDiscoverer(), qr).WithTxRunner(db.Writer)
 	finder := feedfinder.New(safeClient).WithStandardResolver(stdClient)
-	stdPipeline := internalsync.NewStandardfeedPipeline(stdClient, queries)
+	stdPipeline := internalsync.NewStandardfeedPipeline(stdClient, qw).WithTxRunner(db.Writer)
+	leafletClient := leafletfeed.NewClient(identityDir, safeClient)
+	crawlClient := discovercrawl.NewClient(identityDir, safeClient, stdClient, stdClient, leafletClient).WithResolutionCache(qr, qw)
+	discover := discovercrawl.NewCachedCrawler(crawlClient, qr, discovercrawl.DefaultTTL).WithTxRunner(db.Writer)
+	discoverAuthored := discovercrawl.NewCachedAuthoredCrawler(crawlClient, qr, discovercrawl.DefaultTTL).WithTxRunner(db.Writer)
+	discoverShares := discovercrawl.NewCachedShareCrawler(crawlClient, qr, discovercrawl.DefaultTTL).WithTxRunner(db.Writer)
+	personInspector := discoverperson.New(discover, discoverAuthored, discoverShares)
+	discoverFollows := discovercrawl.NewCachedReaderFollowCrawler(crawlClient, qr, discovercrawl.DefaultTTL).WithTxRunner(db.Writer)
+	peopleSearcher := personsearch.NewSearcher(personsearch.NewAppView(appviewHost, safeClient), personsearch.NewSQLitePresenceReader(qr))
+	// Same-user crawls (session user's own repo, not a followed person's) get a shorter TTL: staleness here would hide the viewer's own recent actions.
+	discoverAdjacent := discovercrawl.NewCachedAdjacentFollowCrawler(crawlClient, qr, discovercrawl.SelfCrawlTTL).WithTxRunner(db.Writer)
+	discoverOwnForeign := discovercrawl.NewCachedOwnForeignCrawler(crawlClient, qr, discovercrawl.SelfCrawlTTL).WithTxRunner(db.Writer)
 	router := internalsync.NewSourceRouter(pipeline, stdPipeline)
-	engine := internalsync.NewEngine(tracker, queries, internalsync.SessionPDSLister{}, router, oauthApp, atprepo.SessionWriter{})
+	engine := internalsync.NewEngine(tracker, qw, internalsync.SessionPDSLister{}, router, oauthApp, atprepo.SessionWriter{}).WithLocker(st).WithTxRunner(db.Writer)
 	orchestrator := internalsync.New(tracker, router, engine)
 
 	if fetchMinutes > 0 {
 		interval := time.Duration(fetchMinutes) * time.Minute
-		refresher := internalsync.NewGlobalRefresher(queries, router)
+		refresher := internalsync.NewGlobalRefresher(qr, router)
 		go runGlobalFetch(gcCtx, refresher, interval)
 		slog.Info("global feed fetch enabled", "interval", interval)
 	} else {
 		slog.Info("global feed fetch disabled (FETCH_INTERVAL_MINUTES <= 0)")
 	}
 
+	// SPEC <discovery> Global/Trending: system-wide batch, no jobs/refresh indicator; reuses crawlClient/identityDir from the personal path.
+	var trendingRunner *discoverbatch.Runner
+	if discoverBatchHours > 0 {
+		trendingBatch := discoverbatch.New(relayHost, safeClient, identityDir, crawlClient, qr).WithTxRunner(db.Writer)
+		trendingRunner = discoverbatch.NewRunner(trendingBatch, time.Duration(discoverBatchHours)*time.Hour).WithStateStore(qr, qw)
+		trendingRunner.Start()
+		slog.Info("discover trending batch enabled", "interval", time.Duration(discoverBatchHours)*time.Hour, "relay", relayHost)
+	} else {
+		slog.Info("discover trending batch disabled (DISCOVER_BATCH_INTERVAL_HOURS <= 0)")
+	}
+
 	srv := &Server{
-		port:       port,
-		db:         db,
-		queries:    queries,
-		oauthCfg:   oauthCfg,
-		oauthApp:   oauthApp,
-		store:      st,
-		sealer:     sealer,
-		profiles:   profileCache,
-		jobs:       tracker,
-		sync:       orchestrator,
-		fetcher:    fetcherInst,
-		feedfinder: finder,
-		safeClient: safeClient,
-		gcCancel:   gcCancel,
+		port:               port,
+		db:                 db,
+		qr:                 qr,
+		qw:                 qw,
+		oauthCfg:           oauthCfg,
+		oauthApp:           oauthApp,
+		store:              st,
+		sealer:             sealer,
+		profiles:           profileCache,
+		identityDir:        identityDir,
+		jobs:               tracker,
+		sync:               orchestrator,
+		fetcher:            fetcherInst,
+		feedfinder:         finder,
+		safeClient:         safeClient,
+		discover:           discover,
+		discoverAuthored:   discoverAuthored,
+		discoverShares:     discoverShares,
+		discoverAdjacent:   discoverAdjacent,
+		discoverOwnForeign: discoverOwnForeign,
+		discoverFollows:    discoverFollows,
+		discoverPosts:      discoverPosts,
+		discoverFavicon:    discoverFavicon,
+		peopleSearcher:     peopleSearcher,
+		personInspector:    personInspector,
+		shareMetadata:      shareMetadata,
+		gcCancel:           gcCancel,
 	}
 
 	server := &http.Server{
@@ -142,13 +229,17 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
-	// Fire-and-forget is right for the GC/global-sweep tickers — they hold no
-	// writes worth draining.
+	// Fire-and-forget is fine here: GC/global-sweep tickers hold no writes worth draining.
 	server.RegisterOnShutdown(gcCancel)
 
 	cleanup := func(ctx context.Context) error {
 		if err := orchestrator.Shutdown(ctx); err != nil {
 			slog.Warn("sync orchestrator shutdown", "err", err)
+		}
+		if trendingRunner != nil {
+			if err := trendingRunner.Shutdown(ctx); err != nil {
+				slog.Warn("discover trending batch shutdown", "err", err)
+			}
 		}
 		return db.Close()
 	}
@@ -168,8 +259,28 @@ func loadCookieSealer() (*cookie.Sealer, error) {
 	return cookie.New(key)
 }
 
-// runJobsGC sweeps finished jobs past the retention window every minute so
-// users who never poll /api/jobs/active don't leave ghosts behind.
+// loadSessionKeyset reads SESSION_STORE_KEYS: comma-separated base64 32-byte keys (openssl rand -base64 32).
+func loadSessionKeyset() (*secret.Keyset, error) {
+	raw := os.Getenv("SESSION_STORE_KEYS")
+	if raw == "" {
+		return nil, fmt.Errorf("SESSION_STORE_KEYS is required (comma-separated base64 32-byte keys; generate with: openssl rand -base64 32)")
+	}
+	var keys [][]byte
+	for i, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		key, err := base64.StdEncoding.DecodeString(part)
+		if err != nil {
+			return nil, fmt.Errorf("SESSION_STORE_KEYS[%d] base64 decode: %w", i, err)
+		}
+		keys = append(keys, key)
+	}
+	return secret.NewKeyset(keys...)
+}
+
+// runJobsGC sweeps finished jobs so users who never poll /api/jobs/active don't leave ghosts behind.
 func runJobsGC(ctx context.Context, tracker *jobs.Tracker) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -183,9 +294,7 @@ func runJobsGC(ctx context.Context, tracker *jobs.Tracker) {
 	}
 }
 
-// runGlobalFetch re-fetches every feed in the shared catalog on a timer. It's
-// not tied to any user, so it logs via slog rather than minting jobs.Tracker
-// entries. Stops when ctx is cancelled (graceful shutdown).
+// runGlobalFetch isn't tied to a user, so it logs via slog instead of minting jobs.Tracker entries.
 func runGlobalFetch(ctx context.Context, r *internalsync.GlobalRefresher, every time.Duration) {
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
@@ -207,8 +316,6 @@ func runGlobalFetch(ctx context.Context, r *internalsync.GlobalRefresher, every 
 	}
 }
 
-// runAuthRequestGC sweeps stale oauth_auth_requests rows every 5 minutes.
-// Stops when ctx is cancelled (on graceful shutdown).
 func runAuthRequestGC(ctx context.Context, st *store.Store) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()

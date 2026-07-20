@@ -63,8 +63,19 @@ function ordinal(n: number): string {
     }
 }
 
-// Compact relative-time string for "time since last post" on the sources card.
-// Examples: "3h ago", "4d ago", "5w ago", "2mo ago", "1y ago".
+export function formatDate(iso: string): string {
+    try {
+        const d = new Date(iso);
+        return d.toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+        });
+    } catch {
+        return iso;
+    }
+}
+
 export function shortTimeAgo(iso: string, now: Date = new Date()): string {
     const t = new Date(iso).getTime();
     if (Number.isNaN(t)) return '';

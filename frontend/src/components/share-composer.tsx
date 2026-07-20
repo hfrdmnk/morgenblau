@@ -14,9 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import type { ShareControl } from '@/hooks/use-share-toggle';
 import { PATHS } from '@/lib/paths';
 
-// The share composer: an optional note before the item reaches the user's
-// network and the Atmosphere. Un-sharing never opens this — it's a direct
-// DELETE from the rail button.
+// ShareComposer collects an optional note before sharing; un-sharing skips this and DELETEs directly from the rail button.
 export function ShareComposer({ share }: { share: ShareControl }) {
     const [comment, setComment] = useState('');
     const [wasOpen, setWasOpen] = useState(share.composerOpen);
@@ -60,6 +58,7 @@ export function ShareComposer({ share }: { share: ShareControl }) {
                         className="text-sm font-light text-muted-foreground"
                     >
                         Your session is out of date.{' '}
+                        {/* Native anchor: reauth exits the authed shell, which app.tsx assumes is a full server round trip. */}
                         <a
                             href={PATHS.login}
                             className="text-primary underline underline-offset-4"

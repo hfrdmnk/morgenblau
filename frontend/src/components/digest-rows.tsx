@@ -1,26 +1,27 @@
 import {
-    BubbleChatIcon,
-    LinkSquare01Icon,
-    NewsIcon,
-    PodcastIcon,
-    Video01Icon,
-} from '@hugeicons/core-free-icons';
-import { HugeiconsIcon } from '@hugeicons/react';
-import type { IconSvgElement } from '@hugeicons/react';
+    ChatIcon,
+    CoffeeHotIcon,
+    DocumentIcon,
+    OpenIcon,
+    VideoIcon,
+} from '@proicons/react';
 import DOMPurify from 'dompurify';
 import { useMemo, useRef } from 'react';
+import { Link } from 'wouter';
 
+import { CardMasthead } from '@/components/card-masthead';
 import { Favicon } from '@/components/favicon';
 import { ListHighlight } from '@/components/list-highlight';
 import { useAuthedMe } from '@/hooks/use-authed-me';
 import type { ListNavigation } from '@/hooks/use-list-navigation';
 import { formatEditionDate, isSameDay } from '@/lib/date';
+import { readAuthor } from '@/lib/entry-meta';
 import { entryActivation } from '@/lib/entry-nav';
 import { pickGreeting, pickPastTitle } from '@/lib/greetings';
 import { type EntryFrom } from '@/lib/paths';
 import { safeHref } from '@/lib/utils';
 
-export type ContentType = 'blogpost' | 'microblog' | 'video' | 'podcast';
+export type ContentType = 'blogpost' | 'microblog' | 'video';
 
 export type Source = {
     feedUrl: string;
@@ -41,11 +42,10 @@ export type Entry = {
     metadata?: string | null;
 };
 
-const TYPE_ICONS: Record<ContentType, IconSvgElement> = {
-    blogpost: NewsIcon,
-    microblog: BubbleChatIcon,
-    video: Video01Icon,
-    podcast: PodcastIcon,
+const TYPE_ICONS: Record<ContentType, typeof DocumentIcon> = {
+    blogpost: DocumentIcon,
+    microblog: ChatIcon,
+    video: VideoIcon,
 };
 
 const ROW_CLICKABLE_BASE =
@@ -59,65 +59,100 @@ export function Newspaper({
     today,
     entryFrom,
     nav,
+    emptyState,
 }: {
     entries: Entry[];
     date?: Date;
     today?: Date;
     entryFrom?: EntryFrom;
     nav: ListNavigation;
+    emptyState?: { lead: string; detail: string };
 }) {
     const listRef = useRef<HTMLDivElement>(null);
+    const isEmpty = entries.length === 0;
 
     return (
-        <article className="overflow-hidden rounded-xl border border-border bg-card">
-            {date ? (
-                <>
-                    <DigestMasthead
-                        date={date}
-                        count={entries.length}
-                        isToday={today ? isSameDay(date, today) : true}
+        <article className="overflow-hidden rounded-xl bg-card shadow-card">
+            <DigestMastheadSection
+                date={date}
+                today={today}
+                count={entries.length}
+            />
+            {isEmpty && emptyState ? (
+                <EmptyEntries lead={emptyState.lead} detail={emptyState.detail} />
+            ) : (
+                <div
+                    ref={listRef}
+                    className="relative"
+                    onMouseLeave={nav.clearPointer}
+                >
+                    <ListHighlight
+                        containerRef={listRef}
+                        active={nav.active}
+                        scrollKey={nav.scrollKey}
                     />
-                    <div aria-hidden className="mx-6 border-t border-border" />
-                </>
-            ) : null}
-            <div
-                ref={listRef}
-                className="relative"
-                onMouseLeave={nav.clearPointer}
-            >
-                <ListHighlight
-                    containerRef={listRef}
-                    active={nav.active}
-                    scrollKey={nav.scrollKey}
-                />
-                <ul className="relative z-10 flex flex-col">
-                    {entries.map((entry, index) => (
-                        <li key={entry.id}>
-                            {index > 0 ? (
-                                <div
-                                    aria-hidden
-                                    className="mx-6 border-t border-border"
-                                />
-                            ) : null}
-                            {entry.contentType === 'microblog' ? (
-                                <InlineRow
-                                    entry={entry}
-                                    index={index}
-                                    onActivate={nav.setActive}
-                                />
-                            ) : (
-                                <StandardRow
-                                    entry={entry}
-                                    entryFrom={entryFrom}
-                                    index={index}
-                                    onActivate={nav.setActive}
-                                />
-                            )}
-                        </li>
-                    ))}
-                </ul>
-            </div>
+                    <ul className="relative z-10 flex flex-col">
+                        {entries.map((entry, index) => (
+                            <li key={entry.id}>
+                                {index > 0 ? (
+                                    <div
+                                        aria-hidden
+                                        className="mx-6 border-t border-border"
+                                    />
+                                ) : null}
+                                {entry.contentType === 'microblog' ? (
+                                    <InlineRow
+                                        entry={entry}
+                                        index={index}
+                                        onActivate={nav.setActive}
+                                    />
+                                ) : (
+                                    <StandardRow
+                                        entry={entry}
+                                        entryFrom={entryFrom}
+                                        index={index}
+                                        onActivate={nav.setActive}
+                                    />
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
         </article>
+    );
+}
+
+// Owns the date-presence check so DigestMasthead's useAuthedMe read only fires when there's a date to show.
+function DigestMastheadSection({
+    date,
+    today,
+    count,
+}: {
+    date?: Date;
+    today?: Date;
+    count: number;
+}) {
+    if (!date) return null;
+    return (
+        <>
+            <DigestMasthead
+                date={date}
+                count={count}
+                isToday={today ? isSameDay(date, today) : true}
+            />
+            <div aria-hidden className="mx-6 border-t border-border" />
+        </>
+    );
+}
+
+function EmptyEntries({ lead, detail }: { lead: string; detail: string }) {
+    return (
+        <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+            <CoffeeHotIcon className="size-6 text-muted-foreground" />
+            <p>{lead}</p>
+            <p className="text-sm font-light text-muted-foreground">{detail}</p>
+        </div>
     );
 }
 
@@ -140,17 +175,11 @@ function DigestMasthead({
     const noun = count === 1 ? 'piece' : 'pieces';
 
     return (
-        <div className="flex flex-col gap-1 px-6 pt-6 pb-5">
-            <p className="text-sm font-light text-muted-foreground">
-                {formatEditionDate(date)}
-            </p>
-            <div className="flex items-baseline justify-between gap-4">
-                <h2 className="text-xl font-medium">{heading}</h2>
-                <p className="shrink-0 text-sm text-muted-foreground">
-                    {count} {noun}
-                </p>
-            </div>
-        </div>
+        <CardMasthead
+            eyebrow={formatEditionDate(date)}
+            heading={heading}
+            meta={count > 0 ? `${count} ${noun}` : undefined}
+        />
     );
 }
 
@@ -207,18 +236,30 @@ function StandardRow({
         );
     }
 
+    if (target.external) {
+        return (
+            <a
+                href={target.href}
+                data-nav-row=""
+                onMouseEnter={() => onActivate(index)}
+                className={ROW_CLICKABLE_CLASS}
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                {content}
+            </a>
+        );
+    }
+
     return (
-        <a
+        <Link
             href={target.href}
             data-nav-row=""
             onMouseEnter={() => onActivate(index)}
             className={ROW_CLICKABLE_CLASS}
-            {...(target.external
-                ? { target: '_blank', rel: 'noopener noreferrer' }
-                : {})}
         >
             {content}
-        </a>
+        </Link>
     );
 }
 
@@ -251,8 +292,7 @@ function InlineRow({
     );
 }
 
-// Body is server-sanitized at ingest (bluemonday UGC). DOMPurify runs as
-// client-side defense-in-depth in case a sanitizer regression slips through.
+// Body is server-sanitized at ingest (bluemonday UGC); DOMPurify is defense-in-depth in case a sanitizer regression slips through.
 function MicroblogBody({ html }: { html: string }) {
     const clean = useMemo(() => DOMPurify.sanitize(html), [html]);
     return (
@@ -272,7 +312,7 @@ function RowHeader({
     lead: string;
     linkHref?: string | null;
 }) {
-    const TypeIcon = TYPE_ICONS[entry.contentType] ?? NewsIcon;
+    const TypeIcon = TYPE_ICONS[entry.contentType] ?? DocumentIcon;
     const link = safeHref(linkHref);
 
     return (
@@ -289,16 +329,10 @@ function RowHeader({
                     aria-label="Open source post"
                     className="rounded-sm text-muted-foreground transition-colors duration-200 ease-out hover:text-foreground focus-visible:outline-1 focus-visible:outline-ring"
                 >
-                    <HugeiconsIcon
-                        icon={LinkSquare01Icon}
-                        className="size-[1.125rem] shrink-0"
-                    />
+                    <OpenIcon className="size-[1.125rem] shrink-0" />
                 </a>
             ) : null}
-            <HugeiconsIcon
-                icon={TypeIcon}
-                className="size-[1.125rem] shrink-0 text-muted-foreground"
-            />
+            <TypeIcon className="size-[1.125rem] shrink-0 text-muted-foreground" />
         </div>
     );
 }
@@ -343,16 +377,6 @@ function formatMicroblogMeta(entry: Entry): string | null {
     if (author && author !== source) bits.push(author);
     if (entry.publishedAt) bits.push(formatRelative(entry.publishedAt));
     return bits.length > 0 ? bits.join(' · ') : null;
-}
-
-function readAuthor(metadata: string | null | undefined): string | null {
-    if (!metadata) return null;
-    try {
-        const parsed = JSON.parse(metadata) as { author?: unknown };
-        return typeof parsed.author === 'string' ? parsed.author : null;
-    } catch {
-        return null;
-    }
 }
 
 function formatRelative(iso: string): string {

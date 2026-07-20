@@ -8,7 +8,7 @@ const GREETINGS: Record<Slot, string[]> = {
     evening: ['Good evening', 'Winding down', 'A calm evening'],
 };
 
-// Headings for past editions: no time-of-day, no name — a calmer archive tone.
+// Headings for past editions: no time-of-day, no name, a calmer archive tone.
 const PAST_TITLES: string[] = [
     'Looking back',
     'From the archive',
