@@ -1,7 +1,8 @@
 # Morgenblau Spec
 
-> Single source of truth for product vision, content model, and guardrails.
+> Single source of truth for product behavior, content model, architecture, and technical guardrails.
 > Keep high-level. Update when core decisions change, not for every feature.
+> Brand feeling and art direction live in [BRAND.md](./BRAND.md).
 
 ---
 
@@ -9,11 +10,9 @@
 
 ## What is Morgenblau?
 
-A calm content platform powered by RSS and ATproto. A window into the Atmosphere that organizes content into finite daily digests instead of infinite feeds.
+Morgenblau is a personal daily web-newspaper powered by RSS and ATproto. It organizes content into finite days instead of an infinite feed.
 
 ATproto is just a means to an end. We're not advertising as "RSS on ATproto" but as a Social RSS reader (what Google Reader could have been).
-
-**Core emotional promise:** Intentionality without deprivation. You still get the good stuff, but on your terms.
 
 **Target users:** People who want to consume content (blogs, microblogs, videos) without the anxiety of unread counts or the pull of endless scrolling. They value the open (social) web.
 
@@ -22,7 +21,7 @@ ATproto is just a means to an end. We're not advertising as "RSS on ATproto" but
 - Daily digests instead of an unread inbox
 - Social layer via ATProto backlinks
 - Three first-class content types with dedicated UIs
-- The "editor of your own publication" identity: you curate the sources you value
+- A newspaper curated from sources the reader chooses
 
 </vision>
 
@@ -75,7 +74,7 @@ Three near-synonyms with disciplined assignments to keep the codebase coherent.
 
 A user **adds a source** → the app **creates a subscription record** → the fetcher **polls the feed**.
 
-Avoid: "manage subscriptions" in user copy (per `<brand>` — they're editors, not managers). Avoid: "feeds" in user-facing routes/pages (leaks the mechanism).
+Use "sources" rather than "subscriptions" or "feeds" in user-facing routes and pages. The other terms describe implementation details.
 
 Standardfeed sources get **no user-facing noun** (not "Publication", not "Standardfeed") — a source is a source. The only user-facing differentiator is a "Subscribe via ATProto" affordance in the picker with a tooltip that leads with the benefit (subscription lives in the user's own account, portable across apps, shares reach the Atmosphere), not the mechanism. RSS candidates carry no label at all. Internally the Tier-2 kind is `standardfeed`.
 
@@ -477,7 +476,7 @@ Architecture must permit evolving toward finer real-time refresh per feed (HTTP 
 
 Failed fetches back off exponentially (5min → 15min → 1h → 6h → 24h cap) until success or auto-disable. After **20 consecutive failures** the feed is silently muted. Muted feeds still auto-retry once per day. On the first success they silently re-enable, no user action required.
 
-Failure state is **visible only in the sources list** as quiet metadata (last successful fetch time, muted state). The digest itself never surfaces feed errors — the calm-brand promise extends to "no apologies for missing content."
+Failure state is **visible only in the sources list** as quiet metadata (last successful fetch time, muted state). The digest itself never surfaces feed errors.
 
 </feed-sources>
 
@@ -519,7 +518,7 @@ The Discover route answers "where do I find good stuff to read?" using the reade
 No firehose/Jetstream in v1; it can be layered in later without changing the model.
 
 - **Personal**: on-demand `listRecords` crawls of the repos of people the user follows (bounded set), plus single-repo crawls when the user inspects one person (card expansion, profile page), cached in local SQLite with a TTL. Same posture as Tier-1/Tier-2: local tables are derived caches, re-derivable from PDSes.
-- **Global/Trending**: a **daily batch job** enumerates repos per collection via relay `com.atproto.sync.listReposByCollection`, then diffs records into local aggregate tables (canonical source key → per-signal counts). Daily cadence is deliberate and brand-aligned: Morgenblau is a daily-digest product, so trending that changes once a day is calmer than a live ticker, and one computation serves all users.
+- **Global/Trending**: a **daily batch job** enumerates repos per collection via relay `com.atproto.sync.listReposByCollection`, then diffs records into local aggregate tables (canonical source key → per-signal counts). The cadence matches the daily digest and lets one computation serve all users.
 
 Aggregates are keyed by the same canonical source keys as Tier-2 (canonical feed URL for `rss`, publication AT-URI for `standardfeed`), so cross-reader dedup falls out of the keying.
 
@@ -563,7 +562,7 @@ Already-followed people drop out; hide works identically to sources (same snooze
 
 ### The user's own foreign records
 
-The user's own Skyreader/Glean subscriptions are wired into personal source suggestions ("For you") as regular candidates at the highest trust tier (self > reader-network follow), each carrying its reason ("you subscribe on Skyreader") and one-tap subscribe. Import becomes an organic, per-source act of curation rather than a bulk copy — this is the primary import path, and it fits the editor identity better than a wizard dumping 200 stale subscriptions into a pristine digest. A bulk import wizard (settings, with consent step) may ship later; it is out of discovery v1.
+The user's own Skyreader/Glean subscriptions are wired into personal source suggestions ("For you") as regular candidates at the highest trust tier (self > reader-network follow), each carrying its reason ("you subscribe on Skyreader") and one-tap subscribe. This per-source flow is the primary import path. A bulk import wizard (settings, with consent step) may ship later; it is out of discovery v1.
 
 **De-dup rule, all entry points:** a foreign record whose canonical source key matches an existing Morgenblau subscription is invisible everywhere — never suggested, never importable, silently skipped in bulk import. For saves/shares the dedup key is `itemUrl`.
 
@@ -645,13 +644,3 @@ Things Morgenblau will never do.
 - **No unread counts.** Never show unread badges, counts, or inbox-zero mechanics. This is the foundational design principle.
 
 </anti-features>
-
----
-
-<brand>
-
-## Brand
-
-See [BRAND.md](./BRAND.md) for the brand layer: essence, the Edition and Morning ideas, voice, color and light, typography, the mark, and motion.
-
-</brand>

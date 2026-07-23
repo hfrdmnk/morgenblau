@@ -1,58 +1,41 @@
-# Morgenblau Brand
+# Morgenblau
 
-> The brand layer. UI implementation (tokens, components, classNames) lives in the `morgenblau-designer` skill. This sits above it.
+This is the feeling we want to work towards. It is not a set of metaphors to repeat in the product. The UI design language lives in the `morgenblau-designer` skill.
 
-## Essence
+## The idea
 
-Intentionality without deprivation. A calm daily edition instead of an infinite feed. You are the editor of your own publication.
+Morgenblau is your personal daily web-newspaper.
 
-## Two ideas
+It collects the sources you care about into finite days instead of an endless feed. There are no unread counts and no pressure to catch up. You curate what belongs in your newspaper.
 
-- **Edition** is the form. The interface is a finite, dated object with a start and an end: sections, a masthead, a last page. A ritual, not a habit.
-- **Morning** is the feeling. Calm, unhurried, a clean beginning before the day's rush. You open it once and you are not behind.
+The newspaper is what Morgenblau shows. Sources are what someone curates. A source can be a publication, a blog, a newsletter, a video channel, or a social account.
 
-Edition does the structure. Morning sets the tone. Structure stays austere; warmth and color live only at the edges.
+## The feeling
 
-## 80 / 20: austere core, warm edges
+Imagine sitting in a cabin by the shore, looking at the ocean, and opening Morgenblau. You are connected to the world, but have a quiet moment to yourself.
 
-- 80% of the surface is quiet. Content-first, generous whitespace, monochrome, the UI receding so the reading shines. iA Writer is the bar.
-- 20% is warmth, and it lives only at the thresholds: the daily open, the masthead, empty states, the seam between days, the login sky.
-- Warmth never enters the reading plane or the working chrome. No gradient behind text, no decoration in a digest row.
+The cabin and the ocean are an internal reference. They should not become literal motifs in the product.
 
-## Light and color
+Morning is also a feeling, not a time of day. It means a fresh start, a calm head, and taking time for yourself. Morgenblau should feel this way in the evening too.
 
-- The product surface is monochrome. Grays do the structural work: surfaces, borders, type. The working chrome stays cool and quiet.
-- **`atmosphere-blue`** is the single product accent, for intent only: the primary action, a focus ring, a moment of discovery. Never chrome, never decoration.
-- The brand imagery orients on **nature**, in its full range: landscape, water, sky, season, any hour.
-- No single mood is mandated. A cool blue hour, a warm dawn, grey overcast, deep dusk all belong, as long as the feeling stays calm and unhurried. The only constant the imagery holds is calm.
-- Category markers stay product-level, one color per content type: leaf-green (longform), sunset-orange (micropost), coral-red (video). Each appears only on its own type.
+## Art direction
 
-## Typography
+The world around the product can be full of light, color, nature, and movement. The product itself stays clear and composed.
 
-- **Geist** carries the product: chrome, digest, forms, navigation.
-- **Newsreader** (serif) is reader body copy only, plus the wordmark. Nowhere else.
-- Calm scale. Hierarchy comes from weight and spacing, not size. No weight above 600. h1 caps near 1.5rem. Headings `tracking-tight`, body normal.
+We like nature seen through motion and light: motion blur, shallow focus, grain, unusual crops, and rich color. It should feel like a real moment rather than polished landscape photography. Nature can be present without showing a cabin, an ocean, or a sunrise.
 
-## The editor's hand
+The interface should feel digital, minimal, and precise. It can sit against something soft and alive. Content stays easy to read, but the product should not become sterile.
 
-The human warmth, used sparingly. Hand-drawn marks that carry meaning, the way an editor marks up a page: a circled date, a check on something read or saved, a margin line beside an annotation. Ties to margin.at annotations and the editor identity. Because it means something, it earns its place. No random doodles, no decorative flourishes, no script or hand-drawn typefaces anywhere else.
+Avoid nostalgic newspaper styling. No paper textures, old printing effects, ornamental rules, or other references to historical newspapers.
 
-## Voice
+## Language
 
-A calm editor with an espresso at 7am, not performing. One step warmer than Linear, one cooler than Superhuman.
+Use **newspaper** for the finite daily collection.
 
-- Short sentences. Second person ("you curated this").
-- First-party words: editor, publication, sources, edition. Never account, subscriptions, feeds, users.
-- No exclamation marks. No emoji. No urgency language, no unread counts, no "unread."
+Use **curate** and **curation** for choosing sources. Do not call people editors. Avoid **edition**.
 
-## Motion
+The voice is calm, direct, and human. No urgency, no exclamation marks, no emoji, and no language about being behind. Never use unread counts or progress to pressure people.
 
-Ripples settling on water, not springs. Ease-out dominant, under 300ms for UI. Spring is reserved for two moments only, e.g. a social affirmation (like, save, follow). The digest arrives all at once, with no staggered reveal.
+## The mark
 
-## Never
-
-- Unread counts, badges, progress, "X left to read."
-- `atmosphere-blue` as decoration or chrome.
-- Serif outside the reader and the wordmark.
-- Warmth (gradient, hand-marks) on the reading plane or working chrome.
-- Exclamation marks or emoji in copy.
+The mark is an abstract sun rising over the ocean. It connects Morgenblau to light, the horizon, and the feeling of a fresh start. It does not mean that every brand image needs to show a sunrise.
