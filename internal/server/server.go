@@ -16,6 +16,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/identity"
 
+	"morgenblau/internal/api"
 	"morgenblau/internal/atidentity"
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/cache/profiles"
@@ -24,6 +25,7 @@ import (
 	"morgenblau/internal/discoverbatch"
 	"morgenblau/internal/discovercrawl"
 	"morgenblau/internal/discoverfavicon"
+	"morgenblau/internal/discovermemo"
 	"morgenblau/internal/discoverperson"
 	"morgenblau/internal/discoverposts"
 	"morgenblau/internal/feedfinder"
@@ -39,36 +41,40 @@ import (
 	"morgenblau/internal/sharemeta"
 	"morgenblau/internal/standardfeed"
 	internalsync "morgenblau/internal/sync"
+	"morgenblau/internal/tapingest"
 )
 
 type Server struct {
 	port int
 
-	db                 *database.DB
-	qr                 *dbqueries.Queries
-	qw                 *dbqueries.Queries
-	oauthCfg           *config.Config
-	oauthApp           *oauth.ClientApp
-	store              *store.Store
-	sealer             *cookie.Sealer
-	profiles           *profiles.Cache
-	identityDir        identity.Directory
-	jobs               *jobs.Tracker
-	sync               *internalsync.Orchestrator
-	fetcher            *fetcher.Fetcher
-	feedfinder         *feedfinder.Finder
-	safeClient         *http.Client
-	discover           *discovercrawl.CachedCrawler
-	discoverAuthored   *discovercrawl.CachedAuthoredCrawler
-	discoverShares     *discovercrawl.CachedShareCrawler
-	discoverAdjacent   *discovercrawl.CachedAdjacentFollowCrawler
-	discoverOwnForeign *discovercrawl.CachedOwnForeignCrawler
-	discoverFollows    *discovercrawl.CachedReaderFollowCrawler
-	discoverPosts      *discoverposts.CachedFetcher
-	discoverFavicon    *discoverfavicon.Resolver
-	peopleSearcher     *personsearch.Searcher
-	personInspector    *discoverperson.Inspector
-	shareMetadata      *sharemeta.Resolver
+	db                  *database.DB
+	qr                  *dbqueries.Queries
+	qw                  *dbqueries.Queries
+	oauthCfg            *config.Config
+	oauthApp            *oauth.ClientApp
+	store               *store.Store
+	sealer              *cookie.Sealer
+	profiles            *profiles.Cache
+	identityDir         identity.Directory
+	jobs                *jobs.Tracker
+	sync                *internalsync.Orchestrator
+	fetcher             *fetcher.Fetcher
+	feedfinder          *feedfinder.Finder
+	safeClient          *http.Client
+	discover            *discovercrawl.CachedCrawler
+	discoverAuthored    *discovercrawl.CachedAuthoredCrawler
+	discoverShares      *discovercrawl.CachedShareCrawler
+	discoverAdjacent    *discovercrawl.CachedAdjacentFollowCrawler
+	discoverOwnForeign  *discovercrawl.CachedOwnForeignCrawler
+	discoverFollows     *discovercrawl.CachedReaderFollowCrawler
+	discoverPosts       *discoverposts.CachedFetcher
+	discoverFavicon     *discoverfavicon.Resolver
+	discoverSourcesMemo *discovermemo.Cache[api.DiscoverSourcesPayload]
+	discoverPeopleMemo  *discovermemo.Cache[api.DiscoverPeoplePayload]
+	discoverMemos       *discovermemo.Group
+	peopleSearcher      *personsearch.Searcher
+	personInspector     *discoverperson.Inspector
+	shareMetadata       *sharemeta.Resolver
 
 	gcCancel context.CancelFunc
 }
@@ -105,6 +111,10 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	relayHost := os.Getenv("DISCOVER_RELAY_HOST")
 	if relayHost == "" {
 		relayHost = discoverbatch.DefaultRelayHost
+	}
+	tapURL := os.Getenv("TAP_URL")
+	if tapURL == "" {
+		tapURL = "http://localhost:2480"
 	}
 	appviewHost := os.Getenv("APPVIEW_HOST")
 	if appviewHost == "" {
@@ -181,45 +191,60 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		slog.Info("global feed fetch disabled (FETCH_INTERVAL_MINUTES <= 0)")
 	}
 
-	// SPEC <discovery> Global/Trending: system-wide batch, no jobs/refresh indicator; reuses crawlClient/identityDir from the personal path.
-	var trendingRunner *discoverbatch.Runner
+	// One assembled discover payload per user, short-lived; every local write that changes what they should see stales both.
+	discoverSourcesMemo := discovermemo.New[api.DiscoverSourcesPayload](discovermemo.DefaultTTL)
+	discoverPeopleMemo := discovermemo.New[api.DiscoverPeoplePayload](discovermemo.DefaultTTL)
+	discoverMemos := discovermemo.NewGroup(discoverSourcesMemo, discoverPeopleMemo)
+
+	// SPEC <discovery> Global/Trending: tap mirrors the reader network's records, the rebuild worker turns them into aggregates, and the seeder tells tap which repos to follow.
+	tapConsumer := tapingest.NewConsumer(tapURL).WithTxRunner(db.Writer)
+	tapConsumer.Start()
+	tapRebuild := tapingest.NewRebuildWorker(qr, crawlClient, identityDir, qr).
+		WithTxRunner(db.Writer).
+		WithInvalidator(discoverMemos.InvalidateAll)
+	tapRebuild.Start()
+
+	var seedRunner *discoverbatch.Runner
 	if discoverBatchHours > 0 {
-		trendingBatch := discoverbatch.New(relayHost, safeClient, identityDir, crawlClient, qr).WithTxRunner(db.Writer)
-		trendingRunner = discoverbatch.NewRunner(trendingBatch, time.Duration(discoverBatchHours)*time.Hour).WithStateStore(qr, qw)
-		trendingRunner.Start()
-		slog.Info("discover trending batch enabled", "interval", time.Duration(discoverBatchHours)*time.Hour, "relay", relayHost)
+		seeder := tapingest.NewSeeder(tapURL, tapingest.NewTapClient(), relayHost, safeClient, qr).WithTxRunner(db.Writer)
+		seedRunner = discoverbatch.NewRunner(seeder, time.Duration(discoverBatchHours)*time.Hour).WithStateStore(qr, qw)
+		seedRunner.Start()
+		slog.Info("discover tap seeding enabled", "interval", time.Duration(discoverBatchHours)*time.Hour, "relay", relayHost, "tap", tapURL)
 	} else {
-		slog.Info("discover trending batch disabled (DISCOVER_BATCH_INTERVAL_HOURS <= 0)")
+		slog.Info("discover tap seeding disabled (DISCOVER_BATCH_INTERVAL_HOURS <= 0)")
 	}
 
 	srv := &Server{
-		port:               port,
-		db:                 db,
-		qr:                 qr,
-		qw:                 qw,
-		oauthCfg:           oauthCfg,
-		oauthApp:           oauthApp,
-		store:              st,
-		sealer:             sealer,
-		profiles:           profileCache,
-		identityDir:        identityDir,
-		jobs:               tracker,
-		sync:               orchestrator,
-		fetcher:            fetcherInst,
-		feedfinder:         finder,
-		safeClient:         safeClient,
-		discover:           discover,
-		discoverAuthored:   discoverAuthored,
-		discoverShares:     discoverShares,
-		discoverAdjacent:   discoverAdjacent,
-		discoverOwnForeign: discoverOwnForeign,
-		discoverFollows:    discoverFollows,
-		discoverPosts:      discoverPosts,
-		discoverFavicon:    discoverFavicon,
-		peopleSearcher:     peopleSearcher,
-		personInspector:    personInspector,
-		shareMetadata:      shareMetadata,
-		gcCancel:           gcCancel,
+		port:                port,
+		db:                  db,
+		qr:                  qr,
+		qw:                  qw,
+		oauthCfg:            oauthCfg,
+		oauthApp:            oauthApp,
+		store:               st,
+		sealer:              sealer,
+		profiles:            profileCache,
+		identityDir:         identityDir,
+		jobs:                tracker,
+		sync:                orchestrator,
+		fetcher:             fetcherInst,
+		feedfinder:          finder,
+		safeClient:          safeClient,
+		discover:            discover,
+		discoverAuthored:    discoverAuthored,
+		discoverShares:      discoverShares,
+		discoverAdjacent:    discoverAdjacent,
+		discoverOwnForeign:  discoverOwnForeign,
+		discoverFollows:     discoverFollows,
+		discoverPosts:       discoverPosts,
+		discoverFavicon:     discoverFavicon,
+		discoverSourcesMemo: discoverSourcesMemo,
+		discoverPeopleMemo:  discoverPeopleMemo,
+		discoverMemos:       discoverMemos,
+		peopleSearcher:      peopleSearcher,
+		personInspector:     personInspector,
+		shareMetadata:       shareMetadata,
+		gcCancel:            gcCancel,
 	}
 
 	server := &http.Server{
@@ -236,10 +261,16 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		if err := orchestrator.Shutdown(ctx); err != nil {
 			slog.Warn("sync orchestrator shutdown", "err", err)
 		}
-		if trendingRunner != nil {
-			if err := trendingRunner.Shutdown(ctx); err != nil {
-				slog.Warn("discover trending batch shutdown", "err", err)
+		if seedRunner != nil {
+			if err := seedRunner.Shutdown(ctx); err != nil {
+				slog.Warn("discover tap seeder shutdown", "err", err)
 			}
+		}
+		if err := tapConsumer.Shutdown(ctx); err != nil {
+			slog.Warn("tap consumer shutdown", "err", err)
+		}
+		if err := tapRebuild.Shutdown(ctx); err != nil {
+			slog.Warn("tap rebuild worker shutdown", "err", err)
 		}
 		return db.Close()
 	}
