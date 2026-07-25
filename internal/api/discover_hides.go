@@ -47,7 +47,7 @@ type discoverHidesCreateRequest struct {
 }
 
 // DiscoverHidesCreateHandler snoozes a source key or person DID for the session's user: 30 days on first hide, 180 on repeat. Ownership is enforced by threading the session did through every query, never by comparing a fetched row's did.
-func DiscoverHidesCreateHandler(reader DiscoverHidesReader, writer DiscoverHidesWriter) http.Handler {
+func DiscoverHidesCreateHandler(reader DiscoverHidesReader, writer DiscoverHidesWriter, memo DiscoverInvalidator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -116,6 +116,7 @@ func DiscoverHidesCreateHandler(reader DiscoverHidesReader, writer DiscoverHides
 			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
+		invalidateDiscover(memo, didStr)
 
 		writeJSONStatus(w, http.StatusCreated, DiscoverHideWire{
 			TargetKind:  string(kind),

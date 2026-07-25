@@ -77,7 +77,7 @@ func (f *fakeDiscoverHidesIndex) UpsertDiscoverHide(_ context.Context, arg db.Up
 
 func TestDiscoverHidesCreate_FirstHide_201_30DaySnooze(t *testing.T) {
 	idx := newFakeDiscoverHidesIndex()
-	h := DiscoverHidesCreateHandler(idx, idx)
+	h := DiscoverHidesCreateHandler(idx, idx, nil)
 
 	body := `{"targetKind":"source","targetKey":"https://example.com/feed"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/discover/hides", strings.NewReader(body)), "did:plc:me", "sid-1")
@@ -113,7 +113,7 @@ func TestDiscoverHidesCreate_RepeatHide_180DaySnoozeAndEscalatedCount(t *testing
 		CreatedAt:   "2025-12-01T00:00:00Z",
 		UpdatedAt:   "2025-12-01T00:00:00Z",
 	})
-	h := DiscoverHidesCreateHandler(idx, idx)
+	h := DiscoverHidesCreateHandler(idx, idx, nil)
 
 	body := `{"targetKind":"source","targetKey":"https://example.com/feed"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/discover/hides", strings.NewReader(body)), "did:plc:me", "sid-1")
@@ -134,7 +134,7 @@ func TestDiscoverHidesCreate_RepeatHide_180DaySnoozeAndEscalatedCount(t *testing
 
 func TestDiscoverHidesCreate_PersonTargetKind_Accepted(t *testing.T) {
 	idx := newFakeDiscoverHidesIndex()
-	h := DiscoverHidesCreateHandler(idx, idx)
+	h := DiscoverHidesCreateHandler(idx, idx, nil)
 
 	body := `{"targetKind":"person","targetKey":"did:plc:alice"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/discover/hides", strings.NewReader(body)), "did:plc:me", "sid-1")
@@ -151,7 +151,7 @@ func TestDiscoverHidesCreate_PersonTargetKind_Accepted(t *testing.T) {
 
 func TestDiscoverHidesCreate_StandardfeedTarget_Accepted(t *testing.T) {
 	idx := newFakeDiscoverHidesIndex()
-	h := DiscoverHidesCreateHandler(idx, idx)
+	h := DiscoverHidesCreateHandler(idx, idx, nil)
 
 	body := `{"targetKind":"source","targetKey":"at://did:plc:publisher/site.standard.publication/3abc"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/discover/hides", strings.NewReader(body)), "did:plc:me", "sid-1")
@@ -168,7 +168,7 @@ func TestDiscoverHidesCreate_StandardfeedTarget_Accepted(t *testing.T) {
 
 func TestDiscoverHidesCreate_InvalidTargetKind_400(t *testing.T) {
 	idx := newFakeDiscoverHidesIndex()
-	h := DiscoverHidesCreateHandler(idx, idx)
+	h := DiscoverHidesCreateHandler(idx, idx, nil)
 
 	body := `{"targetKind":"publication","targetKey":"x"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/discover/hides", strings.NewReader(body)), "did:plc:me", "sid-1")
@@ -185,7 +185,7 @@ func TestDiscoverHidesCreate_InvalidTargetKind_400(t *testing.T) {
 
 func TestDiscoverHidesCreate_MissingTargetKey_400(t *testing.T) {
 	idx := newFakeDiscoverHidesIndex()
-	h := DiscoverHidesCreateHandler(idx, idx)
+	h := DiscoverHidesCreateHandler(idx, idx, nil)
 
 	body := `{"targetKind":"source","targetKey":""}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/discover/hides", strings.NewReader(body)), "did:plc:me", "sid-1")
@@ -202,7 +202,7 @@ func TestDiscoverHidesCreate_MissingTargetKey_400(t *testing.T) {
 
 func TestDiscoverHidesCreate_InvalidPersonDID_400(t *testing.T) {
 	idx := newFakeDiscoverHidesIndex()
-	h := DiscoverHidesCreateHandler(idx, idx)
+	h := DiscoverHidesCreateHandler(idx, idx, nil)
 
 	body := `{"targetKind":"person","targetKey":"not-a-did"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/discover/hides", strings.NewReader(body)), "did:plc:me", "sid-1")
@@ -219,7 +219,7 @@ func TestDiscoverHidesCreate_InvalidPersonDID_400(t *testing.T) {
 
 func TestDiscoverHidesCreate_InvalidSourceKey_400(t *testing.T) {
 	idx := newFakeDiscoverHidesIndex()
-	h := DiscoverHidesCreateHandler(idx, idx)
+	h := DiscoverHidesCreateHandler(idx, idx, nil)
 
 	body := `{"targetKind":"source","targetKey":"javascript:alert(1)"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/discover/hides", strings.NewReader(body)), "did:plc:me", "sid-1")
@@ -236,7 +236,7 @@ func TestDiscoverHidesCreate_InvalidSourceKey_400(t *testing.T) {
 
 func TestDiscoverHidesCreate_OversizedTargetKey_400(t *testing.T) {
 	idx := newFakeDiscoverHidesIndex()
-	h := DiscoverHidesCreateHandler(idx, idx)
+	h := DiscoverHidesCreateHandler(idx, idx, nil)
 
 	body, err := json.Marshal(discoverHidesCreateRequest{
 		TargetKind: "source",
@@ -267,7 +267,7 @@ func TestDiscoverHidesCreate_NewTargetAtPerUserLimit_422(t *testing.T) {
 			TargetKey:  key,
 		})
 	}
-	h := DiscoverHidesCreateHandler(idx, idx)
+	h := DiscoverHidesCreateHandler(idx, idx, nil)
 
 	body := `{"targetKind":"source","targetKey":"https://new.example/feed"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/discover/hides", strings.NewReader(body)), "did:plc:me", "sid-1")
@@ -293,7 +293,7 @@ func TestDiscoverHidesCreate_RepeatTargetAtPerUserLimit_Accepted(t *testing.T) {
 			HideCount:  1,
 		})
 	}
-	h := DiscoverHidesCreateHandler(idx, idx)
+	h := DiscoverHidesCreateHandler(idx, idx, nil)
 
 	body := `{"targetKind":"source","targetKey":"https://source-0.example/feed"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/discover/hides", strings.NewReader(body)), "did:plc:me", "sid-1")
@@ -312,7 +312,7 @@ func TestDiscoverHidesCreate_RepeatTargetAtPerUserLimit_Accepted(t *testing.T) {
 func TestDiscoverHidesCreate_NeverWritesToPDS(t *testing.T) {
 	idx := newFakeDiscoverHidesIndex()
 	pds := &fakePDS{} // present in scope, exactly as it would be for other handlers in this suite
-	h := DiscoverHidesCreateHandler(idx, idx)
+	h := DiscoverHidesCreateHandler(idx, idx, nil)
 
 	body := `{"targetKind":"source","targetKey":"https://example.com/feed"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/discover/hides", strings.NewReader(body)), "did:plc:me", "sid-1")

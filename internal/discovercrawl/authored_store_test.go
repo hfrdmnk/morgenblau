@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
+	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -46,17 +49,35 @@ func openAuthoredCrawlCacheTestDB(t *testing.T) *database.DB {
 }
 
 type fakeAuthoredCrawler struct {
+	// mu guards the counters: the batch path crawls several DIDs concurrently.
+	mu      sync.Mutex
 	calls   int
+	crawled []string
 	results []AuthoredPublication
+	byDID   map[string][]AuthoredPublication
 	err     error
 }
 
-func (f *fakeAuthoredCrawler) CrawlAuthoredPublications(context.Context, syntax.DID) ([]AuthoredPublication, error) {
+func (f *fakeAuthoredCrawler) CrawlAuthoredPublications(_ context.Context, did syntax.DID) ([]AuthoredPublication, error) {
+	f.mu.Lock()
 	f.calls++
+	f.crawled = append(f.crawled, did.String())
+	f.mu.Unlock()
 	if f.err != nil {
 		return nil, f.err
 	}
+	if pubs, ok := f.byDID[did.String()]; ok {
+		return pubs, nil
+	}
 	return f.results, nil
+}
+
+func (f *fakeAuthoredCrawler) crawledDIDs() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := append([]string(nil), f.crawled...)
+	sort.Strings(out)
+	return out
 }
 
 func newCachedAuthoredCrawlerUnderTest(dbs *database.DB, crawler AuthoredCrawler, ttl time.Duration, now time.Time) *CachedAuthoredCrawler {
@@ -206,5 +227,64 @@ func TestCachedAuthoredCrawler_CrawlErrorPropagatesAndWritesNothing(t *testing.T
 	}
 	if len(rows) != 0 {
 		t.Errorf("rows = %+v, want none written on crawl failure", rows)
+	}
+}
+
+func seedAuthoredCache(t *testing.T, dbs *database.DB, did string, fetchedAt time.Time, pubs ...AuthoredPublication) {
+	t.Helper()
+	q := db.New(dbs.Writer)
+	stamp := fetchedAt.UTC().Format(time.RFC3339)
+	for _, p := range pubs {
+		if err := q.InsertDiscoverCrawlAuthored(context.Background(), db.InsertDiscoverCrawlAuthoredParams{
+			FollowedDid:  did,
+			CanonicalKey: p.Key,
+			Kind:         p.Kind,
+			FetchedAt:    stamp,
+			Verification: p.Verification,
+		}); err != nil {
+			t.Fatalf("seed authored: %v", err)
+		}
+	}
+	if err := q.UpsertDiscoverCrawlAuthoredState(context.Background(), db.UpsertDiscoverCrawlAuthoredStateParams{FollowedDid: did, FetchedAt: stamp}); err != nil {
+		t.Fatalf("seed authored state: %v", err)
+	}
+}
+
+func authoredKeys(pubs []AuthoredPublication) []string {
+	out := make([]string, 0, len(pubs))
+	for _, p := range pubs {
+		out = append(out, p.Key)
+	}
+	return out
+}
+
+func TestCachedAuthoredCrawler_FetchAuthoredPublicationsBatch_CachedPathStaysVerifiedOnly(t *testing.T) {
+	dbs := openAuthoredCrawlCacheTestDB(t)
+	now := mustParseTime(t, "2026-07-09T12:00:00Z")
+	seedAuthoredCache(t, dbs, "did:plc:fresh", now.Add(-30*time.Minute),
+		AuthoredPublication{Key: "at://did:plc:fresh/site.standard.publication/3a", Kind: "standardfeed", Verification: verifiedOutcome},
+		AuthoredPublication{Key: "at://did:plc:fresh/site.standard.publication/3b", Kind: "standardfeed", Verification: "mismatch"},
+	)
+
+	crawler := &fakeAuthoredCrawler{byDID: map[string][]AuthoredPublication{
+		"did:plc:cold": {{Key: "https://cold.example/feed", Kind: "rss", Verification: verifiedOutcome}},
+	}}
+	cc := newCachedAuthoredCrawlerUnderTest(dbs, crawler, time.Hour, now)
+
+	got := cc.FetchAuthoredPublicationsBatch(context.Background(), []string{"did:plc:fresh", "did:plc:cold"})
+
+	want := map[string][]string{
+		"did:plc:fresh": {"at://did:plc:fresh/site.standard.publication/3a"},
+		"did:plc:cold":  {"https://cold.example/feed"},
+	}
+	gotKeys := map[string][]string{}
+	for did, pubs := range got {
+		gotKeys[did] = authoredKeys(pubs)
+	}
+	if !reflect.DeepEqual(gotKeys, want) {
+		t.Errorf("keys = %v, want %v (an unverified cached row must never leak)", gotKeys, want)
+	}
+	if crawled := crawler.crawledDIDs(); !reflect.DeepEqual(crawled, []string{"did:plc:cold"}) {
+		t.Errorf("crawled = %v, want only the never-crawled did", crawled)
 	}
 }

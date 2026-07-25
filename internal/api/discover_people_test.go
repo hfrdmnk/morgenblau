@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bluesky-social/indigo/atproto/syntax"
-
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/discovercrawl"
 )
@@ -55,6 +53,7 @@ func TestDiscoverPeopleHandler_PaginatesBalancedPoolsWithStableCursor(t *testing
 		newFakeDiscoverHiddenReader(),
 		trendingFollows,
 		trendingSignals,
+		nil,
 	)
 
 	firstReq := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
@@ -140,12 +139,18 @@ type fakeReaderNetworkFollowCrawler struct {
 	calls []string
 }
 
-func (f *fakeReaderNetworkFollowCrawler) FetchReaderNetworkFollows(_ context.Context, did syntax.DID) ([]discovercrawl.ReaderNetworkFollow, error) {
-	f.calls = append(f.calls, did.String())
-	if err, ok := f.err[did.String()]; ok {
-		return nil, err
+// FetchReaderNetworkFollowsBatch mirrors the cached crawler's contract: every requested did gets an entry, a failed did gets nil.
+func (f *fakeReaderNetworkFollowCrawler) FetchReaderNetworkFollowsBatch(_ context.Context, dids []string) map[string][]discovercrawl.ReaderNetworkFollow {
+	out := make(map[string][]discovercrawl.ReaderNetworkFollow, len(dids))
+	for _, did := range dids {
+		f.calls = append(f.calls, did)
+		if _, failed := f.err[did]; failed {
+			out[did] = nil
+			continue
+		}
+		out[did] = f.byDID[did]
 	}
-	return f.byDID[did.String()], nil
+	return out
 }
 
 func noReaderNetworkFollows() *fakeReaderNetworkFollowCrawler {
@@ -200,7 +205,7 @@ func newDiscoverPeopleHandler(
 	crawler SubscriptionCrawler,
 	hides DiscoverHiddenReader,
 ) http.Handler {
-	return DiscoverPeopleHandler(follows, adjacent, readerFollows, subs, crawler, noAuthoredPublications(), noPersonalShares(), hides, noTrendingFollows(), noTrendingEligibility())
+	return DiscoverPeopleHandler(follows, adjacent, readerFollows, subs, crawler, noAuthoredPublications(), noPersonalShares(), hides, noTrendingFollows(), noTrendingEligibility(), nil)
 }
 
 func TestDiscoverPeopleHandler_NoCandidatesAtAll_ReturnsEmptyWithoutCrawling(t *testing.T) {
@@ -526,7 +531,7 @@ func TestDiscoverPeopleHandler_TastePreviewFallsBackToLatestShare(t *testing.T) 
 	shares := &fakePersonalShareCrawler{byDID: map[string][]discovercrawl.Share{
 		"did:plc:alice": {{Kind: "rss", ItemURL: "https://blog.example/post", Comment: "great read", CreatedAt: "2026-07-01T00:00:00Z"}},
 	}}
-	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), shares, newFakeDiscoverHiddenReader(), noTrendingFollows(), noTrendingEligibility())
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), shares, newFakeDiscoverHiddenReader(), noTrendingFollows(), noTrendingEligibility(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -649,7 +654,7 @@ func TestDiscoverPeopleHandler_CandidateWithOnlySaveRecordsNeverSuggested(t *tes
 		{DID: "did:plc:alice", Network: "bluesky"},
 	}}
 	crawler := &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}
-	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), noTrendingFollows(), noTrendingEligibility())
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), noTrendingFollows(), noTrendingEligibility(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -676,7 +681,7 @@ func TestDiscoverPeopleHandler_TrendingFlagTrue_WhenPersonalCandidateAboveBar(t 
 	}}
 	trendingFollows := &fakeDiscoverTrendingFollowsReader{rows: threeFollowers("did:plc:both")}
 	signals := &fakeDiscoverTrendingSignalsReader{rows: []db.DiscoverTrendingSignal{eligibilitySignal("did:plc:both")}}
-	h := DiscoverPeopleHandler(follows, noAdjacentFollows(), readerFollows, &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals)
+	h := DiscoverPeopleHandler(follows, noAdjacentFollows(), readerFollows, &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -707,7 +712,7 @@ func TestDiscoverPeopleHandler_TrendingFlagFalse_WhenBelowBarOrAbsent(t *testing
 		trendingFollow("did:plc:repo2", "did:plc:onlypersonal"),
 	}}
 	signals := &fakeDiscoverTrendingSignalsReader{rows: []db.DiscoverTrendingSignal{eligibilitySignal("did:plc:onlypersonal")}}
-	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), belowBar, signals)
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), belowBar, signals, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -722,7 +727,7 @@ func TestDiscoverPeopleHandler_TrendingFlagFalse_WhenBelowBarOrAbsent(t *testing
 	}
 
 	// Absent from the aggregate entirely.
-	h2 := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), noTrendingFollows(), noTrendingEligibility())
+	h2 := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), noTrendingFollows(), noTrendingEligibility(), nil)
 	req2 := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr2 := httptest.NewRecorder()
 	h2.ServeHTTP(rr2, req2)
@@ -744,7 +749,7 @@ func TestDiscoverPeopleHandler_TrendingOnlyCardsAppendedAfterPersonalCards(t *te
 	}}
 	trendingFollows := &fakeDiscoverTrendingFollowsReader{rows: threeFollowers("did:plc:trending-only")}
 	signals := &fakeDiscoverTrendingSignalsReader{rows: []db.DiscoverTrendingSignal{eligibilitySignal("did:plc:trending-only")}}
-	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals)
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -768,7 +773,7 @@ func TestDiscoverPeopleHandler_TrendingOnlyCardsAppendedAfterPersonalCards(t *te
 func TestDiscoverPeopleHandler_TrendingOnlyReasonIsEmptyExceptTheFlag(t *testing.T) {
 	trendingFollows := &fakeDiscoverTrendingFollowsReader{rows: threeFollowers("did:plc:trending-only")}
 	signals := &fakeDiscoverTrendingSignalsReader{rows: []db.DiscoverTrendingSignal{eligibilitySignal("did:plc:trending-only")}}
-	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals)
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -803,7 +808,7 @@ func TestDiscoverPeopleHandler_PersonWithBothPersonalAndTrendingAggregate_Appear
 	}}
 	trendingFollows := &fakeDiscoverTrendingFollowsReader{rows: threeFollowers("did:plc:both")}
 	signals := &fakeDiscoverTrendingSignalsReader{rows: []db.DiscoverTrendingSignal{eligibilitySignal("did:plc:both")}}
-	h := DiscoverPeopleHandler(follows, noAdjacentFollows(), readerFollows, &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals)
+	h := DiscoverPeopleHandler(follows, noAdjacentFollows(), readerFollows, &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -824,7 +829,7 @@ func TestDiscoverPeopleHandler_PersonWithBothPersonalAndTrendingAggregate_Appear
 func TestDiscoverPeopleHandler_ColdStartZeroCandidates_StillReturnsTrendingOnlyCards(t *testing.T) {
 	trendingFollows := &fakeDiscoverTrendingFollowsReader{rows: threeFollowers("did:plc:trending-only")}
 	signals := &fakeDiscoverTrendingSignalsReader{rows: []db.DiscoverTrendingSignal{eligibilitySignal("did:plc:trending-only")}}
-	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals)
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:new-user", "sess1")
 	rr := httptest.NewRecorder()
@@ -847,7 +852,7 @@ func TestDiscoverPeopleHandler_TrendingOnlyExcludesAlreadyFollowed(t *testing.T)
 	follows := &fakeDiscoverFollowsReader{rows: []db.UserFollow{discoverFollow("did:plc:already-followed")}}
 	trendingFollows := &fakeDiscoverTrendingFollowsReader{rows: threeFollowers("did:plc:already-followed")}
 	signals := &fakeDiscoverTrendingSignalsReader{rows: []db.DiscoverTrendingSignal{eligibilitySignal("did:plc:already-followed")}}
-	h := DiscoverPeopleHandler(follows, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals)
+	h := DiscoverPeopleHandler(follows, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -865,7 +870,7 @@ func TestDiscoverPeopleHandler_TrendingOnlyExcludesAlreadyFollowed(t *testing.T)
 func TestDiscoverPeopleHandler_TrendingOnlyExcludesSelf(t *testing.T) {
 	trendingFollows := &fakeDiscoverTrendingFollowsReader{rows: threeFollowers("did:plc:me")}
 	signals := &fakeDiscoverTrendingSignalsReader{rows: []db.DiscoverTrendingSignal{eligibilitySignal("did:plc:me")}}
-	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals)
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -885,7 +890,7 @@ func TestDiscoverPeopleHandler_TrendingOnlyExcludesHidden(t *testing.T) {
 	signals := &fakeDiscoverTrendingSignalsReader{rows: []db.DiscoverTrendingSignal{eligibilitySignal("did:plc:hidden-person")}}
 	hides := newFakeDiscoverHiddenReader()
 	hides.hide("did:plc:me", "person", "did:plc:hidden-person")
-	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), hides, trendingFollows, signals)
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), hides, trendingFollows, signals, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -919,7 +924,7 @@ func TestDiscoverPeopleHandler_TrendingOnlyExcludesFirstPageCutPersonalCandidate
 	crawler := &fakeSubscriptionCrawler{byDID: byDID}
 	trendingFollows := &fakeDiscoverTrendingFollowsReader{rows: threeFollowers(cutDID)}
 	signals := &fakeDiscoverTrendingSignalsReader{rows: []db.DiscoverTrendingSignal{eligibilitySignal(cutDID)}}
-	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals)
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -947,7 +952,7 @@ func TestDiscoverPeopleHandler_TrendingFollowsReadFailure_DegradesToPersonalOnly
 		"did:plc:good": {{Key: "https://good.example/feed", Kind: "rss"}},
 	}}
 	trendingFollows := &fakeDiscoverTrendingFollowsReader{err: errors.New("db down")}
-	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, noTrendingEligibility())
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, noTrendingEligibility(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -973,7 +978,7 @@ func TestDiscoverPeopleHandler_TrendingSignalsReadFailure_DegradesToPersonalOnly
 		"did:plc:good": {{Key: "https://good.example/feed", Kind: "rss"}},
 	}}
 	signals := &fakeDiscoverTrendingSignalsReader{err: errors.New("db down")}
-	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), noTrendingFollows(), signals)
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), noTrendingFollows(), signals, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1009,7 +1014,7 @@ func TestDiscoverPeopleHandler_TrendingOnlyTastePreviewFromEligibilitySignals(t 
 	rows[3].SignalAt = strPtr("2026-07-05T00:00:00Z")
 	rows[3].Title = strPtr("Excluded Share")
 	signals := &fakeDiscoverTrendingSignalsReader{rows: append([]db.DiscoverTrendingSignal{eligibilitySignal(did)}, rows...)}
-	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals)
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1049,7 +1054,7 @@ func TestDiscoverPeopleHandler_TrendingOnlyNeverCrawlsCandidates(t *testing.T) {
 	crawler := &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}
 	authored := &fakeAuthoredPublicationCrawler{byDID: map[string][]discovercrawl.AuthoredPublication{}}
 	shares := &fakePersonalShareCrawler{byDID: map[string][]discovercrawl.Share{}}
-	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, authored, shares, newFakeDiscoverHiddenReader(), trendingFollows, signals)
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, authored, shares, newFakeDiscoverHiddenReader(), trendingFollows, signals, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1081,7 +1086,7 @@ func TestDiscoverPeopleHandler_TrendingOnlyCapsAtEight(t *testing.T) {
 	}
 	trendingFollows := &fakeDiscoverTrendingFollowsReader{rows: followRows}
 	signals := &fakeDiscoverTrendingSignalsReader{rows: signalRows}
-	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals)
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), newFakeDiscoverHiddenReader(), trendingFollows, signals, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1146,5 +1151,39 @@ func TestDiscoverPeopleHandler_CrawlFanOutIsBoundedAndOverlaps(t *testing.T) {
 	}
 	if max := tracker.maxObserved(); max > discoverCrawlFanoutLimit {
 		t.Errorf("maxObserved in-flight = %d, want <= %d (fan-out bound)", max, discoverCrawlFanoutLimit)
+	}
+}
+
+// TestDiscoverPeopleHandler_FollowedByTieBreakIsDeterministic pins the batched one-hop read to sorted friend order: two friends follow the same candidate, and the alphabetically-first friend must be credited on every run.
+func TestDiscoverPeopleHandler_FollowedByTieBreakIsDeterministic(t *testing.T) {
+	follows := &fakeDiscoverFollowsReader{rows: []db.UserFollow{
+		discoverFollow("did:plc:zoe"),
+		discoverFollow("did:plc:alice"),
+	}}
+	readerFollows := &fakeReaderNetworkFollowCrawler{byDID: map[string][]discovercrawl.ReaderNetworkFollow{
+		"did:plc:zoe":   {{DID: "did:plc:carol"}},
+		"did:plc:alice": {{DID: "did:plc:carol"}},
+	}}
+
+	for run := 0; run < 5; run++ {
+		crawler := &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{
+			"did:plc:carol": {{Key: "https://carol.example/feed", Kind: "rss"}},
+		}}
+		h := newDiscoverPeopleHandler(follows, noAdjacentFollows(), readerFollows, &fakeDiscoverSubsReader{}, crawler, newFakeDiscoverHiddenReader())
+
+		req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		var got discoverPersonWires
+		if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+			t.Fatalf("run %d: unmarshal: %v", run, err)
+		}
+		if len(got) != 1 || got[0].DID != "did:plc:carol" {
+			t.Fatalf("run %d: got = %+v, want carol", run, got)
+		}
+		if got[0].Reason.FollowedByDID != "did:plc:alice" {
+			t.Fatalf("run %d: Reason.FollowedByDID = %q, want did:plc:alice on every run", run, got[0].Reason.FollowedByDID)
+		}
 	}
 }

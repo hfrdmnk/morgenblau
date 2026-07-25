@@ -74,7 +74,7 @@ func TestSubscriptionsPatch_NoDiff_NoOp(t *testing.T) {
 
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
 		strings.NewReader(`{}`)), "did:plc:alice", "sid-1")
@@ -94,7 +94,7 @@ func TestSubscriptionsPatch_OtherUserRkey_404(t *testing.T) {
 	idx.seed("did:plc:bob", "3la", "https://x")
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
 		strings.NewReader(`{"title":"new"}`)), "did:plc:alice", "sid-1")
@@ -118,7 +118,7 @@ func TestSubscriptionsPatch_Title_Applied(t *testing.T) {
 	})
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
 		strings.NewReader(`{"title":"New Title"}`)), "did:plc:alice", "sid-1")
@@ -162,7 +162,7 @@ func TestSubscriptionsPatch_RSS_PreservesSiteURL(t *testing.T) {
 
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
 		strings.NewReader(`{"title":"New Title"}`)), "did:plc:alice", "sid-1")
@@ -196,7 +196,7 @@ func TestSubscriptionsPatch_PrimaryAndTags_Applied(t *testing.T) {
 	})
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}, nil))
 
 	// primary true→false and tags edited.
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
@@ -243,7 +243,7 @@ func TestSubscriptionsPatch_PrimaryTrue_WrittenToRecord(t *testing.T) {
 	})
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
 		strings.NewReader(`{"primary":true}`)), "did:plc:alice", "sid-1")
@@ -273,7 +273,7 @@ func TestSubscriptionsPatch_SamePrimaryAndTags_NoOp(t *testing.T) {
 	})
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}, nil))
 
 	// Tags are order-sensitive, so this resubmits the same order to assert a no-op.
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
@@ -294,7 +294,7 @@ func TestSubscriptionsDelete_HappyPath_204(t *testing.T) {
 	idx.seed("did:plc:alice", "3la", "https://example.test/feed.xml")
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds))
+	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds, &recordingRepair{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodDelete, "/api/subscriptions/3la", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -316,7 +316,7 @@ func TestSubscriptionsDelete_OtherUserRkey_404(t *testing.T) {
 	idx.seed("did:plc:bob", "3la", "https://x")
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds))
+	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds, &recordingRepair{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodDelete, "/api/subscriptions/3la", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -330,7 +330,7 @@ func TestSubscriptionsDelete_PDSFailure_502(t *testing.T) {
 	idx := newRkeyIndex()
 	idx.seed("did:plc:alice", "3la", "https://example.test/feed.xml")
 	mux := http.NewServeMux()
-	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, failingPDS{}))
+	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, failingPDS{}, &recordingRepair{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodDelete, "/api/subscriptions/3la", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -365,7 +365,7 @@ func TestSubscriptionsPatch_Standardfeed_RejectsFeedURL_400(t *testing.T) {
 	idx.seedRow(seedStandardRow(nil))
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3std",
 		strings.NewReader(`{"feedUrl":"https://example.test/feed.xml"}`)), "did:plc:alice", "sid-1")
@@ -386,7 +386,7 @@ func TestSubscriptionsPatch_Standardfeed_FirstEdit_CreatesSidecar(t *testing.T) 
 	idx.seedRow(seedStandardRow(nil))
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3std",
 		strings.NewReader(`{"title":"Custom"}`)), "did:plc:alice", "sid-1")
@@ -445,7 +445,7 @@ func TestSubscriptionsPatch_Standardfeed_SecondEdit_PutsExistingSidecar(t *testi
 	idx.seedRow(seedStandardRow(ptrString("3sc")))
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3std",
 		strings.NewReader(`{"title":"Renamed"}`)), "did:plc:alice", "sid-1")
@@ -486,7 +486,7 @@ func TestSubscriptionsDelete_Standardfeed_SweepsDuplicatesAndSidecar(t *testing.
 		},
 	}}
 	mux := http.NewServeMux()
-	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds))
+	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds, &recordingRepair{}, nil))
 
 	req := withStandardWriteSession(httptest.NewRequest(http.MethodDelete, "/api/subscriptions/3std", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -518,7 +518,7 @@ func TestSubscriptionsDelete_Standardfeed_StaleScope_403(t *testing.T) {
 	idx.seedRow(seedStandardRow(nil))
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds))
+	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds, &recordingRepair{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodDelete, "/api/subscriptions/3std", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -540,7 +540,7 @@ func TestSubscriptionsDelete_Standardfeed_ListFailure_502(t *testing.T) {
 	idx.seedRow(seedStandardRow(nil))
 	pds := &fakePDS{listErr: errors.New("pds down")}
 	mux := http.NewServeMux()
-	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds))
+	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds, &recordingRepair{}, nil))
 
 	req := withStandardWriteSession(httptest.NewRequest(http.MethodDelete, "/api/subscriptions/3std", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -574,7 +574,7 @@ func TestSubscriptionsPatch_FeedURLChange_RepointsAndDispatches(t *testing.T) {
 	pds := &fakePDS{}
 	disp := &fakeDispatcher{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, disp))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, disp, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
 		strings.NewReader(`{"feedUrl":"`+playlist+`"}`)), "did:plc:alice", "sid-1")
@@ -642,7 +642,7 @@ func TestSubscriptionsPatch_FeedURLChange_Invalid_400(t *testing.T) {
 			pds := &fakePDS{}
 			disp := &fakeDispatcher{}
 			mux := http.NewServeMux()
-			mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, disp))
+			mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, disp, nil))
 
 			body, _ := json.Marshal(map[string]string{"feedUrl": candidate})
 			req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
@@ -674,7 +674,7 @@ func TestSubscriptionsPatch_FeedURLUnchanged_NoDispatch(t *testing.T) {
 	pds := &fakePDS{}
 	disp := &fakeDispatcher{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, disp))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, disp, nil))
 
 	// Resubmitting the same feed URL is a no-op: no PDS write, no fetch.
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
@@ -715,7 +715,7 @@ func TestSubscriptionsPatch_FeedURLChange_Conflict_409(t *testing.T) {
 	pds := &fakePDS{}
 	disp := &fakeDispatcher{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, disp))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, disp, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
 		strings.NewReader(`{"feedUrl":"`+playlist+`"}`)), "did:plc:alice", "sid-1")
@@ -739,7 +739,7 @@ func TestSubscriptionsPatch_InvalidRecord_500_NoWrite(t *testing.T) {
 	idx.seed("did:plc:alice", "3la", "https://example.test/feed.xml")
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}, nil))
 
 	overlong := strings.Repeat("x", 200) // > maxGraphemes:128
 	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",

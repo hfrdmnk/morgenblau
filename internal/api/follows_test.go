@@ -144,7 +144,7 @@ func TestFollowsCreate_HappyPath_201(t *testing.T) {
 	resolver := &fakeHandleResolver{dids: map[syntax.Handle]syntax.DID{
 		"alice.test": mustDID2(t, "did:plc:alice"),
 	}}
-	h := FollowsCreateHandler(idx, idx, pds, resolver)
+	h := FollowsCreateHandler(idx, idx, pds, resolver, &recordingRepair{}, nil)
 
 	body := `{"handle":"alice.test"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/follows", strings.NewReader(body)), "did:plc:me", "sid-1")
@@ -181,7 +181,7 @@ func TestFollowsCreate_StripsLeadingAt(t *testing.T) {
 	resolver := &fakeHandleResolver{dids: map[syntax.Handle]syntax.DID{
 		"alice.test": mustDID2(t, "did:plc:alice"),
 	}}
-	h := FollowsCreateHandler(idx, idx, pds, resolver)
+	h := FollowsCreateHandler(idx, idx, pds, resolver, &recordingRepair{}, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/follows", strings.NewReader(`{"handle":"@alice.test"}`)), "did:plc:me", "sid-1")
 	rr := httptest.NewRecorder()
@@ -205,7 +205,7 @@ func TestFollowsCreate_DedupeGuard_Idempotent(t *testing.T) {
 	resolver := &fakeHandleResolver{dids: map[syntax.Handle]syntax.DID{
 		"alice.test": mustDID2(t, "did:plc:alice"),
 	}}
-	h := FollowsCreateHandler(idx, idx, pds, resolver)
+	h := FollowsCreateHandler(idx, idx, pds, resolver, &recordingRepair{}, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/follows", strings.NewReader(`{"handle":"alice.test"}`)), "did:plc:me", "sid-1")
 	rr := httptest.NewRecorder()
@@ -226,7 +226,7 @@ func TestFollowsCreate_DedupeGuard_Idempotent(t *testing.T) {
 
 func TestFollowsCreate_MissingHandle_400(t *testing.T) {
 	idx := newFakeFollowsIndex()
-	h := FollowsCreateHandler(idx, idx, &fakePDS{}, &fakeHandleResolver{})
+	h := FollowsCreateHandler(idx, idx, &fakePDS{}, &fakeHandleResolver{}, &recordingRepair{}, nil)
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/follows", strings.NewReader(`{"handle":"  "}`)), "did:plc:me", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -238,7 +238,7 @@ func TestFollowsCreate_MissingHandle_400(t *testing.T) {
 func TestFollowsCreate_InvalidHandleSyntax_400_NoWrite(t *testing.T) {
 	idx := newFakeFollowsIndex()
 	pds := &fakePDS{}
-	h := FollowsCreateHandler(idx, idx, pds, &fakeHandleResolver{})
+	h := FollowsCreateHandler(idx, idx, pds, &fakeHandleResolver{}, &recordingRepair{}, nil)
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/follows", strings.NewReader(`{"handle":"not a handle!"}`)), "did:plc:me", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -254,7 +254,7 @@ func TestFollowsCreate_UnresolvableHandle_422_NoWrite(t *testing.T) {
 	idx := newFakeFollowsIndex()
 	pds := &fakePDS{}
 	resolver := &fakeHandleResolver{err: errors.New("not found")}
-	h := FollowsCreateHandler(idx, idx, pds, resolver)
+	h := FollowsCreateHandler(idx, idx, pds, resolver, &recordingRepair{}, nil)
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/follows", strings.NewReader(`{"handle":"nobody.test"}`)), "did:plc:me", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -272,7 +272,7 @@ func TestFollowsCreate_SelfFollow_422_NoWrite(t *testing.T) {
 	resolver := &fakeHandleResolver{dids: map[syntax.Handle]syntax.DID{
 		"reader.example": mustDID2(t, "did:plc:reader"),
 	}}
-	h := FollowsCreateHandler(idx, idx, pds, resolver)
+	h := FollowsCreateHandler(idx, idx, pds, resolver, &recordingRepair{}, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/follows", strings.NewReader(`{"handle":"reader.example"}`)), "did:plc:reader", "sid-1")
 	rr := httptest.NewRecorder()
@@ -300,7 +300,7 @@ func TestFollowsCreate_InvalidRecord_500_NoWrite(t *testing.T) {
 	resolver := &fakeHandleResolver{dids: map[syntax.Handle]syntax.DID{
 		"alice.test": syntax.DID("banana"),
 	}}
-	h := FollowsCreateHandler(idx, idx, pds, resolver)
+	h := FollowsCreateHandler(idx, idx, pds, resolver, &recordingRepair{}, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/follows", strings.NewReader(`{"handle":"alice.test"}`)), "did:plc:me", "sid-1")
 	rr := httptest.NewRecorder()
@@ -322,7 +322,7 @@ func TestFollowsCreate_PDSFailure_502(t *testing.T) {
 	resolver := &fakeHandleResolver{dids: map[syntax.Handle]syntax.DID{
 		"alice.test": mustDID2(t, "did:plc:alice"),
 	}}
-	h := FollowsCreateHandler(idx, idx, failingPDS{}, resolver)
+	h := FollowsCreateHandler(idx, idx, failingPDS{}, resolver, &recordingRepair{}, nil)
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/follows", strings.NewReader(`{"handle":"alice.test"}`)), "did:plc:me", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -345,7 +345,7 @@ func TestFollowsDelete_HappyPath_204(t *testing.T) {
 		},
 	}}
 	mux := http.NewServeMux()
-	mux.Handle("DELETE /api/follows/{rkey}", FollowsDeleteHandler(idx, idx, pds))
+	mux.Handle("DELETE /api/follows/{rkey}", FollowsDeleteHandler(idx, idx, pds, &recordingRepair{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodDelete, "/api/follows/3fa", nil), "did:plc:me", "sid-1")
 	rr := httptest.NewRecorder()
@@ -373,7 +373,7 @@ func TestFollowsDelete_DuplicateOnPDS_DeletesBothRecords(t *testing.T) {
 		},
 	}}
 	mux := http.NewServeMux()
-	mux.Handle("DELETE /api/follows/{rkey}", FollowsDeleteHandler(idx, idx, pds))
+	mux.Handle("DELETE /api/follows/{rkey}", FollowsDeleteHandler(idx, idx, pds, &recordingRepair{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodDelete, "/api/follows/3faOLD", nil), "did:plc:me", "sid-1")
 	rr := httptest.NewRecorder()
@@ -406,7 +406,7 @@ func TestFollowsDelete_ListFailure_502_NoLocalDelete(t *testing.T) {
 	idx.seed(db.UserFollow{Did: "did:plc:me", Rkey: "3fa", SubjectDid: "did:plc:alice"})
 	pds := &fakePDS{listErr: errors.New("pds down")}
 	mux := http.NewServeMux()
-	mux.Handle("DELETE /api/follows/{rkey}", FollowsDeleteHandler(idx, idx, pds))
+	mux.Handle("DELETE /api/follows/{rkey}", FollowsDeleteHandler(idx, idx, pds, &recordingRepair{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodDelete, "/api/follows/3fa", nil), "did:plc:me", "sid-1")
 	rr := httptest.NewRecorder()
@@ -424,7 +424,7 @@ func TestFollowsDelete_OtherUserRkey_404(t *testing.T) {
 	idx.seed(db.UserFollow{Did: "did:plc:bob", Rkey: "3fa", SubjectDid: "did:plc:x"})
 	pds := &fakePDS{}
 	mux := http.NewServeMux()
-	mux.Handle("DELETE /api/follows/{rkey}", FollowsDeleteHandler(idx, idx, pds))
+	mux.Handle("DELETE /api/follows/{rkey}", FollowsDeleteHandler(idx, idx, pds, &recordingRepair{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodDelete, "/api/follows/3fa", nil), "did:plc:me", "sid-1")
 	rr := httptest.NewRecorder()
@@ -438,7 +438,7 @@ func TestFollowsDelete_PDSFailure_502_NoLocalDelete(t *testing.T) {
 	idx := newFakeFollowsIndex()
 	idx.seed(db.UserFollow{Did: "did:plc:me", Rkey: "3fa", SubjectDid: "did:plc:alice"})
 	mux := http.NewServeMux()
-	mux.Handle("DELETE /api/follows/{rkey}", FollowsDeleteHandler(idx, idx, failingPDS{}))
+	mux.Handle("DELETE /api/follows/{rkey}", FollowsDeleteHandler(idx, idx, failingPDS{}, &recordingRepair{}, nil))
 
 	req := withSession(httptest.NewRequest(http.MethodDelete, "/api/follows/3fa", nil), "did:plc:me", "sid-1")
 	rr := httptest.NewRecorder()

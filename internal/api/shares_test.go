@@ -105,7 +105,7 @@ func postShare(t *testing.T, idx *fakeShareIndex, pds *fakePDS, standardScope bo
 		req = withSession(req, shareDID, "sid-1")
 	}
 	rr := httptest.NewRecorder()
-	SharesCreateHandler(idx, idx, pds).ServeHTTP(rr, req)
+	SharesCreateHandler(idx, idx, pds, &recordingRepair{}).ServeHTTP(rr, req)
 	return rr
 }
 
@@ -427,7 +427,7 @@ func deleteShare(t *testing.T, idx *fakeShareIndex, pds *fakePDS, standardScope 
 	}
 	req.SetPathValue("rkey", rkey)
 	rr := httptest.NewRecorder()
-	SharesDeleteHandler(idx, idx, pds).ServeHTTP(rr, req)
+	SharesDeleteHandler(idx, idx, pds, &recordingRepair{}).ServeHTTP(rr, req)
 	return rr
 }
 

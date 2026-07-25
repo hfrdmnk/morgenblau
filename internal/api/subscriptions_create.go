@@ -54,8 +54,8 @@ type IndexWriter interface {
 
 // FetchDispatcher dispatches fetch_one_feed per subscription, or a sync_user reconcile when local writes diverge from PDS (the source of truth); the returned id lets the client's RefreshPill poll.
 type FetchDispatcher interface {
+	RepairDispatcher
 	StartFetchOneFeed(did syntax.DID, feedURL string) string
-	StartManualRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error)
 }
 
 // SubscriptionsCreateHandler dedupes, writes to PDS, upserts Tier-2 then Tier-1, then dispatches fetch_one_feed.
@@ -64,6 +64,7 @@ func SubscriptionsCreateHandler(
 	writer IndexWriter,
 	pds atprepo.Writer,
 	disp FetchDispatcher,
+	memo DiscoverInvalidator,
 ) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -231,35 +232,32 @@ func SubscriptionsCreateHandler(
 			// Step 3: Tier-2 catalog upsert. Title stays nil; feeds.title is the cached publication name, owned by the fetch pipeline.
 			titlePtr := nilIfEmpty(item.Title)
 			siteURLPtr := nilIfEmpty(item.SiteURL)
-			if err := writer.UpsertFeed(r.Context(), db.UpsertFeedParams{
-				FeedUrl:   key,
-				Kind:      kind,
-				SiteUrl:   siteURLPtr,
-				CreatedAt: now,
-				UpdatedAt: now,
-			}); err != nil {
-				slog.Error("/api/subscriptions: Tier-2 upsert failed (PDS write already succeeded — next sync_user will reconcile)", "err", err)
-			}
+			mirrorOrRepair(r.Context(), disp, sess, "/api/subscriptions: Tier-2 upsert", func() error {
+				return writer.UpsertFeed(r.Context(), db.UpsertFeedParams{
+					FeedUrl:   key,
+					Kind:      kind,
+					SiteUrl:   siteURLPtr,
+					CreatedAt: now,
+					UpdatedAt: now,
+				})
+			})
 
 			// Step 4: Tier-1 index upsert.
-			if err := writer.UpsertUserSubscription(r.Context(), db.UpsertUserSubscriptionParams{
-				Did:         didStr,
-				Rkey:        rkey,
-				AtUri:       ref.URI,
-				FeedUrl:     key,
-				Kind:        kind,
-				SidecarRkey: sidecarRkey,
-				Title:       titlePtr,
-				IsPrimary:   boolToInt64(item.Primary),
-				Tags:        tags.Marshal(tagList),
-				CreatedAt:   now,
-				UpdatedAt:   now,
-			}); err != nil {
-				slog.Error("/api/subscriptions: Tier-1 upsert failed; dispatching sync_user to reconcile from PDS", "err", err)
-				if _, derr := disp.StartManualRefresh(r.Context(), sess.Data.AccountDID, sess.Data.SessionID); derr != nil {
-					slog.Warn("/api/subscriptions: sync_user dispatch failed", "err", derr)
-				}
-			}
+			mirrorOrRepair(r.Context(), disp, sess, "/api/subscriptions: Tier-1 upsert", func() error {
+				return writer.UpsertUserSubscription(r.Context(), db.UpsertUserSubscriptionParams{
+					Did:         didStr,
+					Rkey:        rkey,
+					AtUri:       ref.URI,
+					FeedUrl:     key,
+					Kind:        kind,
+					SidecarRkey: sidecarRkey,
+					Title:       titlePtr,
+					IsPrimary:   boolToInt64(item.Primary),
+					Tags:        tags.Marshal(tagList),
+					CreatedAt:   now,
+					UpdatedAt:   now,
+				})
+			})
 
 			value := map[string]any{
 				"source":    source,
@@ -296,6 +294,10 @@ func SubscriptionsCreateHandler(
 			out.JobIDs = append(out.JobIDs, jobID)
 		}
 
+		// A batch of pure dedupe hits changed nothing the suggestion pool reads.
+		if len(out.JobIDs) > 0 {
+			invalidateDiscover(memo, didStr)
+		}
 		writeJSON(w, out)
 	})
 }

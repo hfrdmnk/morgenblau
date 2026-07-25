@@ -66,7 +66,7 @@ type sharesCreateRequest struct {
 }
 
 // SharesCreateHandler picks the record model by subscription kind: rss writes one share record; standardfeed writes a recommend plus a lazy comment sidecar. Idempotent on itemUrl (rss) or document (standardfeed).
-func SharesCreateHandler(reader SharesIndexReader, writer SharesIndexWriter, pds atprepo.Writer) http.Handler {
+func SharesCreateHandler(reader SharesIndexReader, writer SharesIndexWriter, pds atprepo.Writer, disp RepairDispatcher) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -114,16 +114,16 @@ func SharesCreateHandler(reader SharesIndexReader, writer SharesIndexWriter, pds
 
 		now := time.Now().UTC().Format(time.RFC3339)
 		if wireKind(sub.Kind) == "standardfeed" {
-			shareStandardfeed(w, r, reader, writer, pds, sess, entry, body.Comment, now)
+			shareStandardfeed(w, r, reader, writer, pds, disp, sess, entry, body.Comment, now)
 			return
 		}
-		shareRSS(w, r, reader, writer, pds, sess, entry, body.Comment, now)
+		shareRSS(w, r, reader, writer, pds, disp, sess, entry, body.Comment, now)
 	})
 }
 
 func shareRSS(
 	w http.ResponseWriter, r *http.Request,
-	reader SharesIndexReader, writer SharesIndexWriter, pds atprepo.Writer,
+	reader SharesIndexReader, writer SharesIndexWriter, pds atprepo.Writer, disp RepairDispatcher,
 	sess *oauth.ClientSession, entry db.FeedEntry, comment, now string,
 ) {
 	didStr := sess.Data.AccountDID.String()
@@ -167,19 +167,19 @@ func shareRSS(
 	}
 	rkey := atprepo.RkeyFromATURI(ref.URI)
 
-	if err := writer.UpsertUserShare(r.Context(), db.UpsertUserShareParams{
-		Did:       didStr,
-		Rkey:      rkey,
-		AtUri:     ref.URI,
-		Kind:      "rss",
-		ItemUrl:   nilIfEmpty(entry.Url),
-		Comment:   nilIfEmpty(comment),
-		FeedUrl:   nilIfEmpty(entry.FeedUrl),
-		CreatedAt: now,
-		UpdatedAt: now,
-	}); err != nil {
-		slog.Warn("/api/shares: rss Tier-1 upsert failed (PDS write succeeded)", "err", err)
-	}
+	mirrorOrRepair(r.Context(), disp, sess, "/api/shares: rss Tier-1 upsert", func() error {
+		return writer.UpsertUserShare(r.Context(), db.UpsertUserShareParams{
+			Did:       didStr,
+			Rkey:      rkey,
+			AtUri:     ref.URI,
+			Kind:      "rss",
+			ItemUrl:   nilIfEmpty(entry.Url),
+			Comment:   nilIfEmpty(comment),
+			FeedUrl:   nilIfEmpty(entry.FeedUrl),
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
+	})
 
 	writeJSONStatus(w, http.StatusCreated, ShareWire{
 		URI:       ref.URI,
@@ -197,7 +197,7 @@ func shareRSS(
 
 func shareStandardfeed(
 	w http.ResponseWriter, r *http.Request,
-	reader SharesIndexReader, writer SharesIndexWriter, pds atprepo.Writer,
+	reader SharesIndexReader, writer SharesIndexWriter, pds atprepo.Writer, disp RepairDispatcher,
 	sess *oauth.ClientSession, entry db.FeedEntry, comment, now string,
 ) {
 	if !requireStandardWrite(w, sess) {
@@ -263,21 +263,21 @@ func shareStandardfeed(
 		sidecarRkey = &rk
 	}
 
-	if err := writer.UpsertUserShare(r.Context(), db.UpsertUserShareParams{
-		Did:         didStr,
-		Rkey:        recRkey,
-		AtUri:       recRef.URI,
-		Kind:        "standardfeed",
-		ItemUrl:     nilIfEmpty(entry.Url),
-		Document:    &document,
-		Comment:     nilIfEmpty(comment),
-		FeedUrl:     nilIfEmpty(entry.FeedUrl),
-		SidecarRkey: sidecarRkey,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-	}); err != nil {
-		slog.Warn("/api/shares: standardfeed Tier-1 upsert failed (PDS write succeeded)", "err", err)
-	}
+	mirrorOrRepair(r.Context(), disp, sess, "/api/shares: standardfeed Tier-1 upsert", func() error {
+		return writer.UpsertUserShare(r.Context(), db.UpsertUserShareParams{
+			Did:         didStr,
+			Rkey:        recRkey,
+			AtUri:       recRef.URI,
+			Kind:        "standardfeed",
+			ItemUrl:     nilIfEmpty(entry.Url),
+			Document:    &document,
+			Comment:     nilIfEmpty(comment),
+			FeedUrl:     nilIfEmpty(entry.FeedUrl),
+			SidecarRkey: sidecarRkey,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		})
+	})
 
 	writeJSONStatus(w, http.StatusCreated, ShareWire{
 		URI:       recRef.URI,
@@ -297,7 +297,7 @@ func shareStandardfeed(
 // --- DELETE /api/shares/{rkey} ---
 
 // SharesDeleteHandler tombstones the share; for standardfeed it also sweeps every recommend for the document (a stray duplicate would let reconcile resurrect the share) plus the comment sidecar.
-func SharesDeleteHandler(reader SharesIndexReader, writer SharesIndexWriter, pds RepoWriterLister) http.Handler {
+func SharesDeleteHandler(reader SharesIndexReader, writer SharesIndexWriter, pds RepoWriterLister, disp RepairDispatcher) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -356,9 +356,9 @@ func SharesDeleteHandler(reader SharesIndexReader, writer SharesIndexWriter, pds
 			return
 		}
 
-		if err := writer.DeleteUserShare(r.Context(), db.DeleteUserShareParams{Did: didStr, Rkey: rkey}); err != nil {
-			slog.Warn("/api/shares DELETE: Tier-1 delete failed", "err", err)
-		}
+		mirrorOrRepair(r.Context(), disp, sess, "/api/shares DELETE: Tier-1 delete", func() error {
+			return writer.DeleteUserShare(r.Context(), db.DeleteUserShareParams{Did: didStr, Rkey: rkey})
+		})
 		w.WriteHeader(http.StatusNoContent)
 	})
 }

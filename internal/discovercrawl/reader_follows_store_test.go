@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
+	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -41,17 +44,35 @@ func openReaderFollowCrawlCacheTestDB(t *testing.T) *database.DB {
 }
 
 type fakeReaderFollowCrawler struct {
+	// mu guards the counters: the batch path crawls several DIDs concurrently.
+	mu      sync.Mutex
 	calls   int
+	crawled []string
 	results []ReaderNetworkFollow
+	byDID   map[string][]ReaderNetworkFollow
 	err     error
 }
 
-func (f *fakeReaderFollowCrawler) CrawlReaderNetworkFollows(context.Context, syntax.DID) ([]ReaderNetworkFollow, error) {
+func (f *fakeReaderFollowCrawler) CrawlReaderNetworkFollows(_ context.Context, did syntax.DID) ([]ReaderNetworkFollow, error) {
+	f.mu.Lock()
 	f.calls++
+	f.crawled = append(f.crawled, did.String())
+	f.mu.Unlock()
 	if f.err != nil {
 		return nil, f.err
 	}
+	if follows, ok := f.byDID[did.String()]; ok {
+		return follows, nil
+	}
 	return f.results, nil
+}
+
+func (f *fakeReaderFollowCrawler) crawledDIDs() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := append([]string(nil), f.crawled...)
+	sort.Strings(out)
+	return out
 }
 
 func newCachedReaderFollowCrawlerUnderTest(dbs *database.DB, crawler ReaderFollowCrawler, ttl time.Duration, now time.Time) *CachedReaderFollowCrawler {
@@ -159,5 +180,77 @@ func TestCachedReaderFollowCrawler_CrawlErrorPropagatesAndWritesNothing(t *testi
 	}
 	if len(rows) != 0 {
 		t.Errorf("rows = %+v, want none written on crawl failure", rows)
+	}
+}
+
+func seedReaderFollowCache(t *testing.T, dbs *database.DB, did string, fetchedAt time.Time, subjectDIDs ...string) {
+	t.Helper()
+	q := db.New(dbs.Writer)
+	stamp := fetchedAt.UTC().Format(time.RFC3339)
+	for _, subject := range subjectDIDs {
+		if err := q.InsertDiscoverCrawlFollow(context.Background(), db.InsertDiscoverCrawlFollowParams{
+			FollowedDid: did,
+			SubjectDid:  subject,
+			FetchedAt:   stamp,
+		}); err != nil {
+			t.Fatalf("seed follow: %v", err)
+		}
+	}
+	if err := q.UpsertDiscoverCrawlFollowState(context.Background(), db.UpsertDiscoverCrawlFollowStateParams{FollowedDid: did, FetchedAt: stamp}); err != nil {
+		t.Fatalf("seed follow state: %v", err)
+	}
+}
+
+func followSubjects(follows []ReaderNetworkFollow) []string {
+	out := make([]string, 0, len(follows))
+	for _, f := range follows {
+		out = append(out, f.DID)
+	}
+	return out
+}
+
+func TestCachedReaderFollowCrawler_FetchReaderNetworkFollowsBatch_CrawlsOnlyStale(t *testing.T) {
+	dbs := openReaderFollowCrawlCacheTestDB(t)
+	now := mustParseTime(t, "2026-07-09T12:00:00Z")
+	seedReaderFollowCache(t, dbs, "did:plc:fresh", now.Add(-30*time.Minute), "did:plc:cached")
+	seedReaderFollowCache(t, dbs, "did:plc:stale", now.Add(-48*time.Hour), "did:plc:outdated")
+
+	crawler := &fakeReaderFollowCrawler{byDID: map[string][]ReaderNetworkFollow{
+		"did:plc:stale": {{DID: "did:plc:current"}},
+		"did:plc:cold":  {{DID: "did:plc:new"}},
+	}}
+	cc := newCachedReaderFollowCrawlerUnderTest(dbs, crawler, time.Hour, now)
+
+	got := cc.FetchReaderNetworkFollowsBatch(context.Background(), []string{"did:plc:fresh", "did:plc:stale", "did:plc:cold"})
+
+	want := map[string][]string{
+		"did:plc:fresh": {"did:plc:cached"},
+		"did:plc:stale": {"did:plc:current"},
+		"did:plc:cold":  {"did:plc:new"},
+	}
+	gotSubjects := map[string][]string{}
+	for did, follows := range got {
+		gotSubjects[did] = followSubjects(follows)
+	}
+	if !reflect.DeepEqual(gotSubjects, want) {
+		t.Errorf("follows = %v, want %v", gotSubjects, want)
+	}
+	if crawled := crawler.crawledDIDs(); !reflect.DeepEqual(crawled, []string{"did:plc:cold", "did:plc:stale"}) {
+		t.Errorf("crawled = %v, want only the stale and never-crawled dids", crawled)
+	}
+}
+
+func TestCachedReaderFollowCrawler_FetchReaderNetworkFollowsBatch_EmptyDIDs(t *testing.T) {
+	dbs := openReaderFollowCrawlCacheTestDB(t)
+	crawler := &fakeReaderFollowCrawler{}
+	cc := newCachedReaderFollowCrawlerUnderTest(dbs, crawler, time.Hour, mustParseTime(t, "2026-07-09T12:00:00Z"))
+
+	got := cc.FetchReaderNetworkFollowsBatch(context.Background(), nil)
+
+	if len(got) != 0 {
+		t.Errorf("got = %v, want an empty map", got)
+	}
+	if crawler.calls != 0 {
+		t.Errorf("crawler.calls = %d, want 0", crawler.calls)
 	}
 }

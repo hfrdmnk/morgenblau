@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
+	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -47,15 +50,25 @@ func openShareCrawlCacheTestDB(t *testing.T) *database.DB {
 }
 
 type fakeShareCrawler struct {
+	// mu guards the counters: the batch path crawls several DIDs concurrently.
+	mu      sync.Mutex
 	calls   int
+	crawled []string
 	results []Share
+	byDID   map[string][]Share
 	err     error
 }
 
-func (f *fakeShareCrawler) CrawlShares(context.Context, syntax.DID) ([]Share, error) {
+func (f *fakeShareCrawler) CrawlShares(_ context.Context, did syntax.DID) ([]Share, error) {
+	f.mu.Lock()
 	f.calls++
+	f.crawled = append(f.crawled, did.String())
+	f.mu.Unlock()
 	if f.err != nil {
 		return nil, f.err
+	}
+	if shares, ok := f.byDID[did.String()]; ok {
+		return shares, nil
 	}
 	return f.results, nil
 }
@@ -188,5 +201,49 @@ func TestCachedShareCrawler_StandardfeedDedupeKeyIsDocument(t *testing.T) {
 	}
 	if rows[0].Comment == nil || *rows[0].Comment != "nice" {
 		t.Errorf("comment = %v, want sidecar comment preserved through cache", rows[0].Comment)
+	}
+}
+
+func TestCachedShareCrawler_FetchSharesBatch_CrawlsOnlyStale(t *testing.T) {
+	dbs := openShareCrawlCacheTestDB(t)
+	now := mustParseTime(t, "2026-07-09T12:00:00Z")
+	q := db.New(dbs.Writer)
+	stamp := now.Add(-30 * time.Minute).UTC().Format(time.RFC3339)
+	cachedURL := "https://cached.example/post"
+	if err := q.InsertDiscoverCrawlShare(context.Background(), db.InsertDiscoverCrawlShareParams{
+		FollowedDid: "did:plc:fresh", DedupeKey: cachedURL, Kind: "rss", ItemUrl: &cachedURL, CreatedAt: "2026-07-08T00:00:00Z", FetchedAt: stamp,
+	}); err != nil {
+		t.Fatalf("seed share: %v", err)
+	}
+	if err := q.UpsertDiscoverCrawlShareState(context.Background(), db.UpsertDiscoverCrawlShareStateParams{FollowedDid: "did:plc:fresh", FetchedAt: stamp}); err != nil {
+		t.Fatalf("seed share state: %v", err)
+	}
+
+	crawler := &fakeShareCrawler{byDID: map[string][]Share{
+		"did:plc:cold": {{Kind: "rss", ItemURL: "https://cold.example/post", CreatedAt: "2026-07-09T00:00:00Z"}},
+	}}
+	cc := newCachedShareCrawlerUnderTest(dbs, crawler, time.Hour, now)
+
+	got := cc.FetchSharesBatch(context.Background(), []string{"did:plc:fresh", "did:plc:cold"})
+
+	gotURLs := map[string][]string{}
+	for did, shares := range got {
+		for _, sh := range shares {
+			gotURLs[did] = append(gotURLs[did], sh.ItemURL)
+		}
+	}
+	want := map[string][]string{
+		"did:plc:fresh": {cachedURL},
+		"did:plc:cold":  {"https://cold.example/post"},
+	}
+	if !reflect.DeepEqual(gotURLs, want) {
+		t.Errorf("shares = %v, want %v", gotURLs, want)
+	}
+	crawler.mu.Lock()
+	crawled := append([]string(nil), crawler.crawled...)
+	crawler.mu.Unlock()
+	sort.Strings(crawled)
+	if !reflect.DeepEqual(crawled, []string{"did:plc:cold"}) {
+		t.Errorf("crawled = %v, want only the never-crawled did", crawled)
 	}
 }

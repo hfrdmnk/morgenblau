@@ -22,6 +22,8 @@ type ShareCrawler interface {
 type ShareCacheReader interface {
 	GetDiscoverCrawlShareState(ctx context.Context, followedDid string) (db.DiscoverCrawlShareState, error)
 	ListDiscoverCrawlShares(ctx context.Context, followedDid string) ([]db.DiscoverCrawlShare, error)
+	ListDiscoverCrawlShareStatesByDids(ctx context.Context, dids []string) ([]db.DiscoverCrawlShareState, error)
+	ListDiscoverCrawlSharesByDids(ctx context.Context, dids []string) ([]db.DiscoverCrawlShare, error)
 }
 
 // ShareCacheWriter is the slice used inside the write transaction.
@@ -98,6 +100,34 @@ func (c *CachedShareCrawler) FetchShares(ctx context.Context, did syntax.DID) ([
 		slog.Warn("discovercrawl: share cache write failed", "did", didStr, "err", err)
 	}
 	return results, nil
+}
+
+// FetchSharesBatch is FetchShares over a whole fan-out; see FetchSubscriptionsBatch for the read/crawl split and degrade posture.
+func (c *CachedShareCrawler) FetchSharesBatch(ctx context.Context, dids []string) map[string][]Share {
+	return batchCache[Share]{
+		label: "shares",
+		ttl:   c.ttl,
+		now:   c.now,
+		fetchedAtByDID: func(ctx context.Context, dids []string) (map[string]string, error) {
+			rows, err := c.reader.ListDiscoverCrawlShareStatesByDids(ctx, dids)
+			if err != nil {
+				return nil, err
+			}
+			out := make(map[string]string, len(rows))
+			for _, r := range rows {
+				out[r.FollowedDid] = r.FetchedAt
+			}
+			return out, nil
+		},
+		rowsByDID: func(ctx context.Context, dids []string) (map[string][]Share, error) {
+			rows, err := c.reader.ListDiscoverCrawlSharesByDids(ctx, dids)
+			if err != nil {
+				return nil, err
+			}
+			return groupRowsByDID(rows, func(r db.DiscoverCrawlShare) string { return r.FollowedDid }, rowsToShares), nil
+		},
+		fetchOne: c.FetchShares,
+	}.fetch(ctx, dids)
 }
 
 func storeShareResults(ctx context.Context, w ShareCacheWriter, did string, results []Share, fetchedAt string) error {

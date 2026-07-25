@@ -52,7 +52,7 @@ type followsCreateRequest struct {
 }
 
 // FollowsCreateHandler writes a blue.morgen.graph.follow record, idempotent on (did, subjectDid). SPEC <social-layer>: never touches subscriptions or the digest.
-func FollowsCreateHandler(reader FollowsIndexReader, writer FollowsIndexWriter, pds atprepo.Writer, resolver HandleResolver) http.Handler {
+func FollowsCreateHandler(reader FollowsIndexReader, writer FollowsIndexWriter, pds atprepo.Writer, resolver HandleResolver, disp RepairDispatcher, memo DiscoverInvalidator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -116,17 +116,17 @@ func FollowsCreateHandler(reader FollowsIndexReader, writer FollowsIndexWriter, 
 		}
 		rkey := atprepo.RkeyFromATURI(ref.URI)
 
-		if err := writer.UpsertUserFollow(r.Context(), db.UpsertUserFollowParams{
-			Did:        didStr,
-			Rkey:       rkey,
-			AtUri:      ref.URI,
-			SubjectDid: subjectDID,
-			CreatedAt:  now,
-			UpdatedAt:  now,
-		}); err != nil {
-			// PDS write already succeeded; log and continue, a later sync_user reconciles the local cache.
-			slog.Warn("/api/follows: Tier-1 upsert failed (PDS write succeeded)", "err", err)
-		}
+		mirrorOrRepair(r.Context(), disp, sess, "/api/follows: Tier-1 upsert", func() error {
+			return writer.UpsertUserFollow(r.Context(), db.UpsertUserFollowParams{
+				Did:        didStr,
+				Rkey:       rkey,
+				AtUri:      ref.URI,
+				SubjectDid: subjectDID,
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			})
+		})
+		invalidateDiscover(memo, didStr)
 
 		writeJSONStatus(w, http.StatusCreated, FollowWire{
 			URI:        ref.URI,
@@ -147,7 +147,7 @@ type FollowsRepoLister interface {
 
 // FollowsDeleteHandler tombstones every follow record for the subject, not just the given rkey: two devices can each write a
 // duplicate before syncing, and a leftover would let the next reconcile resurrect the follow the user just removed.
-func FollowsDeleteHandler(reader FollowsIndexReader, writer FollowsIndexWriter, pds FollowsRepoLister) http.Handler {
+func FollowsDeleteHandler(reader FollowsIndexReader, writer FollowsIndexWriter, pds FollowsRepoLister, disp RepairDispatcher, memo DiscoverInvalidator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -188,9 +188,10 @@ func FollowsDeleteHandler(reader FollowsIndexReader, writer FollowsIndexWriter, 
 			}
 		}
 
-		if err := writer.DeleteUserFollow(r.Context(), db.DeleteUserFollowParams{Did: didStr, Rkey: rkey}); err != nil {
-			slog.Warn("/api/follows DELETE: Tier-1 delete failed", "err", err)
-		}
+		mirrorOrRepair(r.Context(), disp, sess, "/api/follows DELETE: Tier-1 delete", func() error {
+			return writer.DeleteUserFollow(r.Context(), db.DeleteUserFollowParams{Did: didStr, Rkey: rkey})
+		})
+		invalidateDiscover(memo, didStr)
 		w.WriteHeader(http.StatusNoContent)
 	})
 }

@@ -56,6 +56,7 @@ func TestDiscoverSourcesHandler_PaginatesBalancedPoolsWithStableCursor(t *testin
 		&fakeDiscoverTrendingSignalsReader{rows: trendingRows},
 		noFeedLanguages(),
 		noTitleBackfill(),
+		nil,
 	)
 
 	firstReq := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
@@ -217,6 +218,22 @@ func (f *fakeSubscriptionCrawler) FetchSubscriptions(_ context.Context, did synt
 	return f.byDID[did.String()], nil
 }
 
+// FetchSubscriptionsBatch mirrors the cached crawler's contract: every requested did gets an entry, a failed did gets nil.
+func (f *fakeSubscriptionCrawler) FetchSubscriptionsBatch(_ context.Context, dids []string) map[string][]discovercrawl.Subscription {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make(map[string][]discovercrawl.Subscription, len(dids))
+	for _, did := range dids {
+		f.calls = append(f.calls, did)
+		if _, failed := f.err[did]; failed {
+			out[did] = nil
+			continue
+		}
+		out[did] = f.byDID[did]
+	}
+	return out
+}
+
 type fakeAuthoredPublicationCrawler struct {
 	mu    sync.Mutex
 	byDID map[string][]discovercrawl.AuthoredPublication
@@ -233,6 +250,22 @@ func (f *fakeAuthoredPublicationCrawler) FetchAuthoredPublications(_ context.Con
 		return nil, err
 	}
 	return f.byDID[did.String()], nil
+}
+
+// FetchAuthoredPublicationsBatch mirrors the cached crawler's contract: every requested did gets an entry, a failed did gets nil.
+func (f *fakeAuthoredPublicationCrawler) FetchAuthoredPublicationsBatch(_ context.Context, dids []string) map[string][]discovercrawl.AuthoredPublication {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make(map[string][]discovercrawl.AuthoredPublication, len(dids))
+	for _, did := range dids {
+		f.calls = append(f.calls, did)
+		if _, failed := f.err[did]; failed {
+			out[did] = nil
+			continue
+		}
+		out[did] = f.byDID[did]
+	}
+	return out
 }
 
 func noAuthoredPublications() *fakeAuthoredPublicationCrawler {
@@ -255,6 +288,22 @@ func (f *fakePersonalShareCrawler) FetchShares(_ context.Context, did syntax.DID
 		return nil, err
 	}
 	return f.byDID[did.String()], nil
+}
+
+// FetchSharesBatch mirrors the cached crawler's contract: every requested did gets an entry, a failed did gets nil.
+func (f *fakePersonalShareCrawler) FetchSharesBatch(_ context.Context, dids []string) map[string][]discovercrawl.Share {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make(map[string][]discovercrawl.Share, len(dids))
+	for _, did := range dids {
+		f.calls = append(f.calls, did)
+		if _, failed := f.err[did]; failed {
+			out[did] = nil
+			continue
+		}
+		out[did] = f.byDID[did]
+	}
+	return out
 }
 
 func noPersonalShares() *fakePersonalShareCrawler {
@@ -344,30 +393,35 @@ func feedLanguage(feedURL, language string) db.ListFeedLanguagesRow {
 }
 
 type fakeDiscoverSourceTitleBackfillReader struct {
-	rows  map[string]db.GetDiscoverTrendingSignalTitleRow
+	rows  map[string]db.ListDiscoverTrendingSignalTitlesRow
 	err   error
 	calls []string
 }
 
-func (f *fakeDiscoverSourceTitleBackfillReader) GetDiscoverTrendingSignalTitle(_ context.Context, sourceKey string) (db.GetDiscoverTrendingSignalTitleRow, error) {
-	f.calls = append(f.calls, sourceKey)
+func (f *fakeDiscoverSourceTitleBackfillReader) ListDiscoverTrendingSignalTitles(_ context.Context, sourceKeys []string) ([]db.ListDiscoverTrendingSignalTitlesRow, error) {
+	f.calls = append(f.calls, sourceKeys...)
 	if f.err != nil {
-		return db.GetDiscoverTrendingSignalTitleRow{}, f.err
+		return nil, f.err
 	}
-	row, ok := f.rows[sourceKey]
-	if !ok {
-		return db.GetDiscoverTrendingSignalTitleRow{}, sql.ErrNoRows
+	var out []db.ListDiscoverTrendingSignalTitlesRow
+	for _, key := range sourceKeys {
+		row, ok := f.rows[key]
+		if !ok {
+			continue // a key with no titled row simply comes back missing, same as the real query
+		}
+		row.SourceKey = key
+		out = append(out, row)
 	}
-	return row, nil
+	return out, nil
 }
 
-// noTitleBackfill is the mechanical default for tests that don't exercise the backfill: every lookup misses (sql.ErrNoRows), same as an empty table.
+// noTitleBackfill is the mechanical default for tests that don't exercise the backfill: every key misses, same as an empty table.
 func noTitleBackfill() *fakeDiscoverSourceTitleBackfillReader {
-	return &fakeDiscoverSourceTitleBackfillReader{rows: map[string]db.GetDiscoverTrendingSignalTitleRow{}}
+	return &fakeDiscoverSourceTitleBackfillReader{rows: map[string]db.ListDiscoverTrendingSignalTitlesRow{}}
 }
 
-func titleBackfillRow(title, siteURL string) db.GetDiscoverTrendingSignalTitleRow {
-	return db.GetDiscoverTrendingSignalTitleRow{Title: &title, SiteUrl: &siteURL}
+func titleBackfillRow(title, siteURL string) db.ListDiscoverTrendingSignalTitlesRow {
+	return db.ListDiscoverTrendingSignalTitlesRow{Title: &title, SiteUrl: &siteURL}
 }
 
 func trendingSignal(repoDID, sourceKey, kind, signalKind string) db.DiscoverTrendingSignal {
@@ -445,6 +499,23 @@ func (f *gatedSubscriptionCrawler) FetchSubscriptions(ctx context.Context, did s
 	return f.byDID[did.String()], nil
 }
 
+// FetchSubscriptionsBatch exists for the interface only: the fan-out this fake gates is the People handler's per-candidate loop, which calls the per-DID method.
+func (f *gatedSubscriptionCrawler) FetchSubscriptionsBatch(ctx context.Context, dids []string) map[string][]discovercrawl.Subscription {
+	out := make(map[string][]discovercrawl.Subscription, len(dids))
+	for _, did := range dids {
+		parsed, err := syntax.ParseDID(did)
+		if err != nil {
+			continue
+		}
+		subs, err := f.FetchSubscriptions(ctx, parsed)
+		if err != nil {
+			continue
+		}
+		out[did] = subs
+	}
+	return out
+}
+
 // newDiscoverSourcesHandler defaults every non-subscription crawler to "nothing found".
 func newDiscoverSourcesHandler(
 	follows DiscoverFollowsReader,
@@ -454,7 +525,7 @@ func newDiscoverSourcesHandler(
 	crawler SubscriptionCrawler,
 	hides DiscoverHiddenReader,
 ) http.Handler {
-	return DiscoverSourcesHandler(follows, adjacent, ownForeign, subs, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), hides, &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	return DiscoverSourcesHandler(follows, adjacent, ownForeign, subs, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), hides, &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 }
 
 func TestDiscoverSourcesHandler_NoFollowsAtAll_ReturnsEmptyWithoutCrawlingSubscriptions(t *testing.T) {
@@ -856,7 +927,7 @@ func TestDiscoverSourcesHandler_AuthoredPublicationRanksTopWithWritesThisReason(
 	authored := &fakeAuthoredPublicationCrawler{byDID: map[string][]discovercrawl.AuthoredPublication{
 		"did:plc:author": {{Key: pubURI, Kind: "standardfeed", Title: "My Zine", SiteURL: "https://myzine.example"}},
 	}}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, authored, noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, authored, noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -882,7 +953,7 @@ func TestDiscoverSourcesHandler_ShareResolvesViaFeedURLProvenance(t *testing.T) 
 	shares := &fakePersonalShareCrawler{byDID: map[string][]discovercrawl.Share{
 		"did:plc:alice": {{Kind: "rss", ItemURL: "https://blog.example/post", FeedURL: "https://blog.example/feed", CreatedAt: "2026-07-01T00:00:00Z"}},
 	}}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -909,7 +980,7 @@ func TestDiscoverSourcesHandler_ShareResolvesViaDocumentTier2Lookup(t *testing.T
 	}}
 	resolver := noEntryResolver()
 	resolver.byGuid[document] = pubURI
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), shares, resolver, newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), shares, resolver, newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -932,7 +1003,7 @@ func TestDiscoverSourcesHandler_ShareWithOnlyItemURLResolvesViaTier2Fallback(t *
 	}}
 	resolver := noEntryResolver()
 	resolver.byItemURL[itemURL] = "https://blog.example/feed"
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), shares, resolver, newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), shares, resolver, newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -962,7 +1033,7 @@ func TestDiscoverSourcesHandler_ShareResolvedViaTier2MergesWithSubscribeKeyVaria
 	}}
 	resolver := noEntryResolver()
 	resolver.byItemURL[itemURL] = "https://blog.example/feed/"
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), shares, resolver, newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), shares, resolver, newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -989,7 +1060,7 @@ func TestDiscoverSourcesHandler_UnresolvableShareProducesNoCandidateNoError(t *t
 	shares := &fakePersonalShareCrawler{byDID: map[string][]discovercrawl.Share{
 		"did:plc:alice": {{Kind: "rss", ItemURL: "https://unresolvable.example/post", CreatedAt: "2026-07-01T00:00:00Z"}},
 	}}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1010,7 +1081,7 @@ func TestDiscoverSourcesHandler_UnresolvableShareProducesNoCandidateNoError(t *t
 func TestDiscoverSourcesHandler_FollowedPersonWithOnlySaveRecordsProducesNoCandidate(t *testing.T) {
 	// Inverted from the old SaveResolvesAndCarriesSaveReason: SPEC <saving-sharing> confines saves to the anonymous trending batch, never personal source ranking. There is no PersonalSaveCrawler to wire in any more, so a followed person whose only real-world record is a save has nothing left to surface: every other crawl reports empty.
 	follows := &fakeDiscoverFollowsReader{rows: []db.UserFollow{discoverFollow("did:plc:alice")}}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1039,7 +1110,7 @@ func TestDiscoverSourcesHandler_SubscribeSignalOutranksShareSignalFromSamePerson
 	shares := &fakePersonalShareCrawler{byDID: map[string][]discovercrawl.Share{
 		"did:plc:alice": {{Kind: "rss", ItemURL: "https://b.example/post", FeedURL: "https://b.example/feed", CreatedAt: "2026-07-09T00:00:00Z"}},
 	}}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1060,7 +1131,7 @@ func TestDiscoverSourcesHandler_ShareCrawlFailureDegradesGracefully(t *testing.T
 		"did:plc:alice": {{Key: "https://good.example/feed", Kind: "rss"}},
 	}}
 	shares := &fakePersonalShareCrawler{err: map[string]error{"did:plc:alice": errors.New("pds unreachable")}}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1084,7 +1155,7 @@ func TestDiscoverSourcesHandler_AuthoredCrawlFailureDegradesGracefully(t *testin
 		"did:plc:alice": {{Key: "https://good.example/feed", Kind: "rss"}},
 	}}
 	authored := &fakeAuthoredPublicationCrawler{err: map[string]error{"did:plc:alice": errors.New("pds unreachable")}}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, authored, noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, authored, noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1111,7 +1182,7 @@ func TestDiscoverSourcesHandler_OwnForeignSkyreaderSubscription_SurfacesWithSelf
 			App:          discovercrawl.ForeignAppSkyreader,
 		}},
 	}}
-	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), ownForeign, &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), ownForeign, &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1139,7 +1210,7 @@ func TestDiscoverSourcesHandler_OwnForeignGleanSubscription_SurfacesWithSelfReas
 			App:          discovercrawl.ForeignAppGlean,
 		}},
 	}}
-	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), ownForeign, &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), ownForeign, &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1162,7 +1233,7 @@ func TestDiscoverSourcesHandler_OwnForeignSubscription_AlreadySubscribedExcluded
 		}},
 	}}
 	subs := &fakeDiscoverSubsReader{rows: []db.UserSubscription{{FeedUrl: "https://already.example/feed"}}}
-	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), ownForeign, subs, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), ownForeign, subs, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1186,7 +1257,7 @@ func TestDiscoverSourcesHandler_OwnForeignSubscription_HiddenExcluded(t *testing
 	}}
 	hides := newFakeDiscoverHiddenReader()
 	hides.hide("did:plc:me", "source", "https://hidden.example/feed")
-	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), ownForeign, &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), hides, &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), ownForeign, &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), hides, &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1209,7 +1280,7 @@ func TestDiscoverSourcesHandler_OwnForeignSubscription_SurfacesWithNoFollowsAtAl
 			App:          discovercrawl.ForeignAppSkyreader,
 		}},
 	}}
-	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), ownForeign, &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), ownForeign, &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1225,7 +1296,7 @@ func TestDiscoverSourcesHandler_OwnForeignSubscription_SurfacesWithNoFollowsAtAl
 }
 
 func TestDiscoverSourcesHandler_OwnForeignSubscription_EmptyHistoryProducesNoArtifacts(t *testing.T) {
-	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1249,7 +1320,7 @@ func TestDiscoverSourcesHandler_OwnForeignCrawlFailureDegradesGracefully(t *test
 		"did:plc:alice": {{Key: "https://good.example/feed", Kind: "rss"}},
 	}}
 	ownForeign := &fakeOwnForeignSubscriptionCrawler{err: map[string]error{"did:plc:me": errors.New("pds unreachable")}}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), ownForeign, &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), ownForeign, &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1278,7 +1349,7 @@ func TestDiscoverSourcesHandler_OwnForeignSubscription_SelfOutranksStrongFollowe
 			App:          discovercrawl.ForeignAppSkyreader,
 		}},
 	}}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), ownForeign, &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), ownForeign, &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1293,59 +1364,6 @@ func TestDiscoverSourcesHandler_OwnForeignSubscription_SelfOutranksStrongFollowe
 	}
 }
 
-// --- Cold-cache fan-out concurrency bound ---
-
-func TestDiscoverSourcesHandler_CrawlFanOutIsBoundedAndOverlaps(t *testing.T) {
-	const numCandidates = 20 // must exceed discoverCrawlFanoutLimit to observe saturation
-	var rows []db.UserFollow
-	byDID := map[string][]discovercrawl.Subscription{}
-	for i := 0; i < numCandidates; i++ {
-		did := "did:plc:p" + string(rune('a'+i))
-		rows = append(rows, discoverFollow(did))
-		byDID[did] = []discovercrawl.Subscription{{Key: "https://feed" + string(rune('a'+i)) + ".example/f", Kind: "rss"}}
-	}
-	follows := &fakeDiscoverFollowsReader{rows: rows}
-
-	tracker := newInFlightTracker(discoverCrawlFanoutLimit)
-	release := make(chan struct{})
-	crawler := &gatedSubscriptionCrawler{tracker: tracker, release: release, byDID: byDID}
-
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
-
-	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
-	rr := httptest.NewRecorder()
-
-	done := make(chan struct{})
-	go func() {
-		h.ServeHTTP(rr, req)
-		close(done)
-	}()
-
-	select {
-	case <-tracker.reached:
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for crawls to reach the fan-out bound; handler may not be running crawls concurrently")
-	}
-
-	close(release)
-
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("handler did not complete after release")
-	}
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
-	if max := tracker.maxObserved(); max <= 1 {
-		t.Errorf("maxObserved in-flight = %d, want > 1 (proves crawls overlap)", max)
-	}
-	if max := tracker.maxObserved(); max > discoverCrawlFanoutLimit {
-		t.Errorf("maxObserved in-flight = %d, want <= %d (fan-out bound)", max, discoverCrawlFanoutLimit)
-	}
-}
-
 // --- Trending merge: per-card trending flag, trending-only cards, unified endpoint. SPEC <discovery>. ---
 
 func TestDiscoverSourcesHandler_TrendingFlagTrue_WhenPersonalCandidateAboveBar(t *testing.T) {
@@ -1354,7 +1372,7 @@ func TestDiscoverSourcesHandler_TrendingFlagTrue_WhenPersonalCandidateAboveBar(t
 		"did:plc:alice": {{Key: "https://both.example/feed", Kind: "rss"}},
 	}}
 	trending := &fakeDiscoverTrendingSignalsReader{rows: threeRepoSignal("https://both.example/feed")}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1382,7 +1400,7 @@ func TestDiscoverSourcesHandler_TrendingFlagFalse_WhenBelowBarOrAbsent(t *testin
 		trendingSignal("did:plc:repo1", "https://onlypersonal.example/feed", "rss", "subscribe"),
 		trendingSignal("did:plc:repo2", "https://onlypersonal.example/feed", "rss", "subscribe"),
 	}}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), belowBar, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), belowBar, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1397,7 +1415,7 @@ func TestDiscoverSourcesHandler_TrendingFlagFalse_WhenBelowBarOrAbsent(t *testin
 	}
 
 	// Absent from the aggregate entirely.
-	h2 := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h2 := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 	req2 := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr2 := httptest.NewRecorder()
 	h2.ServeHTTP(rr2, req2)
@@ -1416,7 +1434,7 @@ func TestDiscoverSourcesHandler_TrendingOnlyCardsAppendedAfterPersonalCards(t *t
 		"did:plc:alice": {{Key: "https://personal.example/feed", Kind: "rss"}},
 	}}
 	trending := &fakeDiscoverTrendingSignalsReader{rows: threeRepoSignal("https://trending-only.example/feed")}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1439,7 +1457,7 @@ func TestDiscoverSourcesHandler_TrendingOnlyCardsAppendedAfterPersonalCards(t *t
 
 func TestDiscoverSourcesHandler_TrendingOnlyReasonIsEmptyExceptTheFlag(t *testing.T) {
 	trending := &fakeDiscoverTrendingSignalsReader{rows: threeRepoSignal("https://trending-only.example/feed")}
-	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1467,7 +1485,7 @@ func TestDiscoverSourcesHandler_SourceWithBothPersonalSignalAndTrendingAggregate
 		"did:plc:alice": {{Key: "https://both.example/feed", Kind: "rss"}},
 	}}
 	trending := &fakeDiscoverTrendingSignalsReader{rows: threeRepoSignal("https://both.example/feed")}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1488,7 +1506,7 @@ func TestDiscoverSourcesHandler_SourceWithBothPersonalSignalAndTrendingAggregate
 func TestDiscoverSourcesHandler_TrendingOnlyExcludesAlreadySubscribed(t *testing.T) {
 	trending := &fakeDiscoverTrendingSignalsReader{rows: threeRepoSignal("https://already.example/feed")}
 	subs := &fakeDiscoverSubsReader{rows: []db.UserSubscription{{FeedUrl: "https://already.example/feed"}}}
-	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), subs, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), subs, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1507,7 +1525,7 @@ func TestDiscoverSourcesHandler_TrendingOnlyExcludesHidden(t *testing.T) {
 	trending := &fakeDiscoverTrendingSignalsReader{rows: threeRepoSignal("https://hidden.example/feed")}
 	hides := newFakeDiscoverHiddenReader()
 	hides.hide("did:plc:me", "source", "https://hidden.example/feed")
-	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), hides, trending, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), hides, trending, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1533,7 +1551,7 @@ func TestDiscoverSourcesHandler_TrendingOnlyRespectsLanguageFilter(t *testing.T)
 		feedLanguage("https://en.example/feed", "en"),
 		feedLanguage("https://myenglish.example/feed", "en"),
 	}}
-	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), subs, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, languages, noTitleBackfill())
+	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), subs, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, languages, noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1555,7 +1573,7 @@ func TestDiscoverSourcesHandler_TrendingOnlyCapsAtEight(t *testing.T) {
 		rows = append(rows, threeRepoSignal(key)...)
 	}
 	trending := &fakeDiscoverTrendingSignalsReader{rows: rows}
-	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1572,7 +1590,7 @@ func TestDiscoverSourcesHandler_TrendingOnlyCapsAtEight(t *testing.T) {
 
 func TestDiscoverSourcesHandler_ColdStartZeroFollows_StillReturnsTrendingOnlyCards(t *testing.T) {
 	trending := &fakeDiscoverTrendingSignalsReader{rows: threeRepoSignal("https://trending.example/feed")}
-	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:new-user", "sess1")
 	rr := httptest.NewRecorder()
@@ -1596,7 +1614,7 @@ func TestDiscoverSourcesHandler_TrendingSignalsReadFailure_DegradesToPersonalOnl
 		"did:plc:alice": {{Key: "https://good.example/feed", Kind: "rss"}},
 	}}
 	trending := &fakeDiscoverTrendingSignalsReader{err: errors.New("db down")}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1617,7 +1635,7 @@ func TestDiscoverSourcesHandler_TrendingSignalsReadFailure_DegradesToPersonalOnl
 func TestDiscoverSourcesHandler_FeedLanguagesReadFailure_DegradesToUnfilteredTrendingOnly(t *testing.T) {
 	trending := &fakeDiscoverTrendingSignalsReader{rows: threeRepoSignal("https://a.example/feed")}
 	languages := &fakeDiscoverFeedLanguageReader{err: errors.New("db down")}
-	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, languages, noTitleBackfill())
+	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), trending, languages, noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1644,7 +1662,7 @@ func TestDiscoverSourcesHandler_ReasonCarriesFollowerDIDsOnPersonalCards(t *test
 		"did:plc:alice": {{Key: "https://shared.example/feed", Kind: "rss"}},
 		"did:plc:bob":   {{Key: "https://shared.example/feed", Kind: "rss"}},
 	}}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1677,7 +1695,7 @@ func TestDiscoverSourcesHandler_AuthorDIDSetOnlyWhenTopSignalIsAuthor(t *testing
 	authored := &fakeAuthoredPublicationCrawler{byDID: map[string][]discovercrawl.AuthoredPublication{
 		"did:plc:author": {{Key: pubURI, Kind: "standardfeed", Title: "My Zine"}},
 	}}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, authored, noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, authored, noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1709,7 +1727,7 @@ func TestDiscoverSourcesHandler_AuthorDIDAndFollowerDIDsEmpty_OnSelfCreditedCard
 			App:          discovercrawl.ForeignAppSkyreader,
 		}},
 	}}
-	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), ownForeign, &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill())
+	h := DiscoverSourcesHandler(&fakeDiscoverFollowsReader{}, noAdjacentFollows(), ownForeign, &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1737,10 +1755,10 @@ func TestDiscoverSourcesHandler_ShareOnlyCandidateGetsTitleBackfilled(t *testing
 	shares := &fakePersonalShareCrawler{byDID: map[string][]discovercrawl.Share{
 		"did:plc:alice": {{Kind: "rss", ItemURL: "https://blog.example/post", FeedURL: "https://blog.example/feed", CreatedAt: "2026-07-01T00:00:00Z"}},
 	}}
-	backfill := &fakeDiscoverSourceTitleBackfillReader{rows: map[string]db.GetDiscoverTrendingSignalTitleRow{
+	backfill := &fakeDiscoverSourceTitleBackfillReader{rows: map[string]db.ListDiscoverTrendingSignalTitlesRow{
 		"https://blog.example/feed": titleBackfillRow("Blog Title", "https://blog.example"),
 	}}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), backfill)
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), backfill, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1763,10 +1781,10 @@ func TestDiscoverSourcesHandler_AlreadyTitledCandidateIsNeverQueriedOrOverridden
 	crawler := &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{
 		"did:plc:alice": {{Key: "https://titled.example/feed", Kind: "rss", Title: "Original Title"}},
 	}}
-	backfill := &fakeDiscoverSourceTitleBackfillReader{rows: map[string]db.GetDiscoverTrendingSignalTitleRow{
+	backfill := &fakeDiscoverSourceTitleBackfillReader{rows: map[string]db.ListDiscoverTrendingSignalTitlesRow{
 		"https://titled.example/feed": titleBackfillRow("Trending Title", "https://trending.example"),
 	}}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), backfill)
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), backfill, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1790,7 +1808,7 @@ func TestDiscoverSourcesHandler_TitleBackfillErrorDegradesGracefully(t *testing.
 		"did:plc:alice": {{Kind: "rss", ItemURL: "https://err.example/post", FeedURL: "https://err.example/feed", CreatedAt: "2026-07-01T00:00:00Z"}},
 	}}
 	backfill := &fakeDiscoverSourceTitleBackfillReader{err: errors.New("db unreachable")}
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), backfill)
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), backfill, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1818,7 +1836,7 @@ func TestDiscoverSourcesHandler_OnlyRssTitlelessCandidatesAreQueriedForBackfill(
 		"did:plc:alice": {{Kind: "rss", ItemURL: "https://blog.example/post", FeedURL: "https://blog.example/feed", CreatedAt: "2026-07-01T00:00:00Z"}},
 	}}
 	backfill := noTitleBackfill()
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), backfill)
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), backfill, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1842,7 +1860,7 @@ func TestDiscoverSourcesHandler_NoMissingTitles_BackfillReaderNeverCalled(t *tes
 		"did:plc:alice": {{Key: "https://has-title.example/feed", Kind: "rss", Title: "Has Title"}},
 	}}
 	backfill := noTitleBackfill()
-	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), backfill)
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), backfill, nil)
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
 	rr := httptest.NewRecorder()
@@ -1857,5 +1875,74 @@ func TestDiscoverSourcesHandler_NoMissingTitles_BackfillReaderNeverCalled(t *tes
 	}
 	if len(backfill.calls) != 0 {
 		t.Errorf("backfill.calls = %v, want zero calls when no candidate is missing a title", backfill.calls)
+	}
+}
+
+// TestDiscoverSourcesHandler_FoldOrderIsDeterministic pins the batched fold to sorted DID order: two followers report the same key with different titles, so whichever fold order wins is visible in the wire title, and it must be the same on every run.
+func TestDiscoverSourcesHandler_FoldOrderIsDeterministic(t *testing.T) {
+	follows := &fakeDiscoverFollowsReader{rows: []db.UserFollow{
+		discoverFollow("did:plc:carol"),
+		discoverFollow("did:plc:alice"),
+		discoverFollow("did:plc:bob"),
+	}}
+	byDID := map[string][]discovercrawl.Subscription{
+		"did:plc:alice": {{Key: "https://shared.example/feed", Kind: "rss", Title: "Alice Reading"}},
+		"did:plc:bob":   {{Key: "https://shared.example/feed", Kind: "rss", Title: "Bob Reading"}},
+		"did:plc:carol": {{Key: "https://shared.example/feed", Kind: "rss", Title: "Carol Reading"}},
+	}
+
+	for run := 0; run < 5; run++ {
+		crawler := &fakeSubscriptionCrawler{byDID: byDID}
+		h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, crawler, noAuthoredPublications(), noPersonalShares(), noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), noTitleBackfill(), nil)
+
+		req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		var got discoverSourceWires
+		if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+			t.Fatalf("run %d: unmarshal: %v", run, err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("run %d: got = %+v, want 1 suggestion", run, got)
+		}
+		if got[0].Title != "Alice Reading" {
+			t.Fatalf("run %d: Title = %q, want the alphabetically-first follower's title on every run", run, got[0].Title)
+		}
+	}
+}
+
+// TestDiscoverSourcesHandler_TitleBackfillQueriesEveryMissingKeyOnce proves the backfill collapsed to a single read over all untitled rss keys.
+func TestDiscoverSourcesHandler_TitleBackfillQueriesEveryMissingKeyOnce(t *testing.T) {
+	follows := &fakeDiscoverFollowsReader{rows: []db.UserFollow{discoverFollow("did:plc:alice")}}
+	shares := &fakePersonalShareCrawler{byDID: map[string][]discovercrawl.Share{
+		"did:plc:alice": {
+			{Kind: "rss", ItemURL: "https://one.example/post", FeedURL: "https://one.example/feed", CreatedAt: "2026-07-01T00:00:00Z"},
+			{Kind: "rss", ItemURL: "https://two.example/post", FeedURL: "https://two.example/feed", CreatedAt: "2026-07-02T00:00:00Z"},
+		},
+	}}
+	backfill := &fakeDiscoverSourceTitleBackfillReader{rows: map[string]db.ListDiscoverTrendingSignalTitlesRow{
+		"https://one.example/feed": titleBackfillRow("One Publication", "https://one.example"),
+		"https://two.example/feed": titleBackfillRow("Two Publication", "https://two.example"),
+	}}
+	h := DiscoverSourcesHandler(follows, noAdjacentFollows(), noOwnForeignSubscriptions(), &fakeDiscoverSubsReader{}, &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{}}, noAuthoredPublications(), shares, noEntryResolver(), newFakeDiscoverHiddenReader(), &fakeDiscoverTrendingSignalsReader{}, noFeedLanguages(), backfill, nil)
+
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/sources", nil), "did:plc:me", "sess1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	var got discoverSourceWires
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	titles := map[string]string{}
+	for _, wire := range got {
+		titles[wire.FeedURL] = wire.Title
+	}
+	if titles["https://one.example/feed"] != "One Publication" || titles["https://two.example/feed"] != "Two Publication" {
+		t.Fatalf("titles = %v, want both candidates backfilled", titles)
+	}
+	if len(backfill.calls) != 2 || backfill.calls[0] != "https://one.example/feed" || backfill.calls[1] != "https://two.example/feed" {
+		t.Errorf("backfill.calls = %v, want both keys in one sorted lookup", backfill.calls)
 	}
 }

@@ -18,20 +18,24 @@ import (
 
 const saveCollection = "blue.morgen.feed.save"
 
-// SaveWire is the on-the-wire shape returned by POST; uri/cid ride along so a future library page can hydrate without a second lookup.
+// SaveWire is the on-the-wire save shape; GET /api/saves additionally joins entry title/slug/target when cached. Only POST carries a cid, since user_saves has no cid column.
 type SaveWire struct {
-	URI       string `json:"uri"`
+	URI       string `json:"uri,omitempty"`
 	CID       string `json:"cid,omitempty"`
 	Rkey      string `json:"rkey"`
 	ItemURL   string `json:"itemUrl"`
 	FeedURL   string `json:"feedUrl,omitempty"`
 	CreatedAt string `json:"createdAt"`
+	Title     string `json:"title,omitempty"`
+	TargetURL string `json:"targetUrl,omitempty"`
+	EntrySlug string `json:"entrySlug,omitempty"`
 }
 
-// SavesIndexReader is the slice of db.Queries the create/delete handlers use for reads.
+// SavesIndexReader is the slice of db.Queries the saves handlers use for reads.
 type SavesIndexReader interface {
 	GetUserSave(ctx context.Context, arg db.GetUserSaveParams) (db.UserSave, error)
 	GetUserSaveByItemURL(ctx context.Context, arg db.GetUserSaveByItemURLParams) (db.UserSave, error)
+	ListUserSaves(ctx context.Context, did string) ([]db.ListUserSavesRow, error)
 }
 
 // SavesIndexWriter is the slice used for writes.
@@ -48,7 +52,7 @@ type savesCreateRequest struct {
 }
 
 // SavesCreateHandler writes a save record to the PDS and mirrors it into the Tier-1 cache; idempotent on (did, itemUrl).
-func SavesCreateHandler(reader SavesIndexReader, writer SavesIndexWriter, pds atprepo.Writer) http.Handler {
+func SavesCreateHandler(reader SavesIndexReader, writer SavesIndexWriter, pds atprepo.Writer, disp RepairDispatcher) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -99,18 +103,17 @@ func SavesCreateHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 		}
 		rkey := atprepo.RkeyFromATURI(ref.URI)
 
-		if err := writer.UpsertUserSave(r.Context(), db.UpsertUserSaveParams{
-			Did:       didStr,
-			Rkey:      rkey,
-			AtUri:     ref.URI,
-			ItemUrl:   body.ItemURL,
-			FeedUrl:   nilIfEmpty(body.FeedURL),
-			CreatedAt: now,
-			UpdatedAt: now,
-		}); err != nil {
-			// PDS write already succeeded; log and continue, a later sync_user reconciles the local cache.
-			slog.Warn("/api/saves: Tier-1 upsert failed (PDS write succeeded)", "err", err)
-		}
+		mirrorOrRepair(r.Context(), disp, sess, "/api/saves: Tier-1 upsert", func() error {
+			return writer.UpsertUserSave(r.Context(), db.UpsertUserSaveParams{
+				Did:       didStr,
+				Rkey:      rkey,
+				AtUri:     ref.URI,
+				ItemUrl:   body.ItemURL,
+				FeedUrl:   nilIfEmpty(body.FeedURL),
+				CreatedAt: now,
+				UpdatedAt: now,
+			})
+		})
 
 		writeJSONStatus(w, http.StatusCreated, SaveWire{
 			URI:       ref.URI,
@@ -126,7 +129,7 @@ func SavesCreateHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 // --- DELETE /api/saves/{rkey} ---
 
 // SavesDeleteHandler tombstones the PDS record and removes the Tier-1 row.
-func SavesDeleteHandler(reader SavesIndexReader, writer SavesIndexWriter, pds atprepo.Writer) http.Handler {
+func SavesDeleteHandler(reader SavesIndexReader, writer SavesIndexWriter, pds atprepo.Writer, disp RepairDispatcher) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -154,11 +157,52 @@ func SavesDeleteHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 			writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
 			return
 		}
-		if err := writer.DeleteUserSave(r.Context(), db.DeleteUserSaveParams{Did: didStr, Rkey: rkey}); err != nil {
-			slog.Warn("/api/saves DELETE: Tier-1 delete failed", "err", err)
-		}
+		mirrorOrRepair(r.Context(), disp, sess, "/api/saves DELETE: Tier-1 delete", func() error {
+			return writer.DeleteUserSave(r.Context(), db.DeleteUserSaveParams{Did: didStr, Rkey: rkey})
+		})
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// --- GET /api/saves ---
+
+// SavesListHandler returns the user's saves, newest first, joining entry title/slug/target when the entry is still cached.
+func SavesListHandler(reader SavesIndexReader) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sess, ok := requireSession(w, r)
+		if !ok {
+			return
+		}
+		rows, err := reader.ListUserSaves(r.Context(), sess.Data.AccountDID.String())
+		if err != nil {
+			slog.Warn("/api/saves GET: list failed", "err", err)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
+			return
+		}
+		out := make([]SaveWire, 0, len(rows))
+		for _, row := range rows {
+			out = append(out, saveListRowToWire(row))
+		}
+		writeJSON(w, out)
+	})
+}
+
+func saveListRowToWire(row db.ListUserSavesRow) SaveWire {
+	// The save's own feedUrl is optional (a save can predate knowing the feed), so the joined entry's feed stands in.
+	feedURL := derefStr(row.FeedUrl)
+	if feedURL == "" {
+		feedURL = derefStr(row.EntryFeedUrl)
+	}
+	return SaveWire{
+		URI:       row.AtUri,
+		Rkey:      row.Rkey,
+		ItemURL:   row.ItemUrl,
+		FeedURL:   feedURL,
+		CreatedAt: row.CreatedAt,
+		Title:     derefStr(row.EntryTitle),
+		TargetURL: derefStr(row.EntryUrl),
+		EntrySlug: derefStr(row.EntrySlug),
+	}
 }
 
 func saveRowToWire(row db.UserSave) SaveWire {

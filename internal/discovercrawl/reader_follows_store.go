@@ -22,6 +22,8 @@ type ReaderFollowCrawler interface {
 type ReaderFollowCacheReader interface {
 	GetDiscoverCrawlFollowState(ctx context.Context, followedDid string) (db.DiscoverCrawlFollowState, error)
 	ListDiscoverCrawlFollows(ctx context.Context, followedDid string) ([]db.DiscoverCrawlFollow, error)
+	ListDiscoverCrawlFollowStatesByDids(ctx context.Context, dids []string) ([]db.DiscoverCrawlFollowState, error)
+	ListDiscoverCrawlFollowsByDids(ctx context.Context, dids []string) ([]db.DiscoverCrawlFollow, error)
 }
 
 // ReaderFollowCacheWriter is the slice used inside the write transaction.
@@ -97,6 +99,34 @@ func (c *CachedReaderFollowCrawler) FetchReaderNetworkFollows(ctx context.Contex
 		slog.Warn("discovercrawl: reader-network follow cache write failed", "did", didStr, "err", err)
 	}
 	return results, nil
+}
+
+// FetchReaderNetworkFollowsBatch is FetchReaderNetworkFollows over the viewer's whole follow list; see FetchSubscriptionsBatch for the read/crawl split and degrade posture.
+func (c *CachedReaderFollowCrawler) FetchReaderNetworkFollowsBatch(ctx context.Context, dids []string) map[string][]ReaderNetworkFollow {
+	return batchCache[ReaderNetworkFollow]{
+		label: "reader-network-follows",
+		ttl:   c.ttl,
+		now:   c.now,
+		fetchedAtByDID: func(ctx context.Context, dids []string) (map[string]string, error) {
+			rows, err := c.reader.ListDiscoverCrawlFollowStatesByDids(ctx, dids)
+			if err != nil {
+				return nil, err
+			}
+			out := make(map[string]string, len(rows))
+			for _, r := range rows {
+				out[r.FollowedDid] = r.FetchedAt
+			}
+			return out, nil
+		},
+		rowsByDID: func(ctx context.Context, dids []string) (map[string][]ReaderNetworkFollow, error) {
+			rows, err := c.reader.ListDiscoverCrawlFollowsByDids(ctx, dids)
+			if err != nil {
+				return nil, err
+			}
+			return groupRowsByDID(rows, func(r db.DiscoverCrawlFollow) string { return r.FollowedDid }, rowsToReaderNetworkFollows), nil
+		},
+		fetchOne: c.FetchReaderNetworkFollows,
+	}.fetch(ctx, dids)
 }
 
 func storeReaderNetworkFollowResults(ctx context.Context, w ReaderFollowCacheWriter, did string, results []ReaderNetworkFollow, fetchedAt string) error {
