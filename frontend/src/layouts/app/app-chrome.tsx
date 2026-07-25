@@ -159,18 +159,21 @@ export function AppChrome({ onAddSourceClick }: Props) {
     );
 }
 
-function TriggerAvatar({ me }: { me: Me }) {
+// An initial-less avatar holds the slot while me resolves, so the chrome doesn't reflow on hydration.
+function TriggerAvatar({ me }: { me: Me | null }) {
     return (
         <Avatar size="sm" className="size-5">
-            {me.avatar && <AvatarImage src={me.avatar} alt="" />}
+            {me?.avatar && <AvatarImage src={me.avatar} alt="" />}
             <AvatarFallback className="bg-neutral-200 text-[10px] text-black dark:bg-neutral-700 dark:text-white">
-                {initialsFromHandle(me.handle, me.did)}
+                {me && initialsFromHandle(me.handle, me.did)}
             </AvatarFallback>
         </Avatar>
     );
 }
 
-function UserHeader({ me }: { me: Me }) {
+function UserHeader({ me }: { me: Me | null }) {
+    if (!me) return null;
+
     const handleLine = me.handle ? `@${me.handle}` : truncateDid(me.did);
     const displayName = me.displayName?.trim();
     const showDisplayName = Boolean(displayName) && displayName !== handleLine;

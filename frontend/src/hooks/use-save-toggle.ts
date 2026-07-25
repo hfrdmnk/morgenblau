@@ -1,5 +1,6 @@
 import { useOptimisticRecord } from '@/hooks/use-optimistic-record';
 import { api } from '@/lib/api';
+import { emitLibraryMutation } from '@/lib/library-events';
 import { toastMutationError } from '@/lib/mutation-toast';
 
 export type SavedToggle = {
@@ -27,6 +28,7 @@ export function useSaveToggle(toggle: SavedToggle): SaveControl {
         if (record.busy) return;
         if (record.active) {
             record.remove();
+            emitLibraryMutation({ kind: 'save' });
             return;
         }
         record.setBusy(true);
@@ -40,6 +42,7 @@ export function useSaveToggle(toggle: SavedToggle): SaveControl {
         })
             .then((payload) => {
                 record.setRkey(payload.rkey);
+                emitLibraryMutation({ kind: 'save' });
             })
             .catch((err) => {
                 record.setActive(false);

@@ -166,8 +166,8 @@ function DigestMasthead({
     isToday: boolean;
 }) {
     const me = useAuthedMe();
-    const name = me.displayName?.trim().split(/\s+/)[0] ?? null;
-    // date is stable per selection, so the phrase re-picks only on navigation.
+    const name = me?.displayName?.trim().split(/\s+/)[0] ?? null;
+    // Phrase is date-seeded, so navigation re-picks it but me hydrating the name in does not.
     const heading = useMemo(
         () => (isToday ? pickGreeting(name, date) : pickPastTitle(date)),
         [name, date, isToday],

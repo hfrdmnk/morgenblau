@@ -14,49 +14,95 @@ import { formatDate } from '@/lib/date';
 import { initialsFromHandle, truncateDid } from '@/lib/handle';
 import {
     fetchNetworkShares,
-    type NetworkShareWithProfile,
+    uniqueSharerDIDs,
+    type NetworkShare,
 } from '@/lib/library';
+import {
+    readNetworkCache,
+    writeCachedNetworkProfiles,
+    writeCachedNetworkShares,
+    writeNetworkCache,
+} from '@/lib/library-cache';
 import { personHref } from '@/lib/paths';
+import { fetchProfiles, type Profile } from '@/lib/profile';
 import { shareTargetPresentation } from '@/lib/share-target';
 import { safeHref } from '@/lib/utils';
 
-type NetworkPerson = NetworkShareWithProfile;
+type Profiles = Record<string, Profile | undefined>;
 
 type State =
     | { kind: 'loading' }
-    | { kind: 'ok'; shares: NetworkPerson[] }
+    | { kind: 'ok'; shares: NetworkShare[] }
     | { kind: 'error' };
 
 // Stable empty list so list navigation doesn't reset every render while loading.
-const EMPTY_SHARES: NetworkPerson[] = [];
+const EMPTY_SHARES: NetworkShare[] = [];
+
+async function loadNetworkShares(
+    isCancelled: () => boolean,
+    setState: (state: State) => void,
+    setProfiles: (profiles: Profiles) => void,
+) {
+    try {
+        const shares = await fetchNetworkShares();
+        if (isCancelled()) return;
+        setState({ kind: 'ok', shares });
+        writeNetworkCache(shares);
+        await hydrateSharerProfiles(shares, isCancelled, setProfiles);
+    } catch {
+        if (!isCancelled()) setState({ kind: 'error' });
+    }
+}
+
+// Second stage: the rows are already on screen, so identities fill in whenever they land.
+async function hydrateSharerProfiles(
+    shares: NetworkShare[],
+    isCancelled: () => boolean,
+    setProfiles: (profiles: Profiles) => void,
+) {
+    const profiles = await fetchProfiles(uniqueSharerDIDs(shares));
+    // Cached before the cancel check: an unmount mid-flight would otherwise leave the cached rows identity-less for the whole TTL.
+    writeCachedNetworkProfiles(profiles);
+    if (isCancelled()) return;
+    setProfiles(profiles);
+}
 
 // NetworkPanel: the Library "Network" tab — shares from people the reader follows. SPEC <social-layer> Follow Contract.
 export function NetworkPanel() {
-    const [state, setState] = useState<State>({ kind: 'loading' });
+    const [state, setState] = useState<State>(() => {
+        const cached = readNetworkCache();
+        return cached
+            ? { kind: 'ok', shares: cached.shares }
+            : { kind: 'loading' };
+    });
+    const [profiles, setProfiles] = useState<Profiles>(
+        () => readNetworkCache()?.profiles ?? {},
+    );
 
     useEffect(() => {
+        if (readNetworkCache()) return;
         let cancelled = false;
-        const load = async () => {
-            try {
-                const shares = await fetchNetworkShares();
-                if (cancelled) return;
-                setState({ kind: 'ok', shares });
-            } catch {
-                if (!cancelled) setState({ kind: 'error' });
-            }
-        };
-        load();
+        loadNetworkShares(() => cancelled, setState, setProfiles);
         return () => {
             cancelled = true;
         };
     }, []);
+
+    // Write-through keeps the cache in sync with in-place list edits without owning state itself.
+    useEffect(() => {
+        if (state.kind === 'ok') writeCachedNetworkShares(state.shares);
+    }, [state]);
 
     const items = state.kind === 'ok' ? state.shares : EMPTY_SHARES;
 
     return (
         <ListPanelShell eyebrow="Library" heading="From your network" items={items}>
             {(nav) => (
-                <NetworkShares state={state} onActivate={nav.setActive} />
+                <NetworkShares
+                    state={state}
+                    profiles={profiles}
+                    onActivate={nav.setActive}
+                />
             )}
         </ListPanelShell>
     );
@@ -64,9 +110,11 @@ export function NetworkPanel() {
 
 function NetworkShares({
     state,
+    profiles,
     onActivate,
 }: {
     state: State;
+    profiles: Profiles;
     onActivate: (index: number) => void;
 }) {
     if (state.kind === 'loading') {
@@ -99,6 +147,7 @@ function NetworkShares({
                     {index > 0 ? <RowDivider /> : null}
                     <NetworkShareRow
                         share={share}
+                        profile={profiles[share.sharerDid]}
                         index={index}
                         onActivate={onActivate}
                     />
@@ -110,15 +159,17 @@ function NetworkShares({
 
 function NetworkShareRow({
     share,
+    profile,
     index,
     onActivate,
 }: {
-    share: NetworkPerson;
+    share: NetworkShare;
+    profile: Profile | undefined;
     index: number;
     onActivate: (index: number) => void;
 }) {
     const target = shareTargetPresentation(share);
-    const handle = share.profile?.handle;
+    const handle = profile?.handle;
     const sharerLabel = networkSharerLabel(share.sharerDid, handle);
     const sharerHref = personHref(share.sharerDid, handle);
 
@@ -134,7 +185,11 @@ function NetworkShareRow({
                 aria-label={sharerLabel}
                 className="relative z-10 mt-0.5 shrink-0 rounded-full outline-none focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
-                <NetworkShareAvatar share={share} handle={handle} />
+                <NetworkShareAvatar
+                    did={share.sharerDid}
+                    avatar={profile?.avatar}
+                    handle={handle}
+                />
             </Link>
             <div className="min-w-0 flex-1">
                 <Link
@@ -162,18 +217,19 @@ function networkSharerLabel(did: string, handle: string | undefined): string {
 }
 
 function NetworkShareAvatar({
-    share,
+    did,
+    avatar,
     handle,
 }: {
-    share: NetworkPerson;
+    did: string;
+    avatar: string | null | undefined;
     handle: string | undefined;
 }) {
-    const avatar = share.profile?.avatar;
     return (
         <Avatar>
             {avatar ? <AvatarImage src={safeHref(avatar)} alt="" /> : null}
             <AvatarFallback>
-                {initialsFromHandle(handle ?? null, share.sharerDid)}
+                {initialsFromHandle(handle ?? null, did)}
             </AvatarFallback>
         </Avatar>
     );

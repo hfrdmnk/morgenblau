@@ -346,7 +346,7 @@ export function PeoplePanel() {
     // Following from the slot is a suggestion follow in every way but where it started: same
     // in-flight gate, same list prepend, same inert flip in place.
     const onFollowSlot = () => {
-        if (!searchSlot.slot || searchSlot.slot.did === me.did) return;
+        if (!searchSlot.slot || searchSlot.slot.did === me?.did) return;
         suggestionActions.onFollow(searchResultToCard(searchSlot.slot), searchSlot.slot.handle);
     };
 
@@ -502,7 +502,7 @@ export function PeoplePanel() {
                 previews={previews}
                 followedDids={followedDids}
                 followingDid={followingDid}
-                viewerDid={me.did}
+                viewerDid={me?.did ?? null}
                 onFollow={onFollowSlot}
                 isSubscribed={isSubscribed}
                 onSubscribeSource={onSubscribeSource}
@@ -746,7 +746,7 @@ function SearchSlot({
     previews: PreviewsByDid;
     followedDids: ReadonlySet<string>;
     followingDid: string | undefined;
-    viewerDid: string;
+    viewerDid: string | null;
     onFollow: () => void;
     isSubscribed: (source: PersonPreviewSource) => boolean;
     onSubscribeSource: (source: PersonPreviewSource) => void;

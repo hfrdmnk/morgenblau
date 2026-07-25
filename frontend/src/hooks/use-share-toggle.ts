@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { useOptimisticRecord } from '@/hooks/use-optimistic-record';
 import { api, classifyMutationError, type MutationErrorKind } from '@/lib/api';
+import { emitLibraryMutation } from '@/lib/library-events';
 
 export type ShareToggle = {
     initial: { rkey: string } | null;
@@ -41,6 +42,7 @@ export function useShareToggle(toggle: ShareToggle): ShareControl {
         if (record.busy) return;
         if (record.active) {
             record.remove();
+            emitLibraryMutation({ kind: 'share' });
             return;
         }
         setError(null);
@@ -63,6 +65,7 @@ export function useShareToggle(toggle: ShareToggle): ShareControl {
                 record.setActive(true);
                 record.setRkey(payload.rkey);
                 setComposerOpen(false);
+                emitLibraryMutation({ kind: 'share' });
             })
             .catch((err) => {
                 setError(classifyShareError(err));

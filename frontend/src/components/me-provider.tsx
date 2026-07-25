@@ -1,24 +1,22 @@
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 
 import { MeContext } from '@/hooks/use-authed-me';
 import { useMe } from '@/hooks/use-me';
 import { PATHS } from '@/lib/paths';
 
-// The Go middleware gates the page server-side, so by the time we mount here
-// we expect to be authed. The 'anon' branch only fires if the session died
-// between the server gate and the /api/profiles/me fetch, so defensively reload.
+// Children render straight away so a slow /api/profiles/me can't hold the whole app on a blank screen.
 export function MeProvider({ children }: { children: ReactNode }) {
     const state = useMe();
 
-    if (state.kind === 'loading') {
-        return <div className="min-h-svh bg-background" />;
-    }
-    if (state.kind === 'anon') {
-        window.location.assign(PATHS.login);
-        return null;
-    }
+    // The Go middleware gates these pages server-side, so anon here means the session died mid-flight.
+    useEffect(() => {
+        if (state.kind === 'anon') window.location.assign(PATHS.login);
+    }, [state.kind]);
 
     return (
-        <MeContext.Provider value={state.me}>{children}</MeContext.Provider>
+        <MeContext.Provider value={state.kind === 'authed' ? state.me : null}>
+            {children}
+        </MeContext.Provider>
     );
 }

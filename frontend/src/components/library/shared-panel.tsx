@@ -20,6 +20,11 @@ import {
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/date';
 import { fetchShares, type Share } from '@/lib/library';
+import {
+    readSharedCache,
+    writeCachedShares,
+    writeSharedCache,
+} from '@/lib/library-cache';
 import { PATHS } from '@/lib/paths';
 import { shareTargetPresentation } from '@/lib/share-target';
 import { cn } from '@/lib/utils';
@@ -34,15 +39,23 @@ const EMPTY_SHARES: Share[] = [];
 
 // SharedPanel: the Library "Shared" tab — everything this user has sent to their network and the Atmosphere.
 export function SharedPanel() {
-    const [state, setState] = useState<State>({ kind: 'loading' });
+    const [state, setState] = useState<State>(() => {
+        const cached = readSharedCache();
+        return cached
+            ? { kind: 'ok', shares: cached.shares }
+            : { kind: 'loading' };
+    });
     const [error, setError] = useState<ShareError | null>(null);
 
     useEffect(() => {
+        if (readSharedCache()) return;
         let cancelled = false;
         const load = async () => {
             try {
                 const shares = await fetchShares();
-                if (!cancelled) setState({ kind: 'ok', shares });
+                if (cancelled) return;
+                setState({ kind: 'ok', shares });
+                writeSharedCache(shares);
             } catch {
                 if (!cancelled) setState({ kind: 'error' });
             }
@@ -52,6 +65,11 @@ export function SharedPanel() {
             cancelled = true;
         };
     }, []);
+
+    // Write-through keeps the cache in sync with unshare/rollback without owning state itself.
+    useEffect(() => {
+        if (state.kind === 'ok') writeCachedShares(state.shares);
+    }, [state]);
 
     const unshare = async (rkey: string) => {
         if (state.kind !== 'ok') return;

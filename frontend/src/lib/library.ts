@@ -1,5 +1,4 @@
 import { api } from '@/lib/api';
-import { fetchProfile, type Profile } from '@/lib/profile';
 
 export type NetworkShare = {
     sharerDid: string;
@@ -13,8 +12,6 @@ export type NetworkShare = {
     createdAt: string;
 };
 
-export type NetworkShareWithProfile = NetworkShare & { profile?: Profile };
-
 export type Share = {
     rkey: string;
     kind: 'rss' | 'standardfeed';
@@ -27,7 +24,19 @@ export type Share = {
     entrySlug?: string;
 };
 
-// First-seen order so the caller resolves each identity once before the /api/profiles/{did} fan-out.
+export type Save = {
+    rkey: string;
+    uri?: string;
+    cid?: string;
+    itemUrl: string;
+    feedUrl?: string;
+    createdAt: string;
+    title?: string;
+    targetUrl?: string;
+    entrySlug?: string;
+};
+
+// First-seen order so the caller resolves each identity once in the batch profile lookup.
 export function uniqueSharerDIDs(shares: NetworkShare[]): string[] {
     const seen = new Set<string>();
     const out: string[] = [];
@@ -40,28 +49,17 @@ export function uniqueSharerDIDs(shares: NetworkShare[]): string[] {
     return out;
 }
 
-// Pairs each share with the profile resolved for its sharer, by position against `dids`.
-export function hydrateNetworkShares(
-    shares: NetworkShare[],
-    dids: string[],
-    profiles: (Profile | undefined)[],
-): NetworkShareWithProfile[] {
-    const profileByDID = new Map(dids.map((did, i) => [did, profiles[i]]));
-    return shares.map((share) => ({
-        ...share,
-        profile: profileByDID.get(share.sharerDid),
-    }));
-}
-
-export async function fetchNetworkShares(): Promise<NetworkShareWithProfile[]> {
-    const shares =
-        (await api<NetworkShare[] | null>('/api/library/network-shares')) ??
-        [];
-    const dids = uniqueSharerDIDs(shares);
-    const profiles = await Promise.all(dids.map(fetchProfile));
-    return hydrateNetworkShares(shares, dids, profiles);
+// Rows only: the caller hydrates sharer profiles separately so shares render before identities resolve.
+export async function fetchNetworkShares(): Promise<NetworkShare[]> {
+    return (
+        (await api<NetworkShare[] | null>('/api/library/network-shares')) ?? []
+    );
 }
 
 export async function fetchShares(): Promise<Share[]> {
     return (await api<Share[] | null>('/api/shares')) ?? [];
+}
+
+export async function fetchSaves(): Promise<Save[]> {
+    return (await api<Save[] | null>('/api/saves')) ?? [];
 }
