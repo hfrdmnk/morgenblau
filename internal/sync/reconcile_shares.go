@@ -14,6 +14,9 @@ import (
 // reconcileShares diffs shares across two record types (SPEC <sync-architecture>). The local rkey
 // for a standardfeed row is the recommend's rkey; the sidecar is metadata, never its own row.
 func (e *Engine) reconcileShares(ctx context.Context, did syntax.DID, sess *oauth.ClientSession) error {
+	// Taken before the listings so any row created while the round-trips are in flight is newer than the snapshot.
+	snapshotAt := e.now().UTC()
+
 	// Both lists fetched before any mutation and before the tx opens, so the writer connection is never held across a PDS round-trip.
 	shares, err := e.lister.ListShares(ctx, sess)
 	if err != nil {
@@ -68,6 +71,11 @@ func (e *Engine) reconcileShares(ctx context.Context, did syntax.DID, sess *oaut
 		// Deletes first: a changed canonical rkey leaves the stale row holding (did, document), which would trip the partial unique index on the new upsert.
 		for _, row := range snapshot {
 			if _, keep := desired[row.Rkey]; keep {
+				continue
+			}
+			// Keeping an in-flight row can leave it holding (did, document) against a rekeyed canonical; that upsert fails and the next pass converges, which beats dropping a fresh share.
+			if createdAfterSnapshot(row.CreatedAt, snapshotAt) {
+				slog.Debug("reconcile: share delete skipped, row newer than the PDS snapshot", "rkey", row.Rkey, "createdAt", row.CreatedAt)
 				continue
 			}
 			if err := q.DeleteUserShare(ctx, db.DeleteUserShareParams{

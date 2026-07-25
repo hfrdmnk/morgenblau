@@ -15,6 +15,9 @@ import (
 // A subject can have more than one PDS record (two devices following before either synced); canonicalByKey
 // collapses those to the smallest rkey so at most one upsert runs, keeping user_follows_did_subject_did_idx satisfied.
 func (e *Engine) reconcileFollows(ctx context.Context, did syntax.DID, sess *oauth.ClientSession) error {
+	// Taken before the listing so any row created while the round-trip is in flight is newer than the snapshot.
+	snapshotAt := e.now().UTC()
+
 	remote, err := e.lister.ListFollows(ctx, sess)
 	if err != nil {
 		return err
@@ -54,6 +57,10 @@ func (e *Engine) reconcileFollows(ctx context.Context, did syntax.DID, sess *oau
 		// Deletes first: if the canonical rkey for a subject changes, the stale row still holds (did, subject_did) and would collide with the unique index on upsert.
 		for _, row := range snapshot {
 			if _, keep := desired[row.Rkey]; keep {
+				continue
+			}
+			if createdAfterSnapshot(row.CreatedAt, snapshotAt) {
+				slog.Debug("reconcile: follows delete skipped, row newer than the PDS snapshot", "rkey", row.Rkey, "createdAt", row.CreatedAt)
 				continue
 			}
 			if err := q.DeleteUserFollow(ctx, db.DeleteUserFollowParams{

@@ -13,6 +13,9 @@ import (
 
 // reconcileSaves has no Tier-2 join and no fetch to trigger; saves are leaf bookmarks.
 func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *oauth.ClientSession) error {
+	// Taken before the listing so any row created while the round-trip is in flight is newer than the snapshot.
+	snapshotAt := e.now().UTC()
+
 	// Network first: the writer connection must never be held across a PDS round-trip.
 	remote, err := e.lister.ListSaves(ctx, sess)
 	if err != nil {
@@ -56,8 +59,12 @@ func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *oauth
 			}
 		}
 
-		for rkey := range localByRkey {
+		for rkey, row := range localByRkey {
 			if _, stillThere := remoteByRkey[rkey]; stillThere {
+				continue
+			}
+			if createdAfterSnapshot(row.CreatedAt, snapshotAt) {
+				slog.Debug("reconcile: saves delete skipped, row newer than the PDS snapshot", "rkey", rkey, "createdAt", row.CreatedAt)
 				continue
 			}
 			if err := q.DeleteUserSave(ctx, db.DeleteUserSaveParams{
