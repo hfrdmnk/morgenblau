@@ -41,6 +41,9 @@ ATproto is just a means to an end. We're not advertising as "RSS on ATproto" but
 - Tailwind CSS 4
 - Base UI
 
+### Sidecars
+- tap (indigo `cmd/tap`): the firehose reader that feeds discovery. Operated alongside the app, never imported by it; the app reaches it over local HTTP and a websocket channel (`TAP_URL`), and tells it which repos to follow.
+
 </stack>
 
 ---
@@ -466,7 +469,9 @@ Refresh has **three user-initiated triggers** plus a **background sweep**:
 - **Manual refresh** is available on the digest view.
 - **On subscription add**, the new subscription is fetched immediately (only that feed, not the whole set).
 - **On login**, all of the user's subscriptions are refreshed (behaves like manual refresh), subject to a 5-minute in-flight guard so repeated logins don't thrash upstream feeds.
-- **Background sweep** re-fetches every feed in the shared Tier-2 catalog on a global timer (`FETCH_INTERVAL_MINUTES`, default 30; `0` disables). It is system-wide, not per-user: it touches no PDS records and creates no jobs, so it never lights up a refresh indicator. Conditional GET (etag/last-modified) keeps re-fetches cheap, and the fetcher's worker pool bounds upstream load.
+- **Background sweep** re-fetches every feed in the shared Tier-2 catalog on a global timer (`FETCH_INTERVAL_MINUTES`, default 30; `0` disables). It is system-wide, not per-user: it touches no PDS records and creates no jobs, so it never lights up a refresh indicator. Conditional GET (etag/last-modified) keeps re-fetches cheap, and the fetcher's worker pool bounds upstream load. This timer governs Tier-2 content only; discovery ingestion runs continuously off tap on its own cadence (see `<discovery>`).
+
+Upstream politeness for ATProto is enforced at the client, not at each call site: every outbound XRPC path is built by `atxrpc.New`, which installs a shared per-host cooldown honoring `Retry-After` and rate-limit headers (`internal/atxrpc/cooldown.go`). New fetch loops inherit it by construction rather than hand-rolling retries. RSS fetches keep the fetcher's own per-feed backoff (see Failure Handling).
 
 User-initiated refreshes (manual, add, login) dispatch asynchronously, controllers return immediately. While any job is in flight the digest renders its loading skeleton, and once the job goes quiet the digest re-fetches in place. No count, no badge, no persistent indicator. Consistent with the "no unread counts" anti-feature.
 
@@ -515,10 +520,10 @@ The Discover route answers "where do I find good stuff to read?" using the reade
 
 ### Data acquisition
 
-No firehose/Jetstream in v1; it can be layered in later without changing the model.
+Ingestion runs through a **tap sidecar** (indigo `cmd/tap`, see `<stack>`) that consumes the firehose for the repos Morgenblau tracks. Relay enumeration survives only as the seed that tells tap which repos to follow; it no longer acquires records itself.
 
-- **Personal**: on-demand `listRecords` crawls of the repos of people the user follows (bounded set), plus single-repo crawls when the user inspects one person (card expansion, profile page), cached in local SQLite with a TTL. Same posture as Tier-1/Tier-2: local tables are derived caches, re-derivable from PDSes.
-- **Global/Trending**: a **daily batch job** enumerates repos per collection via relay `com.atproto.sync.listReposByCollection`, then diffs records into local aggregate tables (canonical source key → per-signal counts). The cadence matches the daily digest and lets one computation serve all users.
+- **Personal**: `listRecords` crawls of the repos of people the user follows (bounded set), plus single-repo crawls when the user inspects one person (card expansion, profile page), cached in local SQLite with a TTL. Crawls fan out per signal in batches, never per candidate, and the assembled payload is memoized per user for a short TTL (`internal/discovermemo`), so paging and re-visits reuse one assembly instead of re-running the fan-out. Same posture as Tier-1/Tier-2: local tables are derived caches, re-derivable from PDSes.
+- **Global/Trending**: tap streams every tracked repo's records into a local mirror and marks the repo dirty; a rebuild worker drains the dirty set and reduces each repo's mirrored records into local aggregate tables (canonical source key → per-signal counts). Records therefore arrive continuously rather than in a nightly pass. A seeder enumerates the relay per collection (`com.atproto.sync.listReposByCollection`) on an interval (`DISCOVER_BATCH_INTERVAL_HOURS`, daily by default) and hands tap the repos it has not been told about, so enumeration only ever widens the tracked set. One computation serves all users. Ingestion lives in `internal/tapingest`; the signal reduction and the aggregate writers stay in `internal/discoverbatch`.
 
 Aggregates are keyed by the same canonical source keys as Tier-2 (canonical feed URL for `rss`, publication AT-URI for `standardfeed`), so cross-reader dedup falls out of the keying.
 
@@ -535,11 +540,11 @@ Aggregates are keyed by the same canonical source keys as Tier-2 (canonical feed
 - **Filters before ranking:** sources the user already subscribes to (by canonical key) and hidden sources drop out.
 - **Every suggestion carries its reason** ("3 people you follow subscribe", "@alice shared this"), derived from its top contributors, plus up to 3 contributor DIDs so the card can show an avatar stack of exactly the people the count claims.
 
-Future direction: collaborative filtering over the daily batch's subscription matrix (or a small learned ranker) can replace the hand-tuned weights without touching acquisition.
+Future direction: collaborative filtering over the mirror's subscription matrix (or a small learned ranker) can replace the hand-tuned weights without touching acquisition.
 
 ### Global/Trending ranking (Sources)
 
-Same signal weights and gravity decay as personal ranking — plus saves at their `<lexicons>` popularity weight, which trending may count because aggregates are anonymous — summed over the whole network from the daily batch tables, with no trust term. Two filters keep it signal instead of noise:
+Same signal weights and gravity decay as personal ranking (plus saves at their `<lexicons>` popularity weight, which trending may count because aggregates are anonymous), summed over the whole network from the trending aggregate tables, with no trust term. Two filters keep it signal instead of noise:
 
 - **Language:** trending only shows sources in the languages the user demonstrably reads, inferred from their own subscriptions (content-based detection is primary, the feed's `language` tag is a hint only). App locale is the cold-start fallback for users with no subscriptions. Sources whose language can't be determined **pass the filter**: occasionally showing a wrong-language source beats silently eating a good one.
 - **Quality bar:** a source needs signals from **≥3 distinct repos** to trend at all. Kills single-repo spam and self-promotion, and doubles as a floor on quality.
@@ -592,9 +597,13 @@ Sources and People are each **one unified list, no sections**, loaded eight sugg
 
 Two-tier storage with different authority and sharing models.
 
+The discovery mirror tap fills (see `<discovery>`) belongs to neither tier: it is a network-wide, anonymous derived cache that feeds trending aggregates only. It never supplies Tier-2 entries and never stands in for a Tier-1 reconcile.
+
 ### Tier 1 — PDS-mirrored (per-user)
 
-User-owned records (`blue.morgen.feed.subscription`, `feed.save`, `feed.share`, `graph.follow`) live authoritatively on the user's PDS. Local SQLite tables holding the same data are **derived indexes only** (per `<lexicons>`). Reconciliation: `listRecords` against PDS, diff against local index, apply changes. Reconciliation triggers are the same as the user-initiated fetch triggers in `<feed-sources>` (login, manual refresh, add); the background sweep is Tier-2 only and never reconciles PDS records.
+User-owned records (`blue.morgen.feed.subscription`, `feed.save`, `feed.share`, `graph.follow`) live authoritatively on the user's PDS. Local SQLite tables holding the same data are **derived indexes only** (per `<lexicons>`). Reconciliation: `listRecords` against PDS, diff against local index, apply changes. Reconciliation triggers are the same as the user-initiated fetch triggers in `<feed-sources>` (login, manual refresh, add); the background sweep is Tier-2 only and never reconciles PDS records. A local row created *after* the PDS listing snapshot is never deleted by that reconcile: it is absent from the listing by timing, not by remote delete, so an in-flight write survives a concurrent sync (`internal/sync/reconcile_guard.go`).
+
+**Mutations are PDS-first:** dedupe, validate against the lexicon, write to the PDS, then mirror into the local index. The mirror write can never fail the response, because the PDS write it follows already committed and the PDS is the authority; a failed mirror dispatches a reconcile instead of surfacing an error (`mirrorOrRepair` in `internal/api/mirror.go`).
 
 **Publication sources (Standardfeed).** For sources backed by a `site.standard.publication`, the `site.standard.graph.subscription` record is the **sole existence authority** — "am I subscribed" is answered only by that record. The `blue.morgen.feed.subscription` sidecar (joined by publication AT-URI) carries Morgenblau-only metadata (title, tags, primary) and is created **lazily**, on the user's first metadata edit; subscribing writes only the standard record. This split makes deletes tombstone-free in both directions: an orphaned sidecar (standard record gone — user unsubscribed in another app) is deleted on reconcile; a standard record without a sidecar is a healthy subscription with default metadata (title falls back to the cached `publication.name`). Reconcile reads both collections; its **only** PDS write is deleting a redundant sidecar — an orphan (existence record gone) or a non-canonical duplicate left by a sync/PATCH race, where the newest sidecar wins and the older is removed (subscription and share sidecars alike) — otherwise it never writes.
 

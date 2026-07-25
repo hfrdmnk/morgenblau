@@ -21,6 +21,12 @@ paths:
 - **Encryption:** tokens, keys, and session material are AEAD-encrypted before they touch the database. Keys come from env and support rotation: the first key encrypts, all keys are tried on decrypt. Never persist credentials in plaintext.
 - **HTTP surface:** request bodies are size-limited via the shared middleware; decode with `api.decodeJSON` (413 on overflow, 400 on malformed). Every JSON error body goes through `writeError(w, status, code, msg)` or `writeFieldErrors(w, fields)` in `internal/api/respond.go`. Never `http.Error` or an ad-hoc `{"message": ...}` map in an `internal/api` handler (the OAuth HTML-flow handlers are the only `http.Error` exception). `code` is a stable slug the frontend keys off, defined in `respond.go`; add one there rather than inventing a body shape. Missing-or-not-owned resources return 404 on every verb; only the reauth contract uses 403 + `reauth_required`.
 
+## PDS mutations
+
+- Order is fixed: dedupe, validate against the lexicon, write to the PDS, then mirror into the local index. Never mirror first; the PDS is the authority and the local table is a derived index.
+- The mirror write goes through `mirrorOrRepair` (`internal/api/mirror.go`) and never fails the response: the PDS write it follows already committed, so a failed mirror dispatches a repair sync instead of surfacing an error.
+- Outbound atproto HTTP is built by `atxrpc.New`, which installs a per-host cooldown honoring `Retry-After` and rate-limit headers. New fetch loops inherit it by construction; never hand-roll retries or retry-hint parsing at a call site.
+
 ## Testing
 
 - Red-Green TDD: write the failing test first. Handlers test against hand-rolled fakes of their own narrow interfaces with `httptest`; storage tests use real SQLite in `t.TempDir()`. Concurrent code runs under `-race`.
