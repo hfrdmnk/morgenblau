@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"golang.org/x/net/publicsuffix"
 	"golang.org/x/sync/singleflight"
 
+	"morgenblau/internal/backoff"
 	"morgenblau/internal/safehttp"
 )
 
@@ -54,26 +54,9 @@ type HTTPError struct {
 
 func (e *HTTPError) Error() string { return fmt.Sprintf("fetcher: upstream %d", e.StatusCode) }
 
-// ParseRetryAfter accepts delta-seconds and HTTP-date forms; ok is false for absent, garbage, or negative values.
+// ParseRetryAfter delegates to backoff, which owns retry-hint parsing for every outbound path.
 func ParseRetryAfter(v string, now time.Time) (time.Duration, bool) {
-	if v == "" {
-		return 0, false
-	}
-	if secs, err := strconv.Atoi(v); err == nil {
-		if secs < 0 {
-			return 0, false
-		}
-		return time.Duration(secs) * time.Second, true
-	}
-	t, err := http.ParseTime(v)
-	if err != nil {
-		return 0, false
-	}
-	d := t.Sub(now)
-	if d < 0 {
-		return 0, false
-	}
-	return d, true
+	return backoff.ParseRetryAfter(v, now)
 }
 
 // FeedState carries the caller's ETag/Last-Modified for conditional GET and is stored back after a fetch.

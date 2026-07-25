@@ -1,10 +1,41 @@
 package backoff
 
 import (
+	"net/http"
 	"reflect"
 	"testing"
 	"time"
 )
+
+func TestParseRetryAfter(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name string
+		v    string
+		want time.Duration
+		ok   bool
+	}{
+		{"delta seconds", "120", 120 * time.Second, true},
+		{"zero seconds", "0", 0, true},
+		{"http-date", now.Add(90 * time.Second).UTC().Format(http.TimeFormat), 90 * time.Second, true},
+		{"absent", "", 0, false},
+		{"garbage", "not-a-date-or-number", 0, false},
+		{"negative seconds", "-5", 0, false},
+		{"past date", now.Add(-time.Hour).UTC().Format(http.TimeFormat), 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := ParseRetryAfter(tc.v, now)
+			if ok != tc.ok {
+				t.Errorf("ok = %v, want %v", ok, tc.ok)
+			}
+			if got != tc.want {
+				t.Errorf("duration = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestPolicy_Delay(t *testing.T) {
 	p := Policy{Steps: []time.Duration{time.Minute, 5 * time.Minute, time.Hour}}

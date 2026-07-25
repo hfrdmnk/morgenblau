@@ -1,7 +1,33 @@
-// Package backoff maps consecutive-failure counts to retry delays.
+// Package backoff maps consecutive-failure counts to retry delays and parses upstream retry hints.
 package backoff
 
-import "time"
+import (
+	"net/http"
+	"strconv"
+	"time"
+)
+
+// ParseRetryAfter accepts delta-seconds and HTTP-date forms; ok is false for absent, garbage, or negative values.
+func ParseRetryAfter(v string, now time.Time) (time.Duration, bool) {
+	if v == "" {
+		return 0, false
+	}
+	if secs, err := strconv.Atoi(v); err == nil {
+		if secs < 0 {
+			return 0, false
+		}
+		return time.Duration(secs) * time.Second, true
+	}
+	t, err := http.ParseTime(v)
+	if err != nil {
+		return 0, false
+	}
+	d := t.Sub(now)
+	if d < 0 {
+		return 0, false
+	}
+	return d, true
+}
 
 // Policy maps a consecutive-failure count to a delay ladder; the last step is the cap and repeats forever.
 type Policy struct {
