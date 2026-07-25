@@ -110,7 +110,7 @@ func (q *Queries) ListUserFollows(ctx context.Context, did string) ([]UserFollow
 }
 
 const listUserFollowsForSync = `-- name: ListUserFollowsForSync :many
-SELECT did, rkey, at_uri, subject_did FROM user_follows WHERE did = ?
+SELECT did, rkey, at_uri, subject_did, created_at FROM user_follows WHERE did = ?
 `
 
 type ListUserFollowsForSyncRow struct {
@@ -118,6 +118,7 @@ type ListUserFollowsForSyncRow struct {
 	Rkey       string `json:"rkey"`
 	AtUri      string `json:"at_uri"`
 	SubjectDid string `json:"subject_did"`
+	CreatedAt  string `json:"created_at"`
 }
 
 // Snapshot of a user's local follow index, used by sync_user to diff against
@@ -136,6 +137,7 @@ func (q *Queries) ListUserFollowsForSync(ctx context.Context, did string) ([]Lis
 			&i.Rkey,
 			&i.AtUri,
 			&i.SubjectDid,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

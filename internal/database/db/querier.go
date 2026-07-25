@@ -18,11 +18,19 @@ type Querier interface {
 	DeleteDiscoverCrawlShares(ctx context.Context, followedDid string) error
 	DeleteDiscoverCrawlSubscriptions(ctx context.Context, followedDid string) error
 	DeleteDiscoverSourcePosts(ctx context.Context, sourceKey string) error
+	DeleteDiscoverTrendingFollowCounts(ctx context.Context) error
 	DeleteDiscoverTrendingFollowsForRepo(ctx context.Context, repoDid string) error
 	DeleteDiscoverTrendingSignalsForRepo(ctx context.Context, repoDid string) error
+	DeleteDiscoverTrendingSourceCounts(ctx context.Context) error
 	DeleteExpiredAuthRequests(ctx context.Context, expiresAt string) (int64, error)
 	DeleteFeedEntry(ctx context.Context, arg DeleteFeedEntryParams) error
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
+	// The marked_at guard clears only the mark the rebuild actually consumed: a
+	// repo re-dirtied while its rebuild was running keeps a newer row and gets
+	// rebuilt again, instead of having that change silently dropped.
+	DeleteTapDirtyRepo(ctx context.Context, arg DeleteTapDirtyRepoParams) error
+	DeleteTapRecord(ctx context.Context, arg DeleteTapRecordParams) error
+	DeleteTapRecordsForRepo(ctx context.Context, did string) error
 	DeleteUserFollow(ctx context.Context, arg DeleteUserFollowParams) error
 	DeleteUserSave(ctx context.Context, arg DeleteUserSaveParams) error
 	DeleteUserShare(ctx context.Context, arg DeleteUserShareParams) error
@@ -94,6 +102,9 @@ type Querier interface {
 	InsertDiscoverSourcePost(ctx context.Context, arg InsertDiscoverSourcePostParams) error
 	InsertDiscoverTrendingFollow(ctx context.Context, arg InsertDiscoverTrendingFollowParams) error
 	InsertDiscoverTrendingSignal(ctx context.Context, arg InsertDiscoverTrendingSignalParams) error
+	// DO NOTHING keeps seeded_at at the first successful backfill, so a re-run
+	// never rewrites the stamp it is meant to check.
+	InsertTapSeededDid(ctx context.Context, arg InsertTapSeededDidParams) error
 	// Scoped by did in the query itself (never fetch-then-compare in handlers).
 	ListActiveDiscoverHides(ctx context.Context, arg ListActiveDiscoverHidesParams) ([]string, error)
 	ListAllEntriesForUser(ctx context.Context, did string) ([]ListAllEntriesForUserRow, error)
@@ -102,14 +113,32 @@ type Querier interface {
 	ListDiscoverCrawlAdjacentFollows(ctx context.Context, did string) ([]DiscoverCrawlAdjacentFollow, error)
 	// Returns every cached outcome, verified and not; callers filter to verified-only in Go (authored_store.go), keeping this query free to surface all outcomes for a future retry policy.
 	ListDiscoverCrawlAuthored(ctx context.Context, followedDid string) ([]DiscoverCrawlAuthored, error)
+	// Batched form of ListDiscoverCrawlAuthored; same unfiltered outcomes, callers group by followed_did.
+	ListDiscoverCrawlAuthoredByDids(ctx context.Context, dids []string) ([]DiscoverCrawlAuthored, error)
+	// Batched form of GetDiscoverCrawlAuthoredState; see ListDiscoverCrawlStatesByDids.
+	ListDiscoverCrawlAuthoredStatesByDids(ctx context.Context, dids []string) ([]DiscoverCrawlAuthoredState, error)
+	// Batched form of GetDiscoverCrawlFollowState; see ListDiscoverCrawlStatesByDids.
+	ListDiscoverCrawlFollowStatesByDids(ctx context.Context, dids []string) ([]DiscoverCrawlFollowState, error)
 	ListDiscoverCrawlFollows(ctx context.Context, followedDid string) ([]DiscoverCrawlFollow, error)
+	// Batched form of ListDiscoverCrawlFollows; callers group by followed_did.
+	ListDiscoverCrawlFollowsByDids(ctx context.Context, dids []string) ([]DiscoverCrawlFollow, error)
 	// Column order matches the table's physical layout so sqlc reuses the
 	// DiscoverCrawlOwnForeignSubscription model instead of minting a one-off row type.
 	ListDiscoverCrawlOwnForeignSubscriptions(ctx context.Context, did string) ([]DiscoverCrawlOwnForeignSubscription, error)
+	// Batched form of GetDiscoverCrawlShareState; see ListDiscoverCrawlStatesByDids.
+	ListDiscoverCrawlShareStatesByDids(ctx context.Context, dids []string) ([]DiscoverCrawlShareState, error)
 	ListDiscoverCrawlShares(ctx context.Context, followedDid string) ([]DiscoverCrawlShare, error)
+	// Batched form of ListDiscoverCrawlShares; callers group by followed_did.
+	ListDiscoverCrawlSharesByDids(ctx context.Context, dids []string) ([]DiscoverCrawlShare, error)
+	// Batched form of GetDiscoverCrawlState: one read for a whole fan-out of
+	// followed repos instead of a query per DID. A DID absent from the result has
+	// no cached crawl, same as sql.ErrNoRows from the single-row form.
+	ListDiscoverCrawlStatesByDids(ctx context.Context, dids []string) ([]DiscoverCrawlState, error)
 	// Column order matches the table's physical layout so sqlc reuses the
 	// DiscoverCrawlSubscription model instead of minting a one-off row type.
 	ListDiscoverCrawlSubscriptions(ctx context.Context, followedDid string) ([]DiscoverCrawlSubscription, error)
+	// Batched form of ListDiscoverCrawlSubscriptions; callers group by followed_did.
+	ListDiscoverCrawlSubscriptionsByDids(ctx context.Context, dids []string) ([]DiscoverCrawlSubscription, error)
 	ListDiscoverSourcePosts(ctx context.Context, sourceKey string) ([]DiscoverSourcePost, error)
 	// Whole-table read; kept for callers that genuinely need every row (see
 	// internal/discoverbatch's write-path tests). The trending handler reads
@@ -120,11 +149,16 @@ type Querier interface {
 	// "Global/Trending": "same >=3-distinct-repos bar") instead of loading the
 	// whole network table; scoring for the surviving candidates still happens
 	// in Go via RankPeopleTrending, which keeps its own MinDistinctRepos check
-	// as defense in depth. Written as a correlated WHERE subquery rather than
-	// GROUP BY/HAVING because sqlc's SQLite parameter binder (v1.31.1) doesn't
-	// detect placeholders inside a HAVING clause and silently drops them,
-	// producing a param-less query that would panic at call time.
+	// as defense in depth. The bar reads the counts table the batch rebuilds,
+	// so it costs a keyed lookup per row rather than a correlated
+	// COUNT(DISTINCT) over the whole follows table.
 	ListDiscoverTrendingFollowsAboveBar(ctx context.Context, minDistinctRepos int64) ([]DiscoverTrendingFollow, error)
+	// Batched form of GetDiscoverTrendingSignalTitle for backfilling a whole page
+	// of reaction-only rss candidates. Returns every titled row for the requested
+	// keys; the caller keeps the first row per source_key, so ordering only has to
+	// group the keys together. Same deliberate absence of the min-repo trending
+	// bar: a title needs one contributing repo, unlike a trending card.
+	ListDiscoverTrendingSignalTitles(ctx context.Context, sourceKeys []string) ([]ListDiscoverTrendingSignalTitlesRow, error)
 	// Whole-table read; kept for callers that genuinely need every row (see
 	// internal/discoverbatch's write-path tests). The trending handler reads
 	// ListDiscoverTrendingSignalsAboveBar instead (see that query's comment).
@@ -133,18 +167,15 @@ type Querier interface {
 	// least min_distinct_repos distinct repos (SPEC <discovery> "Quality bar")
 	// instead of loading the whole network table; grouping/scoring for the
 	// surviving candidates still happens in Go via RankTrending, which keeps
-	// its own MinDistinctRepos check as defense in depth. Written as a
-	// correlated WHERE subquery rather than GROUP BY/HAVING because sqlc's
-	// SQLite parameter binder (v1.31.1) doesn't detect placeholders inside a
-	// HAVING clause and silently drops them, producing a param-less query that
-	// would panic at call time.
+	// its own MinDistinctRepos check as defense in depth. The bar reads the
+	// counts table the batch rebuilds, so it costs a keyed lookup per row
+	// rather than a correlated COUNT(DISTINCT) over the whole signals table.
 	ListDiscoverTrendingSignalsAboveBar(ctx context.Context, minDistinctRepos int64) ([]DiscoverTrendingSignal, error)
 	// Bounds the People trending eligibility read (SPEC <discovery> People
 	// "Eligibility") to repos that are themselves subject_dids clearing the
-	// follower quality bar in discover_trending_follows, instead of loading the
-	// whole signals table to test each candidate's reader-network presence.
-	// Same correlated-subquery shape as ListDiscoverTrendingSignalsAboveBar,
-	// for the same sqlc HAVING-placeholder reason.
+	// follower quality bar, instead of loading the whole signals table to test
+	// each candidate's reader-network presence. Same counts-table join as
+	// ListDiscoverTrendingSignalsAboveBar, against the follower counts.
 	// signal_kind != 'save' is the save-privacy invariant: a save-only subject
 	// must never clear eligibility (SPEC <discovery> People "Eligibility":
 	// "Saves don't confer eligibility").
@@ -161,10 +192,20 @@ type Querier interface {
 	// the network-wide trending aggregate.
 	ListFeedLanguages(ctx context.Context) ([]ListFeedLanguagesRow, error)
 	ListFeedURLsForUser(ctx context.Context, did string) ([]string, error)
+	// Oldest mark first so a backlog drains in arrival order. marked_at rides
+	// along because DeleteTapDirtyRepo needs the value that was read.
+	ListTapDirtyRepos(ctx context.Context, limit int64) ([]TapDirtyRepo, error)
+	ListTapRecordsForRepo(ctx context.Context, did string) ([]TapRecord, error)
+	ListTapSeededDids(ctx context.Context) ([]string, error)
 	ListUserFollows(ctx context.Context, did string) ([]UserFollow, error)
 	// Snapshot of a user's local follow index, used by sync_user to diff against
 	// the PDS and reconcile inserts/deletes.
 	ListUserFollowsForSync(ctx context.Context, did string) ([]ListUserFollowsForSyncRow, error)
+	// Newest first. The entry join resolves title/slug/target for saves whose entry
+	// is still cached; url is not unique in feed_entries, so the newest matching
+	// entry is picked by id rather than joined on url directly, which would fan one
+	// save out into a row per feed carrying the same link.
+	ListUserSaves(ctx context.Context, did string) ([]ListUserSavesRow, error)
 	// Snapshot of a user's local save index, used by sync_user to diff against the
 	// PDS and reconcile inserts/deletes.
 	ListUserSavesForSync(ctx context.Context, did string) ([]ListUserSavesForSyncRow, error)
@@ -187,6 +228,7 @@ type Querier interface {
 	// resolve handler can flag candidates that point at the same site under the
 	// other kind (rss vs standardfeed).
 	ListUserSubscriptionsWithSiteURL(ctx context.Context, did string) ([]ListUserSubscriptionsWithSiteURLRow, error)
+	MarkTapRepoDirty(ctx context.Context, arg MarkTapRepoDirtyParams) error
 	// Reader-network presence for a batch of AppView typeahead DIDs (SPEC
 	// <discovery> People "Search" + "Eligibility"). Returns only the DIDs that
 	// have at least one non-save signal row; the caller folds the result into a
@@ -211,6 +253,14 @@ type Querier interface {
 	PersonSearchTasteHints(ctx context.Context, arg PersonSearchTasteHintsParams) ([]*string, error)
 	PutAuthRequest(ctx context.Context, arg PutAuthRequestParams) error
 	PutSession(ctx context.Context, arg PutSessionParams) error
+	// Paired with DeleteDiscoverTrendingFollowCounts inside one transaction: the
+	// aggregation ListDiscoverTrendingFollowsAboveBar used to run per read, hoisted
+	// to once per batch pass.
+	RebuildDiscoverTrendingFollowCounts(ctx context.Context) error
+	// Paired with DeleteDiscoverTrendingSourceCounts inside one transaction: the
+	// aggregation ListDiscoverTrendingSignalsAboveBar used to run per read, hoisted
+	// to once per batch pass.
+	RebuildDiscoverTrendingSourceCounts(ctx context.Context) error
 	// Never touches favicon_url or the posts ladder: a discovery failure is orthogonal to both.
 	RecordDiscoverSourceFaviconDiscoveryFailure(ctx context.Context, arg RecordDiscoverSourceFaviconDiscoveryFailureParams) error
 	// Never touches fetched_at/favicon_url on conflict: a transient failure must not erase a prior success's payload (stale-while-error).
@@ -254,6 +304,7 @@ type Querier interface {
 	// cached readability body (path-ful docs pass NULL) or refresh the plaintext
 	// fallback (path-less docs pass the new textContent).
 	UpsertStandardfeedEntry(ctx context.Context, arg UpsertStandardfeedEntryParams) error
+	UpsertTapRecord(ctx context.Context, arg UpsertTapRecordParams) error
 	UpsertUserFollow(ctx context.Context, arg UpsertUserFollowParams) error
 	UpsertUserSave(ctx context.Context, arg UpsertUserSaveParams) error
 	UpsertUserShare(ctx context.Context, arg UpsertUserShareParams) error

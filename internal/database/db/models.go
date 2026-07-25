@@ -143,6 +143,11 @@ type DiscoverTrendingFollow struct {
 	FetchedAt  string `json:"fetched_at"`
 }
 
+type DiscoverTrendingFollowCount struct {
+	SubjectDid    string `json:"subject_did"`
+	DistinctRepos int64  `json:"distinct_repos"`
+}
+
 type DiscoverTrendingSignal struct {
 	RepoDid    string  `json:"repo_did"`
 	SourceKey  string  `json:"source_key"`
@@ -152,6 +157,11 @@ type DiscoverTrendingSignal struct {
 	SignalKind string  `json:"signal_kind"`
 	SignalAt   *string `json:"signal_at"`
 	FetchedAt  string  `json:"fetched_at"`
+}
+
+type DiscoverTrendingSourceCount struct {
+	SourceKey     string `json:"source_key"`
+	DistinctRepos int64  `json:"distinct_repos"`
 }
 
 type Feed struct {
@@ -208,6 +218,25 @@ type ShareMetadataCache struct {
 	FetchedAt    *string `json:"fetched_at"`
 	FailureCount int64   `json:"failure_count"`
 	NextRetryAt  *string `json:"next_retry_at"`
+}
+
+type TapDirtyRepo struct {
+	Did      string `json:"did"`
+	MarkedAt string `json:"marked_at"`
+}
+
+type TapRecord struct {
+	Did        string `json:"did"`
+	Collection string `json:"collection"`
+	Rkey       string `json:"rkey"`
+	Cid        string `json:"cid"`
+	Record     string `json:"record"`
+	IndexedAt  string `json:"indexed_at"`
+}
+
+type TapSeederState struct {
+	Did      string `json:"did"`
+	SeededAt string `json:"seeded_at"`
 }
 
 type UserFollow struct {

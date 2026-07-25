@@ -41,7 +41,7 @@ ORDER BY s.created_at DESC, s.rkey DESC;
 -- name: ListUserSharesForSync :many
 -- Snapshot of a user's local share index, used by sync_user to diff against
 -- the PDS and reconcile inserts/deletes.
-SELECT did, rkey, at_uri, kind, item_url, document, sidecar_rkey FROM user_shares WHERE did = ?;
+SELECT did, rkey, at_uri, kind, item_url, document, sidecar_rkey, created_at FROM user_shares WHERE did = ?;
 
 -- name: DeleteUserShare :exec
 DELETE FROM user_shares WHERE did = ? AND rkey = ?;

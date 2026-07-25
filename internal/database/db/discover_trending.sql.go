@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"strings"
 )
 
 const deleteDiscoverTrendingSignalsForRepo = `-- name: DeleteDiscoverTrendingSignalsForRepo :exec
@@ -15,6 +16,15 @@ DELETE FROM discover_trending_signals WHERE repo_did = ?
 
 func (q *Queries) DeleteDiscoverTrendingSignalsForRepo(ctx context.Context, repoDid string) error {
 	_, err := q.db.ExecContext(ctx, deleteDiscoverTrendingSignalsForRepo, repoDid)
+	return err
+}
+
+const deleteDiscoverTrendingSourceCounts = `-- name: DeleteDiscoverTrendingSourceCounts :exec
+DELETE FROM discover_trending_source_counts
+`
+
+func (q *Queries) DeleteDiscoverTrendingSourceCounts(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteDiscoverTrendingSourceCounts)
 	return err
 }
 
@@ -82,6 +92,57 @@ func (q *Queries) InsertDiscoverTrendingSignal(ctx context.Context, arg InsertDi
 	return err
 }
 
+const listDiscoverTrendingSignalTitles = `-- name: ListDiscoverTrendingSignalTitles :many
+SELECT source_key, title, site_url FROM discover_trending_signals
+WHERE source_key IN (/*SLICE:source_keys*/?)
+  AND title IS NOT NULL AND title != ''
+ORDER BY source_key
+`
+
+type ListDiscoverTrendingSignalTitlesRow struct {
+	SourceKey string  `json:"source_key"`
+	Title     *string `json:"title"`
+	SiteUrl   *string `json:"site_url"`
+}
+
+// Batched form of GetDiscoverTrendingSignalTitle for backfilling a whole page
+// of reaction-only rss candidates. Returns every titled row for the requested
+// keys; the caller keeps the first row per source_key, so ordering only has to
+// group the keys together. Same deliberate absence of the min-repo trending
+// bar: a title needs one contributing repo, unlike a trending card.
+func (q *Queries) ListDiscoverTrendingSignalTitles(ctx context.Context, sourceKeys []string) ([]ListDiscoverTrendingSignalTitlesRow, error) {
+	query := listDiscoverTrendingSignalTitles
+	var queryParams []interface{}
+	if len(sourceKeys) > 0 {
+		for _, v := range sourceKeys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:source_keys*/?", strings.Repeat(",?", len(sourceKeys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:source_keys*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDiscoverTrendingSignalTitlesRow
+	for rows.Next() {
+		var i ListDiscoverTrendingSignalTitlesRow
+		if err := rows.Scan(&i.SourceKey, &i.Title, &i.SiteUrl); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDiscoverTrendingSignals = `-- name: ListDiscoverTrendingSignals :many
 SELECT repo_did, source_key, kind, title, site_url, signal_kind, signal_at, fetched_at
 FROM discover_trending_signals
@@ -125,22 +186,17 @@ func (q *Queries) ListDiscoverTrendingSignals(ctx context.Context) ([]DiscoverTr
 const listDiscoverTrendingSignalsAboveBar = `-- name: ListDiscoverTrendingSignalsAboveBar :many
 SELECT s.repo_did, s.source_key, s.kind, s.title, s.site_url, s.signal_kind, s.signal_at, s.fetched_at
 FROM discover_trending_signals s
-WHERE (
-    SELECT COUNT(DISTINCT s2.repo_did)
-    FROM discover_trending_signals s2
-    WHERE s2.source_key = s.source_key
-) >= CAST(?1 AS BIGINT)
+JOIN discover_trending_source_counts c ON c.source_key = s.source_key
+WHERE c.distinct_repos >= CAST(?1 AS BIGINT)
 `
 
 // Bounds the trending-sources read to source_keys with signals from at
 // least min_distinct_repos distinct repos (SPEC <discovery> "Quality bar")
 // instead of loading the whole network table; grouping/scoring for the
 // surviving candidates still happens in Go via RankTrending, which keeps
-// its own MinDistinctRepos check as defense in depth. Written as a
-// correlated WHERE subquery rather than GROUP BY/HAVING because sqlc's
-// SQLite parameter binder (v1.31.1) doesn't detect placeholders inside a
-// HAVING clause and silently drops them, producing a param-less query that
-// would panic at call time.
+// its own MinDistinctRepos check as defense in depth. The bar reads the
+// counts table the batch rebuilds, so it costs a keyed lookup per row
+// rather than a correlated COUNT(DISTINCT) over the whole signals table.
 func (q *Queries) ListDiscoverTrendingSignalsAboveBar(ctx context.Context, minDistinctRepos int64) ([]DiscoverTrendingSignal, error) {
 	rows, err := q.db.QueryContext(ctx, listDiscoverTrendingSignalsAboveBar, minDistinctRepos)
 	if err != nil {
@@ -176,20 +232,16 @@ func (q *Queries) ListDiscoverTrendingSignalsAboveBar(ctx context.Context, minDi
 const listDiscoverTrendingSignalsForEligibleSubjects = `-- name: ListDiscoverTrendingSignalsForEligibleSubjects :many
 SELECT s.repo_did, s.source_key, s.kind, s.title, s.site_url, s.signal_kind, s.signal_at, s.fetched_at
 FROM discover_trending_signals s
+JOIN discover_trending_follow_counts c ON c.subject_did = s.repo_did
 WHERE s.signal_kind != 'save'
-AND (
-    SELECT COUNT(DISTINCT f.repo_did)
-    FROM discover_trending_follows f
-    WHERE f.subject_did = s.repo_did
-) >= CAST(?1 AS BIGINT)
+AND c.distinct_repos >= CAST(?1 AS BIGINT)
 `
 
 // Bounds the People trending eligibility read (SPEC <discovery> People
 // "Eligibility") to repos that are themselves subject_dids clearing the
-// follower quality bar in discover_trending_follows, instead of loading the
-// whole signals table to test each candidate's reader-network presence.
-// Same correlated-subquery shape as ListDiscoverTrendingSignalsAboveBar,
-// for the same sqlc HAVING-placeholder reason.
+// follower quality bar, instead of loading the whole signals table to test
+// each candidate's reader-network presence. Same counts-table join as
+// ListDiscoverTrendingSignalsAboveBar, against the follower counts.
 // signal_kind != 'save' is the save-privacy invariant: a save-only subject
 // must never clear eligibility (SPEC <discovery> People "Eligibility":
 // "Saves don't confer eligibility").
@@ -223,6 +275,21 @@ func (q *Queries) ListDiscoverTrendingSignalsForEligibleSubjects(ctx context.Con
 		return nil, err
 	}
 	return items, nil
+}
+
+const rebuildDiscoverTrendingSourceCounts = `-- name: RebuildDiscoverTrendingSourceCounts :exec
+INSERT INTO discover_trending_source_counts (source_key, distinct_repos)
+SELECT source_key, COUNT(DISTINCT repo_did)
+FROM discover_trending_signals
+GROUP BY source_key
+`
+
+// Paired with DeleteDiscoverTrendingSourceCounts inside one transaction: the
+// aggregation ListDiscoverTrendingSignalsAboveBar used to run per read, hoisted
+// to once per batch pass.
+func (q *Queries) RebuildDiscoverTrendingSourceCounts(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, rebuildDiscoverTrendingSourceCounts)
+	return err
 }
 
 const upsertDiscoverBatchState = `-- name: UpsertDiscoverBatchState :exec

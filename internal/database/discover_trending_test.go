@@ -9,7 +9,7 @@ import (
 	"morgenblau/internal/database/db"
 )
 
-// discoverTrendingSchema mirrors internal/database/migrations/*_discover_trending_signals.sql and *_discover_trending_follows.sql; keep in sync.
+// discoverTrendingSchema mirrors internal/database/migrations/*_discover_trending_signals.sql, *_discover_trending_follows.sql and *_discover_trending_counts.sql; keep in sync.
 const discoverTrendingSchema = `
 CREATE TABLE discover_trending_signals (
     repo_did    TEXT NOT NULL,
@@ -33,6 +33,16 @@ CREATE TABLE discover_trending_follows (
 );
 CREATE INDEX discover_trending_follows_subject_idx
     ON discover_trending_follows (subject_did);
+
+CREATE TABLE discover_trending_source_counts (
+    source_key     TEXT PRIMARY KEY,
+    distinct_repos INTEGER NOT NULL
+);
+
+CREATE TABLE discover_trending_follow_counts (
+    subject_did    TEXT PRIMARY KEY,
+    distinct_repos INTEGER NOT NULL
+);
 `
 
 func openDiscoverTrendingTestDB(t *testing.T) *DB {
@@ -87,6 +97,25 @@ func insertTrendingFollow(t *testing.T, q *db.Queries, repoDID, subjectDID strin
 	}
 }
 
+// rebuildTrendingCounts stands in for the daily batch's counts pass; the bounded
+// reads join these tables, so a test that skips it sees an empty network.
+func rebuildTrendingCounts(t *testing.T, q *db.Queries) {
+	t.Helper()
+	ctx := context.Background()
+	if err := q.DeleteDiscoverTrendingSourceCounts(ctx); err != nil {
+		t.Fatalf("DeleteDiscoverTrendingSourceCounts: %v", err)
+	}
+	if err := q.RebuildDiscoverTrendingSourceCounts(ctx); err != nil {
+		t.Fatalf("RebuildDiscoverTrendingSourceCounts: %v", err)
+	}
+	if err := q.DeleteDiscoverTrendingFollowCounts(ctx); err != nil {
+		t.Fatalf("DeleteDiscoverTrendingFollowCounts: %v", err)
+	}
+	if err := q.RebuildDiscoverTrendingFollowCounts(ctx); err != nil {
+		t.Fatalf("RebuildDiscoverTrendingFollowCounts: %v", err)
+	}
+}
+
 func sourceKeys(rows []db.DiscoverTrendingSignal) []string {
 	seen := map[string]struct{}{}
 	for _, r := range rows {
@@ -125,6 +154,7 @@ func TestListDiscoverTrendingSignalsAboveBar_TwoDistinctReposExcludedThreeInclud
 	insertTrendingSignal(t, q, "did:plc:repo2", "https://three.example/feed")
 	insertTrendingSignal(t, q, "did:plc:repo3", "https://three.example/feed")
 
+	rebuildTrendingCounts(t, q)
 	rows, err := q.ListDiscoverTrendingSignalsAboveBar(ctx, 3)
 	if err != nil {
 		t.Fatalf("ListDiscoverTrendingSignalsAboveBar: %v", err)
@@ -154,6 +184,7 @@ func TestListDiscoverTrendingSignalsAboveBar_DuplicateRepoDIDRowsCountOnce(t *te
 	insertTrendingSignal(t, q, "did:plc:repo2", "https://three.example/feed")
 	insertTrendingSignal(t, q, "did:plc:repo3", "https://three.example/feed")
 
+	rebuildTrendingCounts(t, q)
 	rows, err := q.ListDiscoverTrendingSignalsAboveBar(ctx, 3)
 	if err != nil {
 		t.Fatalf("ListDiscoverTrendingSignalsAboveBar: %v", err)
@@ -176,6 +207,7 @@ func TestListDiscoverTrendingFollowsAboveBar_TwoDistinctReposExcludedThreeInclud
 	insertTrendingFollow(t, q, "did:plc:repo2", "did:plc:three-followers")
 	insertTrendingFollow(t, q, "did:plc:repo3", "did:plc:three-followers")
 
+	rebuildTrendingCounts(t, q)
 	rows, err := q.ListDiscoverTrendingFollowsAboveBar(ctx, 3)
 	if err != nil {
 		t.Fatalf("ListDiscoverTrendingFollowsAboveBar: %v", err)
@@ -204,6 +236,7 @@ func TestListDiscoverTrendingFollowsAboveBar_DuplicateRepoDIDRowsCountOnce(t *te
 	insertTrendingFollow(t, q, "did:plc:repo2", "did:plc:three-followers")
 	insertTrendingFollow(t, q, "did:plc:repo3", "did:plc:three-followers")
 
+	rebuildTrendingCounts(t, q)
 	rows, err := q.ListDiscoverTrendingFollowsAboveBar(ctx, 3)
 	if err != nil {
 		t.Fatalf("ListDiscoverTrendingFollowsAboveBar: %v", err)
@@ -230,6 +263,7 @@ func TestListDiscoverTrendingSignalsForEligibleSubjects_OnlyReturnsSignalsForBar
 	insertTrendingFollow(t, q, "did:plc:repo2", "did:plc:below-bar")
 	insertTrendingSignal(t, q, "did:plc:below-bar", "https://below-bar-owns.example/feed")
 
+	rebuildTrendingCounts(t, q)
 	rows, err := q.ListDiscoverTrendingSignalsForEligibleSubjects(ctx, 3)
 	if err != nil {
 		t.Fatalf("ListDiscoverTrendingSignalsForEligibleSubjects: %v", err)
@@ -251,6 +285,7 @@ func TestListDiscoverTrendingSignalsForEligibleSubjects_SaveOnlySignalNeverGrant
 	insertTrendingFollow(t, q, "did:plc:repo3", "did:plc:save-only")
 	insertTrendingSignalKind(t, q, "did:plc:save-only", "https://save-only-owns.example/feed", "save")
 
+	rebuildTrendingCounts(t, q)
 	rows, err := q.ListDiscoverTrendingSignalsForEligibleSubjects(ctx, 3)
 	if err != nil {
 		t.Fatalf("ListDiscoverTrendingSignalsForEligibleSubjects: %v", err)

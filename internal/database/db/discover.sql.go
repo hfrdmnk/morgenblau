@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"strings"
 )
 
 const deleteDiscoverCrawlAdjacentFollows = `-- name: DeleteDiscoverCrawlAdjacentFollows :exec
@@ -372,6 +373,132 @@ func (q *Queries) ListDiscoverCrawlAuthored(ctx context.Context, followedDid str
 	return items, nil
 }
 
+const listDiscoverCrawlAuthoredByDids = `-- name: ListDiscoverCrawlAuthoredByDids :many
+SELECT followed_did, canonical_key, kind, title, site_url, last_published_at, fetched_at, verification
+FROM discover_crawl_authored WHERE followed_did IN (/*SLICE:dids*/?)
+`
+
+// Batched form of ListDiscoverCrawlAuthored; same unfiltered outcomes, callers group by followed_did.
+func (q *Queries) ListDiscoverCrawlAuthoredByDids(ctx context.Context, dids []string) ([]DiscoverCrawlAuthored, error) {
+	query := listDiscoverCrawlAuthoredByDids
+	var queryParams []interface{}
+	if len(dids) > 0 {
+		for _, v := range dids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:dids*/?", strings.Repeat(",?", len(dids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:dids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DiscoverCrawlAuthored
+	for rows.Next() {
+		var i DiscoverCrawlAuthored
+		if err := rows.Scan(
+			&i.FollowedDid,
+			&i.CanonicalKey,
+			&i.Kind,
+			&i.Title,
+			&i.SiteUrl,
+			&i.LastPublishedAt,
+			&i.FetchedAt,
+			&i.Verification,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDiscoverCrawlAuthoredStatesByDids = `-- name: ListDiscoverCrawlAuthoredStatesByDids :many
+SELECT followed_did, fetched_at FROM discover_crawl_authored_state
+WHERE followed_did IN (/*SLICE:dids*/?)
+`
+
+// Batched form of GetDiscoverCrawlAuthoredState; see ListDiscoverCrawlStatesByDids.
+func (q *Queries) ListDiscoverCrawlAuthoredStatesByDids(ctx context.Context, dids []string) ([]DiscoverCrawlAuthoredState, error) {
+	query := listDiscoverCrawlAuthoredStatesByDids
+	var queryParams []interface{}
+	if len(dids) > 0 {
+		for _, v := range dids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:dids*/?", strings.Repeat(",?", len(dids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:dids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DiscoverCrawlAuthoredState
+	for rows.Next() {
+		var i DiscoverCrawlAuthoredState
+		if err := rows.Scan(&i.FollowedDid, &i.FetchedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDiscoverCrawlFollowStatesByDids = `-- name: ListDiscoverCrawlFollowStatesByDids :many
+SELECT followed_did, fetched_at FROM discover_crawl_follow_state
+WHERE followed_did IN (/*SLICE:dids*/?)
+`
+
+// Batched form of GetDiscoverCrawlFollowState; see ListDiscoverCrawlStatesByDids.
+func (q *Queries) ListDiscoverCrawlFollowStatesByDids(ctx context.Context, dids []string) ([]DiscoverCrawlFollowState, error) {
+	query := listDiscoverCrawlFollowStatesByDids
+	var queryParams []interface{}
+	if len(dids) > 0 {
+		for _, v := range dids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:dids*/?", strings.Repeat(",?", len(dids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:dids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DiscoverCrawlFollowState
+	for rows.Next() {
+		var i DiscoverCrawlFollowState
+		if err := rows.Scan(&i.FollowedDid, &i.FetchedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDiscoverCrawlFollows = `-- name: ListDiscoverCrawlFollows :many
 SELECT followed_did, subject_did, fetched_at
 FROM discover_crawl_follows WHERE followed_did = ?
@@ -379,6 +506,45 @@ FROM discover_crawl_follows WHERE followed_did = ?
 
 func (q *Queries) ListDiscoverCrawlFollows(ctx context.Context, followedDid string) ([]DiscoverCrawlFollow, error) {
 	rows, err := q.db.QueryContext(ctx, listDiscoverCrawlFollows, followedDid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DiscoverCrawlFollow
+	for rows.Next() {
+		var i DiscoverCrawlFollow
+		if err := rows.Scan(&i.FollowedDid, &i.SubjectDid, &i.FetchedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDiscoverCrawlFollowsByDids = `-- name: ListDiscoverCrawlFollowsByDids :many
+SELECT followed_did, subject_did, fetched_at
+FROM discover_crawl_follows WHERE followed_did IN (/*SLICE:dids*/?)
+`
+
+// Batched form of ListDiscoverCrawlFollows; callers group by followed_did.
+func (q *Queries) ListDiscoverCrawlFollowsByDids(ctx context.Context, dids []string) ([]DiscoverCrawlFollow, error) {
+	query := listDiscoverCrawlFollowsByDids
+	var queryParams []interface{}
+	if len(dids) > 0 {
+		for _, v := range dids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:dids*/?", strings.Repeat(",?", len(dids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:dids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -439,6 +605,45 @@ func (q *Queries) ListDiscoverCrawlOwnForeignSubscriptions(ctx context.Context, 
 	return items, nil
 }
 
+const listDiscoverCrawlShareStatesByDids = `-- name: ListDiscoverCrawlShareStatesByDids :many
+SELECT followed_did, fetched_at FROM discover_crawl_share_state
+WHERE followed_did IN (/*SLICE:dids*/?)
+`
+
+// Batched form of GetDiscoverCrawlShareState; see ListDiscoverCrawlStatesByDids.
+func (q *Queries) ListDiscoverCrawlShareStatesByDids(ctx context.Context, dids []string) ([]DiscoverCrawlShareState, error) {
+	query := listDiscoverCrawlShareStatesByDids
+	var queryParams []interface{}
+	if len(dids) > 0 {
+		for _, v := range dids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:dids*/?", strings.Repeat(",?", len(dids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:dids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DiscoverCrawlShareState
+	for rows.Next() {
+		var i DiscoverCrawlShareState
+		if err := rows.Scan(&i.FollowedDid, &i.FetchedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDiscoverCrawlShares = `-- name: ListDiscoverCrawlShares :many
 SELECT followed_did, dedupe_key, kind, item_url, document, feed_url, comment, created_at, fetched_at
 FROM discover_crawl_shares WHERE followed_did = ?
@@ -477,6 +682,96 @@ func (q *Queries) ListDiscoverCrawlShares(ctx context.Context, followedDid strin
 	return items, nil
 }
 
+const listDiscoverCrawlSharesByDids = `-- name: ListDiscoverCrawlSharesByDids :many
+SELECT followed_did, dedupe_key, kind, item_url, document, feed_url, comment, created_at, fetched_at
+FROM discover_crawl_shares WHERE followed_did IN (/*SLICE:dids*/?)
+`
+
+// Batched form of ListDiscoverCrawlShares; callers group by followed_did.
+func (q *Queries) ListDiscoverCrawlSharesByDids(ctx context.Context, dids []string) ([]DiscoverCrawlShare, error) {
+	query := listDiscoverCrawlSharesByDids
+	var queryParams []interface{}
+	if len(dids) > 0 {
+		for _, v := range dids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:dids*/?", strings.Repeat(",?", len(dids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:dids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DiscoverCrawlShare
+	for rows.Next() {
+		var i DiscoverCrawlShare
+		if err := rows.Scan(
+			&i.FollowedDid,
+			&i.DedupeKey,
+			&i.Kind,
+			&i.ItemUrl,
+			&i.Document,
+			&i.FeedUrl,
+			&i.Comment,
+			&i.CreatedAt,
+			&i.FetchedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDiscoverCrawlStatesByDids = `-- name: ListDiscoverCrawlStatesByDids :many
+SELECT followed_did, fetched_at FROM discover_crawl_state
+WHERE followed_did IN (/*SLICE:dids*/?)
+`
+
+// Batched form of GetDiscoverCrawlState: one read for a whole fan-out of
+// followed repos instead of a query per DID. A DID absent from the result has
+// no cached crawl, same as sql.ErrNoRows from the single-row form.
+func (q *Queries) ListDiscoverCrawlStatesByDids(ctx context.Context, dids []string) ([]DiscoverCrawlState, error) {
+	query := listDiscoverCrawlStatesByDids
+	var queryParams []interface{}
+	if len(dids) > 0 {
+		for _, v := range dids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:dids*/?", strings.Repeat(",?", len(dids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:dids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DiscoverCrawlState
+	for rows.Next() {
+		var i DiscoverCrawlState
+		if err := rows.Scan(&i.FollowedDid, &i.FetchedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDiscoverCrawlSubscriptions = `-- name: ListDiscoverCrawlSubscriptions :many
 SELECT followed_did, canonical_key, kind, title, site_url, created_at, fetched_at
 FROM discover_crawl_subscriptions WHERE followed_did = ?
@@ -486,6 +781,53 @@ FROM discover_crawl_subscriptions WHERE followed_did = ?
 // DiscoverCrawlSubscription model instead of minting a one-off row type.
 func (q *Queries) ListDiscoverCrawlSubscriptions(ctx context.Context, followedDid string) ([]DiscoverCrawlSubscription, error) {
 	rows, err := q.db.QueryContext(ctx, listDiscoverCrawlSubscriptions, followedDid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DiscoverCrawlSubscription
+	for rows.Next() {
+		var i DiscoverCrawlSubscription
+		if err := rows.Scan(
+			&i.FollowedDid,
+			&i.CanonicalKey,
+			&i.Kind,
+			&i.Title,
+			&i.SiteUrl,
+			&i.CreatedAt,
+			&i.FetchedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDiscoverCrawlSubscriptionsByDids = `-- name: ListDiscoverCrawlSubscriptionsByDids :many
+SELECT followed_did, canonical_key, kind, title, site_url, created_at, fetched_at
+FROM discover_crawl_subscriptions WHERE followed_did IN (/*SLICE:dids*/?)
+`
+
+// Batched form of ListDiscoverCrawlSubscriptions; callers group by followed_did.
+func (q *Queries) ListDiscoverCrawlSubscriptionsByDids(ctx context.Context, dids []string) ([]DiscoverCrawlSubscription, error) {
+	query := listDiscoverCrawlSubscriptionsByDids
+	var queryParams []interface{}
+	if len(dids) > 0 {
+		for _, v := range dids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:dids*/?", strings.Repeat(",?", len(dids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:dids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

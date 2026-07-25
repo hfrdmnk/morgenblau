@@ -25,10 +25,16 @@ CREATE TABLE discover_crawl_subscriptions (
     PRIMARY KEY (followed_did, canonical_key)
 );
 
+-- Key-only probes (favicon site-url fallback, source lookups) can't use the
+-- composite PK: canonical_key isn't leftmost, so they'd full-scan the cache.
+CREATE INDEX discover_crawl_subscriptions_key_idx
+    ON discover_crawl_subscriptions (canonical_key);
+
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
+DROP INDEX IF EXISTS discover_crawl_subscriptions_key_idx;
 DROP TABLE IF EXISTS discover_crawl_subscriptions;
 DROP TABLE IF EXISTS discover_crawl_state;
 -- +goose StatementEnd

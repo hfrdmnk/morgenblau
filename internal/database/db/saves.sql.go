@@ -73,16 +73,85 @@ func (q *Queries) GetUserSaveByItemURL(ctx context.Context, arg GetUserSaveByIte
 	return i, err
 }
 
+const listUserSaves = `-- name: ListUserSaves :many
+SELECT
+    s.did, s.rkey, s.at_uri, s.item_url, s.feed_url, s.created_at, s.updated_at,
+    e.title AS entry_title,
+    e.entry_slug AS entry_slug,
+    e.url AS entry_url,
+    e.feed_url AS entry_feed_url
+FROM user_saves s
+LEFT JOIN feed_entries e ON e.id = (
+    SELECT id FROM feed_entries WHERE url = s.item_url ORDER BY published_at DESC LIMIT 1
+)
+WHERE s.did = ?
+ORDER BY s.created_at DESC, s.rkey DESC
+`
+
+type ListUserSavesRow struct {
+	Did          string  `json:"did"`
+	Rkey         string  `json:"rkey"`
+	AtUri        string  `json:"at_uri"`
+	ItemUrl      string  `json:"item_url"`
+	FeedUrl      *string `json:"feed_url"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
+	EntryTitle   *string `json:"entry_title"`
+	EntrySlug    *string `json:"entry_slug"`
+	EntryUrl     *string `json:"entry_url"`
+	EntryFeedUrl *string `json:"entry_feed_url"`
+}
+
+// Newest first. The entry join resolves title/slug/target for saves whose entry
+// is still cached; url is not unique in feed_entries, so the newest matching
+// entry is picked by id rather than joined on url directly, which would fan one
+// save out into a row per feed carrying the same link.
+func (q *Queries) ListUserSaves(ctx context.Context, did string) ([]ListUserSavesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUserSaves, did)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUserSavesRow
+	for rows.Next() {
+		var i ListUserSavesRow
+		if err := rows.Scan(
+			&i.Did,
+			&i.Rkey,
+			&i.AtUri,
+			&i.ItemUrl,
+			&i.FeedUrl,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.EntryTitle,
+			&i.EntrySlug,
+			&i.EntryUrl,
+			&i.EntryFeedUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserSavesForSync = `-- name: ListUserSavesForSync :many
-SELECT did, rkey, at_uri, item_url, feed_url FROM user_saves WHERE did = ?
+SELECT did, rkey, at_uri, item_url, feed_url, created_at FROM user_saves WHERE did = ?
 `
 
 type ListUserSavesForSyncRow struct {
-	Did     string  `json:"did"`
-	Rkey    string  `json:"rkey"`
-	AtUri   string  `json:"at_uri"`
-	ItemUrl string  `json:"item_url"`
-	FeedUrl *string `json:"feed_url"`
+	Did       string  `json:"did"`
+	Rkey      string  `json:"rkey"`
+	AtUri     string  `json:"at_uri"`
+	ItemUrl   string  `json:"item_url"`
+	FeedUrl   *string `json:"feed_url"`
+	CreatedAt string  `json:"created_at"`
 }
 
 // Snapshot of a user's local save index, used by sync_user to diff against the
@@ -102,6 +171,7 @@ func (q *Queries) ListUserSavesForSync(ctx context.Context, did string) ([]ListU
 			&i.AtUri,
 			&i.ItemUrl,
 			&i.FeedUrl,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

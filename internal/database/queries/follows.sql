@@ -25,7 +25,7 @@ ORDER BY created_at DESC;
 -- name: ListUserFollowsForSync :many
 -- Snapshot of a user's local follow index, used by sync_user to diff against
 -- the PDS and reconcile inserts/deletes.
-SELECT did, rkey, at_uri, subject_did FROM user_follows WHERE did = ?;
+SELECT did, rkey, at_uri, subject_did, created_at FROM user_follows WHERE did = ?;
 
 -- name: DeleteUserFollow :exec
 DELETE FROM user_follows WHERE did = ? AND rkey = ?;

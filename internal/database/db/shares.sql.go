@@ -179,7 +179,7 @@ func (q *Queries) ListUserShares(ctx context.Context, did string) ([]ListUserSha
 }
 
 const listUserSharesForSync = `-- name: ListUserSharesForSync :many
-SELECT did, rkey, at_uri, kind, item_url, document, sidecar_rkey FROM user_shares WHERE did = ?
+SELECT did, rkey, at_uri, kind, item_url, document, sidecar_rkey, created_at FROM user_shares WHERE did = ?
 `
 
 type ListUserSharesForSyncRow struct {
@@ -190,6 +190,7 @@ type ListUserSharesForSyncRow struct {
 	ItemUrl     *string `json:"item_url"`
 	Document    *string `json:"document"`
 	SidecarRkey *string `json:"sidecar_rkey"`
+	CreatedAt   string  `json:"created_at"`
 }
 
 // Snapshot of a user's local share index, used by sync_user to diff against
@@ -211,6 +212,7 @@ func (q *Queries) ListUserSharesForSync(ctx context.Context, did string) ([]List
 			&i.ItemUrl,
 			&i.Document,
 			&i.SidecarRkey,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
