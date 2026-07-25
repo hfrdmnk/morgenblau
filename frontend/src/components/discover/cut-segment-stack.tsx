@@ -45,44 +45,47 @@ export function CutSegmentStack<T extends { key: string }>({
     return (
         <MotionConfig reducedMotion="user">
             <div className="flex flex-col gap-4">
-                {visibleSegments.map((segment) => (
-                    <motion.article
-                        key={segment.key}
-                        initial={false}
-                        animate={segmentCutStyle(cut, segment.key)}
-                        transition={articleTransition(cut.phase)}
-                        className={cn(
-                            'bg-card shadow-card transition-[margin-left,margin-right] duration-[var(--cut-split-ms)] motion-reduce:transition-none',
-                            articleEase(cut.phase),
-                            segmentBreaksOut(cut, segment) &&
-                                '-mx-2 sm:-mx-4 md:-mx-10',
-                        )}
-                    >
-                        <SegmentMasthead
-                            cut={cut}
-                            segment={segment}
-                            masthead={masthead}
-                        />
-                        <ul className="flex list-none flex-col">
-                            {segment.sources.map((item, rowIndex) =>
-                                renderRow(item, {
-                                    showDivider: rowIndex > 0,
-                                    dividerState: rowDividerState(
-                                        cut,
-                                        item.key,
-                                    ),
-                                    contentState: rowContentState(
-                                        cut,
-                                        item.key,
-                                    ),
-                                    intentExpanded: cut.intentExpanded(
-                                        item.key,
-                                    ),
-                                }),
+                {visibleSegments.map((segment) => {
+                    const elevated = segmentBreaksOut(cut, segment);
+                    return (
+                        <motion.article
+                            key={segment.key}
+                            initial={false}
+                            animate={segmentCutStyle(cut, segment.key)}
+                            transition={articleTransition(cut.phase)}
+                            className={cn(
+                                'bg-card motion-reduce:transition-none',
+                                articleTransitionClass(cut.phase),
+                                elevated ? 'shadow-card-elevated' : 'shadow-card',
+                                elevated && '-mx-2 sm:-mx-4 md:-mx-10',
                             )}
-                        </ul>
-                    </motion.article>
-                ))}
+                        >
+                            <SegmentMasthead
+                                cut={cut}
+                                segment={segment}
+                                masthead={masthead}
+                            />
+                            <ul className="flex list-none flex-col">
+                                {segment.sources.map((item, rowIndex) =>
+                                    renderRow(item, {
+                                        showDivider: rowIndex > 0,
+                                        dividerState: rowDividerState(
+                                            cut,
+                                            item.key,
+                                        ),
+                                        contentState: rowContentState(
+                                            cut,
+                                            item.key,
+                                        ),
+                                        intentExpanded: cut.intentExpanded(
+                                            item.key,
+                                        ),
+                                    }),
+                                )}
+                            </ul>
+                        </motion.article>
+                    );
+                })}
             </div>
         </MotionConfig>
     );
@@ -114,8 +117,15 @@ function articleTransition(phase: CutPhaseName) {
     return phase === 'separating' ? splitOpen() : split();
 }
 
-function articleEase(phase: CutPhaseName): string {
+// One shorthand: ease-[...] would broadcast a single timing function over the shadow's own 180ms clock.
+// Full literals, not interpolated: Tailwind's scanner only sees verbatim class candidates.
+const ARTICLE_TRANSITION_SEPARATING =
+    '[transition:margin-left_var(--cut-split-ms)_cubic-bezier(0.23,1,0.32,1),margin-right_var(--cut-split-ms)_cubic-bezier(0.23,1,0.32,1),box-shadow_180ms_cubic-bezier(0.215,0.61,0.355,1)]';
+const ARTICLE_TRANSITION_DEFAULT =
+    '[transition:margin-left_var(--cut-split-ms)_cubic-bezier(0.645,0.045,0.355,1),margin-right_var(--cut-split-ms)_cubic-bezier(0.645,0.045,0.355,1),box-shadow_180ms_cubic-bezier(0.215,0.61,0.355,1)]';
+
+function articleTransitionClass(phase: CutPhaseName): string {
     return phase === 'separating'
-        ? 'ease-[cubic-bezier(0.23,1,0.32,1)]'
-        : 'ease-[cubic-bezier(0.645,0.045,0.355,1)]';
+        ? ARTICLE_TRANSITION_SEPARATING
+        : ARTICLE_TRANSITION_DEFAULT;
 }

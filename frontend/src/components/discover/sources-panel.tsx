@@ -278,7 +278,7 @@ export function SourcesPanel() {
                     masthead={
                         <CardMasthead
                             eyebrow="Discover"
-                            heading="Worth adding to your reading"
+                            heading="Sources from your reader network"
                             meta={meta}
                         />
                     }

@@ -597,7 +597,7 @@ function SuggestionSection({
                 masthead={
                     <CardMasthead
                         eyebrow="Discover"
-                        heading="Worth adding to your reading"
+                        heading="People in your reader network"
                         meta={countLabel(people.length, 'person', 'people')}
                     />
                 }
