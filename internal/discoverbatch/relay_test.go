@@ -17,16 +17,9 @@ func TestNormalizeRelayHost_BareHostGetsHTTPS(t *testing.T) {
 		{"http://127.0.0.1:8080", "http://127.0.0.1:8080"},
 	}
 	for _, c := range cases {
-		if got := normalizeRelayHost(c.in); got != c.want {
-			t.Errorf("normalizeRelayHost(%q) = %q, want %q", c.in, got, c.want)
+		if got := NormalizeRelayHost(c.in); got != c.want {
+			t.Errorf("NormalizeRelayHost(%q) = %q, want %q", c.in, got, c.want)
 		}
-	}
-}
-
-func TestNew_NormalizesBareRelayHost(t *testing.T) {
-	b := New("relay.example", nil, nil, nil, nil)
-	if b.relayEndpoint != "https://relay.example" {
-		t.Errorf("relayEndpoint = %q, want https://relay.example", b.relayEndpoint)
 	}
 }
 

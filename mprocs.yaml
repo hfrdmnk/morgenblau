@@ -8,3 +8,12 @@ procs:
   Tests:
     shell: go test ./...
     autostart: false
+  # Firehose sidecar that feeds discover. Needs the tap binary on PATH (see README).
+  Tap:
+    shell: >
+      set -a; [ -f ./.env ] && . ./.env; set +a;
+      TAP_DATABASE_URL=sqlite://./data/tap.db
+      TAP_RELAY_URL="${DISCOVER_RELAY_HOST:-https://relay1.us-east.bsky.network}"
+      TAP_COLLECTION_FILTERS='blue.morgen.*,app.skyreader.*,at.glean.*,site.standard.*,app.bsky.graph.follow,sh.tangled.graph.follow'
+      tap run --no-replay
+    autostart: false

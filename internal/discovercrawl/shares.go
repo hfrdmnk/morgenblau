@@ -3,7 +3,6 @@ package discovercrawl
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
@@ -74,70 +73,11 @@ func (c *Client) CrawlShares(ctx context.Context, did syntax.DID) ([]Share, erro
 		return nil, fmt.Errorf("discovercrawl: list %s for %s: %w", skyreaderShareCollection, did, err)
 	}
 
-	// Document-bearing morgen shares are recommend sidecars; document-less ones are standalone rss shares.
-	var rssShares []shareRecord
-	sidecarByDoc := map[string]shareRecord{}
-	for _, r := range morgenRecords {
-		sr, ok := decodeShareRecord(r)
-		if !ok {
-			slog.Warn("discovercrawl: skipping malformed share", "uri", r.URI)
-			continue
-		}
-		if sr.Document == "" {
-			rssShares = append(rssShares, sr)
-			continue
-		}
-		// Newest sidecar wins (same rule as the own-repo reconcile) so a sync/PATCH race doesn't shadow the latest comment.
-		if cur, ok := sidecarByDoc[sr.Document]; !ok || sr.Rkey > cur.Rkey {
-			sidecarByDoc[sr.Document] = sr
-		}
-	}
-
-	// Canonical recommend per document = smallest rkey (TID ⇒ earliest created), same rule as reconcileShares.
-	canonicalByDoc := map[string]recommendRecord{}
-	for _, r := range recommendRecords {
-		rec, ok := decodeRecommendRecord(r)
-		if !ok {
-			slog.Warn("discovercrawl: skipping malformed recommend", "uri", r.URI)
-			continue
-		}
-		if cur, ok := canonicalByDoc[rec.Document]; !ok || rec.Rkey < cur.Rkey {
-			canonicalByDoc[rec.Document] = rec
-		}
-	}
-
-	out := make([]Share, 0, len(canonicalByDoc)+len(rssShares)+len(skyreaderRecords))
-	for doc, rec := range canonicalByDoc {
-		s := Share{Kind: "standardfeed", Document: doc, CreatedAt: rec.CreatedAt}
-		if sc, ok := sidecarByDoc[doc]; ok {
-			s.ItemURL = sc.ItemURL
-			s.Comment = sc.Comment
-			s.FeedURL = sc.FeedURL
-		}
-		out = append(out, s)
-	}
-
-	seen := map[string]struct{}{} // itemUrl dedupe within rss/skyreader shares
-	for _, sr := range rssShares {
-		if _, dup := seen[sr.ItemURL]; dup {
-			continue
-		}
-		seen[sr.ItemURL] = struct{}{}
-		out = append(out, Share{Kind: "rss", ItemURL: sr.ItemURL, FeedURL: sr.FeedURL, Comment: sr.Comment, CreatedAt: sr.CreatedAt})
-	}
-	for _, r := range skyreaderRecords {
-		sr, ok := decodeShareRecord(r)
-		if !ok {
-			slog.Warn("discovercrawl: skipping malformed skyreader share", "uri", r.URI)
-			continue
-		}
-		if _, dup := seen[sr.ItemURL]; dup {
-			continue
-		}
-		seen[sr.ItemURL] = struct{}{}
-		out = append(out, Share{Kind: "skyreader", ItemURL: sr.ItemURL, FeedURL: sr.FeedURL, Comment: sr.Comment, CreatedAt: sr.CreatedAt})
-	}
-	return out, nil
+	return MergeShares(map[string][]recordEntry{
+		morgenShareCollection:       morgenRecords,
+		standardRecommendCollection: recommendRecords,
+		skyreaderShareCollection:    skyreaderRecords,
+	}), nil
 }
 
 // decodeShareRecord decodes blue.morgen.feed.share and app.skyreader.social.share records (the latter unpublished, assumed shape-identical, mirroring app.skyreader.social.follow); itemUrl is required.

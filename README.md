@@ -11,6 +11,7 @@ A calm content platform powered by RSS and ATProto. See [SPEC.md](./SPEC.md) for
 - [air](https://github.com/air-verse/air) — Go live-reload
 - [mprocs](https://github.com/pvolok/mprocs) — runs the dev processes side-by-side
 - [goose](https://github.com/pressly/goose) and [sqlc](https://sqlc.dev)
+- [tap](https://github.com/bluesky-social/indigo/tree/main/cmd/tap) (optional): the firehose sidecar that feeds Discover
 
 Install the Go CLIs once:
 
@@ -45,10 +46,26 @@ Starts processes via `mprocs.yaml`:
 - **Server** — `air` rebuilds and runs `cmd/api` on `$PORT` (default `:8000`). *Autostart.*
 - **Vite** — `bun run --cwd ./frontend dev` on `:5173`. *Autostart.*
 - **Tests** — `go test ./...`. *Manual-start.*
+- **Tap** runs the firehose sidecar that feeds Discover. *Manual-start.*
 
 In `APP_ENV=local`, the Go server reverse-proxies `/` to the Vite dev server (HMR works). In any other env it serves `frontend/dist` from the embedded FS (`frontend/embed.go`). Open **`http://127.0.0.1:8000`** — same origin keeps `/api/*` cookies and CSRF sane, and the loopback origin doubles as your OAuth `client_id`.
 
 `make run` starts Go + Vite without `mprocs` if you'd rather use your own terminal layout.
+
+### Tap
+
+Discover's trending data comes from [tap](https://github.com/bluesky-social/indigo/tree/main/cmd/tap), Bluesky's firehose sidecar. Morgenblau tells it which repos to follow (`POST $TAP_URL/repos/add`) and streams the matching records back over its websocket channel into the local mirror.
+
+Tap builds with `CGO_ENABLED=1` because its SQLite driver is cgo-backed. Morgenblau's own driver is pure Go, so don't reuse the `CGO_ENABLED=0` habit from `make build-linux` here.
+
+```sh
+CGO_ENABLED=1 go install github.com/bluesky-social/indigo/cmd/tap@latest
+# or, from an indigo checkout: CGO_ENABLED=1 go build -o ~/bin/tap ./cmd/tap
+```
+
+Start it from the **Tap** process in `mprocs`, which points tap at `./data/tap.db`, reuses `DISCOVER_RELAY_HOST`, and filters the firehose down to the reader-network collections.
+
+Everything else works without tap running: the consumer logs a reconnect warning on its backoff ladder, and Discover keeps serving whatever the mirror last held instead of updating.
 
 ## OAuth
 

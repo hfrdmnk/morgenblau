@@ -6,6 +6,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.0
 	github.com/abadojack/whatlanggo v1.0.1
 	github.com/bluesky-social/indigo v0.0.0-20260428083920-ce62b8fce9e0
+	github.com/coder/websocket v1.8.15
 	github.com/go-shiori/go-readability v0.0.0-20251205110129-5db1dc9836f0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/joho/godotenv v1.5.1

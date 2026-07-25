@@ -15,31 +15,31 @@ type EntryResolver interface {
 	GetFeedURLByItemURL(ctx context.Context, url string) (string, error)
 }
 
-// repoSource is one repo's strongest signal for a canonical source key. SPEC <discovery>: one signal per source, strongest wins.
-type repoSource struct {
+// RepoSource is one repo's strongest signal for a canonical source key. SPEC <discovery>: one signal per source, strongest wins.
+type RepoSource struct {
 	Kind    string
 	Title   string
 	SiteURL string
 	Signal  discoverrank.Signal
 }
 
-// reduceRepoSignals folds one repo's crawl results into its strongest signal per source key; unresolvable reactions drop silently.
-func reduceRepoSignals(
+// ReduceRepoSignals folds one repo's crawl results into its strongest signal per source key; unresolvable reactions drop silently.
+func ReduceRepoSignals(
 	ctx context.Context,
 	subs []discovercrawl.Subscription,
 	pubs []discovercrawl.AuthoredPublication,
 	shares []discovercrawl.Share,
 	saves []discovercrawl.Save,
 	entries EntryResolver,
-) map[string]repoSource {
-	out := map[string]repoSource{}
+) map[string]RepoSource {
+	out := map[string]RepoSource{}
 	upsert := func(key, kind, title, siteURL string, signal discoverrank.Signal) {
 		if key == "" {
 			return
 		}
 		cur, ok := out[key]
 		if !ok {
-			out[key] = repoSource{Kind: kind, Title: title, SiteURL: siteURL, Signal: signal}
+			out[key] = RepoSource{Kind: kind, Title: title, SiteURL: siteURL, Signal: signal}
 			return
 		}
 		if cur.Kind == "" {

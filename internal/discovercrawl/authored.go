@@ -9,7 +9,6 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
-	"morgenblau/internal/atprepo"
 	"morgenblau/internal/standardfeed"
 )
 
@@ -78,30 +77,9 @@ func (c *Client) CrawlAuthoredPublications(ctx context.Context, did syntax.DID) 
 
 	out := make([]AuthoredPublication, 0, len(records))
 	for _, r := range records {
-		name, _ := r.Value["name"].(string)
-		url, _ := r.Value["url"].(string)
-		if name == "" || url == "" {
-			slog.Warn("discovercrawl: skipping publication without name/url", "uri", r.URI)
-			continue
+		if pub, ok := c.DecodeAuthoredPublication(ctx, r, did, ident.Handle, lastPublishedAt); ok {
+			out = append(out, pub)
 		}
-		rkey := atprepo.RkeyFromATURI(r.URI)
-		switch verifyAuthorship(ctx, c.verifier, url, rkey, did, ident.Handle) {
-		case outcomeMismatch:
-			slog.Warn("discovercrawl: authorship claim does not match site's well-known", "uri", r.URI, "site", url)
-			continue
-		case outcomeProbeError:
-			slog.Warn("discovercrawl: well-known probe failed", "uri", r.URI, "site", url)
-			continue
-		}
-		key := "at://" + repo + "/" + authoredPublicationCollection + "/" + rkey
-		out = append(out, AuthoredPublication{
-			Key:             key,
-			Kind:            "standardfeed",
-			Title:           name,
-			SiteURL:         url,
-			LastPublishedAt: lastPublishedAt,
-			Verification:    verifiedOutcome,
-		})
 	}
 	return out, nil
 }

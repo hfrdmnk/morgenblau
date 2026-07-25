@@ -121,30 +121,15 @@ func (c *Client) Crawl(ctx context.Context, did syntax.DID) ([]Subscription, err
 	client := c.apiClient(endpoint)
 	repo := did.String()
 
-	pubCache := make(map[string]Subscription)
-	seen := make(map[string]Subscription)
+	byCollection := make(map[string][]recordEntry, len(subscriptionCollections))
 	for _, coll := range subscriptionCollections {
 		records, err := pageRecords(ctx, client, repo, coll)
 		if err != nil {
 			return nil, fmt.Errorf("discovercrawl: list %s for %s: %w", coll, did, err)
 		}
-		for _, r := range records {
-			sub, ok := c.decode(ctx, coll, r, pubCache)
-			if !ok {
-				continue
-			}
-			if _, dup := seen[sub.Key]; dup {
-				continue
-			}
-			seen[sub.Key] = sub
-		}
+		byCollection[coll] = records
 	}
-
-	out := make([]Subscription, 0, len(seen))
-	for _, s := range seen {
-		out = append(out, s)
-	}
-	return out, nil
+	return c.DecodeSubscriptions(ctx, byCollection), nil
 }
 
 func (c *Client) decode(ctx context.Context, collection string, r recordEntry, pubCache map[string]Subscription) (Subscription, bool) {

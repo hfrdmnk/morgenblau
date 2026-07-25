@@ -11,20 +11,25 @@ import (
 	"morgenblau/internal/database/db"
 )
 
-// runFunc is the batch-run seam Runner ticks against; tests inject a fake to control timing.
+// runFunc is the seam Runner ticks against; tests inject a fake to control timing.
 type runFunc func(ctx context.Context) (int, error)
 
-// BatchStateReader reads the trending batch's last-successful-run stamp.
+// Runnable is the periodic enumeration job the Runner drives; the count it returns is logged as the run's yield.
+type Runnable interface {
+	Run(ctx context.Context) (int, error)
+}
+
+// BatchStateReader reads the enumeration's last-successful-run stamp.
 type BatchStateReader interface {
 	GetDiscoverBatchState(ctx context.Context) (db.DiscoverBatchState, error)
 }
 
-// BatchStateWriter persists the trending batch's last-successful-run stamp.
+// BatchStateWriter persists the enumeration's last-successful-run stamp.
 type BatchStateWriter interface {
 	UpsertDiscoverBatchState(ctx context.Context, lastRunAt string) error
 }
 
-// Runner owns the daily batch's timer goroutine lifecycle: context cancellation plus a drained WaitGroup, mirroring sync.Orchestrator. SPEC <discovery>.
+// Runner owns the daily enumeration's timer goroutine lifecycle: context cancellation plus a drained WaitGroup, mirroring sync.Orchestrator. SPEC <discovery>.
 type Runner struct {
 	run      runFunc
 	interval time.Duration
@@ -37,9 +42,9 @@ type Runner struct {
 	wg     sync.WaitGroup
 }
 
-// NewRunner builds a Runner around a Batch; call Start once to launch the ticker goroutine.
-func NewRunner(batch *Batch, interval time.Duration) *Runner {
-	return newRunnerWithRunFunc(batch.Run, interval)
+// NewRunner builds a Runner around a job; call Start once to launch the ticker goroutine.
+func NewRunner(job Runnable, interval time.Duration) *Runner {
+	return newRunnerWithRunFunc(job.Run, interval)
 }
 
 func newRunnerWithRunFunc(run runFunc, interval time.Duration) *Runner {
@@ -93,13 +98,13 @@ func (r *Runner) initialDelay() time.Duration {
 	state, err := r.stateR.GetDiscoverBatchState(r.ctx)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			slog.Warn("discover trending batch state read failed, running immediately", "err", err)
+			slog.Warn("discover enumeration state read failed, running immediately", "err", err)
 		}
 		return 0
 	}
 	last, err := time.Parse(time.RFC3339, state.LastRunAt)
 	if err != nil {
-		slog.Warn("discover trending batch state stamp unparseable, running immediately", "stamp", state.LastRunAt, "err", err)
+		slog.Warn("discover enumeration state stamp unparseable, running immediately", "stamp", state.LastRunAt, "err", err)
 		return 0
 	}
 	remaining := r.interval - r.now().Sub(last)
@@ -110,7 +115,7 @@ func (r *Runner) initialDelay() time.Duration {
 		// clamp: a future-dated stamp (clock skew, restored database) must not delay the first run past a full interval
 		remaining = r.interval
 	}
-	slog.Info("discover trending batch startup run delayed", "delay", remaining, "last_run_at", state.LastRunAt)
+	slog.Info("discover enumeration startup run delayed", "delay", remaining, "last_run_at", state.LastRunAt)
 	return remaining
 }
 
@@ -120,13 +125,13 @@ func (r *Runner) runOnce() {
 		if r.ctx.Err() != nil {
 			return
 		}
-		slog.Warn("discover trending batch failed", "err", err)
+		slog.Warn("discover enumeration failed", "err", err)
 		return
 	}
-	slog.Info("discover trending batch complete", "repos", n)
+	slog.Info("discover enumeration complete", "repos", n)
 	if r.stateW != nil {
 		if err := r.stateW.UpsertDiscoverBatchState(r.ctx, r.now().UTC().Format(time.RFC3339)); err != nil {
-			slog.Warn("discover trending batch state write failed", "err", err)
+			slog.Warn("discover enumeration state write failed", "err", err)
 		}
 	}
 }

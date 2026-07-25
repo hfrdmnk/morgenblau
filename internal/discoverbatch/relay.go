@@ -1,5 +1,7 @@
-// Package discoverbatch crawls reader-network repos via the relay and diffs
-// their signals into a local aggregate table. SPEC <discovery> Global/Trending.
+// Package discoverbatch enumerates reader-network repos from the relay, folds a
+// repo's records into its strongest per-source signal, and owns the aggregate
+// write helpers. Ingestion itself lives in internal/tapingest.
+// SPEC <discovery> Global/Trending.
 package discoverbatch
 
 import (
@@ -41,8 +43,8 @@ var FollowEnumerationCollections = []string{
 // relayReposPerPage matches the relay's own page-size max.
 const relayReposPerPage = 1000
 
-// normalizeRelayHost prepends https:// since atclient requires a scheme-qualified URL and .env.example configures a bare host.
-func normalizeRelayHost(host string) string {
+// NormalizeRelayHost prepends https:// since atclient requires a scheme-qualified URL and .env.example configures a bare host.
+func NormalizeRelayHost(host string) string {
 	if strings.Contains(host, "://") {
 		return host
 	}
