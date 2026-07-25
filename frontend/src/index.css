@@ -54,11 +54,11 @@
     --color-gray-950: oklch(0 0 0);
 
     --color-atmosphere-blue: oklch(0.5721 0.2508 256.1);
-    --color-leaf-green: oklch(0.7856 0.1479 139.64);
-    --color-sunset-orange: oklch(0.7856 0.1479 57.72);
-    --color-coral-red: oklch(0.6915 0.2121 22.14);
-    --color-sand-brown: oklch(0.9579 0.0301 69.05);
-    --color-success: oklch(0.723 0.219 149.58);
+    --color-meadow-green: oklch(0.792 0.209 151.7);
+    --color-sunrise-orange: oklch(0.75 0.183 55.9);
+    --color-dawn-rose: oklch(0.645 0.24 13.4);
+    --color-aurora-violet: oklch(0.639 0.25 305.5);
+    --color-sunbeam-yellow: oklch(0.885 0.181 97);
 
     --color-brand: var(--color-atmosphere-blue);
 
@@ -73,6 +73,11 @@
         0 0 0 1px var(--border),
         0 1px 2px -1px oklch(0 0 0 / 0.06),
         0 2px 4px 0 oklch(0 0 0 / 0.04);
+    --shadow-card-elevated:
+        0 0 0 1px var(--border),
+        0 2px 4px -1px oklch(0 0 0 / 0.07),
+        0 6px 12px -2px oklch(0 0 0 / 0.08),
+        0 16px 28px -6px oklch(0 0 0 / 0.10);
 }
 
 @theme inline {
@@ -93,6 +98,7 @@
     --color-accent: var(--accent);
     --color-accent-foreground: var(--accent-foreground);
     --color-destructive: var(--destructive);
+    --color-success: var(--success);
     --color-border: var(--border);
     --color-ring: var(--ring);
 
@@ -119,7 +125,7 @@
 :root {
     color-scheme: light dark;
 
-    --background: var(--color-gray-100);
+    --background: oklch(1 0 0);
     --foreground: var(--color-gray-950);
     --card: oklch(1 0 0);
     --card-foreground: var(--color-gray-950);
@@ -134,6 +140,7 @@
     --accent: var(--overlay-2);
     --accent-foreground: var(--color-gray-900);
     --destructive: oklch(0.577 0.245 27.325);
+    --success: oklch(0.627 0.194 149.214);
     --overlay-1: oklch(0 0 0 / 0.05);
     --overlay-2: oklch(0 0 0 / 0.09);
     --overlay-3: oklch(0 0 0 / 0.13);
@@ -145,7 +152,7 @@
     --chart-4: var(--color-gray-700);
     --chart-5: var(--color-gray-800);
     --radius: 0.75rem;
-    --sidebar: var(--color-gray-50);
+    --sidebar: oklch(1 0 0);
     --sidebar-foreground: var(--color-gray-950);
     --sidebar-primary: var(--color-gray-900);
     --sidebar-primary-foreground: var(--color-gray-50);
@@ -159,9 +166,9 @@
     :root {
         --background: var(--color-gray-950);
         --foreground: var(--color-gray-50);
-        --card: var(--color-gray-800);
+        --card: var(--color-gray-950);
         --card-foreground: var(--color-gray-50);
-        --popover: var(--color-gray-800);
+        --popover: var(--color-gray-950);
         --popover-foreground: var(--color-gray-50);
         --primary: var(--color-atmosphere-blue);
         --primary-foreground: oklch(1 0 0);
@@ -170,23 +177,24 @@
         --muted-foreground: var(--color-gray-400);
         --accent-foreground: var(--color-gray-50);
         --destructive: oklch(0.704 0.191 22.216);
+        --success: oklch(0.723 0.219 149.579);
         --overlay-1: oklch(1 0 0 / 0.06);
         --overlay-2: oklch(1 0 0 / 0.11);
         --overlay-3: oklch(1 0 0 / 0.15);
-        --border: oklch(1 0 0 / 0.1);
+        --border: oklch(1 0 0 / 0.14);
         --ring: var(--color-atmosphere-blue);
         --chart-1: var(--color-gray-300);
         --chart-2: var(--color-gray-500);
         --chart-3: var(--color-gray-600);
         --chart-4: var(--color-gray-700);
         --chart-5: var(--color-gray-800);
-        --sidebar: var(--color-gray-900);
+        --sidebar: var(--color-gray-950);
         --sidebar-foreground: var(--color-gray-50);
         --sidebar-primary: var(--color-atmosphere-blue);
         --sidebar-primary-foreground: var(--color-gray-50);
         --sidebar-accent: var(--color-gray-800);
         --sidebar-accent-foreground: var(--color-gray-50);
-        --sidebar-border: oklch(1 0 0 / 0.1);
+        --sidebar-border: oklch(1 0 0 / 0.14);
         --sidebar-ring: var(--color-atmosphere-blue);
 
         --shadow-popover:
@@ -197,6 +205,11 @@
             0 0 0 1px var(--border),
             0 1px 2px -1px oklch(0 0 0 / 0.28),
             0 2px 4px 0 oklch(0 0 0 / 0.20);
+        --shadow-card-elevated:
+            0 0 0 1px var(--border),
+            0 2px 6px -1px oklch(0 0 0 / 0.36),
+            0 6px 16px -2px oklch(0 0 0 / 0.44),
+            0 16px 32px -6px oklch(0 0 0 / 0.52);
     }
 }
 
@@ -218,7 +231,7 @@
 
     h1,
     h2 {
-        @apply text-2xl font-semibold tracking-tight;
+        @apply text-2xl font-medium tracking-tight;
     }
 
     h3 {
@@ -241,11 +254,58 @@
     }
 }
 
+@utility text-display {
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 500;
+    letter-spacing: -0.025em;
+}
+
+@utility text-title {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+    font-weight: 500;
+    letter-spacing: -0.025em;
+}
+
+@utility text-heading {
+    font-size: 1.125rem;
+    line-height: 1.625rem;
+    font-weight: 500;
+    letter-spacing: -0.025em;
+}
+
+@utility text-body {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 400;
+}
+
+@utility text-label {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 300;
+}
+
+@utility text-caption {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 300;
+}
+
+@utility text-overline {
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    font-weight: 300;
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
+}
+
 @utility bg-sunrise {
     background: linear-gradient(to bottom,
             var(--color-atmosphere-blue) 0%,
             var(--color-atmosphere-blue) 25%,
-            var(--color-sand-brown) 100%);
+            oklch(0.9579 0.0301 69.05) 100%);
 }
 
 @keyframes fresh-highlight {

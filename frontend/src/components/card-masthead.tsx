@@ -11,11 +11,11 @@ export function CardMasthead({
 }) {
     return (
         <div className="flex flex-col gap-1 px-6 pt-6 pb-5">
-            <p className="text-sm font-light text-muted-foreground">{eyebrow}</p>
+            <p className="text-label text-muted-foreground">{eyebrow}</p>
             <div className="flex items-baseline justify-between gap-4">
-                <h2 className="text-xl font-medium">{heading}</h2>
+                <h2 className="text-title">{heading}</h2>
                 {meta ? (
-                    <p className="shrink-0 text-sm text-muted-foreground">{meta}</p>
+                    <p className="shrink-0 text-body text-muted-foreground">{meta}</p>
                 ) : null}
             </div>
         </div>

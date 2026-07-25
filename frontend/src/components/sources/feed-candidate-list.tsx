@@ -241,7 +241,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                                 tabIndex={0}
                                                 className="cursor-help"
                                             >
-                                                <span aria-hidden className="text-xs leading-none font-semibold">
+                                                <span aria-hidden className="text-xs leading-none font-medium">
                                                     @
                                                 </span>
                                                 Subscribe via ATProto

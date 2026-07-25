@@ -13,24 +13,18 @@ Keep the craft bar high (taste, not concrete examples): Linear's precision, Fami
 
 ---
 
-## Surface layers — closer = _lighter_
+## Surface layers — one base surface, elevation by shadow
 
-Morgenblau inverts the common "shadows signal elevation" pattern. Closeness to the user is expressed by **luminance**, not shadow; the box-shadow described below draws an edge and carries no elevation meaning. Surfaces rise toward the user by getting lighter.
+Morgenblau has exactly one solid surface color per mode, not two. `background`, `card`, `popover`, and `sidebar` all resolve to the same paint: white in light mode, `gray-950` in dark mode (see `frontend/src/index.css`). There is no page-behind-card luminance step left to read: a card doesn't look "lighter" than what's behind it, because there's nothing behind it but more of the same fill.
 
-| Level      | Light surface | Dark surface | Edge          | Example                                               |
-| ---------- | ------------- | ------------ | ------------- | ----------------------------------------------------- |
-| **0 base** | gray-100      | gray-950     | none          | the page background and app chrome, behind everything |
-| **1 card** | white         | gray-800     | `shadow-card` | a card on the base (digest, sources, source, login)   |
+A card or popover reads as a surface through its **edge and its shadow**, never through color:
 
-There are **two solid surface levels only**, and they are the only solid grays in the system. The base (0) is everything behind, including the nav chrome; a card (1) is anything sitting on it. Everything _above_ the card (controls, hovers, inner wells, the contents of popovers and dialogs) is an **alpha overlay**, covered in the next section, never a third solid level. (Until mid-2026 there was a third level and a framed "Window" container above the base; both retired.)
+- **Edge.** A hairline `0 0 0 1px var(--border)` is baked into `--shadow-card` and `--shadow-popover` (technique: [jakub.kr](https://jakub.kr/writing/details-that-make-interfaces-feel-better#use-shadows-instead-of-borders)). A bare `border` never draws a surface's outer edge; that's reserved for *inner* rules and dividers (`divide-border`, `border-t`). Controls never get a border either; they read by fill.
+- **Elevation is shadow-only.** `shadow-card` at rest; `shadow-card-elevated` (a stronger, more layered shadow) when a card lifts or expands (e.g. the discover stack). Transition between the two at UI duration (~180 ms, `ease-out-cubic`; see Motion).
 
-**Principle:** the same direction in both modes, closer is lighter. In light mode the card climbs to white; in dark mode it climbs from near-black toward mid-gray.
+Overlay tokens (`--overlay-1/2/3`, aliased by `muted`/`accent`, next section) never substitute for this. They're strictly interactive-state tints (hover, pressed, list highlight, form controls), never a way to distinguish a card from the page beneath it.
 
-**The outer edge of any raised or floating surface is a layered box-shadow, never a `border`.** Cards, dialogs, popovers, dropdowns, tooltips, comboboxes: every one of them draws its outer edge with a hairline `0 0 0 1px var(--border)` ring folded into the shadow, plus soft depth layers underneath (technique: [jakub.kr](https://jakub.kr/writing/details-that-make-interfaces-feel-better#use-shadows-instead-of-borders)). Two tokens carry it: `shadow-card` for solid card surfaces, `shadow-popover` for floating ones. A real `border` is reserved for *inner* rules and dividers (`divide-border`, `border-t`); it never draws an outer edge. Controls never get a border either; they read by fill.
-
-**Level is just base-versus-card, expressed directly.** A card paints its own surface with `bg-card`; the base is `bg-background`. There is no `LevelContext`, and controls do not read a level. Overlays composite against whatever sits beneath them, so the same control class is correct on the base, on a card, or inside a dialog.
-
-**Do not** nest a card inside a card. If you reach for a second solid surface on top of a card, you have composed too many surfaces; use an overlay well (`bg-muted`) or restructure.
+**Do not** nest a card inside a card. With no color left to tell them apart, two overlapping shadow-edges just reads as broken chrome, not depth. Use an overlay well (`bg-muted`) or restructure.
 
 ---
 
@@ -38,7 +32,7 @@ There are **two solid surface levels only**, and they are the only solid grays i
 
 Above the card there are no solid grays. Buttons, inputs, hovers, switches, menu highlights, inner wells, the contents of dialogs and popovers: all are **alpha overlays**, a tint that composites against whatever surface sits beneath. In light mode the overlay is black at low alpha ("dark + opacity"); in dark mode it is white at low alpha. The tokens self-invert, so one class is correct in both modes and on every surface.
 
-Why overlays instead of solid level-grays: a solid `gray-100` secondary button is invisible on a `gray-100` base. An overlay tints its substrate, so it always reads, with no level bookkeeping.
+Why overlays instead of solid grays: a solid white secondary button is invisible on a white card, and a solid `gray-950` button is invisible on the `gray-950` base. An overlay tints its substrate instead, so it always reads regardless of what's beneath it.
 
 **Three overlay stops.** `--overlay-1/2/3` (light black 5 / 9 / 13%, dark white 6 / 11 / 15%), surfaced as `bg-overlay-1/2/3`. `--muted` aliases overlay-1 and `--accent` aliases overlay-2, so `bg-muted` and `bg-accent` are overlays too.
 
@@ -65,21 +59,13 @@ Error and invalid states (`aria-invalid`): an input gains a 1 px `ring-destructi
 
 ## Color
 
-Morgenblau's palette is almost entirely monochrome, with two exceptions: one **brand accent** and three **category markers**.
-
-| Token             | Role                                                                                    |
-| ----------------- | --------------------------------------------------------------------------------------- |
-| `atmosphere-blue` | the one non-monochrome accent — primary actions, focus rings, highlights. Nothing else. |
-| `leaf-green`      | longform / blogpost category                                                            |
-| `sunset-orange`   | micropost category                                                                      |
-| `coral-red`       | video category                                                                          |
-| `sand-brown`      | **sunrise-horizon only** — gradient endpoints. Never text. Never surfaces.              |
+Morgenblau's palette is almost entirely monochrome. The exceptions are `atmosphere-blue` (the one **brand accent**: primary actions, focus rings, the `ring` token), a small set of **category-marker** accents for content types, and the semantic `success` / `destructive` state colors. Names and exact values for all of these live in `frontend/src/index.css` under `--color-*`. Category markers were renamed in mid-2026; `leaf-green`, `sunset-orange`, `coral-red`, and `sand-brown` no longer exist as tokens.
 
 **Rules of use:**
 
 - `atmosphere-blue` is for intent: the primary action, a focus ring, a moment of discovery. Not for decoration, not for chrome, not for backgrounds.
-- Category colors appear **only on their content type**. A leaf-green swatch on anything that isn't longform breaks the system.
-- `sand-brown` appears **only** as the bottom endpoint of a sunrise gradient (e.g. the login panel). Not as a surface tone, not as a text color, not as a border.
+- Category colors appear **only on their content type**. A category-marker swatch on content it doesn't belong to breaks the system.
+- The sunrise gradient (`bg-sunrise` utility) blends `atmosphere-blue` into a warm endpoint that's inline in the utility, not a shared token. Don't extract it into a reusable brown/tan color.
 - Grays do all the structural work: surfaces, borders, controls, typography.
 
 ---
@@ -95,32 +81,38 @@ Morgenblau's palette is almost entirely monochrome, with two exceptions: one **b
 
 Scale is **calm, not dramatic**. h1 is not 40 px. Hierarchy is built more with weight than size.
 
-**Four weights, ever.** No bold (700+). Hierarchy is carried by the delta between weights plus size plus tracking, not by heavy strokes.
+**Three weights in product UI, ever.** No bold (700+) and no semibold (600) in product chrome. (Bold `<strong>` inside long-form article HTML in the reader is content, not chrome.) Hierarchy is carried by the delta between weights plus size plus tracking, not by heavy strokes.
 
-| Weight          | Role                                                                                         |
-| --------------- | -------------------------------------------------------------------------------------------- |
-| 300 — light     | secondary / muted text — hints, captions, timestamps, fine print                             |
-| 400 — regular   | body, paragraphs, labels, metadata, UI chrome text — the default voice                       |
-| 500 — medium    | small / mid-size headings (h3–h6), card titles, long-form titles                             |
-| 600 — semibold  | page-level headings (h1 / h2) on auth and entry surfaces — used sparingly to anchor a screen |
+| Weight        | Role                                                                       |
+| ------------- | --------------------------------------------------------------------------- |
+| 300 — light   | secondary / muted text — hints, captions, timestamps, fine print            |
+| 400 — regular | body, paragraphs, UI chrome text — the default voice                        |
+| 500 — medium  | every heading and title, from page-level down to card titles, with no heavier step above it |
 
-**These defaults are wired into base styles in `app.css` and apply automatically by tag.** Plain `<h1>`, `<h2>`, … pick up size + weight + tracking without any className. Plain `<p>` picks up `font-normal`. Override only when the semantic tag doesn't match the role (e.g. a `<span>` acting as a heading) or when stepping a paragraph down to light for muted/secondary copy. **Don't repeat the defaults in className** — if you find yourself writing `<h1 className="text-2xl font-semibold tracking-tight">`, delete those classes.
+**These defaults are wired into base styles in `index.css` and apply automatically by tag.** Plain `<h1>`, `<h2>`, … pick up size + weight + tracking without any className. Plain `<p>` picks up `font-normal`. Override only when the semantic tag doesn't match the role (e.g. a `<span>` acting as a heading) or when stepping a paragraph down to light for muted/secondary copy. **Don't repeat the defaults in className.** If you find yourself writing `<h1 className="text-2xl font-medium tracking-tight">` (or `text-display`), delete those classes.
 
-| Token                  | Size      | Weight | Tracking         | Use                                                       |
-| ---------------------- | --------- | ------ | ---------------- | --------------------------------------------------------- |
-| `text-xs`              | 0.75 rem  | 300    | normal           | tiny meta (timestamps, fine print)                        |
-| `text-sm`              | 0.875 rem | 300    | normal           | secondary text, hints                                     |
-| `text-sm`              | 0.875 rem | 400    | normal           | labels, inline UI text                                    |
-| `text-base`            | 1 rem     | 400    | normal           | body                                                      |
-| `text-lg`              | 1.125 rem | 500    | `tracking-tight` | small headings, card titles                               |
-| `text-xl`              | 1.25 rem  | 500    | `tracking-tight` | section headings (h3)                                     |
-| `text-2xl`             | 1.5 rem   | 600    | `tracking-tight` | page headings (h1 / h2) — `font-semibold`                 |
-| `font-serif text-base` | 1 rem     | 400    | normal           | **reader body only.** Newsreader for long-form paragraphs |
-| `font-serif text-sm`   | 0.875 rem | 300    | normal           | **reader captions only.** Figure captions, fine print     |
+**Use the role-based type scale for new UI work.** `text-display`, `text-title`, `text-heading`, `text-body`, `text-label`, `text-caption`, and `text-overline` are utilities defined in `index.css`; each bundles size, weight, and tracking into one class, and they supersede ad-hoc combos like `text-sm font-light` or `text-2xl font-semibold tracking-tight` for new work.
+
+| Utility         | Role                                        |
+| --------------- | -------------------------------------------- |
+| `text-display`  | the largest heading in the UI                |
+| `text-title`    | card and section titles                      |
+| `text-heading`  | h4–h6-level headings, row titles             |
+| `text-body`     | body copy, paragraphs                        |
+| `text-label`    | secondary / muted labels, hints              |
+| `text-caption`  | captions, fine print                         |
+| `text-overline` | eyebrows, all-caps micro-labels              |
+
+Exact sizes, weights, and tracking for each live in `index.css`. Two reader-only combos fall outside this scale, since the reader sets Newsreader directly rather than reaching for a Geist role:
+
+| Token                  | Weight | Use                                                        |
+| ---------------------- | ------ | ------------------------------------------------------------ |
+| `font-serif text-base` | 400    | **reader body only.** Newsreader for long-form paragraphs   |
+| `font-serif text-sm`   | 300    | **reader captions only.** Figure captions, fine print        |
 
 **Rules:**
 
-- h1 caps at 1.5 rem (about 1.5× body). Whispered, not shouted — but at this size, semibold (600) is what carries the page; medium would feel too soft against the calm scale.
+- h1 caps at 1.5 rem (about 1.5× body, `text-display`). Whispered, not shouted: medium (500) carries the page on its own. There's no semibold step above it to reach for, so restraint comes from the size ceiling, not a heavier weight.
 - **Headings always use `tracking-tight` (-0.025em)** — body stays at normal tracking. Tightening once, gently, is a craft signature; tightening more (`tracking-tighter`) reads as anxious, not calm. Don't escalate.
 - In long-form text (article reader), the **font shift itself** carries hierarchy: title in Geist (`font-sans`, medium 500), body in Newsreader (`font-serif`, regular 400). Sans-to-serif is the cue. Inside a single voice (the body) the same weight-not-size rule still applies — drop to light (300) only for genuinely *secondary* copy (caption under a figure, blockquote attribution).
 - **Newsreader is reader-only.** Never used in product UI chrome (digest, forms, settings, navigation, dialogs); never used for titles, captions, or metadata outside the long-form reader. If you find yourself reaching for `font-serif` in a non-reader surface, you've broken the metaphor — the serif appears only after the user has chosen to read.
@@ -215,15 +207,15 @@ Lives in `BRAND.md` at the repo root. Not duplicated here.
 
 If a Morgenblau design exhibits any of these, something has gone wrong:
 
-- **Pure-white body background.** The base is `gray-100`; white belongs to the card (level 1).
+- **A distinct page-behind-card gray.** There's one base surface per mode now, white in light and `gray-950` in dark, shared by background, card, and popover alike. Don't reintroduce a `gray-100` (or similar) page fill behind a lighter card; that two-tone model is retired.
 - **Dramatic type scale** (h1 at 2+ rem, big jumps between levels). Everything above 1.5 rem reads as shouting.
 - **Atmosphere-blue used decoratively** (backgrounds, chrome, non-functional surfaces). Blue is for intent; grays do structure.
-- **Category colors outside their content type.** A leaf-green swatch on a video card breaks the system.
-- **`sand-brown` as a text or surface color.** It's the sunrise-horizon endpoint — nothing else.
+- **Category-marker colors outside their content type.** A category swatch used on content it doesn't belong to breaks the system.
+- **A standalone brown/tan color token.** The sunrise gradient's endpoint (`bg-sunrise`) is inline in the utility, not a token. Don't promote it into a reusable one.
 - **Spring physics by default on UI motion.** The motion metaphor is ripples settling, not springs bouncing.
 - **Staggered card entrances on digest load.** All content arrives together.
 - **A third button variant** (solid, black, dark). Two variants carry every action. Critical actions earn emphasis through copy and placement, not louder buttons.
-- **Solid level-keyed control grays.** A control painted with a fixed `gray-N` (a `bg-gray-100` secondary button, a `gray-700` input) instead of an overlay. It vanishes on a same-gray surface and forces level bookkeeping. Controls tint; only the base and the card are solid.
+- **Solid fixed-gray controls.** A control painted with a fixed `gray-N` (a `bg-gray-100` secondary button, a `gray-700` input) instead of an overlay. Base and card share the same fill now, so a fixed gray is even more likely to vanish into whatever surface it sits on. Controls tint; only the base and the card are solid.
 - **A border on a control.** Inputs, buttons, switches, and chip fields carry no border; they read by fill.
 - **A `border` (or bare `ring-border`) on a surface's outer edge.** Cards, dialogs, popovers, dropdowns, tooltips, and comboboxes draw their outer edge with `shadow-card` / `shadow-popover`, never a `border`. Borders are reserved for inner rules and dividers (`divide-border`, `border-t`).
   - Not a surface edge: a decorative inset ring on media, like the avatar's `after:ring-1 after:ring-inset after:ring-border`. That accents the image, not the component's outer boundary.
