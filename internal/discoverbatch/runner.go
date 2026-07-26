@@ -29,13 +29,14 @@ type BatchStateWriter interface {
 	UpsertDiscoverBatchState(ctx context.Context, lastRunAt string) error
 }
 
-// Runner owns the daily enumeration's timer goroutine lifecycle: context cancellation plus a drained WaitGroup, mirroring sync.Orchestrator. SPEC <discovery>.
+// Runner owns the daily enumeration's schedule goroutine lifecycle: context cancellation plus a drained WaitGroup, mirroring sync.Orchestrator. SPEC <discovery>.
 type Runner struct {
-	run      runFunc
-	interval time.Duration
-	stateR   BatchStateReader
-	stateW   BatchStateWriter
-	now      func() time.Time
+	run          runFunc
+	interval     time.Duration
+	stateR       BatchStateReader
+	stateW       BatchStateWriter
+	now          func() time.Time
+	failureRetry time.Duration
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -59,7 +60,13 @@ func (r *Runner) WithStateStore(reader BatchStateReader, writer BatchStateWriter
 	return r
 }
 
-// Start launches the ticker goroutine. Not safe to call more than once.
+// WithFailureRetry schedules failed runs sooner without changing the successful-run interval.
+func (r *Runner) WithFailureRetry(interval time.Duration) *Runner {
+	r.failureRetry = interval
+	return r
+}
+
+// Start launches the schedule goroutine. Not safe to call more than once.
 func (r *Runner) Start() {
 	r.wg.Add(1)
 	go func() {
@@ -72,20 +79,16 @@ func (r *Runner) loop() {
 	// A restart mid-interval should resume where the schedule left off, not skip straight to a full interval nor rerun immediately; initialDelay computes the residual wait, and NewTimer(0) fires immediately when there's no usable stamp. The select keeps even a multi-hour wait interruptible by Shutdown.
 	timer := time.NewTimer(r.initialDelay())
 	defer timer.Stop()
-	select {
-	case <-r.ctx.Done():
-		return
-	case <-timer.C:
-		r.runOnce()
-	}
-	ticker := time.NewTicker(r.interval)
-	defer ticker.Stop()
 	for {
 		select {
 		case <-r.ctx.Done():
 			return
-		case <-ticker.C:
-			r.runOnce()
+		case <-timer.C:
+			delay := r.interval
+			if !r.runOnce() && r.failureRetry > 0 {
+				delay = r.failureRetry
+			}
+			timer.Reset(delay)
 		}
 	}
 }
@@ -119,21 +122,23 @@ func (r *Runner) initialDelay() time.Duration {
 	return remaining
 }
 
-func (r *Runner) runOnce() {
+func (r *Runner) runOnce() bool {
 	n, err := r.run(r.ctx)
 	if err != nil {
 		if r.ctx.Err() != nil {
-			return
+			return false
 		}
 		slog.Warn("discover enumeration failed", "err", err)
-		return
+		return false
 	}
 	slog.Info("discover enumeration complete", "repos", n)
 	if r.stateW != nil {
 		if err := r.stateW.UpsertDiscoverBatchState(r.ctx, r.now().UTC().Format(time.RFC3339)); err != nil {
 			slog.Warn("discover enumeration state write failed", "err", err)
+			return false
 		}
 	}
+	return true
 }
 
 // Shutdown cancels the runner's context and waits for the in-flight run to finish or ctx to expire, whichever comes first.

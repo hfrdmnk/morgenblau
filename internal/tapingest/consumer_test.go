@@ -78,10 +78,12 @@ type fakeTapStore struct {
 	rec *trace
 	err error
 
-	mu      sync.Mutex
-	upserts []db.UpsertTapRecordParams
-	deletes []db.DeleteTapRecordParams
-	dirty   []db.MarkTapRepoDirtyParams
+	mu          sync.Mutex
+	upserts     []db.UpsertTapRecordParams
+	deletes     []db.DeleteTapRecordParams
+	repoDeletes []string
+	repoStates  []db.UpsertTapRepoStateParams
+	dirty       []db.MarkTapRepoDirtyParams
 }
 
 func (f *fakeTapStore) UpsertTapRecord(ctx context.Context, arg db.UpsertTapRecordParams) error {
@@ -97,6 +99,22 @@ func (f *fakeTapStore) DeleteTapRecord(ctx context.Context, arg db.DeleteTapReco
 	f.deletes = append(f.deletes, arg)
 	f.mu.Unlock()
 	f.rec.add("delete:" + arg.Rkey)
+	return f.err
+}
+
+func (f *fakeTapStore) DeleteTapRecordsForRepo(ctx context.Context, did string) error {
+	f.mu.Lock()
+	f.repoDeletes = append(f.repoDeletes, did)
+	f.mu.Unlock()
+	f.rec.add("delete-repo:" + did)
+	return f.err
+}
+
+func (f *fakeTapStore) UpsertTapRepoState(ctx context.Context, arg db.UpsertTapRepoStateParams) error {
+	f.mu.Lock()
+	f.repoStates = append(f.repoStates, arg)
+	f.mu.Unlock()
+	f.rec.add("state:" + arg.Did)
 	return f.err
 }
 
@@ -212,6 +230,11 @@ func recordEnvelope(id int, action, rkey, record string) string {
 	return fmt.Sprintf(`{"id":%d,"type":"record","record":%s}}`, id, body)
 }
 
+func identityEnvelope(id int, handle string, active bool, status string) string {
+	return fmt.Sprintf(`{"id":%d,"type":"identity","identity":{"did":%q,"handle":%q,"is_active":%t,"status":%q}}`,
+		id, testDID, handle, active, status)
+}
+
 func TestConsumer_AcksOnlyAfterTheMirrorWriteCommits(t *testing.T) {
 	rec := &trace{}
 	store := &fakeTapStore{rec: rec}
@@ -285,20 +308,142 @@ func TestConsumer_CreateWithoutRecordBodyMarksDirtyWithoutUpsert(t *testing.T) {
 	}
 }
 
-func TestConsumer_IdentityEventIsAckedWithoutTouchingTheStore(t *testing.T) {
+func TestConsumer_ActiveIdentityEventPersistsStateAndMarksDirtyBeforeAck(t *testing.T) {
 	rec := &trace{}
 	store := &fakeTapStore{rec: rec}
 	srv := newTapServer(t, rec, []string{
-		fmt.Sprintf(`{"id":1,"type":"identity","identity":{"did":%q,"handle":"reader.example","is_active":true,"status":"active"}}`, testDID),
-		recordEnvelope(2, "create", "3aaa", `{"itemUrl":"https://a.example/post"}`),
+		identityEnvelope(1, "reader.example", true, "active"),
 	})
 	startConsumer(t, srv, store)
-	rec.await(t, "ack:1", "ack:2")
+	entries := rec.await(t, "ack:1")
 
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	if len(store.dirty) != 1 {
-		t.Errorf("dirty marks = %d, want 1 (the identity event must not touch the store)", len(store.dirty))
+	if len(store.repoStates) != 1 {
+		t.Fatalf("repo states = %+v, want one", store.repoStates)
+	}
+	state := store.repoStates[0]
+	if state.Did != testDID || state.Handle != "reader.example" || state.IsActive != 1 || state.Status != "active" {
+		t.Errorf("repo state = %+v", state)
+	}
+	if len(store.dirty) != 1 || len(store.repoDeletes) != 0 {
+		t.Errorf("dirty=%d repo deletes=%d, want 1/0", len(store.dirty), len(store.repoDeletes))
+	}
+	if indexOf(t, entries, "commit") > indexOf(t, entries, "ack:1") {
+		t.Errorf("identity ack landed before commit: %v", entries)
+	}
+}
+
+func TestConsumer_InactiveIdentityEventsRetainMirrorAndMarkDirty(t *testing.T) {
+	for _, status := range []string{"deactivated", "suspended", "takendown"} {
+		t.Run(status, func(t *testing.T) {
+			rec := &trace{}
+			store := &fakeTapStore{rec: rec}
+			srv := newTapServer(t, rec, []string{identityEnvelope(1, "reader.example", false, status)})
+			startConsumer(t, srv, store)
+			rec.await(t, "ack:1")
+
+			store.mu.Lock()
+			defer store.mu.Unlock()
+			if len(store.repoStates) != 1 || store.repoStates[0].IsActive != 0 || store.repoStates[0].Status != status {
+				t.Errorf("repo states = %+v", store.repoStates)
+			}
+			if len(store.dirty) != 1 || len(store.repoDeletes) != 0 {
+				t.Errorf("dirty=%d repo deletes=%d, want 1/0", len(store.dirty), len(store.repoDeletes))
+			}
+		})
+	}
+}
+
+func TestConsumer_DeletedIdentityEventPurgesMirrorAndMarksDirty(t *testing.T) {
+	rec := &trace{}
+	store := &fakeTapStore{rec: rec}
+	srv := newTapServer(t, rec, []string{identityEnvelope(1, "reader.example", false, "deleted")})
+	startConsumer(t, srv, store)
+	rec.await(t, "ack:1")
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.repoStates) != 1 || store.repoStates[0].Status != "deleted" {
+		t.Errorf("repo states = %+v", store.repoStates)
+	}
+	if len(store.repoDeletes) != 1 || store.repoDeletes[0] != testDID || len(store.dirty) != 1 {
+		t.Errorf("repo deletes=%v dirty=%v", store.repoDeletes, store.dirty)
+	}
+}
+
+func TestConsumer_DeletedIdentityPurgesSQLiteThenRebuildClearsAggregates(t *testing.T) {
+	dbs := openRebuildTestDB(t)
+	seedMirror(t, dbs, testDID, testCollection, "3aaa", `{"itemUrl":"https://a.example/post"}`)
+	if err := db.New(dbs.Writer).InsertDiscoverTrendingSignal(context.Background(), db.InsertDiscoverTrendingSignalParams{
+		RepoDid: testDID, SourceKey: "https://a.example/feed", Kind: "rss", SignalKind: "save", FetchedAt: "2026-07-09T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("seed signal: %v", err)
+	}
+
+	rec := &trace{}
+	srv := newTapServer(t, rec, []string{identityEnvelope(1, "reader.example", false, "deleted")})
+	c := NewConsumer(srv.URL).WithTxRunner(dbs.Writer)
+	c.httpClient = srv.Client()
+	c.policy = backoff.Policy{Steps: []time.Duration{time.Millisecond}}
+	c.pingInterval = 50 * time.Millisecond
+	c.Start()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := c.Shutdown(ctx); err != nil {
+			t.Errorf("Shutdown: %v", err)
+		}
+	})
+	rec.await(t, "ack:1")
+
+	q := db.New(dbs.Reader)
+	rows, err := q.ListTapRecordsForRepo(context.Background(), testDID)
+	if err != nil {
+		t.Fatalf("ListTapRecordsForRepo: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("mirror rows = %d, want purged", len(rows))
+	}
+	state, err := q.GetTapRepoState(context.Background(), testDID)
+	if err != nil {
+		t.Fatalf("GetTapRepoState: %v", err)
+	}
+	if state.IsActive != 0 || state.Status != "deleted" {
+		t.Fatalf("repo state = %+v", state)
+	}
+
+	w := newTestWorker(t, dbs, &stubDecoder{}, noEntries{}, &fakeResolver{})
+	w.drain(context.Background())
+	if got := signalsByKey(t, dbs); len(got) != 0 {
+		t.Fatalf("signals = %+v, want deleted repo removed from discovery", got)
+	}
+}
+
+func TestConsumer_UnusableIdentityEventIsAckedAndSkipped(t *testing.T) {
+	rec := &trace{}
+	store := &fakeTapStore{rec: rec}
+	srv := newTapServer(t, rec, []string{`{"id":1,"type":"identity","identity":{"status":"active","is_active":true}}`})
+	startConsumer(t, srv, store)
+	rec.await(t, "ack:1")
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.repoStates) != 0 || len(store.dirty) != 0 {
+		t.Fatalf("repo states=%v dirty=%v, want no writes", store.repoStates, store.dirty)
+	}
+}
+
+func TestConsumer_IdentityStoreFailureLeavesTheEventUnacked(t *testing.T) {
+	rec := &trace{}
+	store := &fakeTapStore{rec: rec, err: fmt.Errorf("disk on fire")}
+	srv := newTapServer(t, rec, []string{identityEnvelope(1, "reader.example", true, "active")})
+	startConsumer(t, srv, store)
+	rec.await(t, "state:"+testDID)
+
+	time.Sleep(50 * time.Millisecond)
+	if entries := rec.snapshot(); slices.Contains(entries, "ack:1") {
+		t.Errorf("acked a failed identity write: %v", entries)
 	}
 }
 

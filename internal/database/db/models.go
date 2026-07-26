@@ -234,6 +234,14 @@ type TapRecord struct {
 	IndexedAt  string `json:"indexed_at"`
 }
 
+type TapRepoState struct {
+	Did       string `json:"did"`
+	Handle    string `json:"handle"`
+	IsActive  int64  `json:"is_active"`
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 type TapSeederState struct {
 	Did      string `json:"did"`
 	SeededAt string `json:"seeded_at"`

@@ -85,28 +85,28 @@ func (c *Client) CrawlAuthoredPublications(ctx context.Context, did syntax.DID) 
 }
 
 // verifyAuthorship probes siteURL's declared publication and checks it names this exact record (component-wise, since a site may legitimately serve either the DID-form or handle-form uri). Mismatch and probe-error both drop the record today but stay distinguishable in code for a future retry policy (a transient probe failure deserves a sooner retry than a site's declared answer disagreeing).
-func verifyAuthorship(ctx context.Context, verifier WellKnownFetcher, siteURL, wantRkey string, did syntax.DID, handle syntax.Handle) authorshipOutcome {
+func verifyAuthorship(ctx context.Context, verifier WellKnownFetcher, siteURL, wantRkey string, did syntax.DID, handle syntax.Handle) (authorshipOutcome, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, verificationTimeout)
 	defer cancel()
 	declared, err := verifier.FetchWellKnown(probeCtx, siteURL)
 	if err != nil {
-		return outcomeProbeError
+		return outcomeProbeError, err
 	}
 	if declared == "" {
-		return outcomeMismatch
+		return outcomeMismatch, nil
 	}
 	uri, err := syntax.ParseATURI(declared)
 	if err != nil {
-		return outcomeMismatch
+		return outcomeMismatch, nil
 	}
 	if uri.Collection().String() != authoredPublicationCollection || uri.RecordKey().String() != wantRkey {
-		return outcomeMismatch
+		return outcomeMismatch, nil
 	}
 	authority := strings.ToLower(uri.Authority().String())
 	if authority != strings.ToLower(did.String()) && authority != strings.ToLower(handle.String()) {
-		return outcomeMismatch
+		return outcomeMismatch, nil
 	}
-	return outcomeVerified
+	return outcomeVerified, nil
 }
 
 // latestDocumentPublishedAt fetches the single newest site.standard.document (listRecords defaults newest-first, limit 1) as a cheap recency proxy; a full per-publication listing would be too expensive for a signal that only leans the score.

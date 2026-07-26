@@ -319,6 +319,41 @@ func TestRunner_FailedRun_DoesNotPersistStamp(t *testing.T) {
 	}
 }
 
+func TestRunner_FailedRunRetriesSoonAndSuccessRestoresNormalInterval(t *testing.T) {
+	var calls atomic.Int64
+	run := func(ctx context.Context) (int, error) {
+		if calls.Add(1) == 1 {
+			return 0, errors.New("tap unavailable")
+		}
+		return 1, nil
+	}
+	store := &fakeStateStore{}
+	r := newRunnerWithRunFunc(run, time.Hour).
+		WithStateStore(store, store).
+		WithFailureRetry(5 * time.Millisecond)
+	r.Start()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = r.Shutdown(ctx)
+	}()
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) && store.writeCount() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("calls = %d, want failed run plus one short retry", got)
+	}
+	if got := store.writeCount(); got != 1 {
+		t.Fatalf("success stamps = %d, want 1", got)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("calls after success = %d, want normal one-hour interval restored", got)
+	}
+}
+
 func TestRunner_InitialDelay_Table(t *testing.T) {
 	interval := 24 * time.Hour
 	now := time.Now().Truncate(time.Second) // avoid RFC3339's second-precision truncation shifting the expected duration

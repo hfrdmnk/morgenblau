@@ -256,8 +256,8 @@ func TestSeeder_MarksSeededOnlyAfterATapSuccess(t *testing.T) {
 	s := newTestSeeder(t, seedDIDs(3), tap, store)
 
 	n, err := s.Run(context.Background())
-	if err != nil {
-		t.Fatalf("Run: %v, want nil (a tap outage degrades the run, it does not fail it)", err)
+	if err == nil {
+		t.Fatal("Run error = nil, want the tap outage propagated")
 	}
 	if n != 0 {
 		t.Errorf("Run returned %d, want 0 registered repos", n)
@@ -275,8 +275,8 @@ func TestSeeder_FailedChunkAbandonsTheRestOfTheRun(t *testing.T) {
 	s := newTestSeeder(t, dids, tap, store)
 
 	n, err := s.Run(context.Background())
-	if err != nil {
-		t.Fatalf("Run: %v, want nil", err)
+	if err == nil {
+		t.Fatal("Run error = nil, want the failed chunk propagated")
 	}
 	if n != 500 {
 		t.Errorf("Run returned %d, want 500 (only the first chunk landed)", n)
@@ -296,8 +296,8 @@ func TestSeeder_RerunAfterAFailedChunkRepostsOnlyUnmarkedDids(t *testing.T) {
 	store := &fakeSeedStore{}
 	s := newTestSeeder(t, dids, tap, store)
 
-	if _, err := s.Run(context.Background()); err != nil {
-		t.Fatalf("first Run: %v", err)
+	if _, err := s.Run(context.Background()); err == nil {
+		t.Fatal("first Run error = nil, want the failed chunk propagated")
 	}
 	tap.setFailAt(0)
 	n, err := s.Run(context.Background())
@@ -357,8 +357,8 @@ func TestSeeder_MarkFailureStopsTheRun(t *testing.T) {
 	s := newTestSeeder(t, seedDIDs(1200), tap, store)
 
 	n, err := s.Run(context.Background())
-	if err != nil {
-		t.Fatalf("Run: %v, want nil", err)
+	if err == nil {
+		t.Fatal("Run error = nil, want the seeded-state failure propagated")
 	}
 	if n != 0 {
 		t.Errorf("Run returned %d, want 0", n)

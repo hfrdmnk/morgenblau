@@ -207,7 +207,9 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	var seedRunner *discoverbatch.Runner
 	if discoverBatchHours > 0 {
 		seeder := tapingest.NewSeeder(tapURL, tapingest.NewTapClient(), relayHost, safeClient, qr).WithTxRunner(db.Writer)
-		seedRunner = discoverbatch.NewRunner(seeder, time.Duration(discoverBatchHours)*time.Hour).WithStateStore(qr, qw)
+		seedRunner = discoverbatch.NewRunner(seeder, time.Duration(discoverBatchHours)*time.Hour).
+			WithStateStore(qr, qw).
+			WithFailureRetry(time.Minute)
 		seedRunner.Start()
 		slog.Info("discover tap seeding enabled", "interval", time.Duration(discoverBatchHours)*time.Hour, "relay", relayHost, "tap", tapURL)
 	} else {

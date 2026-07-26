@@ -39,3 +39,17 @@ SELECT did FROM tap_seeder_state;
 -- never rewrites the stamp it is meant to check.
 INSERT INTO tap_seeder_state (did, seeded_at) VALUES (?, ?)
 ON CONFLICT (did) DO NOTHING;
+
+-- name: GetTapRepoState :one
+SELECT did, handle, is_active, status, updated_at
+FROM tap_repo_states
+WHERE did = ?;
+
+-- name: UpsertTapRepoState :exec
+INSERT INTO tap_repo_states (did, handle, is_active, status, updated_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (did) DO UPDATE SET
+    handle     = excluded.handle,
+    is_active  = excluded.is_active,
+    status     = excluded.status,
+    updated_at = excluded.updated_at;

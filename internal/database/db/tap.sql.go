@@ -50,6 +50,25 @@ func (q *Queries) DeleteTapRecordsForRepo(ctx context.Context, did string) error
 	return err
 }
 
+const getTapRepoState = `-- name: GetTapRepoState :one
+SELECT did, handle, is_active, status, updated_at
+FROM tap_repo_states
+WHERE did = ?
+`
+
+func (q *Queries) GetTapRepoState(ctx context.Context, did string) (TapRepoState, error) {
+	row := q.db.QueryRowContext(ctx, getTapRepoState, did)
+	var i TapRepoState
+	err := row.Scan(
+		&i.Did,
+		&i.Handle,
+		&i.IsActive,
+		&i.Status,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertTapSeededDid = `-- name: InsertTapSeededDid :exec
 INSERT INTO tap_seeder_state (did, seeded_at) VALUES (?, ?)
 ON CONFLICT (did) DO NOTHING
@@ -199,6 +218,35 @@ func (q *Queries) UpsertTapRecord(ctx context.Context, arg UpsertTapRecordParams
 		arg.Cid,
 		arg.Record,
 		arg.IndexedAt,
+	)
+	return err
+}
+
+const upsertTapRepoState = `-- name: UpsertTapRepoState :exec
+INSERT INTO tap_repo_states (did, handle, is_active, status, updated_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (did) DO UPDATE SET
+    handle     = excluded.handle,
+    is_active  = excluded.is_active,
+    status     = excluded.status,
+    updated_at = excluded.updated_at
+`
+
+type UpsertTapRepoStateParams struct {
+	Did       string `json:"did"`
+	Handle    string `json:"handle"`
+	IsActive  int64  `json:"is_active"`
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+func (q *Queries) UpsertTapRepoState(ctx context.Context, arg UpsertTapRepoStateParams) error {
+	_, err := q.db.ExecContext(ctx, upsertTapRepoState,
+		arg.Did,
+		arg.Handle,
+		arg.IsActive,
+		arg.Status,
+		arg.UpdatedAt,
 	)
 	return err
 }

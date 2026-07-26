@@ -28,6 +28,8 @@ const defaultPingInterval = 30 * time.Second
 type TapStore interface {
 	UpsertTapRecord(ctx context.Context, arg db.UpsertTapRecordParams) error
 	DeleteTapRecord(ctx context.Context, arg db.DeleteTapRecordParams) error
+	DeleteTapRecordsForRepo(ctx context.Context, did string) error
+	UpsertTapRepoState(ctx context.Context, arg db.UpsertTapRepoStateParams) error
 	MarkTapRepoDirty(ctx context.Context, arg db.MarkTapRepoDirtyParams) error
 }
 
@@ -232,11 +234,48 @@ func (c *Consumer) handle(ctx context.Context, conn *websocket.Conn, data []byte
 			return
 		}
 	case eventTypeIdentity:
-		slog.Debug("tapingest: identity event", "id", env.ID)
+		ev := env.Identity
+		if ev == nil || ev.DID == "" || ev.Status == "" {
+			slog.Warn("tapingest: skipping unusable identity event", "id", env.ID)
+			break
+		}
+		if err := c.applyIdentity(ctx, *ev); err != nil {
+			slog.Warn("tapingest: identity write failed, leaving the event unacked", "did", ev.DID, "status", ev.Status, "err", err)
+			return
+		}
 	default:
 		slog.Debug("tapingest: ignoring unknown tap event type", "type", env.Type, "id", env.ID)
 	}
 	c.ack(ctx, conn, env.ID)
+}
+
+func (c *Consumer) applyIdentity(ctx context.Context, ev IdentityEvent) error {
+	var isActive int64
+	if ev.IsActive {
+		isActive = 1
+	}
+	stamp := c.now().UTC().Format(time.RFC3339)
+
+	return c.runTx(ctx, func(s TapStore) error {
+		if err := s.UpsertTapRepoState(ctx, db.UpsertTapRepoStateParams{
+			Did:       ev.DID,
+			Handle:    ev.Handle,
+			IsActive:  isActive,
+			Status:    ev.Status,
+			UpdatedAt: stamp,
+		}); err != nil {
+			return err
+		}
+		if ev.Status == "deleted" {
+			if err := s.DeleteTapRecordsForRepo(ctx, ev.DID); err != nil {
+				return err
+			}
+		}
+		return s.MarkTapRepoDirty(ctx, db.MarkTapRepoDirtyParams{
+			Did:      ev.DID,
+			MarkedAt: stamp,
+		})
+	})
 }
 
 // apply writes one record change and its dirty mark in a single transaction, so the rebuild worker never sees a mirror change without the mark that schedules it.

@@ -38,7 +38,7 @@ type RecordEvent struct {
 	CID        string          `json:"cid"`
 }
 
-// IdentityEvent is emitted only when a handle actually changes; tap never sends a baseline identity for a tracked repo.
+// IdentityEvent is emitted when a handle or account status changes; tap never sends a baseline identity for a tracked repo.
 type IdentityEvent struct {
 	DID      string `json:"did"`
 	Handle   string `json:"handle"`

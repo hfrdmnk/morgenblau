@@ -2,6 +2,7 @@ package discovercrawl
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -205,7 +206,10 @@ func TestClient_DecodeAuthoredPublications_VerifiedHandleFormWellKnown(t *testin
 	}
 
 	did, _ := syntax.ParseDID(followedDID)
-	got := client.DecodeAuthoredPublications(context.Background(), byCollection, did, syntax.Handle(followedHandle))
+	got, err := client.DecodeAuthoredPublications(context.Background(), byCollection, did, syntax.Handle(followedHandle))
+	if err != nil {
+		t.Fatalf("DecodeAuthoredPublications: %v", err)
+	}
 	if len(got) != 1 {
 		t.Fatalf("len = %d, want 1: %+v", len(got), got)
 	}
@@ -231,8 +235,31 @@ func TestClient_DecodeAuthoredPublications_UnverifiedClaimIsDropped(t *testing.T
 	}
 
 	did, _ := syntax.ParseDID(followedDID)
-	if got := client.DecodeAuthoredPublications(context.Background(), byCollection, did, syntax.Handle(followedHandle)); len(got) != 0 {
+	got, err := client.DecodeAuthoredPublications(context.Background(), byCollection, did, syntax.Handle(followedHandle))
+	if err != nil {
+		t.Fatalf("DecodeAuthoredPublications: %v", err)
+	}
+	if len(got) != 0 {
 		t.Errorf("got = %+v, want none (well-known names another repo)", got)
+	}
+}
+
+func TestClient_DecodeAuthoredPublications_ProbeErrorIsReportedForTapRebuild(t *testing.T) {
+	probeErr := errors.New("connection refused")
+	client := verifyingClient(t, nil, &fakeWellKnownFetcher{err: map[string]error{
+		"https://zine.example": probeErr,
+	}})
+	byCollection := map[string][]RecordEntry{
+		authoredPublicationCollection: {
+			mirrorEntry(t, authoredPublicationCollection, "3p", map[string]any{"name": "Example Zine", "url": "https://zine.example"}),
+		},
+	}
+
+	did, _ := syntax.ParseDID(followedDID)
+	if _, err := client.DecodeAuthoredPublications(context.Background(), byCollection, did, syntax.Handle(followedHandle)); err == nil {
+		t.Fatal("probe error = nil, want Tap rebuild to preserve its previous aggregate")
+	} else if !errors.Is(err, probeErr) {
+		t.Fatalf("probe error = %v, want wrapped transport error", err)
 	}
 }
 

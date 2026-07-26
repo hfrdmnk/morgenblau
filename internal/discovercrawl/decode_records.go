@@ -2,6 +2,7 @@ package discovercrawl
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sort"
 
@@ -168,20 +169,26 @@ func (c *Client) DecodeSubscriptions(ctx context.Context, byCollection map[strin
 
 // DecodeAuthoredPublication decodes and verifies one publication record. handle and lastPublishedAt are repo-scoped: the crawl reads them off the PDS, the tap rebuild off its mirror.
 func (c *Client) DecodeAuthoredPublication(ctx context.Context, r RecordEntry, did syntax.DID, handle syntax.Handle, lastPublishedAt string) (AuthoredPublication, bool) {
+	pub, outcome, _ := c.decodeAuthoredPublication(ctx, r, did, handle, lastPublishedAt)
+	return pub, outcome == outcomeVerified
+}
+
+func (c *Client) decodeAuthoredPublication(ctx context.Context, r RecordEntry, did syntax.DID, handle syntax.Handle, lastPublishedAt string) (AuthoredPublication, authorshipOutcome, error) {
 	name, _ := r.Value["name"].(string)
 	url, _ := r.Value["url"].(string)
 	if name == "" || url == "" {
 		slog.Warn("discovercrawl: skipping publication without name/url", "uri", r.URI)
-		return AuthoredPublication{}, false
+		return AuthoredPublication{}, outcomeMismatch, nil
 	}
 	rkey := atprepo.RkeyFromATURI(r.URI)
-	switch verifyAuthorship(ctx, c.verifier, url, rkey, did, handle) {
+	outcome, err := verifyAuthorship(ctx, c.verifier, url, rkey, did, handle)
+	switch outcome {
 	case outcomeMismatch:
 		slog.Warn("discovercrawl: authorship claim does not match site's well-known", "uri", r.URI, "site", url)
-		return AuthoredPublication{}, false
+		return AuthoredPublication{}, outcomeMismatch, nil
 	case outcomeProbeError:
-		slog.Warn("discovercrawl: well-known probe failed", "uri", r.URI, "site", url)
-		return AuthoredPublication{}, false
+		slog.Warn("discovercrawl: well-known probe failed", "uri", r.URI, "site", url, "err", err)
+		return AuthoredPublication{}, outcomeProbeError, err
 	}
 	return AuthoredPublication{
 		Key:             "at://" + did.String() + "/" + authoredPublicationCollection + "/" + rkey,
@@ -190,23 +197,27 @@ func (c *Client) DecodeAuthoredPublication(ctx context.Context, r RecordEntry, d
 		SiteURL:         url,
 		LastPublishedAt: lastPublishedAt,
 		Verification:    verifiedOutcome,
-	}, true
+	}, outcomeVerified, nil
 }
 
-// DecodeAuthoredPublications decodes one repo's mirrored publication rows, taking the recency proxy from the repo's mirrored documents instead of the crawl's extra listRecords probe. Well-known verification reaches the network, so this must not run inside a transaction.
-func (c *Client) DecodeAuthoredPublications(ctx context.Context, byCollection map[string][]RecordEntry, did syntax.DID, handle syntax.Handle) []AuthoredPublication {
+// DecodeAuthoredPublications decodes one repo's mirrored publication rows. A probe failure aborts the batch so tap retains the last verified aggregate for retry.
+func (c *Client) DecodeAuthoredPublications(ctx context.Context, byCollection map[string][]RecordEntry, did syntax.DID, handle syntax.Handle) ([]AuthoredPublication, error) {
 	records := byCollection[authoredPublicationCollection]
 	if len(records) == 0 {
-		return nil
+		return nil, nil
 	}
 	lastPublishedAt := maxDocumentPublishedAt(byCollection[standardDocumentCollectionForLatest])
 	out := make([]AuthoredPublication, 0, len(records))
 	for _, r := range records {
-		if pub, ok := c.DecodeAuthoredPublication(ctx, r, did, handle, lastPublishedAt); ok {
+		pub, outcome, err := c.decodeAuthoredPublication(ctx, r, did, handle, lastPublishedAt)
+		switch outcome {
+		case outcomeVerified:
 			out = append(out, pub)
+		case outcomeProbeError:
+			return nil, fmt.Errorf("discovercrawl: authorship probe failed for %s: %w", r.URI, err)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // maxDocumentPublishedAt stands in for the crawl's newest-first listRecords probe; RFC3339 stamps sort lexically, so the largest string is the newest document.

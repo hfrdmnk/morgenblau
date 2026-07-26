@@ -30,6 +30,7 @@ const (
 type MirrorReader interface {
 	ListTapDirtyRepos(ctx context.Context, limit int64) ([]db.TapDirtyRepo, error)
 	ListTapRecordsForRepo(ctx context.Context, did string) ([]db.TapRecord, error)
+	GetTapRepoState(ctx context.Context, did string) (db.TapRepoState, error)
 }
 
 // RebuildWriter is one repo's write batch: discoverbatch's aggregate replace surface plus the dirty-mark clear, so both land or neither does.
@@ -45,7 +46,7 @@ type EntryResolver = discoverbatch.EntryResolver
 // Both methods may reach the network (publication resolution, well-known probes), so neither may run inside a transaction.
 type RecordDecoder interface {
 	DecodeSubscriptions(ctx context.Context, byCollection map[string][]discovercrawl.RecordEntry) []discovercrawl.Subscription
-	DecodeAuthoredPublications(ctx context.Context, byCollection map[string][]discovercrawl.RecordEntry, did syntax.DID, handle syntax.Handle) []discovercrawl.AuthoredPublication
+	DecodeAuthoredPublications(ctx context.Context, byCollection map[string][]discovercrawl.RecordEntry, did syntax.DID, handle syntax.Handle) ([]discovercrawl.AuthoredPublication, error)
 }
 
 // Resolver looks a repo's handle up for the authorship check; production must pass the SSRF-guarded directory.
@@ -173,31 +174,46 @@ func (w *RebuildWorker) rebuildRepo(ctx context.Context, repo db.TapDirtyRepo) e
 	if err != nil {
 		return err
 	}
-	rows, err := w.reader.ListTapRecordsForRepo(ctx, repo.Did)
-	if err != nil {
+
+	state, err := w.reader.GetTapRepoState(ctx, repo.Did)
+	hasState := true
+	if errors.Is(err, sql.ErrNoRows) {
+		hasState = false
+	} else if err != nil {
 		return err
 	}
-	byCollection := partitionByCollection(repo.Did, rows)
 
-	var pubs []discovercrawl.AuthoredPublication
-	if len(byCollection[standardfeed.CollectionPublication]) > 0 {
-		// The well-known authority check accepts either the DID or the handle form, so a missing handle would silently drop a legitimate publication.
-		ident, err := w.resolver.LookupDID(ctx, did)
+	var signals map[string]discoverbatch.RepoSource
+	var follows []discovercrawl.ReaderNetworkFollow
+	if !hasState || state.IsActive != 0 {
+		rows, err := w.reader.ListTapRecordsForRepo(ctx, repo.Did)
 		if err != nil {
 			return err
 		}
-		pubs = w.decoder.DecodeAuthoredPublications(ctx, byCollection, did, ident.Handle)
-	}
+		byCollection := partitionByCollection(repo.Did, rows)
 
-	signals := discoverbatch.ReduceRepoSignals(
-		ctx,
-		w.decoder.DecodeSubscriptions(ctx, byCollection),
-		pubs,
-		discovercrawl.MergeShares(byCollection),
-		discovercrawl.DecodeSaves(byCollection),
-		w.entries,
-	)
-	follows := discovercrawl.DecodeFollows(repo.Did, byCollection)
+		var pubs []discovercrawl.AuthoredPublication
+		if len(byCollection[standardfeed.CollectionPublication]) > 0 {
+			handle, err := w.repoHandle(ctx, did, state, hasState)
+			if err != nil {
+				return err
+			}
+			pubs, err = w.decoder.DecodeAuthoredPublications(ctx, byCollection, did, handle)
+			if err != nil {
+				return err
+			}
+		}
+
+		signals = discoverbatch.ReduceRepoSignals(
+			ctx,
+			w.decoder.DecodeSubscriptions(ctx, byCollection),
+			pubs,
+			discovercrawl.MergeShares(byCollection),
+			discovercrawl.DecodeSaves(byCollection),
+			w.entries,
+		)
+		follows = discovercrawl.DecodeFollows(repo.Did, byCollection)
+	}
 
 	fetchedAt := w.now().UTC().Format(time.RFC3339)
 	return w.runTx(ctx, func(x RebuildWriter) error {
@@ -210,6 +226,19 @@ func (w *RebuildWorker) rebuildRepo(ctx context.Context, repo db.TapDirtyRepo) e
 		// The marked_at guard keeps a repo re-dirtied mid-rebuild queued for the next tick.
 		return x.DeleteTapDirtyRepo(ctx, db.DeleteTapDirtyRepoParams{Did: repo.Did, MarkedAt: repo.MarkedAt})
 	})
+}
+
+func (w *RebuildWorker) repoHandle(ctx context.Context, did syntax.DID, state db.TapRepoState, hasState bool) (syntax.Handle, error) {
+	if hasState && state.Handle != "" {
+		if handle, err := syntax.ParseHandle(state.Handle); err == nil {
+			return handle, nil
+		}
+	}
+	ident, err := w.resolver.LookupDID(ctx, did)
+	if err != nil {
+		return "", err
+	}
+	return ident.Handle, nil
 }
 
 // refreshTrendingCounts rebuilds both quality-bar count tables in one transaction; every trending read joins them, so skipping it leaves the surfaces empty however many signals were written.

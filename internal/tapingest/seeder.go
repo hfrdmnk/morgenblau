@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -82,7 +81,7 @@ func (s *Seeder) WithTxRunner(w *sql.DB) *Seeder {
 }
 
 // Run registers every enumerated repo tap does not already track and reports how many were added.
-// A tap or bookkeeping failure abandons the rest of the run: /repos/add is idempotent and only accepted chunks are marked, so the next tick re-posts exactly what is still missing.
+// A tap or bookkeeping failure abandons the rest of the run: /repos/add is idempotent and only accepted chunks are marked, so the retry re-posts exactly what is still missing.
 func (s *Seeder) Run(ctx context.Context) (int, error) {
 	dids, err := discoverbatch.EnumerateAll(ctx, s.relayClient, s.relayEndpoint, s.collections)
 	if err != nil {
@@ -99,15 +98,12 @@ func (s *Seeder) Run(ctx context.Context) (int, error) {
 		chunk := pending[:min(s.chunkSize, len(pending))]
 		if err := s.addRepos(ctx, chunk); err != nil {
 			if ctx.Err() != nil {
-				return added, nil
+				return added, ctx.Err()
 			}
-			slog.Warn("tapingest: tap repo registration failed, leaving the rest for the next run", "chunk", len(chunk), "pending", len(pending), "err", err)
-			return added, nil
+			return added, fmt.Errorf("tapingest: register %d repos with tap: %w", len(chunk), err)
 		}
 		if err := s.markSeeded(ctx, chunk); err != nil {
-			// Tap now tracks these repos but we failed to record it; stopping keeps the retry cheap, since re-posting a tracked repo is a no-op.
-			slog.Warn("tapingest: seeded-state write failed, leaving the rest for the next run", "chunk", len(chunk), "err", err)
-			return added, nil
+			return added, fmt.Errorf("tapingest: record %d seeded repos: %w", len(chunk), err)
 		}
 		added += len(chunk)
 		pending = pending[len(chunk):]

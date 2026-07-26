@@ -34,6 +34,13 @@ CREATE TABLE tap_dirty_repos (
     did       TEXT PRIMARY KEY,
     marked_at TEXT NOT NULL
 );
+CREATE TABLE tap_repo_states (
+    did        TEXT PRIMARY KEY,
+    handle     TEXT NOT NULL,
+    is_active  INTEGER NOT NULL,
+    status     TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 CREATE TABLE discover_trending_signals (
     repo_did    TEXT NOT NULL,
     source_key  TEXT NOT NULL,
@@ -99,6 +106,19 @@ func markDirty(t *testing.T, dbs *database.DB, did, markedAt string) {
 	}
 }
 
+func seedRepoState(t *testing.T, dbs *database.DB, did, handle string, active bool, status string) {
+	t.Helper()
+	var isActive int64
+	if active {
+		isActive = 1
+	}
+	if err := db.New(dbs.Writer).UpsertTapRepoState(context.Background(), db.UpsertTapRepoStateParams{
+		Did: did, Handle: handle, IsActive: isActive, Status: status, UpdatedAt: "2026-07-10T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("UpsertTapRepoState: %v", err)
+	}
+}
+
 // noEntries is the Tier-2 provenance resolver; the fixtures all carry their own feedUrl, so nothing has to be looked up.
 type noEntries struct{}
 
@@ -153,11 +173,11 @@ func (s *stubDecoder) DecodeSubscriptions(ctx context.Context, byCollection map[
 	return s.subs
 }
 
-func (s *stubDecoder) DecodeAuthoredPublications(ctx context.Context, byCollection map[string][]discovercrawl.RecordEntry, did syntax.DID, handle syntax.Handle) []discovercrawl.AuthoredPublication {
+func (s *stubDecoder) DecodeAuthoredPublications(ctx context.Context, byCollection map[string][]discovercrawl.RecordEntry, did syntax.DID, handle syntax.Handle) ([]discovercrawl.AuthoredPublication, error) {
 	s.authoredIn = len(byCollection[standardfeed.CollectionPublication])
 	s.gotDID = did
 	s.gotHandle = handle
-	return s.pubs
+	return s.pubs, nil
 }
 
 func newTestWorker(t *testing.T, dbs *database.DB, decoder RecordDecoder, entries EntryResolver, resolver Resolver) *RebuildWorker {
@@ -413,6 +433,137 @@ func TestRebuildWorker_IdentityFailureLeavesPublicationRepoDirty(t *testing.T) {
 	}
 	if len(dirty) != 1 {
 		t.Errorf("dirty = %+v, want the repo left queued for retry", dirty)
+	}
+}
+
+func TestRebuildWorker_InactiveRepoClearsAggregatesWithoutPurgingMirrorOrResolvingIdentity(t *testing.T) {
+	dbs := openRebuildTestDB(t)
+	seedMirror(t, dbs, repoA, lexicon.Subscription, "3sub",
+		`{"source":{"$type":"blue.morgen.feed.subscription#rssFeed","feedUrl":"https://zine.example/feed"},"createdAt":"2026-07-01T00:00:00Z"}`)
+	seedRepoState(t, dbs, repoA, "reader.example", false, "suspended")
+	markDirty(t, dbs, repoA, "2026-07-10T00:00:00Z")
+	if err := db.New(dbs.Writer).InsertDiscoverTrendingSignal(context.Background(), db.InsertDiscoverTrendingSignalParams{
+		RepoDid: repoA, SourceKey: "https://zine.example/feed",
+		Kind: "rss", SignalKind: "subscribe", FetchedAt: "2026-07-09T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("seed signal: %v", err)
+	}
+
+	resolver := &fakeResolver{err: errors.New("must not resolve inactive repo")}
+	decoder := &stubDecoder{subs: []discovercrawl.Subscription{{
+		Key: "https://zine.example/feed", Kind: "rss", CreatedAt: "2026-07-01T00:00:00Z",
+	}}}
+	w := newTestWorker(t, dbs, decoder, noEntries{}, resolver)
+	w.drain(context.Background())
+
+	if got := signalsByKey(t, dbs); len(got) != 0 {
+		t.Fatalf("signals = %+v, want inactive repo removed from discovery", got)
+	}
+	rows, err := db.New(dbs.Reader).ListTapRecordsForRepo(context.Background(), repoA)
+	if err != nil {
+		t.Fatalf("ListTapRecordsForRepo: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("mirror rows = %d, want retained for reactivation", len(rows))
+	}
+	if resolver.calls != 0 {
+		t.Fatalf("identity lookups = %d, want 0 for inactive repo", resolver.calls)
+	}
+
+	seedRepoState(t, dbs, repoA, "reader.example", true, "active")
+	markDirty(t, dbs, repoA, "2026-07-10T00:00:01Z")
+	w.drain(context.Background())
+	if got := signalsByKey(t, dbs); len(got) != 1 {
+		t.Fatalf("signals after reactivation = %+v, want rebuilt retained subscription", got)
+	}
+}
+
+func TestRebuildWorker_ActiveRepoUsesTapHandleWithoutIdentityLookup(t *testing.T) {
+	dbs := openRebuildTestDB(t)
+	seedMirror(t, dbs, repoA, standardfeed.CollectionPublication, "3pub", `{"name":"Example Zine","url":"https://zine.example"}`)
+	seedRepoState(t, dbs, repoA, "new-handle.example", true, "active")
+	markDirty(t, dbs, repoA, "2026-07-10T00:00:00Z")
+
+	decoder := &stubDecoder{}
+	resolver := &fakeResolver{err: errors.New("stored Tap handle should avoid lookup")}
+	w := newTestWorker(t, dbs, decoder, noEntries{}, resolver)
+	w.drain(context.Background())
+
+	if decoder.gotHandle != syntax.Handle("new-handle.example") {
+		t.Fatalf("decoder handle = %q, want Tap identity handle", decoder.gotHandle)
+	}
+	if resolver.calls != 0 {
+		t.Fatalf("identity lookups = %d, want 0", resolver.calls)
+	}
+}
+
+func TestRebuildWorker_InvalidTapHandleFallsBackToIdentityLookup(t *testing.T) {
+	dbs := openRebuildTestDB(t)
+	seedMirror(t, dbs, repoA, standardfeed.CollectionPublication, "3pub", `{"name":"Example Zine","url":"https://zine.example"}`)
+	seedRepoState(t, dbs, repoA, "not a handle", true, "active")
+	markDirty(t, dbs, repoA, "2026-07-10T00:00:00Z")
+
+	decoder := &stubDecoder{}
+	resolver := &fakeResolver{handle: syntax.Handle("resolved.example")}
+	w := newTestWorker(t, dbs, decoder, noEntries{}, resolver)
+	w.drain(context.Background())
+
+	if decoder.gotHandle != syntax.Handle("resolved.example") {
+		t.Fatalf("decoder handle = %q, want resolved fallback", decoder.gotHandle)
+	}
+	if resolver.calls != 1 {
+		t.Fatalf("identity lookups = %d, want 1", resolver.calls)
+	}
+}
+
+type mutableWellKnown struct {
+	value string
+	err   error
+}
+
+func (f *mutableWellKnown) FetchWellKnown(ctx context.Context, siteURL string) (string, error) {
+	return f.value, f.err
+}
+
+func TestRebuildWorker_ProbeFailurePreservesVerifiedSignalAndDirtyMarkUntilRetry(t *testing.T) {
+	dbs := openRebuildTestDB(t)
+	uri := "at://" + repoA + "/" + standardfeed.CollectionPublication + "/3pub"
+	seedMirror(t, dbs, repoA, standardfeed.CollectionPublication, "3pub", `{"name":"Example Zine","url":"https://zine.example"}`)
+	markDirty(t, dbs, repoA, "2026-07-10T00:00:00Z")
+	if err := db.New(dbs.Writer).InsertDiscoverTrendingSignal(context.Background(), db.InsertDiscoverTrendingSignalParams{
+		RepoDid: repoA, SourceKey: uri, Kind: "standardfeed", SignalKind: "author", FetchedAt: "2026-07-09T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("seed signal: %v", err)
+	}
+
+	probe := &mutableWellKnown{err: errors.New("site unavailable")}
+	decoder := discovercrawl.NewClient(nil, nil, nil, probe, nil)
+	w := newTestWorker(t, dbs, decoder, noEntries{}, &fakeResolver{handle: syntax.Handle("reader.example")})
+	w.drain(context.Background())
+
+	if got := signalsByKey(t, dbs); len(got) != 1 {
+		t.Fatalf("signals after probe failure = %+v, want previous verified signal", got)
+	}
+	dirty, err := db.New(dbs.Reader).ListTapDirtyRepos(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ListTapDirtyRepos: %v", err)
+	}
+	if len(dirty) != 1 {
+		t.Fatalf("dirty after probe failure = %+v, want queued retry", dirty)
+	}
+
+	probe.err = nil
+	probe.value = uri
+	w.drain(context.Background())
+	if got := signalsByKey(t, dbs); len(got) != 1 {
+		t.Fatalf("signals after successful retry = %+v, want rebuilt verified signal", got)
+	}
+	dirty, err = db.New(dbs.Reader).ListTapDirtyRepos(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ListTapDirtyRepos after retry: %v", err)
+	}
+	if len(dirty) != 0 {
+		t.Fatalf("dirty after successful retry = %+v, want cleared", dirty)
 	}
 }
 

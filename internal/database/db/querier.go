@@ -79,6 +79,7 @@ type Querier interface {
 	GetFeedURLByItemURL(ctx context.Context, url string) (string, error)
 	GetSession(ctx context.Context, arg GetSessionParams) ([]byte, error)
 	GetShareMetadataCache(ctx context.Context, targetKey string) (ShareMetadataCache, error)
+	GetTapRepoState(ctx context.Context, did string) (TapRepoState, error)
 	GetUserFollow(ctx context.Context, arg GetUserFollowParams) (UserFollow, error)
 	GetUserFollowBySubjectDID(ctx context.Context, arg GetUserFollowBySubjectDIDParams) (UserFollow, error)
 	GetUserSave(ctx context.Context, arg GetUserSaveParams) (UserSave, error)
@@ -305,6 +306,7 @@ type Querier interface {
 	// fallback (path-less docs pass the new textContent).
 	UpsertStandardfeedEntry(ctx context.Context, arg UpsertStandardfeedEntryParams) error
 	UpsertTapRecord(ctx context.Context, arg UpsertTapRecordParams) error
+	UpsertTapRepoState(ctx context.Context, arg UpsertTapRepoStateParams) error
 	UpsertUserFollow(ctx context.Context, arg UpsertUserFollowParams) error
 	UpsertUserSave(ctx context.Context, arg UpsertUserSaveParams) error
 	UpsertUserShare(ctx context.Context, arg UpsertUserShareParams) error
