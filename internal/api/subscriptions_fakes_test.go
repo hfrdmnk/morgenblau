@@ -200,6 +200,8 @@ type fakePDS struct {
 	listErr     error
 	listCalls   int
 	createErr   map[string]error // per-collection CreateRecord failure
+	deleteErr   error            // DeleteRecord failure, applied to every call
+	putErr      error            // PutRecord failure, applied to every call
 }
 
 func (p *fakePDS) CreateRecord(_ context.Context, sess *oauth.ClientSession, collection syntax.NSID, record map[string]any) (*atprepo.RecordRef, error) {
@@ -221,6 +223,9 @@ func (p *fakePDS) CreateRecord(_ context.Context, sess *oauth.ClientSession, col
 func (p *fakePDS) PutRecord(_ context.Context, _ *oauth.ClientSession, _ syntax.NSID, rkey string, record map[string]any) (*atprepo.RecordRef, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.putErr != nil {
+		return nil, p.putErr
+	}
 	p.puts++
 	p.lastPut = record
 	p.lastPutRkey = rkey
@@ -230,6 +235,9 @@ func (p *fakePDS) PutRecord(_ context.Context, _ *oauth.ClientSession, _ syntax.
 func (p *fakePDS) DeleteRecord(_ context.Context, _ *oauth.ClientSession, collection syntax.NSID, rkey string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.deleteErr != nil {
+		return p.deleteErr
+	}
 	p.deleted = append(p.deleted, collection.String()+"/"+rkey)
 	return nil
 }

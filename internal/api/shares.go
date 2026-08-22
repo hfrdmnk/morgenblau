@@ -225,19 +225,12 @@ func shareStandardfeed(
 		return
 	}
 
-	// Recommend is created first (the existence authority); if the sidecar then fails, reconcile can still adopt the durable recommend comment-less.
-	recRef, err := pds.CreateRecord(r.Context(), sess, syntax.NSID(recommendCollection), map[string]any{
-		"document":  document,
-		"createdAt": now,
-	})
-	if err != nil {
-		slog.Warn("/api/shares: recommend PDS create failed", "err", err)
-		writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
-		return
+	// The recommend goes first (the existence authority); if the sidecar then fails, reconcile can still adopt the durable recommend comment-less.
+	spec := sidecarWriteSpec{
+		Existence:           map[string]any{"document": document, "createdAt": now},
+		ExistenceCollection: syntax.NSID(recommendCollection),
+		ExistenceOp:         "/api/shares: recommend PDS create failed",
 	}
-	recRkey := atprepo.RkeyFromATURI(recRef.URI)
-
-	var sidecarRkey *string
 	if comment != "" {
 		record := map[string]any{
 			"itemUrl":   entry.Url,
@@ -253,21 +246,25 @@ func shareStandardfeed(
 			writeError(w, http.StatusInternalServerError, codeInvalidRecord, "internal error")
 			return
 		}
-		scRef, err := pds.CreateRecord(r.Context(), sess, syntax.NSID(shareCollection), record)
-		if err != nil {
-			slog.Warn("/api/shares: comment sidecar PDS create failed", "err", err)
-			writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
-			return
-		}
-		rk := atprepo.RkeyFromATURI(scRef.URI)
-		sidecarRkey = &rk
+		spec.Sidecar = record
+		spec.SidecarCollection = syntax.NSID(shareCollection)
+		spec.SidecarOp = "/api/shares: comment sidecar PDS create failed"
+	}
+	result, ok := writeSidecarPair(r.Context(), w, sess, pds, spec)
+	if !ok {
+		return
+	}
+	recRkey := atprepo.RkeyFromATURI(result.ExistenceRef.URI)
+	var sidecarRkey *string
+	if result.SidecarRkey != "" {
+		sidecarRkey = &result.SidecarRkey
 	}
 
 	mirrorOrRepair(r.Context(), disp, sess, "/api/shares: standardfeed Tier-1 upsert", func() error {
 		return writer.UpsertUserShare(r.Context(), db.UpsertUserShareParams{
 			Did:         didStr,
 			Rkey:        recRkey,
-			AtUri:       recRef.URI,
+			AtUri:       result.ExistenceRef.URI,
 			Kind:        "standardfeed",
 			ItemUrl:     nilIfEmpty(entry.Url),
 			Document:    &document,
@@ -280,8 +277,8 @@ func shareStandardfeed(
 	})
 
 	writeJSONStatus(w, http.StatusCreated, ShareWire{
-		URI:       recRef.URI,
-		CID:       recRef.CID,
+		URI:       result.ExistenceRef.URI,
+		CID:       result.ExistenceRef.CID,
 		Rkey:      recRkey,
 		Kind:      "standardfeed",
 		ItemURL:   entry.Url,
@@ -327,21 +324,8 @@ func SharesDeleteHandler(reader SharesIndexReader, writer SharesIndexWriter, pds
 			}
 			// Leaving a duplicate recommend would let the next reconcile re-adopt it and resurrect the share.
 			document := derefStr(row.Document)
-			records, err := pds.ListRecords(r.Context(), sess, syntax.NSID(recommendCollection))
-			if err != nil {
-				slog.Warn("/api/shares DELETE: recommend list failed", "err", err)
-				writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+			if !sweepDuplicates(r.Context(), w, sess, pds, "/api/shares DELETE: recommend", syntax.NSID(recommendCollection), stringField("document"), document) {
 				return
-			}
-			for _, rec := range records {
-				if doc, _ := rec.Value["document"].(string); doc != document {
-					continue
-				}
-				if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(recommendCollection), atprepo.RkeyFromATURI(rec.URI)); err != nil {
-					slog.Warn("/api/shares DELETE: recommend PDS delete failed", "uri", rec.URI, "err", err)
-					writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
-					return
-				}
 			}
 			if row.SidecarRkey != nil && *row.SidecarRkey != "" {
 				if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(shareCollection), *row.SidecarRkey); err != nil {
