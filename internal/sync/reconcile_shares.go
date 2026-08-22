@@ -50,110 +50,81 @@ func (e *Engine) reconcileShares(ctx context.Context, did syntax.DID, sess *oaut
 		func(r PDSRecommend) string { return r.Document },
 		func(r PDSRecommend) string { return r.Rkey })
 
-	desired := make(map[string]struct{}, len(canonicalByDoc)+len(rssShares))
-	for _, rec := range canonicalByDoc {
-		desired[rec.Rkey] = struct{}{}
-	}
-	for _, s := range rssShares {
-		desired[s.Rkey] = struct{}{}
-	}
-
 	now := e.now().UTC().Format(time.RFC3339)
 	didStr := did.String()
 
-	// One tx: snapshot read, deletes, upserts; a read failure rolls back, per-statement write errors are tolerated. Sidecar cleanup stays post-commit since it's a network write.
-	if err := e.runTx(ctx, func(q SyncStore) error {
-		snapshot, err := q.ListUserSharesForSync(ctx, didStr)
-		if err != nil {
-			return err
+	desired := make([]desiredRow, 0, len(canonicalByDoc)+len(rssShares))
+	for _, rec := range canonicalByDoc {
+		doc := rec.Document
+		params := db.UpsertUserShareParams{
+			Did:       didStr,
+			Rkey:      rec.Rkey,
+			AtUri:     rec.URI,
+			Kind:      "standardfeed",
+			Document:  &doc,
+			CreatedAt: orNow(rec.CreatedAt, now),
+			UpdatedAt: now,
 		}
-
-		// Deletes first: a changed canonical rkey leaves the stale row holding (did, document), which would trip the partial unique index on the new upsert.
-		for _, row := range snapshot {
-			if _, keep := desired[row.Rkey]; keep {
-				continue
-			}
-			// Keeping an in-flight row can leave it holding (did, document) against a rekeyed canonical; that upsert fails and the next pass converges, which beats dropping a fresh share.
-			if createdAfterSnapshot(row.CreatedAt, snapshotAt) {
-				slog.Debug("reconcile: share delete skipped, row newer than the PDS snapshot", "rkey", row.Rkey, "createdAt", row.CreatedAt)
-				continue
-			}
-			if err := q.DeleteUserShare(ctx, db.DeleteUserShareParams{
-				Did:  didStr,
-				Rkey: row.Rkey,
-			}); err != nil {
-				slog.Warn("reconcile: share delete failed", "rkey", row.Rkey, "err", err)
-			}
+		if sc, ok := sidecarByDoc[doc]; ok {
+			rk := sc.Rkey
+			params.ItemUrl = nilIfEmpty(sc.ItemURL)
+			params.Comment = nilIfEmpty(sc.Comment)
+			params.FeedUrl = nilIfEmpty(sc.FeedURL)
+			params.SidecarRkey = &rk
 		}
-
-		for _, rec := range canonicalByDoc {
-			doc := rec.Document
-			createdAt := rec.CreatedAt
-			if createdAt == "" {
-				createdAt = now
-			}
-			var (
-				itemURL     *string
-				comment     *string
-				feedURL     *string
-				sidecarRkey *string
-			)
-			if sc, ok := sidecarByDoc[doc]; ok {
-				itemURL = nilIfEmpty(sc.ItemURL)
-				comment = nilIfEmpty(sc.Comment)
-				feedURL = nilIfEmpty(sc.FeedURL)
-				rk := sc.Rkey
-				sidecarRkey = &rk
-			}
-			// No sidecar itemUrl (bare recommend): backfill from the cached entry so the display fallback survives the entry's later deletion, matching what the API stores at share time.
-			if itemURL == nil {
-				if url, err := q.GetFeedEntryURLByGuid(ctx, doc); err == nil {
-					itemURL = nilIfEmpty(url)
+		desired = append(desired, desiredRow{
+			rkey: rec.Rkey,
+			write: func(ctx context.Context, q SyncStore) error {
+				p := params
+				// No sidecar itemUrl (bare recommend): backfill from the cached entry so the display fallback survives the entry's later deletion, matching what the API stores at share time.
+				if p.ItemUrl == nil {
+					if url, err := q.GetFeedEntryURLByGuid(ctx, doc); err == nil {
+						p.ItemUrl = nilIfEmpty(url)
+					}
 				}
-			}
-			if err := q.UpsertUserShare(ctx, db.UpsertUserShareParams{
-				Did:         didStr,
-				Rkey:        rec.Rkey,
-				AtUri:       rec.URI,
-				Kind:        "standardfeed",
-				ItemUrl:     itemURL,
-				Document:    &doc,
-				Comment:     comment,
-				FeedUrl:     feedURL,
-				SidecarRkey: sidecarRkey,
-				CreatedAt:   createdAt,
-				UpdatedAt:   now,
-			}); err != nil {
-				slog.Warn("reconcile: share upsert failed", "rkey", rec.Rkey, "err", err)
-			}
+				return q.UpsertUserShare(ctx, p)
+			},
+		})
+	}
+	for _, s := range rssShares {
+		itemURL := s.ItemURL
+		params := db.UpsertUserShareParams{
+			Did:       didStr,
+			Rkey:      s.Rkey,
+			AtUri:     s.URI,
+			Kind:      "rss",
+			ItemUrl:   &itemURL,
+			Comment:   nilIfEmpty(s.Comment),
+			FeedUrl:   nilIfEmpty(s.FeedURL),
+			CreatedAt: orNow(s.CreatedAt, now),
+			UpdatedAt: now,
 		}
+		desired = append(desired, desiredRow{
+			rkey:  s.Rkey,
+			write: func(ctx context.Context, q SyncStore) error { return q.UpsertUserShare(ctx, params) },
+		})
+	}
 
-		for _, s := range rssShares {
-			createdAt := s.CreatedAt
-			if createdAt == "" {
-				createdAt = now
-			}
-			itemURL := s.ItemURL
-			if err := q.UpsertUserShare(ctx, db.UpsertUserShareParams{
-				Did:       didStr,
-				Rkey:      s.Rkey,
-				AtUri:     s.URI,
-				Kind:      "rss",
-				ItemUrl:   &itemURL,
-				Comment:   nilIfEmpty(s.Comment),
-				FeedUrl:   nilIfEmpty(s.FeedURL),
-				CreatedAt: createdAt,
-				UpdatedAt: now,
-			}); err != nil {
-				slog.Warn("reconcile: rss share upsert failed", "rkey", s.Rkey, "err", err)
-			}
-		}
-		return nil
+	if err := reconcileCollection(ctx, e.runTx, reconcilePass[db.ListUserSharesForSyncRow]{
+		collection: "shares",
+		snapshotAt: snapshotAt,
+		snapshot: func(ctx context.Context, q SyncStore) ([]db.ListUserSharesForSyncRow, error) {
+			return q.ListUserSharesForSync(ctx, didStr)
+		},
+		rkeyOf: func(row db.ListUserSharesForSyncRow) string { return row.Rkey },
+		// Keeping an in-flight row can leave it holding (did, document) against a rekeyed canonical; that upsert fails and the next pass converges, which beats dropping a fresh share.
+		createdAtOf: func(row db.ListUserSharesForSyncRow) string { return row.CreatedAt },
+		desired:     desired,
+		deleteRow: func(ctx context.Context, q SyncStore, rkey string) error {
+			return q.DeleteUserShare(ctx, db.DeleteUserShareParams{Did: didStr, Rkey: rkey})
+		},
+		// A changed canonical rkey leaves the stale row holding (did, document), which the partial unique index would trip on the new upsert.
+		deleteFirst: true,
 	}); err != nil {
 		slog.Warn("reconcile: shares tx failed", "did", didStr, "err", err)
 	}
 
-	// Deletes orphaned and non-canonical sidecars; covered by the blue.morgen grant, no standard-scope check needed.
+	// Deletes orphaned and non-canonical sidecars; covered by the blue.morgen grant, no standard-scope check needed. Post-commit since it's a network write.
 	sidecarCleanup(ctx, e.pds, sess, syntax.NSID(shareCollection), sidecars,
 		func(s PDSShare) string { return s.Document },
 		func(s PDSShare) string { return s.Rkey },

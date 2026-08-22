@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -41,68 +42,53 @@ func (e *Engine) reconcileRSS(
 	onAdded func(feedURL string),
 ) {
 	// This pass only touches kind=rss rows; standardfeed rows belong to reconcileStandardfeed and must never be deleted here.
-	localByRkey := make(map[string]db.ListUserSubscriptionsForSyncRow, len(snapshot))
-	for _, row := range snapshot {
-		if row.Kind == "standardfeed" {
-			continue
-		}
-		localByRkey[row.Rkey] = row
-	}
-	remoteByRkey := make(map[string]PDSSubscription, len(remote))
-	for _, r := range remote {
-		if r.Kind != "rss" {
-			continue
-		}
-		remoteByRkey[r.Rkey] = r
-	}
+	local := filterSubscriptions(snapshot, isRSS)
+	localByRkey := rkeySet(local)
 
 	now := e.now().UTC().Format(time.RFC3339)
 	didStr := did.String()
 
-	// Per-statement errors are logged and tolerated so one bad row doesn't lose its siblings; only a Begin/Commit failure rolls back the whole batch.
-	if err := e.runTx(ctx, func(q SyncStore) error {
-		for rkey, r := range remoteByRkey {
-			_, existed := localByRkey[rkey]
-			// Tier-2 upsert first: the FK from feed_entries.feed_url requires it, and onAdded (the Phase-2 fetch trigger) is gated on its success.
-			if err := q.UpsertFeed(ctx, db.UpsertFeedParams{
-				FeedUrl:   r.FeedURL,
-				SiteUrl:   nilIfEmpty(r.SiteURL),
-				CreatedAt: now,
-				UpdatedAt: now,
-			}); err != nil {
-				slog.Warn("reconcile: Tier-2 upsert failed", "feedUrl", r.FeedURL, "err", err)
-				continue
-			}
-			if !existed {
-				onAdded(r.FeedURL)
-			}
-			if err := q.UpsertUserSubscription(ctx, db.UpsertUserSubscriptionParams{
-				Did:       didStr,
-				Rkey:      rkey,
-				AtUri:     r.URI,
-				FeedUrl:   r.FeedURL,
-				Title:     nilIfEmpty(r.Title),
-				IsPrimary: boolToInt64(r.Primary),
-				Tags:      tags.Marshal(r.Tags),
-				CreatedAt: now,
-				UpdatedAt: now,
-			}); err != nil {
-				slog.Warn("reconcile: Tier-1 upsert failed", "err", err)
-			}
+	var desired []desiredRow
+	for _, r := range remote {
+		if r.Kind != "rss" {
+			continue
 		}
+		_, existed := localByRkey[r.Rkey]
+		feed := db.UpsertFeedParams{
+			FeedUrl:   r.FeedURL,
+			SiteUrl:   nilIfEmpty(r.SiteURL),
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		sub := db.UpsertUserSubscriptionParams{
+			Did:       didStr,
+			Rkey:      r.Rkey,
+			AtUri:     r.URI,
+			FeedUrl:   r.FeedURL,
+			Title:     nilIfEmpty(r.Title),
+			IsPrimary: boolToInt64(r.Primary),
+			Tags:      tags.Marshal(r.Tags),
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		desired = append(desired, desiredRow{
+			rkey:  r.Rkey,
+			write: tier2ThenTier1(feed, sub, existed, onAdded),
+		})
+	}
 
-		for rkey := range localByRkey {
-			if _, stillThere := remoteByRkey[rkey]; stillThere {
-				continue
-			}
-			if err := q.DeleteUserSubscription(ctx, db.DeleteUserSubscriptionParams{
-				Did:  didStr,
-				Rkey: rkey,
-			}); err != nil {
-				slog.Warn("reconcile: Tier-1 delete failed", "err", err)
-			}
-		}
-		return nil
+	if err := reconcileCollection(ctx, e.runTx, reconcilePass[db.ListUserSubscriptionsForSyncRow]{
+		collection: "subscriptions.rss",
+		snapshot: func(context.Context, SyncStore) ([]db.ListUserSubscriptionsForSyncRow, error) {
+			return local, nil
+		},
+		rkeyOf:  func(row db.ListUserSubscriptionsForSyncRow) string { return row.Rkey },
+		desired: desired,
+		deleteRow: func(ctx context.Context, q SyncStore, rkey string) error {
+			return q.DeleteUserSubscription(ctx, db.DeleteUserSubscriptionParams{Did: didStr, Rkey: rkey})
+		},
+		// A subscription delete+recreated on the PDS keeps its feed URL, so the stale row must vacate before the new rkey upserts or UNIQUE(did, feed_url) rejects it.
+		deleteFirst: true,
 	}); err != nil {
 		slog.Warn("reconcile: rss tx failed", "did", didStr, "err", err)
 	}
@@ -118,12 +104,8 @@ func (e *Engine) reconcileStandardfeed(
 	standard []PDSStandardSubscription,
 	onAdded func(feedURL string),
 ) {
-	localStd := make(map[string]db.ListUserSubscriptionsForSyncRow)
-	for _, row := range snapshot {
-		if row.Kind == "standardfeed" {
-			localStd[row.Rkey] = row
-		}
-	}
+	local := filterSubscriptions(snapshot, isStandardfeed)
+	localByRkey := rkeySet(local)
 
 	var sidecars []PDSSubscription
 	for _, s := range morgen {
@@ -142,78 +124,58 @@ func (e *Engine) reconcileStandardfeed(
 	canonicalByPub := canonicalByKey(standard,
 		func(s PDSStandardSubscription) string { return s.Publication },
 		func(s PDSStandardSubscription) string { return s.Rkey })
-	desired := make(map[string]PDSStandardSubscription, len(canonicalByPub))
-	for _, canon := range canonicalByPub {
-		desired[canon.Rkey] = canon
-	}
 
 	now := e.now().UTC().Format(time.RFC3339)
 	didStr := did.String()
 
-	// One tx: deletes then upserts; per-statement errors are tolerated. Sidecar cleanup stays post-commit since it's a network write.
-	if err := e.runTx(ctx, func(q SyncStore) error {
-		// Deletes first: a canonical-rkey change (duplicate collapse, delete+recreate elsewhere) would trip UNIQUE(did, feed_url) if the new upsert ran before the stale row was gone.
-		for rkey := range localStd {
-			if _, keep := desired[rkey]; keep {
-				continue
-			}
-			if err := q.DeleteUserSubscription(ctx, db.DeleteUserSubscriptionParams{
-				Did:  didStr,
-				Rkey: rkey,
-			}); err != nil {
-				slog.Warn("reconcile: standardfeed Tier-1 delete failed", "err", err)
-			}
+	desired := make([]desiredRow, 0, len(canonicalByPub))
+	for _, canon := range canonicalByPub {
+		_, existed := localByRkey[canon.Rkey]
+		feed := db.UpsertFeedParams{
+			FeedUrl:   canon.Publication,
+			Kind:      "standardfeed",
+			CreatedAt: now,
+			UpdatedAt: now,
 		}
+		sub := db.UpsertUserSubscriptionParams{
+			Did:       didStr,
+			Rkey:      canon.Rkey,
+			AtUri:     canon.URI,
+			FeedUrl:   canon.Publication,
+			Kind:      "standardfeed",
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		if sc, ok := sidecarByPub[canon.Publication]; ok {
+			rk := sc.Rkey
+			sub.Title = nilIfEmpty(sc.Title)
+			sub.IsPrimary = boolToInt64(sc.Primary)
+			sub.Tags = tags.Marshal(sc.Tags)
+			sub.SidecarRkey = &rk
+		}
+		desired = append(desired, desiredRow{
+			rkey:  canon.Rkey,
+			write: tier2ThenTier1(feed, sub, existed, onAdded),
+		})
+	}
 
-		// Tier-2 upsert precedes Tier-1 for the FK; onAdded gates on Tier-2 success so name/site/icon resolution happens in the dispatched Phase-2 fetch, never here.
-		for rkey, canon := range desired {
-			if err := q.UpsertFeed(ctx, db.UpsertFeedParams{
-				FeedUrl:   canon.Publication,
-				Kind:      "standardfeed",
-				CreatedAt: now,
-				UpdatedAt: now,
-			}); err != nil {
-				slog.Warn("reconcile: standardfeed Tier-2 upsert failed", "publication", canon.Publication, "err", err)
-				continue
-			}
-			if _, existed := localStd[rkey]; !existed {
-				onAdded(canon.Publication)
-			}
-			var (
-				title       *string
-				primary     int64
-				tagsJSON    *string
-				sidecarRkey *string
-			)
-			if sc, ok := sidecarByPub[canon.Publication]; ok {
-				title = nilIfEmpty(sc.Title)
-				primary = boolToInt64(sc.Primary)
-				tagsJSON = tags.Marshal(sc.Tags)
-				rk := sc.Rkey
-				sidecarRkey = &rk
-			}
-			if err := q.UpsertUserSubscription(ctx, db.UpsertUserSubscriptionParams{
-				Did:         didStr,
-				Rkey:        rkey,
-				AtUri:       canon.URI,
-				FeedUrl:     canon.Publication,
-				Kind:        "standardfeed",
-				SidecarRkey: sidecarRkey,
-				Title:       title,
-				IsPrimary:   primary,
-				Tags:        tagsJSON,
-				CreatedAt:   now,
-				UpdatedAt:   now,
-			}); err != nil {
-				slog.Warn("reconcile: standardfeed Tier-1 upsert failed", "err", err)
-			}
-		}
-		return nil
+	if err := reconcileCollection(ctx, e.runTx, reconcilePass[db.ListUserSubscriptionsForSyncRow]{
+		collection: "subscriptions.standardfeed",
+		snapshot: func(context.Context, SyncStore) ([]db.ListUserSubscriptionsForSyncRow, error) {
+			return local, nil
+		},
+		rkeyOf:  func(row db.ListUserSubscriptionsForSyncRow) string { return row.Rkey },
+		desired: desired,
+		deleteRow: func(ctx context.Context, q SyncStore, rkey string) error {
+			return q.DeleteUserSubscription(ctx, db.DeleteUserSubscriptionParams{Did: didStr, Rkey: rkey})
+		},
+		// A canonical-rkey change (duplicate collapse, delete+recreate elsewhere) would trip UNIQUE(did, feed_url) if the new upsert ran before the stale row was gone.
+		deleteFirst: true,
 	}); err != nil {
 		slog.Warn("reconcile: standardfeed tx failed", "did", didStr, "err", err)
 	}
 
-	// Deletes orphaned and non-canonical sidecars; covered by the blue.morgen grant, no standard-scope check needed.
+	// Deletes orphaned and non-canonical sidecars; covered by the blue.morgen grant, no standard-scope check needed. Post-commit since it's a network write.
 	sidecarCleanup(ctx, e.pds, sess, syntax.NSID(subscriptionCollection), sidecars,
 		func(s PDSSubscription) string { return s.Publication },
 		func(s PDSSubscription) string { return s.Rkey },
@@ -222,3 +184,41 @@ func (e *Engine) reconcileStandardfeed(
 			slog.Warn("reconcile: sidecar cleanup failed", "rkey", rkey, "err", err)
 		})
 }
+
+// tier2ThenTier1 upserts the catalog row before the subscription: the FK from feed_entries.feed_url requires it,
+// and onAdded (the Phase-2 fetch trigger, which resolves name/site/icon) fires only for a source this pass newly added.
+func tier2ThenTier1(feed db.UpsertFeedParams, sub db.UpsertUserSubscriptionParams, existed bool, onAdded func(feedURL string)) func(context.Context, SyncStore) error {
+	return func(ctx context.Context, q SyncStore) error {
+		if err := q.UpsertFeed(ctx, feed); err != nil {
+			return fmt.Errorf("tier-2 upsert %s: %w", feed.FeedUrl, err)
+		}
+		if !existed {
+			onAdded(feed.FeedUrl)
+		}
+		return q.UpsertUserSubscription(ctx, sub)
+	}
+}
+
+func rkeySet(rows []db.ListUserSubscriptionsForSyncRow) map[string]struct{} {
+	set := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		set[row.Rkey] = struct{}{}
+	}
+	return set
+}
+
+// filterSubscriptions splits the caller's Tier-1 snapshot, read once before the PDS listing on purpose: that ordering is these passes' in-flight-write guard, so never re-read it inside the tx.
+func filterSubscriptions(snapshot []db.ListUserSubscriptionsForSyncRow, keep func(db.ListUserSubscriptionsForSyncRow) bool) []db.ListUserSubscriptionsForSyncRow {
+	out := make([]db.ListUserSubscriptionsForSyncRow, 0, len(snapshot))
+	for _, row := range snapshot {
+		if keep(row) {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+func isStandardfeed(row db.ListUserSubscriptionsForSyncRow) bool { return row.Kind == "standardfeed" }
+
+// A row whose kind predates the column reads as rss, so the rss pass claims everything the standardfeed pass does not.
+func isRSS(row db.ListUserSubscriptionsForSyncRow) bool { return !isStandardfeed(row) }

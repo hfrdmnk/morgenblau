@@ -39,7 +39,9 @@ func TestCreatedAfterSnapshot(t *testing.T) {
 	}
 }
 
-// reconcileGuardCase adapts the three reconcilers to one table: same in-flight-write race, different tables.
+// reconcileGuardCase asserts one pass wires createdAtOf; the guard's own semantics belong to
+// TestCreatedAfterSnapshot and TestReconcileCollection_GuardSparesRowsNewerThanTheSnapshot.
+// The two subscription passes are absent: their snapshot precedes the PDS listing, so an in-flight row is never a delete candidate; they also select no created_at to guard on.
 type reconcileGuardCase struct {
 	name    string
 	seed    func(s *fakeStore, createdAt string)
@@ -94,11 +96,7 @@ func TestReconcile_RowCreatedAfterSnapshot_SurvivesDeletePass(t *testing.T) {
 		wantGone  bool
 	}{
 		{"created after the snapshot", "2026-07-20T12:00:01Z", false},
-		{"created after the snapshot with a numeric zone offset", "2026-07-20T14:00:05+02:00", false},
 		{"created before the snapshot", "2026-07-20T11:00:00Z", true},
-		{"created before the snapshot with a numeric zone offset", "2026-07-20T13:00:00+02:00", true},
-		{"unparseable created_at", "not-a-timestamp", true},
-		{"empty created_at", "", true},
 	}
 	for _, rc := range reconcileGuardCases {
 		t.Run(rc.name, func(t *testing.T) {

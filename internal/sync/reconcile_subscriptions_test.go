@@ -10,6 +10,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/atprepo"
+	"morgenblau/internal/database/db"
 	"morgenblau/internal/jobs"
 )
 
@@ -158,6 +159,33 @@ func TestStandardReconcile_DuplicatesCollapseAndRekeySurvives(t *testing.T) {
 		t.Fatalf("rows = %+v, want single 3aa", rows)
 	}
 	store.assertDeleteBeforeUpsert(t, "3zz", "3aa")
+}
+
+// The UNIQUE(did, feed_url) index that forces delete-before-upsert for standardfeed applies to rss too:
+// a subscription delete+recreated on the PDS keeps its feed URL, so the stale row must vacate in the same pass.
+func TestRSSReconcile_RekeyedSubscriptionDeletesBeforeUpsert(t *testing.T) {
+	const feedURL = "https://feed.example.com/a"
+	store := newFakeStore()
+	store.rows["did:plc:alice"] = map[string]db.ListUserSubscriptionsForSyncRow{
+		"3old": {Did: "did:plc:alice", Rkey: "3old", AtUri: "at://did:plc:alice/blue.morgen.feed.subscription/3old", FeedUrl: feedURL, Kind: "rss"},
+	}
+	lister := &fakeLister{subs: []PDSSubscription{
+		{URI: "at://did:plc:alice/blue.morgen.feed.subscription/3new", Rkey: "3new", Kind: "rss", FeedURL: feedURL},
+	}}
+
+	runStandardReconcile(t, store, lister, nil)
+
+	if len(store.deletes) != 1 || store.deletes[0] != "3old" {
+		t.Fatalf("deletes = %v, want [3old]", store.deletes)
+	}
+	if _, ok := store.upsertParams["3new"]; !ok {
+		t.Fatalf("rekeyed subscription not upserted: %+v", store.upsertParams)
+	}
+	rows, _ := store.ListUserSubscriptionsForSync(context.Background(), "did:plc:alice")
+	if len(rows) != 1 || rows[0].Rkey != "3new" {
+		t.Fatalf("rows = %+v, want a single row under 3new", rows)
+	}
+	store.assertDeleteBeforeUpsert(t, "3old", "3new")
 }
 
 func TestStandardReconcile_RemoteDeleteRemovesLocalOnly(t *testing.T) {
