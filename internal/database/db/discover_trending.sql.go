@@ -28,17 +28,6 @@ func (q *Queries) DeleteDiscoverTrendingSourceCounts(ctx context.Context) error 
 	return err
 }
 
-const getDiscoverBatchState = `-- name: GetDiscoverBatchState :one
-SELECT id, last_run_at FROM discover_batch_state WHERE id = 1
-`
-
-func (q *Queries) GetDiscoverBatchState(ctx context.Context) (DiscoverBatchState, error) {
-	row := q.db.QueryRowContext(ctx, getDiscoverBatchState)
-	var i DiscoverBatchState
-	err := row.Scan(&i.ID, &i.LastRunAt)
-	return i, err
-}
-
 const getDiscoverTrendingSignalTitle = `-- name: GetDiscoverTrendingSignalTitle :one
 SELECT title, site_url FROM discover_trending_signals
 WHERE source_key = ? AND title IS NOT NULL AND title != ''
@@ -149,7 +138,7 @@ FROM discover_trending_signals
 `
 
 // Whole-table read; kept for callers that genuinely need every row (see
-// internal/discoverbatch's write-path tests). The trending handler reads
+// internal/discoveringest's write-path tests). The trending handler reads
 // ListDiscoverTrendingSignalsAboveBar instead (see that query's comment).
 func (q *Queries) ListDiscoverTrendingSignals(ctx context.Context) ([]DiscoverTrendingSignal, error) {
 	rows, err := q.db.QueryContext(ctx, listDiscoverTrendingSignals)
@@ -289,15 +278,5 @@ GROUP BY source_key
 // to once per batch pass.
 func (q *Queries) RebuildDiscoverTrendingSourceCounts(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, rebuildDiscoverTrendingSourceCounts)
-	return err
-}
-
-const upsertDiscoverBatchState = `-- name: UpsertDiscoverBatchState :exec
-INSERT INTO discover_batch_state (id, last_run_at) VALUES (1, ?)
-ON CONFLICT (id) DO UPDATE SET last_run_at = excluded.last_run_at
-`
-
-func (q *Queries) UpsertDiscoverBatchState(ctx context.Context, lastRunAt string) error {
-	_, err := q.db.ExecContext(ctx, upsertDiscoverBatchState, lastRunAt)
 	return err
 }

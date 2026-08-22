@@ -36,7 +36,6 @@ type Querier interface {
 	DeleteUserShare(ctx context.Context, arg DeleteUserShareParams) error
 	DeleteUserSubscription(ctx context.Context, arg DeleteUserSubscriptionParams) error
 	GetAuthRequest(ctx context.Context, state string) (GetAuthRequestRow, error)
-	GetDiscoverBatchState(ctx context.Context) (DiscoverBatchState, error)
 	GetDiscoverCrawlAdjacentState(ctx context.Context, did string) (DiscoverCrawlAdjacentState, error)
 	GetDiscoverCrawlAuthoredState(ctx context.Context, followedDid string) (DiscoverCrawlAuthoredState, error)
 	GetDiscoverCrawlFollowState(ctx context.Context, followedDid string) (DiscoverCrawlFollowState, error)
@@ -46,6 +45,7 @@ type Querier interface {
 	// Site-URL fallback for on-demand favicon discovery when the resolution cache misses.
 	GetDiscoverCrawlSubscriptionSiteURLByKey(ctx context.Context, canonicalKey string) (*string, error)
 	GetDiscoverHide(ctx context.Context, arg GetDiscoverHideParams) (DiscoverHide, error)
+	GetDiscoverIngestCursor(ctx context.Context) (GetDiscoverIngestCursorRow, error)
 	GetDiscoverPublicationResolution(ctx context.Context, publicationUri string) (DiscoverPublicationResolution, error)
 	GetDiscoverPublicationResolutionByCanonicalKey(ctx context.Context, canonicalKey *string) (DiscoverPublicationResolution, error)
 	// Fallback lookup for the favicon proxy when a candidate isn't in the feeds table yet (not subscribed).
@@ -103,9 +103,6 @@ type Querier interface {
 	InsertDiscoverSourcePost(ctx context.Context, arg InsertDiscoverSourcePostParams) error
 	InsertDiscoverTrendingFollow(ctx context.Context, arg InsertDiscoverTrendingFollowParams) error
 	InsertDiscoverTrendingSignal(ctx context.Context, arg InsertDiscoverTrendingSignalParams) error
-	// DO NOTHING keeps seeded_at at the first successful backfill, so a re-run
-	// never rewrites the stamp it is meant to check.
-	InsertTapSeededDid(ctx context.Context, arg InsertTapSeededDidParams) error
 	// Scoped by did in the query itself (never fetch-then-compare in handlers).
 	ListActiveDiscoverHides(ctx context.Context, arg ListActiveDiscoverHidesParams) ([]string, error)
 	ListAllEntriesForUser(ctx context.Context, did string) ([]ListAllEntriesForUserRow, error)
@@ -142,7 +139,7 @@ type Querier interface {
 	ListDiscoverCrawlSubscriptionsByDids(ctx context.Context, dids []string) ([]DiscoverCrawlSubscription, error)
 	ListDiscoverSourcePosts(ctx context.Context, sourceKey string) ([]DiscoverSourcePost, error)
 	// Whole-table read; kept for callers that genuinely need every row (see
-	// internal/discoverbatch's write-path tests). The trending handler reads
+	// internal/discoveringest's write-path tests). The trending handler reads
 	// ListDiscoverTrendingFollowsAboveBar instead (see that query's comment).
 	ListDiscoverTrendingFollows(ctx context.Context) ([]DiscoverTrendingFollow, error)
 	// Bounds the trending-people read to subject_dids with followers from at
@@ -161,7 +158,7 @@ type Querier interface {
 	// bar: a title needs one contributing repo, unlike a trending card.
 	ListDiscoverTrendingSignalTitles(ctx context.Context, sourceKeys []string) ([]ListDiscoverTrendingSignalTitlesRow, error)
 	// Whole-table read; kept for callers that genuinely need every row (see
-	// internal/discoverbatch's write-path tests). The trending handler reads
+	// internal/discoveringest's write-path tests). The trending handler reads
 	// ListDiscoverTrendingSignalsAboveBar instead (see that query's comment).
 	ListDiscoverTrendingSignals(ctx context.Context) ([]DiscoverTrendingSignal, error)
 	// Bounds the trending-sources read to source_keys with signals from at
@@ -197,7 +194,6 @@ type Querier interface {
 	// along because DeleteTapDirtyRepo needs the value that was read.
 	ListTapDirtyRepos(ctx context.Context, limit int64) ([]TapDirtyRepo, error)
 	ListTapRecordsForRepo(ctx context.Context, did string) ([]TapRecord, error)
-	ListTapSeededDids(ctx context.Context) ([]string, error)
 	ListUserFollows(ctx context.Context, did string) ([]UserFollow, error)
 	// Snapshot of a user's local follow index, used by sync_user to diff against
 	// the PDS and reconcile inserts/deletes.
@@ -269,12 +265,15 @@ type Querier interface {
 	// Preserve the last successful payload so a transient failure serves stale metadata.
 	RecordShareMetadataFailure(ctx context.Context, arg RecordShareMetadataFailureParams) error
 	SetFeedIconURL(ctx context.Context, arg SetFeedIconURLParams) error
+	// Existence probe for the network-wide identity/account/sync stream. Those
+	// markers reach every subscriber regardless of the collection filter, so a
+	// marker for a repo we never mirrored must not mint state rows for it.
+	TapRepoIsMirrored(ctx context.Context, did string) (bool, error)
 	UpdateFeedEntryExtractedBody(ctx context.Context, arg UpdateFeedEntryExtractedBodyParams) error
 	// SPEC <feed-sources> failure handling; success (UpdateFeedFetchState) resets both.
 	UpdateFeedFetchFailure(ctx context.Context, arg UpdateFeedFetchFailureParams) error
 	// SPEC <feed-sources> failure handling: success resets the backoff counter and clears the skip stamp.
 	UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchStateParams) error
-	UpsertDiscoverBatchState(ctx context.Context, lastRunAt string) error
 	UpsertDiscoverCrawlAdjacentState(ctx context.Context, arg UpsertDiscoverCrawlAdjacentStateParams) error
 	UpsertDiscoverCrawlAuthoredState(ctx context.Context, arg UpsertDiscoverCrawlAuthoredStateParams) error
 	UpsertDiscoverCrawlFollowState(ctx context.Context, arg UpsertDiscoverCrawlFollowStateParams) error
@@ -282,6 +281,10 @@ type Querier interface {
 	UpsertDiscoverCrawlShareState(ctx context.Context, arg UpsertDiscoverCrawlShareStateParams) error
 	UpsertDiscoverCrawlState(ctx context.Context, arg UpsertDiscoverCrawlStateParams) error
 	UpsertDiscoverHide(ctx context.Context, arg UpsertDiscoverHideParams) error
+	// Writes the whole position at once: advancing the live seq must clear the
+	// bootstrap columns in the same statement, or a restart would re-enter a
+	// backfill that already finished.
+	UpsertDiscoverIngestCursor(ctx context.Context, arg UpsertDiscoverIngestCursorParams) error
 	UpsertDiscoverPublicationResolution(ctx context.Context, arg UpsertDiscoverPublicationResolutionParams) error
 	// On-demand discovery success; only touches the favicon columns, never the posts ladder (fetched_at/failure_count/next_retry_at).
 	UpsertDiscoverSourceFaviconURL(ctx context.Context, arg UpsertDiscoverSourceFaviconURLParams) error
@@ -306,6 +309,13 @@ type Querier interface {
 	// fallback (path-less docs pass the new textContent).
 	UpsertStandardfeedEntry(ctx context.Context, arg UpsertStandardfeedEntryParams) error
 	UpsertTapRecord(ctx context.Context, arg UpsertTapRecordParams) error
+	// Status-only upsert. An account event carries no handle, so an existing row
+	// keeps the handle identity last resolved instead of blanking it.
+	UpsertTapRepoAccount(ctx context.Context, arg UpsertTapRepoAccountParams) error
+	// Handle-only upsert. An identity event carries no hosting status, so an
+	// existing row keeps whatever the account stream last said; a brand new row
+	// defaults to active, which is what a repo emitting identity events is.
+	UpsertTapRepoHandle(ctx context.Context, arg UpsertTapRepoHandleParams) error
 	UpsertTapRepoState(ctx context.Context, arg UpsertTapRepoStateParams) error
 	UpsertUserFollow(ctx context.Context, arg UpsertUserFollowParams) error
 	UpsertUserSave(ctx context.Context, arg UpsertUserSaveParams) error

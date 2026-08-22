@@ -22,9 +22,9 @@ import (
 	"morgenblau/internal/cache/profiles"
 	"morgenblau/internal/database"
 	dbqueries "morgenblau/internal/database/db"
-	"morgenblau/internal/discoverbatch"
 	"morgenblau/internal/discovercrawl"
 	"morgenblau/internal/discoverfavicon"
+	"morgenblau/internal/discoveringest"
 	"morgenblau/internal/discovermemo"
 	"morgenblau/internal/discoverperson"
 	"morgenblau/internal/discoverposts"
@@ -41,7 +41,6 @@ import (
 	"morgenblau/internal/sharemeta"
 	"morgenblau/internal/standardfeed"
 	internalsync "morgenblau/internal/sync"
-	"morgenblau/internal/tapingest"
 )
 
 type Server struct {
@@ -99,23 +98,12 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		fetchMinutes = n
 	}
 
-	// SPEC <discovery>: daily cadence is deliberate; 0 disables, same convention as FETCH_INTERVAL_MINUTES.
-	discoverBatchHours := 24
-	if raw := os.Getenv("DISCOVER_BATCH_INTERVAL_HOURS"); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil {
-			return nil, nil, fmt.Errorf("invalid DISCOVER_BATCH_INTERVAL_HOURS %q: %w", raw, err)
-		}
-		discoverBatchHours = n
+	jetstreamURL := os.Getenv("JETSTREAM_URL")
+	if jetstreamURL == "" {
+		jetstreamURL = "wss://jetstream.us-east.bsky.network"
 	}
-	relayHost := os.Getenv("DISCOVER_RELAY_HOST")
-	if relayHost == "" {
-		relayHost = discoverbatch.DefaultRelayHost
-	}
-	tapURL := os.Getenv("TAP_URL")
-	if tapURL == "" {
-		tapURL = "http://localhost:2480"
-	}
+	jetstreamAPIKey := os.Getenv("JETSTREAM_API_KEY")
+
 	appviewHost := os.Getenv("APPVIEW_HOST")
 	if appviewHost == "" {
 		appviewHost = "https://public.api.bsky.app"
@@ -196,25 +184,15 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	discoverPeopleMemo := discovermemo.New[api.DiscoverPeoplePayload](discovermemo.DefaultTTL)
 	discoverMemos := discovermemo.NewGroup(discoverSourcesMemo, discoverPeopleMemo)
 
-	// SPEC <discovery> Global/Trending: tap mirrors the reader network's records, the rebuild worker turns them into aggregates, and the seeder tells tap which repos to follow.
-	tapConsumer := tapingest.NewConsumer(tapURL).WithTxRunner(db.Writer)
-	tapConsumer.Start()
-	tapRebuild := tapingest.NewRebuildWorker(qr, crawlClient, identityDir, qr).
+	// SPEC <discovery> Global/Trending: the ingest consumer mirrors the reader network's records straight off Jetstream, and the rebuild worker turns them into aggregates.
+	discoverRepoFetcher := discoveringest.NewRepoFetcher(identityDir, safeClient)
+	discoverIngest := discoveringest.NewConsumer(discoveringest.Config{URL: jetstreamURL, APIKey: jetstreamAPIKey}, qr, discoverRepoFetcher).WithTxRunner(db.Writer)
+	discoverIngest.Start()
+	discoverRebuild := discoveringest.NewRebuildWorker(qr, crawlClient, identityDir, qr).
 		WithTxRunner(db.Writer).
 		WithInvalidator(discoverMemos.InvalidateAll)
-	tapRebuild.Start()
-
-	var seedRunner *discoverbatch.Runner
-	if discoverBatchHours > 0 {
-		seeder := tapingest.NewSeeder(tapURL, tapingest.NewTapClient(), relayHost, safeClient, qr).WithTxRunner(db.Writer)
-		seedRunner = discoverbatch.NewRunner(seeder, time.Duration(discoverBatchHours)*time.Hour).
-			WithStateStore(qr, qw).
-			WithFailureRetry(time.Minute)
-		seedRunner.Start()
-		slog.Info("discover tap seeding enabled", "interval", time.Duration(discoverBatchHours)*time.Hour, "relay", relayHost, "tap", tapURL)
-	} else {
-		slog.Info("discover tap seeding disabled (DISCOVER_BATCH_INTERVAL_HOURS <= 0)")
-	}
+	discoverRebuild.Start()
+	slog.Info("discover jetstream ingest enabled", "url", jetstreamURL)
 
 	srv := &Server{
 		port:                port,
@@ -263,16 +241,11 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		if err := orchestrator.Shutdown(ctx); err != nil {
 			slog.Warn("sync orchestrator shutdown", "err", err)
 		}
-		if seedRunner != nil {
-			if err := seedRunner.Shutdown(ctx); err != nil {
-				slog.Warn("discover tap seeder shutdown", "err", err)
-			}
+		if err := discoverIngest.Shutdown(ctx); err != nil {
+			slog.Warn("discover ingest consumer shutdown", "err", err)
 		}
-		if err := tapConsumer.Shutdown(ctx); err != nil {
-			slog.Warn("tap consumer shutdown", "err", err)
-		}
-		if err := tapRebuild.Shutdown(ctx); err != nil {
-			slog.Warn("tap rebuild worker shutdown", "err", err)
+		if err := discoverRebuild.Shutdown(ctx); err != nil {
+			slog.Warn("discover rebuild worker shutdown", "err", err)
 		}
 		return db.Close()
 	}

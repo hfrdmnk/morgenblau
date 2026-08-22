@@ -31,15 +31,6 @@ SELECT did, marked_at FROM tap_dirty_repos ORDER BY marked_at, did LIMIT ?;
 -- rebuilt again, instead of having that change silently dropped.
 DELETE FROM tap_dirty_repos WHERE did = ? AND marked_at <= ?;
 
--- name: ListTapSeededDids :many
-SELECT did FROM tap_seeder_state;
-
--- name: InsertTapSeededDid :exec
--- DO NOTHING keeps seeded_at at the first successful backfill, so a re-run
--- never rewrites the stamp it is meant to check.
-INSERT INTO tap_seeder_state (did, seeded_at) VALUES (?, ?)
-ON CONFLICT (did) DO NOTHING;
-
 -- name: GetTapRepoState :one
 SELECT did, handle, is_active, status, updated_at
 FROM tap_repo_states
@@ -53,3 +44,33 @@ ON CONFLICT (did) DO UPDATE SET
     is_active  = excluded.is_active,
     status     = excluded.status,
     updated_at = excluded.updated_at;
+
+-- name: UpsertTapRepoHandle :exec
+-- Handle-only upsert. An identity event carries no hosting status, so an
+-- existing row keeps whatever the account stream last said; a brand new row
+-- defaults to active, which is what a repo emitting identity events is.
+INSERT INTO tap_repo_states (did, handle, is_active, status, updated_at)
+VALUES (?, ?, 1, '', ?)
+ON CONFLICT (did) DO UPDATE SET
+    handle     = excluded.handle,
+    updated_at = excluded.updated_at;
+
+-- name: UpsertTapRepoAccount :exec
+-- Status-only upsert. An account event carries no handle, so an existing row
+-- keeps the handle identity last resolved instead of blanking it.
+INSERT INTO tap_repo_states (did, handle, is_active, status, updated_at)
+VALUES (?, '', ?, ?, ?)
+ON CONFLICT (did) DO UPDATE SET
+    is_active  = excluded.is_active,
+    status     = excluded.status,
+    updated_at = excluded.updated_at;
+
+-- name: TapRepoIsMirrored :one
+-- Existence probe for the network-wide identity/account/sync stream. Those
+-- markers reach every subscriber regardless of the collection filter, so a
+-- marker for a repo we never mirrored must not mint state rows for it.
+SELECT EXISTS (
+    SELECT 1 FROM tap_records r WHERE r.did = sqlc.arg(did)
+    UNION ALL
+    SELECT 1 FROM tap_repo_states s WHERE s.did = sqlc.arg(did)
+) AS mirrored;

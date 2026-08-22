@@ -41,8 +41,8 @@ ATproto is just a means to an end. We're not advertising as "RSS on ATproto" but
 - Tailwind CSS 4
 - Base UI
 
-### Sidecars
-- tap (indigo `cmd/tap`): the firehose reader that feeds discovery. Operated alongside the app, never imported by it; the app reaches it over local HTTP and a websocket channel (`TAP_URL`), and tells it which repos to follow.
+### External services
+- Jetstream (Bluesky Protocol Services, hosted): the firehose that feeds discovery. Nothing is operated locally; the app dials out to a Jetstream instance over websocket (`JETSTREAM_URL`, optional bearer `JETSTREAM_API_KEY`).
 
 </stack>
 
@@ -469,7 +469,7 @@ Refresh has **three user-initiated triggers** plus a **background sweep**:
 - **Manual refresh** is available on the digest view.
 - **On subscription add**, the new subscription is fetched immediately (only that feed, not the whole set).
 - **On login**, all of the user's subscriptions are refreshed (behaves like manual refresh), subject to a 5-minute in-flight guard so repeated logins don't thrash upstream feeds.
-- **Background sweep** re-fetches every feed in the shared Tier-2 catalog on a global timer (`FETCH_INTERVAL_MINUTES`, default 30; `0` disables). It is system-wide, not per-user: it touches no PDS records and creates no jobs, so it never lights up a refresh indicator. Conditional GET (etag/last-modified) keeps re-fetches cheap, and the fetcher's worker pool bounds upstream load. This timer governs Tier-2 content only; discovery ingestion runs continuously off tap on its own cadence (see `<discovery>`).
+- **Background sweep** re-fetches every feed in the shared Tier-2 catalog on a global timer (`FETCH_INTERVAL_MINUTES`, default 30; `0` disables). It is system-wide, not per-user: it touches no PDS records and creates no jobs, so it never lights up a refresh indicator. Conditional GET (etag/last-modified) keeps re-fetches cheap, and the fetcher's worker pool bounds upstream load. This timer governs Tier-2 content only; discovery ingestion runs continuously off Jetstream on its own cadence (see `<discovery>`).
 
 Upstream politeness for ATProto is enforced at the client, not at each call site: every outbound XRPC path is built by `atxrpc.New`, which installs a shared per-host cooldown honoring `Retry-After` and rate-limit headers (`internal/atxrpc/cooldown.go`). New fetch loops inherit it by construction rather than hand-rolling retries. RSS fetches keep the fetcher's own per-feed backoff (see Failure Handling).
 
@@ -520,12 +520,12 @@ The Discover route answers "where do I find good stuff to read?" using the reade
 
 ### Data acquisition
 
-Ingestion runs through a **tap sidecar** (indigo `cmd/tap`, see `<stack>`) that consumes the firehose for the repos Morgenblau tracks. Relay enumeration survives only as the seed that tells tap which repos to follow; it no longer acquires records itself.
+Ingestion runs off **Jetstream** (see `<stack>`), Bluesky's hosted firehose, filtered server-side to the collections Morgenblau tracks. The filter is network-wide: any repo that ever writes a tracked collection is in scope automatically, so there is no allowlist and no "newly discovered repo" step. A Jetstream event's own timestamp is crawl/witness time, not the record's content time; freshness and gravity decay read only the record's `createdAt`.
 
 - **Personal**: `listRecords` crawls of the repos of people the user follows (bounded set), plus single-repo crawls when the user inspects one person (card expansion, profile page), cached in local SQLite with a TTL. Crawls fan out per signal in batches, never per candidate, and the assembled payload is memoized per user for a short TTL (`internal/discovermemo`), so paging and re-visits reuse one assembly instead of re-running the fan-out. Same posture as Tier-1/Tier-2: local tables are derived caches, re-derivable from PDSes.
-- **Global/Trending**: tap streams every tracked repo's records into a local mirror and marks the repo dirty; a rebuild worker drains the dirty set and reduces each repo's mirrored records into local aggregate tables (canonical source key → per-signal counts). Records therefore arrive continuously rather than in a nightly pass. A seeder enumerates the relay per collection (`com.atproto.sync.listReposByCollection`) on an interval (`DISCOVER_BATCH_INTERVAL_HOURS`, daily by default) and hands tap the repos it has not been told about, so enumeration only ever widens the tracked set. One computation serves all users. Ingestion lives in `internal/tapingest`; the signal reduction and the aggregate writers stay in `internal/discoverbatch`.
+- **Global/Trending**: initial state comes from a Jetstream Network Replay (a snapshot over the tracked collections with no lower bound; the archive holds full pre-existing history for these collections, confirmed empirically 2026-08-22), streamed through the same reduce path as the live feed. The live websocket then tails from the archive's sealed tip, resuming from an app-owned cursor persisted in SQLite. Every streamed record marks its repo dirty; a rebuild worker drains the dirty set and reduces each repo's mirrored records into local aggregate tables (canonical source key → per-signal counts). Records arrive continuously rather than in a nightly pass. One computation serves all users. Ingestion, the reduce path, and the aggregate writers all live in `internal/discoveringest`.
 
-Tap identity changes immediately remove inactive repos from discovery. Reversible states retain their raw mirror for reactivation; permanent deletion purges it. The lifecycle policy lives in `internal/tapingest`.
+Account deletion purges the deleted repo's mirror; reversible states retain their raw mirror for reactivation, as before. Identity events update the handle only. A `#sync` event (repo divergence) re-derives that repo's mirror by re-crawling its tracked collections. The lifecycle policy lives in `internal/discoveringest`.
 
 Aggregates are keyed by the same canonical source keys as Tier-2 (canonical feed URL for `rss`, publication AT-URI for `standardfeed`), so cross-reader dedup falls out of the keying.
 
@@ -599,7 +599,7 @@ Sources and People are each **one unified list, no sections**, loaded eight sugg
 
 Two-tier storage with different authority and sharing models.
 
-The discovery mirror tap fills (see `<discovery>`) belongs to neither tier: it is a network-wide, anonymous derived cache that feeds trending aggregates only. It never supplies Tier-2 entries and never stands in for a Tier-1 reconcile.
+The discovery mirror Jetstream fills (see `<discovery>`) belongs to neither tier: it is a network-wide, anonymous derived cache that feeds trending aggregates only. It never supplies Tier-2 entries and never stands in for a Tier-1 reconcile.
 
 ### Tier 1 — PDS-mirrored (per-user)
 
