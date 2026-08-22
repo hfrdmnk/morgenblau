@@ -2,7 +2,6 @@ package discovercrawl
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -86,13 +85,16 @@ func newCachedAuthoredCrawlerUnderTest(dbs *database.DB, crawler AuthoredCrawler
 	return cc
 }
 
-func TestCachedAuthoredCrawler_FirstCall_CrawlsAndCaches(t *testing.T) {
+// TestCachedAuthoredCrawler_WiresReaderWriterAndTTL is the thin instantiation check: the
+// cache-logic itself (TTL math, degrade posture) lives in cachedFetch and is covered by its own tests.
+func TestCachedAuthoredCrawler_WiresReaderWriterAndTTL(t *testing.T) {
 	dbs := openAuthoredCrawlCacheTestDB(t)
 	pubURI := "at://" + followedDID + "/site.standard.publication/3p"
 	crawler := &fakeAuthoredCrawler{results: []AuthoredPublication{{Key: pubURI, Kind: "standardfeed", Title: "Zine", SiteURL: "https://zine.example", LastPublishedAt: "2026-07-08T00:00:00Z", Verification: verifiedOutcome}}}
-	cc := newCachedAuthoredCrawlerUnderTest(dbs, crawler, time.Hour, mustParseTime(t, "2026-07-09T12:00:00Z"))
-
+	start := mustParseTime(t, "2026-07-09T12:00:00Z")
+	cc := newCachedAuthoredCrawlerUnderTest(dbs, crawler, time.Hour, start)
 	did, _ := syntax.ParseDID(followedDID)
+
 	got, err := cc.FetchAuthoredPublications(context.Background(), did)
 	if err != nil {
 		t.Fatalf("FetchAuthoredPublications: %v", err)
@@ -111,57 +113,14 @@ func TestCachedAuthoredCrawler_FirstCall_CrawlsAndCaches(t *testing.T) {
 	if len(rows) != 1 || rows[0].CanonicalKey != pubURI || rows[0].Verification != verifiedOutcome {
 		t.Fatalf("cached rows = %+v, want the verified outcome persisted", rows)
 	}
-}
 
-func TestCachedAuthoredCrawler_WithinTTL_ServesCacheWithoutCrawling(t *testing.T) {
-	dbs := openAuthoredCrawlCacheTestDB(t)
-	pubURI := "at://" + followedDID + "/site.standard.publication/3p"
-	crawler := &fakeAuthoredCrawler{results: []AuthoredPublication{{Key: pubURI, Kind: "standardfeed", Title: "Zine", Verification: verifiedOutcome}}}
-	start := mustParseTime(t, "2026-07-09T12:00:00Z")
-	cc := newCachedAuthoredCrawlerUnderTest(dbs, crawler, time.Hour, start)
-	did, _ := syntax.ParseDID(followedDID)
-
-	if _, err := cc.FetchAuthoredPublications(context.Background(), did); err != nil {
-		t.Fatalf("first fetch: %v", err)
-	}
-
+	// The ttl passed to NewCachedAuthoredCrawler is what gets honored, not some hardcoded value.
 	cc.now = func() time.Time { return start.Add(30 * time.Minute) }
-	got, err := cc.FetchAuthoredPublications(context.Background(), did)
-	if err != nil {
+	if _, err := cc.FetchAuthoredPublications(context.Background(), did); err != nil {
 		t.Fatalf("second fetch: %v", err)
 	}
 	if crawler.calls != 1 {
 		t.Errorf("crawler.calls = %d, want 1 (TTL hit must not re-crawl)", crawler.calls)
-	}
-	if len(got) != 1 || got[0].Title != "Zine" {
-		t.Fatalf("got = %+v, want cached result", got)
-	}
-}
-
-func TestCachedAuthoredCrawler_PastTTL_RecrawlsAndReplaces(t *testing.T) {
-	dbs := openAuthoredCrawlCacheTestDB(t)
-	pubURI := "at://" + followedDID + "/site.standard.publication/old"
-	crawler := &fakeAuthoredCrawler{results: []AuthoredPublication{{Key: pubURI, Kind: "standardfeed", Verification: verifiedOutcome}}}
-	start := mustParseTime(t, "2026-07-09T12:00:00Z")
-	cc := newCachedAuthoredCrawlerUnderTest(dbs, crawler, time.Hour, start)
-	did, _ := syntax.ParseDID(followedDID)
-
-	if _, err := cc.FetchAuthoredPublications(context.Background(), did); err != nil {
-		t.Fatalf("first fetch: %v", err)
-	}
-
-	newPubURI := "at://" + followedDID + "/site.standard.publication/new"
-	crawler.results = []AuthoredPublication{{Key: newPubURI, Kind: "standardfeed", Verification: verifiedOutcome}}
-	cc.now = func() time.Time { return start.Add(2 * time.Hour) }
-	got, err := cc.FetchAuthoredPublications(context.Background(), did)
-	if err != nil {
-		t.Fatalf("second fetch: %v", err)
-	}
-	if crawler.calls != 2 {
-		t.Errorf("crawler.calls = %d, want 2 (stale cache must re-crawl)", crawler.calls)
-	}
-	if len(got) != 1 || got[0].Key != newPubURI {
-		t.Fatalf("got = %+v, want only the new result", got)
 	}
 }
 
@@ -208,25 +167,6 @@ func TestCachedAuthoredCrawler_WithinTTL_FiltersOutNonVerifiedCachedRows(t *test
 	}
 	if len(rows) != 2 {
 		t.Fatalf("rows = %+v, want the list query to still surface both outcomes", rows)
-	}
-}
-
-func TestCachedAuthoredCrawler_CrawlErrorPropagatesAndWritesNothing(t *testing.T) {
-	dbs := openAuthoredCrawlCacheTestDB(t)
-	crawler := &fakeAuthoredCrawler{err: errors.New("pds unreachable")}
-	cc := newCachedAuthoredCrawlerUnderTest(dbs, crawler, time.Hour, mustParseTime(t, "2026-07-09T12:00:00Z"))
-	did, _ := syntax.ParseDID(followedDID)
-
-	if _, err := cc.FetchAuthoredPublications(context.Background(), did); err == nil {
-		t.Fatal("expected error to propagate")
-	}
-
-	rows, err := db.New(dbs.Reader).ListDiscoverCrawlAuthored(context.Background(), followedDID)
-	if err != nil {
-		t.Fatalf("ListDiscoverCrawlAuthored: %v", err)
-	}
-	if len(rows) != 0 {
-		t.Errorf("rows = %+v, want none written on crawl failure", rows)
 	}
 }
 

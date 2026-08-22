@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -68,38 +67,31 @@ func (c *CachedShareCrawler) WithTxRunner(w *sql.DB) *CachedShareCrawler {
 
 // FetchShares serves from cache within ttl, otherwise crawls fresh and refreshes the cache.
 func (c *CachedShareCrawler) FetchShares(ctx context.Context, did syntax.DID) ([]Share, error) {
-	didStr := did.String()
-
-	state, err := c.reader.GetDiscoverCrawlShareState(ctx, didStr)
-	switch {
-	case err == nil:
-		fetchedAt, perr := time.Parse(time.RFC3339, state.FetchedAt)
-		if perr == nil && c.now().Sub(fetchedAt) < c.ttl {
+	return cachedFetch[Share]{
+		label: "shares",
+		ttl:   c.ttl,
+		now:   c.now,
+		getState: func(ctx context.Context, didStr string) (string, error) {
+			state, err := c.reader.GetDiscoverCrawlShareState(ctx, didStr)
+			if err != nil {
+				return "", err
+			}
+			return state.FetchedAt, nil
+		},
+		listCached: func(ctx context.Context, didStr string) ([]Share, error) {
 			rows, err := c.reader.ListDiscoverCrawlShares(ctx, didStr)
 			if err != nil {
 				return nil, err
 			}
 			return rowsToShares(rows), nil
-		}
-	case errors.Is(err, sql.ErrNoRows):
-		// Never crawled: falls through to a fresh crawl below.
-	default:
-		return nil, err
-	}
-
-	results, err := c.crawler.CrawlShares(ctx, did)
-	if err != nil {
-		return nil, err
-	}
-
-	fetchedAt := c.now().UTC().Format(time.RFC3339)
-	if err := c.runTx(ctx, func(w ShareCacheWriter) error {
-		return storeShareResults(ctx, w, didStr, results, fetchedAt)
-	}); err != nil {
-		// Cache-write failure isn't fatal: the next call just re-crawls instead of using a stale cache.
-		slog.Warn("discovercrawl: share cache write failed", "did", didStr, "err", err)
-	}
-	return results, nil
+		},
+		crawl: c.crawler.CrawlShares,
+		store: func(ctx context.Context, didStr string, results []Share, fetchedAt string) error {
+			return c.runTx(ctx, func(w ShareCacheWriter) error {
+				return storeShareResults(ctx, w, didStr, results, fetchedAt)
+			})
+		},
+	}.fetch(ctx, did)
 }
 
 // FetchSharesBatch is FetchShares over a whole fan-out; see FetchSubscriptionsBatch for the read/crawl split and degrade posture.

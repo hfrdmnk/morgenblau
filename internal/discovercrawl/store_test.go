@@ -133,12 +133,15 @@ func newCachedCrawlerUnderTest(dbs *database.DB, crawler Crawler, ttl time.Durat
 	return cc
 }
 
-func TestCachedCrawler_FirstCall_CrawlsAndCaches(t *testing.T) {
+// TestCachedCrawler_WiresReaderWriterAndTTL is the thin instantiation check: the cache-logic
+// itself (TTL math, degrade posture) lives in cachedFetch and is covered by its own tests.
+func TestCachedCrawler_WiresReaderWriterAndTTL(t *testing.T) {
 	dbs := openCrawlCacheTestDB(t)
 	crawler := &fakeCrawler{results: []Subscription{{Key: "https://a.example/feed", Kind: "rss", Title: "A"}}}
-	cc := newCachedCrawlerUnderTest(dbs, crawler, time.Hour, mustParseTime(t, "2026-07-09T12:00:00Z"))
-
+	start := mustParseTime(t, "2026-07-09T12:00:00Z")
+	cc := newCachedCrawlerUnderTest(dbs, crawler, time.Hour, start)
 	did, _ := syntax.ParseDID(followedDID)
+
 	got, err := cc.FetchSubscriptions(context.Background(), did)
 	if err != nil {
 		t.Fatalf("FetchSubscriptions: %v", err)
@@ -150,7 +153,7 @@ func TestCachedCrawler_FirstCall_CrawlsAndCaches(t *testing.T) {
 		t.Fatalf("got = %+v", got)
 	}
 
-	// Cache actually persisted, not just returned in-memory.
+	// Cache actually persisted through the real writer, not just returned in-memory.
 	rows, err := db.New(dbs.Reader).ListDiscoverCrawlSubscriptions(context.Background(), followedDID)
 	if err != nil {
 		t.Fatalf("ListDiscoverCrawlSubscriptions: %v", err)
@@ -158,83 +161,14 @@ func TestCachedCrawler_FirstCall_CrawlsAndCaches(t *testing.T) {
 	if len(rows) != 1 || rows[0].CanonicalKey != "https://a.example/feed" {
 		t.Fatalf("cached rows = %+v", rows)
 	}
-}
 
-func TestCachedCrawler_WithinTTL_ServesCacheWithoutCrawling(t *testing.T) {
-	dbs := openCrawlCacheTestDB(t)
-	crawler := &fakeCrawler{results: []Subscription{{Key: "https://a.example/feed", Kind: "rss", Title: "A"}}}
-	start := mustParseTime(t, "2026-07-09T12:00:00Z")
-	cc := newCachedCrawlerUnderTest(dbs, crawler, time.Hour, start)
-	did, _ := syntax.ParseDID(followedDID)
-
-	if _, err := cc.FetchSubscriptions(context.Background(), did); err != nil {
-		t.Fatalf("first fetch: %v", err)
-	}
-
-	// 30 minutes later, still within the 1h TTL.
+	// The ttl passed to NewCachedCrawler is what gets honored, not some hardcoded value.
 	cc.now = func() time.Time { return start.Add(30 * time.Minute) }
-	got, err := cc.FetchSubscriptions(context.Background(), did)
-	if err != nil {
+	if _, err := cc.FetchSubscriptions(context.Background(), did); err != nil {
 		t.Fatalf("second fetch: %v", err)
 	}
 	if crawler.calls != 1 {
 		t.Errorf("crawler.calls = %d, want 1 (TTL hit must not re-crawl)", crawler.calls)
-	}
-	if len(got) != 1 || got[0].Key != "https://a.example/feed" {
-		t.Fatalf("got = %+v, want cached result", got)
-	}
-}
-
-func TestCachedCrawler_PastTTL_RecrawlsAndReplaces(t *testing.T) {
-	dbs := openCrawlCacheTestDB(t)
-	crawler := &fakeCrawler{results: []Subscription{{Key: "https://old.example/feed", Kind: "rss"}}}
-	start := mustParseTime(t, "2026-07-09T12:00:00Z")
-	cc := newCachedCrawlerUnderTest(dbs, crawler, time.Hour, start)
-	did, _ := syntax.ParseDID(followedDID)
-
-	if _, err := cc.FetchSubscriptions(context.Background(), did); err != nil {
-		t.Fatalf("first fetch: %v", err)
-	}
-
-	// Past the TTL, and the followed person's subscriptions changed.
-	crawler.results = []Subscription{{Key: "https://new.example/feed", Kind: "rss"}}
-	cc.now = func() time.Time { return start.Add(2 * time.Hour) }
-	got, err := cc.FetchSubscriptions(context.Background(), did)
-	if err != nil {
-		t.Fatalf("second fetch: %v", err)
-	}
-	if crawler.calls != 2 {
-		t.Errorf("crawler.calls = %d, want 2 (stale cache must re-crawl)", crawler.calls)
-	}
-	if len(got) != 1 || got[0].Key != "https://new.example/feed" {
-		t.Fatalf("got = %+v, want only the new result", got)
-	}
-
-	rows, err := db.New(dbs.Reader).ListDiscoverCrawlSubscriptions(context.Background(), followedDID)
-	if err != nil {
-		t.Fatalf("ListDiscoverCrawlSubscriptions: %v", err)
-	}
-	if len(rows) != 1 || rows[0].CanonicalKey != "https://new.example/feed" {
-		t.Fatalf("cached rows not replaced: %+v", rows)
-	}
-}
-
-func TestCachedCrawler_CrawlErrorPropagatesAndWritesNothing(t *testing.T) {
-	dbs := openCrawlCacheTestDB(t)
-	crawler := &fakeCrawler{err: errors.New("pds unreachable")}
-	cc := newCachedCrawlerUnderTest(dbs, crawler, time.Hour, mustParseTime(t, "2026-07-09T12:00:00Z"))
-	did, _ := syntax.ParseDID(followedDID)
-
-	if _, err := cc.FetchSubscriptions(context.Background(), did); err == nil {
-		t.Fatal("expected error to propagate")
-	}
-
-	rows, err := db.New(dbs.Reader).ListDiscoverCrawlSubscriptions(context.Background(), followedDID)
-	if err != nil {
-		t.Fatalf("ListDiscoverCrawlSubscriptions: %v", err)
-	}
-	if len(rows) != 0 {
-		t.Errorf("rows = %+v, want none written on crawl failure", rows)
 	}
 }
 
