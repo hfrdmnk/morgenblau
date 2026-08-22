@@ -244,11 +244,11 @@ func (b discoverSourcesBuilder) build(ctx context.Context, did syntax.DID, accep
 			addSignal(candidates, p.Key, p.Kind, p.Title, p.SiteURL, follower, discoverrank.SignalAuthor, parseDiscoverTime(p.LastPublishedAt))
 		}
 		for _, sh := range sharesByDID[subjectDID] {
-			key, ok := resolveReactionKey(ctx, b.entries, sh.FeedURL, sh.Document, sh.ItemURL)
+			key, ok := feedkey.ResolveReactionKey(ctx, b.entries, sh.FeedURL, sh.Document, sh.ItemURL)
 			if !ok {
 				continue // unresolvable reaction: no candidate, no error. SPEC <discovery>.
 			}
-			addSignal(candidates, key, kindForReactionKey(key), "", "", follower, discoverrank.SignalShare, parseDiscoverTime(sh.CreatedAt))
+			addSignal(candidates, key, feedkey.Kind(key), "", "", follower, discoverrank.SignalShare, parseDiscoverTime(sh.CreatedAt))
 		}
 	}
 
@@ -442,7 +442,7 @@ func addSignal(
 	c.Followers = append(c.Followers, follower)
 }
 
-// backfillMissingTitles fills title/siteUrl for reaction-only rss candidates from the network-wide trending table in one read, since a share/save signal carries neither (see resolveReactionKey). Not gated by the trending quality bar: a title only needs one contributing repo. A lookup miss or error skips those candidates; it must never fail the request.
+// backfillMissingTitles fills title/siteUrl for reaction-only rss candidates from the network-wide trending table in one read, since a share/save signal carries neither (see feedkey.ResolveReactionKey). Not gated by the trending quality bar: a title only needs one contributing repo. A lookup miss or error skips those candidates; it must never fail the request.
 func backfillMissingTitles(ctx context.Context, reader DiscoverSourceTitleBackfillReader, candidates map[string]*discoverrank.Candidate) {
 	keys := make([]string, 0, len(candidates))
 	for key, c := range candidates {
@@ -471,30 +471,6 @@ func backfillMissingTitles(ctx context.Context, reader DiscoverSourceTitleBackfi
 			c.SiteURL = derefOptString(row.SiteUrl)
 		}
 	}
-}
-
-// resolveReactionKey resolves a share/save to its source key: feedUrl provenance first, then Tier-2 document/itemUrl lookup as fallback; an unresolved reaction returns ok=false. SPEC <discovery>.
-// feedkey.Normalize runs on every branch since Tier-2 lookups return feed_url verbatim; it must land on the same key a normalized subscribe/author signal set (mirrors internal/discoverbatch/signals.go).
-func resolveReactionKey(ctx context.Context, resolver DiscoverEntryResolver, feedURL, document, itemURL string) (string, bool) {
-	if feedURL != "" {
-		return feedkey.Normalize(feedURL), true
-	}
-	if document != "" {
-		if fu, err := resolver.GetFeedURLByGuid(ctx, document); err == nil && fu != "" {
-			return feedkey.Normalize(fu), true
-		}
-	}
-	if itemURL != "" {
-		if fu, err := resolver.GetFeedURLByItemURL(ctx, itemURL); err == nil && fu != "" {
-			return feedkey.Normalize(fu), true
-		}
-	}
-	return "", false
-}
-
-// kindForReactionKey infers a Tier-2 kind from key shape when no subscribe/author signal already set it.
-func kindForReactionKey(key string) string {
-	return feedkey.Kind(key)
 }
 
 // parseDiscoverTime parses a record's RFC3339 timestamp; empty or malformed values degrade to the zero Time, which discoverrank treats as neutral "unknown recency."
