@@ -72,6 +72,32 @@ type personCandidateResult struct {
 	preview   *DiscoverPersonTastePreviewWire
 }
 
+// personActivityEntry pairs a raw activity signal with the canonical source key it came from; an empty key (unresolved share) is never deduped against anything else.
+type personActivityEntry struct {
+	key    string
+	signal discoverrank.Signal
+}
+
+// dedupPersonActivity keeps one signal per canonical source key, strongest wins, so a source visible via more than one record (e.g. subscribed and authored) never counts twice. SPEC <discovery> Personal ranking: one signal per person per source.
+func dedupPersonActivity(entries []personActivityEntry) []discoverrank.Signal {
+	byKey := map[string]discoverrank.Signal{}
+	var unkeyed []discoverrank.Signal
+	for _, e := range entries {
+		if e.key == "" {
+			unkeyed = append(unkeyed, e.signal)
+			continue
+		}
+		if cur, ok := byKey[e.key]; !ok || discoverrank.StrongerSignal(e.signal, cur) {
+			byKey[e.key] = e.signal
+		}
+	}
+	out := make([]discoverrank.Signal, 0, len(byKey)+len(unkeyed))
+	for _, s := range byKey {
+		out = append(out, s)
+	}
+	return append(out, unkeyed...)
+}
+
 // crawlPersonCandidate never returns an error: a failed crawl degrades that signal only, so one candidate never aborts the others.
 func crawlPersonCandidate(
 	ctx context.Context,
@@ -88,7 +114,7 @@ func crawlPersonCandidate(
 		return personCandidateResult{}
 	}
 
-	var activity []discoverrank.Signal
+	var activityEntries []personActivityEntry
 	var ownKeys []string
 	var titles []personTitleEntry
 
@@ -97,7 +123,7 @@ func crawlPersonCandidate(
 	} else {
 		for _, s := range found {
 			at := parseDiscoverTime(s.CreatedAt)
-			activity = append(activity, discoverrank.Signal{Kind: discoverrank.SignalSubscribe, At: at})
+			activityEntries = append(activityEntries, personActivityEntry{key: s.Key, signal: discoverrank.Signal{Kind: discoverrank.SignalSubscribe, At: at}})
 			ownKeys = append(ownKeys, s.Key)
 			titles = append(titles, personTitleEntry{title: firstNonEmptyString(s.Title, s.SiteURL, s.Key), at: at})
 		}
@@ -107,7 +133,7 @@ func crawlPersonCandidate(
 	} else {
 		for _, p := range found {
 			at := parseDiscoverTime(p.LastPublishedAt)
-			activity = append(activity, discoverrank.Signal{Kind: discoverrank.SignalAuthor, At: at})
+			activityEntries = append(activityEntries, personActivityEntry{key: p.Key, signal: discoverrank.Signal{Kind: discoverrank.SignalAuthor, At: at}})
 			ownKeys = append(ownKeys, p.Key)
 			titles = append(titles, personTitleEntry{title: firstNonEmptyString(p.Title, p.SiteURL, p.Key), at: at})
 		}
@@ -118,12 +144,13 @@ func crawlPersonCandidate(
 	} else {
 		for i := range found {
 			sh := found[i]
-			activity = append(activity, discoverrank.Signal{Kind: discoverrank.SignalShare, At: parseDiscoverTime(sh.CreatedAt)})
+			activityEntries = append(activityEntries, personActivityEntry{key: sh.FeedURL, signal: discoverrank.Signal{Kind: discoverrank.SignalShare, At: parseDiscoverTime(sh.CreatedAt)}})
 			if latestShare == nil || sh.CreatedAt > latestShare.CreatedAt {
 				latestShare = &found[i]
 			}
 		}
 	}
+	activity := dedupPersonActivity(activityEntries)
 	shared := 0
 	seenKey := map[string]struct{}{}
 	for _, k := range ownKeys {

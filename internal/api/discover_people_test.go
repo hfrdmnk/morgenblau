@@ -391,6 +391,42 @@ func TestDiscoverPeopleHandler_TasteOverlapCountsURLVariantSubscription(t *testi
 	}
 }
 
+// A source visible through two record kinds (subscribed and authored) must contribute one
+// signal, its strongest, not both summed. Sentinel scores 2.0 (two distinct subscriptions);
+// double's correct deduped score is 1.5 (author only), a buggy sum would be 2.5.
+func TestDiscoverPeopleHandler_DuplicateSourceAcrossRecordKindsCountsOnce(t *testing.T) {
+	adjacent := &fakeAdjacentFollowCrawler{follows: []discovercrawl.AdjacentFollow{
+		{DID: "did:plc:double", Network: "bluesky"},
+		{DID: "did:plc:sentinel", Network: "bluesky"},
+	}}
+	crawler := &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{
+		"did:plc:double": {{Key: "https://dup.example/feed", Kind: "rss"}},
+		"did:plc:sentinel": {
+			{Key: "https://sentinel-a.example/feed", Kind: "rss"},
+			{Key: "https://sentinel-b.example/feed", Kind: "rss"},
+		},
+	}}
+	authored := &fakeAuthoredPublicationCrawler{byDID: map[string][]discovercrawl.AuthoredPublication{
+		"did:plc:double": {{Key: "https://dup.example/feed", Kind: "standardfeed"}},
+	}}
+	h := DiscoverPeopleHandler(&fakeDiscoverFollowsReader{}, adjacent, noReaderNetworkFollows(), &fakeDiscoverSubsReader{}, crawler, authored, noPersonalShares(), newFakeDiscoverHiddenReader(), noTrendingFollows(), noTrendingEligibility(), nil)
+
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/discover/people", nil), "did:plc:me", "sess1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	var got discoverPersonWires
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got = %+v, want both candidates", got)
+	}
+	if got[0].DID != "did:plc:sentinel" {
+		t.Fatalf("got = %+v, want sentinel ranked first (double's subscribe+author on the same source must count once, at the stronger author signal, not summed)", got)
+	}
+}
+
 func TestDiscoverPeopleHandler_AlreadyFollowedExcludedAndNeverCrawled(t *testing.T) {
 	follows := &fakeDiscoverFollowsReader{rows: []db.UserFollow{discoverFollow("did:plc:alice")}}
 	adjacent := &fakeAdjacentFollowCrawler{follows: []discovercrawl.AdjacentFollow{
