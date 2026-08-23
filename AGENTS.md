@@ -41,8 +41,8 @@ Install CLIs once: `go install github.com/pressly/goose/v3/cmd/goose@latest && g
 
 ## Git & PRs
 
-- **Tangled is the source of truth, GitHub is a mirror.** `origin` points at `git@tangled.org:dominik.social/morgenblau`; `git push` auto-mirrors to GitHub via a second pushurl.
-- **Open PRs on tangled, not GitHub.** Don't run `gh pr create`.
+- **GitHub is the source of truth, Tangled is a mirror.** `origin` points at `git@github.com:hfrdmnk/morgenblau.git`; `git push` auto-mirrors to Tangled via a second pushurl.
+- **Open PRs on GitHub.**
 
 ## ATProto Skills
 
