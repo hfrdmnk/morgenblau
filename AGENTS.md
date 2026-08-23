@@ -41,8 +41,9 @@ Install CLIs once: `go install github.com/pressly/goose/v3/cmd/goose@latest && g
 
 ## Git & PRs
 
-- **GitHub is the source of truth, Tangled is a mirror.** `origin` points at `git@github.com:hfrdmnk/morgenblau.git`; `git push` auto-mirrors to Tangled via a second pushurl.
+- **GitHub is the source of truth, Tangled is a read-only mirror.** `origin` fetches from GitHub and pushes to both forges via two pushurls.
 - **Open PRs on GitHub.**
+- **After merging a GitHub PR, run `scripts/sync-tangled.sh`.** It fetches GitHub's `main` and force-syncs Tangled's `main` using the local SSH agent.
 
 ## ATProto Skills
 

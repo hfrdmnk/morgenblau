@@ -89,4 +89,6 @@ make test                           # go test ./... -v
 
 ## Git & PRs
 
-[Tangled](https://tangled.org/dominik.social/morgenblau) is the source of truth; GitHub is a mirror. `origin` pushes to both via a configured second pushurl. **Open PRs on tangled — don't run `gh pr create`.**
+[GitHub](https://github.com/hfrdmnk/morgenblau) is the source of truth; [Tangled](https://tangled.org/dominik.social/morgenblau) is a read-only mirror. Open pull requests on GitHub.
+
+Local pushes reach both forges through `origin`. After merging a pull request in GitHub, run `scripts/sync-tangled.sh` to update Tangled's `main` branch.
