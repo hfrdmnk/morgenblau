@@ -188,6 +188,28 @@ func TestRSSReconcile_RekeyedSubscriptionDeletesBeforeUpsert(t *testing.T) {
 	store.assertDeleteBeforeUpsert(t, "3old", "3new")
 }
 
+func TestRSSReconcile_DuplicateFeedRecordsCollapseToCanonical(t *testing.T) {
+	const feedURL = "https://feed.example.com/a"
+	store := newFakeStore()
+	lister := &fakeLister{subs: []PDSSubscription{
+		{URI: "at://did:plc:alice/blue.morgen.feed.subscription/3zzz", Rkey: "3zzz", Kind: "rss", FeedURL: feedURL, Title: "Newer duplicate"},
+		{URI: "at://did:plc:alice/blue.morgen.feed.subscription/3aaa", Rkey: "3aaa", Kind: "rss", FeedURL: feedURL, Title: "Canonical"},
+	}}
+
+	runStandardReconcile(t, store, lister, nil)
+
+	rows, _ := store.ListUserSubscriptionsForSync(context.Background(), "did:plc:alice")
+	if len(rows) != 1 || rows[0].Rkey != "3aaa" {
+		t.Fatalf("rows = %+v, want one canonical row under 3aaa", rows)
+	}
+	if rows[0].Title == nil || *rows[0].Title != "Canonical" {
+		t.Errorf("title = %v, want canonical record metadata", rows[0].Title)
+	}
+	if store.upserts != 1 {
+		t.Errorf("upserts = %d, want 1", store.upserts)
+	}
+}
+
 func TestStandardReconcile_RemoteDeleteRemovesLocalOnly(t *testing.T) {
 	store := newFakeStore()
 	lister := &fakeLister{

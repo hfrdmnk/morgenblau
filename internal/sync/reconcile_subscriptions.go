@@ -45,14 +45,21 @@ func (e *Engine) reconcileRSS(
 	local := filterSubscriptions(snapshot, isRSS)
 	localByRkey := rkeySet(local)
 
+	var rss []PDSSubscription
+	for _, r := range remote {
+		if r.Kind == "rss" {
+			rss = append(rss, r)
+		}
+	}
+	canonicalByFeed := canonicalByKey(rss,
+		func(r PDSSubscription) string { return r.FeedURL },
+		func(r PDSSubscription) string { return r.Rkey })
+
 	now := e.now().UTC().Format(time.RFC3339)
 	didStr := did.String()
 
-	var desired []desiredRow
-	for _, r := range remote {
-		if r.Kind != "rss" {
-			continue
-		}
+	desired := make([]desiredRow, 0, len(canonicalByFeed))
+	for _, r := range canonicalByFeed {
 		_, existed := localByRkey[r.Rkey]
 		feed := db.UpsertFeedParams{
 			FeedUrl:   r.FeedURL,
