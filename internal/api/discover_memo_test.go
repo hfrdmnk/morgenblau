@@ -230,6 +230,7 @@ func memoPeopleHandler(
 	hides DiscoverHiddenReader,
 	trendingFollows DiscoverTrendingFollowsReader,
 	signals DiscoverTrendingEligibilityReader,
+	entries DiscoverEntryResolver,
 	memo DiscoverMemo[DiscoverPeoplePayload],
 ) http.Handler {
 	return DiscoverPeopleHandler(
@@ -244,6 +245,7 @@ func memoPeopleHandler(
 		trendingFollows,
 		signals,
 		memo,
+		entries,
 	)
 }
 
@@ -252,7 +254,7 @@ func TestDiscoverPeopleHandler_SecondRequestServesTheMemoWithoutRecrawling(t *te
 	crawler := &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{
 		"did:plc:carol": {{Key: "https://carol.example/feed", Kind: "rss"}},
 	}}
-	h := memoPeopleHandler(adjacent, crawler, newFakeDiscoverHiddenReader(), noTrendingFollows(), noTrendingEligibility(), discovermemo.New[DiscoverPeoplePayload](discovermemo.DefaultTTL))
+	h := memoPeopleHandler(adjacent, crawler, newFakeDiscoverHiddenReader(), noTrendingFollows(), noTrendingEligibility(), noEntryResolver(), discovermemo.New[DiscoverPeoplePayload](discovermemo.DefaultTTL))
 
 	first := serveDiscover(t, h, "/api/discover/people", "")
 	crawled := len(crawler.calls)
@@ -292,6 +294,7 @@ func TestDiscoverPeopleHandler_CursorPageIsSlicedFromTheMemoWithoutRecrawling(t 
 		newFakeDiscoverHiddenReader(),
 		&fakeDiscoverTrendingFollowsReader{rows: trendingFollowRows},
 		&fakeDiscoverTrendingSignalsReader{rows: signalRows},
+		noEntryResolver(),
 		discovermemo.New[DiscoverPeoplePayload](discovermemo.DefaultTTL),
 	)
 
@@ -323,7 +326,7 @@ func TestDiscoverPeopleHandler_NilMemoRebuildsEveryRequest(t *testing.T) {
 	crawler := &fakeSubscriptionCrawler{byDID: map[string][]discovercrawl.Subscription{
 		"did:plc:carol": {{Key: "https://carol.example/feed", Kind: "rss"}},
 	}}
-	h := memoPeopleHandler(adjacent, crawler, newFakeDiscoverHiddenReader(), noTrendingFollows(), noTrendingEligibility(), nil)
+	h := memoPeopleHandler(adjacent, crawler, newFakeDiscoverHiddenReader(), noTrendingFollows(), noTrendingEligibility(), noEntryResolver(), nil)
 
 	first := serveDiscover(t, h, "/api/discover/people", "")
 	crawled := len(crawler.calls)
@@ -344,7 +347,7 @@ func TestDiscoverPeopleHandler_InvalidatedMemoPicksUpANewHide(t *testing.T) {
 	}}
 	hides := newFakeDiscoverHiddenReader()
 	memo := discovermemo.New[DiscoverPeoplePayload](discovermemo.DefaultTTL)
-	h := memoPeopleHandler(adjacent, crawler, hides, noTrendingFollows(), noTrendingEligibility(), memo)
+	h := memoPeopleHandler(adjacent, crawler, hides, noTrendingFollows(), noTrendingEligibility(), noEntryResolver(), memo)
 
 	if got := serveDiscover(t, h, "/api/discover/people", ""); len(got.Items) != 1 {
 		t.Fatalf("first page = %d items, want 1", len(got.Items))
@@ -573,6 +576,7 @@ func TestDiscoverHandlers_ConcurrentRendersOfOneMemoEntryAreRaceFree(t *testing.
 		newFakeDiscoverHiddenReader(),
 		&fakeDiscoverTrendingFollowsReader{rows: trendingFollowRows},
 		&fakeDiscoverTrendingSignalsReader{rows: signalRows},
+		noEntryResolver(),
 		discovermemo.New[DiscoverPeoplePayload](discovermemo.DefaultTTL),
 	)
 

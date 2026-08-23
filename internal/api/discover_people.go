@@ -72,7 +72,7 @@ type personCandidateResult struct {
 	preview   *DiscoverPersonTastePreviewWire
 }
 
-// personActivityEntry pairs a raw activity signal with the canonical source key it came from; an empty key (unresolved share) is never deduped against anything else.
+// personActivityEntry pairs a raw activity signal with the canonical source key it came from.
 type personActivityEntry struct {
 	key    string
 	signal discoverrank.Signal
@@ -81,21 +81,19 @@ type personActivityEntry struct {
 // dedupPersonActivity keeps one signal per canonical source key, strongest wins, so a source visible via more than one record (e.g. subscribed and authored) never counts twice. SPEC <discovery> Personal ranking: one signal per person per source.
 func dedupPersonActivity(entries []personActivityEntry) []discoverrank.Signal {
 	byKey := map[string]discoverrank.Signal{}
-	var unkeyed []discoverrank.Signal
 	for _, e := range entries {
 		if e.key == "" {
-			unkeyed = append(unkeyed, e.signal)
 			continue
 		}
 		if cur, ok := byKey[e.key]; !ok || discoverrank.StrongerSignal(e.signal, cur) {
 			byKey[e.key] = e.signal
 		}
 	}
-	out := make([]discoverrank.Signal, 0, len(byKey)+len(unkeyed))
+	out := make([]discoverrank.Signal, 0, len(byKey))
 	for _, s := range byKey {
 		out = append(out, s)
 	}
-	return append(out, unkeyed...)
+	return out
 }
 
 // crawlPersonCandidate never returns an error: a failed crawl degrades that signal only, so one candidate never aborts the others.
@@ -107,6 +105,7 @@ func crawlPersonCandidate(
 	crawler SubscriptionCrawler,
 	authored AuthoredPublicationCrawler,
 	shares PersonalShareCrawler,
+	entries DiscoverEntryResolver,
 ) personCandidateResult {
 	personDID, err := syntax.ParseDID(did)
 	if err != nil {
@@ -117,10 +116,12 @@ func crawlPersonCandidate(
 	var activityEntries []personActivityEntry
 	var ownKeys []string
 	var titles []personTitleEntry
+	eligible := false
 
 	if found, err := crawler.FetchSubscriptions(ctx, personDID); err != nil {
 		slog.Warn("/api/discover/people: subscription crawl failed", "did", did, "err", err)
 	} else {
+		eligible = eligible || len(found) > 0
 		for _, s := range found {
 			at := parseDiscoverTime(s.CreatedAt)
 			activityEntries = append(activityEntries, personActivityEntry{key: s.Key, signal: discoverrank.Signal{Kind: discoverrank.SignalSubscribe, At: at}})
@@ -131,6 +132,7 @@ func crawlPersonCandidate(
 	if found, err := authored.FetchAuthoredPublications(ctx, personDID); err != nil {
 		slog.Warn("/api/discover/people: authored-publication crawl failed", "did", did, "err", err)
 	} else {
+		eligible = eligible || len(found) > 0
 		for _, p := range found {
 			at := parseDiscoverTime(p.LastPublishedAt)
 			activityEntries = append(activityEntries, personActivityEntry{key: p.Key, signal: discoverrank.Signal{Kind: discoverrank.SignalAuthor, At: at}})
@@ -142,9 +144,12 @@ func crawlPersonCandidate(
 	if found, err := shares.FetchShares(ctx, personDID); err != nil {
 		slog.Warn("/api/discover/people: share crawl failed", "did", did, "err", err)
 	} else {
+		eligible = eligible || len(found) > 0
 		for i := range found {
 			sh := found[i]
-			activityEntries = append(activityEntries, personActivityEntry{key: sh.FeedURL, signal: discoverrank.Signal{Kind: discoverrank.SignalShare, At: parseDiscoverTime(sh.CreatedAt)}})
+			if key, ok := feedkey.ResolveReactionKey(ctx, entries, sh.FeedURL, sh.Document, sh.ItemURL); ok {
+				activityEntries = append(activityEntries, personActivityEntry{key: key, signal: discoverrank.Signal{Kind: discoverrank.SignalShare, At: parseDiscoverTime(sh.CreatedAt)}})
+			}
 			if latestShare == nil || sh.CreatedAt > latestShare.CreatedAt {
 				latestShare = &found[i]
 			}
@@ -167,6 +172,7 @@ func crawlPersonCandidate(
 		ok: true,
 		candidate: discoverrank.PersonCandidate{
 			DID:               did,
+			Eligible:          eligible,
 			BlueskyFollow:     rc.bluesky,
 			TangledFollow:     rc.tangled,
 			FollowedByDID:     rc.followedByDID,
@@ -197,6 +203,7 @@ type discoverPeopleBuilder struct {
 	crawler         SubscriptionCrawler
 	authored        AuthoredPublicationCrawler
 	shares          PersonalShareCrawler
+	entries         DiscoverEntryResolver
 	hides           DiscoverHiddenReader
 	trendingFollows DiscoverTrendingFollowsReader
 	signals         DiscoverTrendingEligibilityReader
@@ -216,6 +223,7 @@ func DiscoverPeopleHandler(
 	trendingFollows DiscoverTrendingFollowsReader,
 	signals DiscoverTrendingEligibilityReader,
 	memo DiscoverMemo[DiscoverPeoplePayload],
+	entries DiscoverEntryResolver,
 ) http.Handler {
 	builder := discoverPeopleBuilder{
 		follows:         follows,
@@ -225,6 +233,7 @@ func DiscoverPeopleHandler(
 		crawler:         crawler,
 		authored:        authored,
 		shares:          shares,
+		entries:         entries,
 		hides:           hides,
 		trendingFollows: trendingFollows,
 		signals:         signals,
@@ -356,7 +365,7 @@ func (b discoverPeopleBuilder) build(ctx context.Context, did syntax.DID) (Disco
 	for i, candidateDID := range candidateDIDs {
 		i, candidateDID := i, candidateDID
 		g.Go(func() error {
-			results[i] = crawlPersonCandidate(gctx, candidateDID, raw[candidateDID], viewerKeys, b.crawler, b.authored, b.shares)
+			results[i] = crawlPersonCandidate(gctx, candidateDID, raw[candidateDID], viewerKeys, b.crawler, b.authored, b.shares, b.entries)
 			return nil // one candidate's crawl failure never aborts the group
 		})
 	}

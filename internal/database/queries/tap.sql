@@ -17,19 +17,14 @@ SELECT did, collection, rkey, cid, record, indexed_at
 FROM tap_records WHERE did = ?;
 
 -- name: MarkTapRepoDirty :exec
-INSERT INTO tap_dirty_repos (did, marked_at) VALUES (?, ?)
-ON CONFLICT (did) DO UPDATE SET marked_at = excluded.marked_at;
+INSERT INTO tap_dirty_repos (did, marked_seq) VALUES (?, ?)
+ON CONFLICT (did) DO UPDATE SET marked_seq = MAX(tap_dirty_repos.marked_seq, excluded.marked_seq);
 
 -- name: ListTapDirtyRepos :many
--- Oldest mark first so a backlog drains in arrival order. marked_at rides
--- along because DeleteTapDirtyRepo needs the value that was read.
-SELECT did, marked_at FROM tap_dirty_repos ORDER BY marked_at, did LIMIT ?;
+SELECT did, marked_seq FROM tap_dirty_repos ORDER BY marked_seq, did LIMIT ?;
 
 -- name: DeleteTapDirtyRepo :exec
--- The marked_at guard clears only the mark the rebuild actually consumed: a
--- repo re-dirtied while its rebuild was running keeps a newer row and gets
--- rebuilt again, instead of having that change silently dropped.
-DELETE FROM tap_dirty_repos WHERE did = ? AND marked_at <= ?;
+DELETE FROM tap_dirty_repos WHERE did = ? AND marked_seq = ?;
 
 -- name: GetTapRepoState :one
 SELECT did, handle, is_active, status, updated_at

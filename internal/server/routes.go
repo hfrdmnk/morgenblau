@@ -52,7 +52,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("DELETE /api/follows/{rkey}", api.FollowsDeleteHandler(s.qr, s.qw, pdsWriter, s.sync, s.discoverMemos))
 
 	mux.Handle("GET /api/discover/sources", api.DiscoverSourcesHandler(s.qr, s.discoverAdjacent, s.discoverOwnForeign, s.qr, s.discover, s.discoverAuthored, s.discoverShares, s.qr, s.qr, s.qr, s.qr, s.qr, s.discoverSourcesMemo))
-	mux.Handle("GET /api/discover/people", api.DiscoverPeopleHandler(s.qr, s.discoverAdjacent, s.discoverFollows, s.qr, s.discover, s.discoverAuthored, s.discoverShares, s.qr, s.qr, s.qr, s.discoverPeopleMemo))
+	mux.Handle("GET /api/discover/people", api.DiscoverPeopleHandler(s.qr, s.discoverAdjacent, s.discoverFollows, s.qr, s.discover, s.discoverAuthored, s.discoverShares, s.qr, s.qr, s.qr, s.discoverPeopleMemo, s.qr))
 	mux.Handle("POST /api/discover/hides", api.DiscoverHidesCreateHandler(s.qr, s.qw, s.discoverMemos))
 	mux.Handle("GET /api/discover/sources/posts", api.DiscoverSourcePostsHandler(s.discoverPosts))
 	mux.Handle("GET /api/discover/people/preview", api.DiscoverPersonPreviewHandler(s.personInspector, s.qr, s.shareMetadata))

@@ -76,7 +76,7 @@ func RankPeoplePage(candidates []PersonCandidate, excluded map[string]struct{}, 
 	values := make([]scoredValue[PersonSuggestion], 0, len(candidates))
 	for _, candidate := range candidates {
 		candidate.Activity = dropSaveSignals(candidate.Activity)
-		if len(candidate.Activity) == 0 {
+		if !candidate.Eligible && len(candidate.Activity) == 0 {
 			continue
 		}
 		if _, duplicate := excluded[candidate.DID]; duplicate {

@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -239,6 +240,56 @@ func TestReconcileCollection_DeleteFirstOrdersTheWholePass(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertOps(t, h.ops, "delete:old", "upsert:new")
+}
+
+func TestReconcileCollection_DeleteFirstDeleteFailureRollsBack(t *testing.T) {
+	boom := errors.New("delete boom")
+	h := &coreHarness{
+		deleteFirst: true,
+		local:       []coreRow{{rkey: "old"}},
+		desiredKeys: []string{"new"},
+		deleteFail:  map[string]error{"old": boom},
+	}
+	tx := &txSpy{}
+
+	err := reconcileCollection(context.Background(), tx.run, h.pass())
+	if !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want wrapped %v", err, boom)
+	}
+	for _, context := range []string{"testcollection", "delete", "old"} {
+		if !strings.Contains(err.Error(), context) {
+			t.Errorf("err = %q, want %q context", err, context)
+		}
+	}
+	assertOps(t, h.ops, "delete:old")
+	if tx.inner == nil {
+		t.Error("tx closure returned nil; the stale delete would commit")
+	}
+}
+
+func TestReconcileCollection_DeleteFirstDesiredWriteFailureRollsBackStaleDelete(t *testing.T) {
+	boom := errors.New("upsert boom")
+	h := &coreHarness{
+		deleteFirst: true,
+		local:       []coreRow{{rkey: "old"}},
+		desiredKeys: []string{"new"},
+		upsertFail:  map[string]error{"new": boom},
+	}
+	tx := &txSpy{}
+
+	err := reconcileCollection(context.Background(), tx.run, h.pass())
+	if !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want wrapped %v", err, boom)
+	}
+	for _, context := range []string{"testcollection", "upsert", "new"} {
+		if !strings.Contains(err.Error(), context) {
+			t.Errorf("err = %q, want %q context", err, context)
+		}
+	}
+	assertOps(t, h.ops, "delete:old", "upsert:new")
+	if tx.inner == nil {
+		t.Error("tx closure returned nil; the stale delete would commit")
+	}
 }
 
 func TestReconcileCollection_WithoutDeleteFirstUpsertsLead(t *testing.T) {

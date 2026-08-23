@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/database"
@@ -16,6 +17,11 @@ import (
 	"morgenblau/internal/discovercrawl"
 	"morgenblau/internal/standardfeed"
 )
+
+// Resolver supplies identity metadata needed when an authored publication has no mirrored handle.
+type Resolver interface {
+	LookupDID(ctx context.Context, did syntax.DID) (*identity.Identity, error)
+}
 
 const (
 	// defaultRebuildInterval paces the drain. The stream marks repos dirty continuously, so this is a coalescing window rather than a freshness budget.
@@ -207,8 +213,7 @@ func (w *RebuildWorker) rebuildRepo(ctx context.Context, repo db.TapDirtyRepo) e
 		if err := replaceRepoFollows(ctx, x, repo.Did, follows, fetchedAt); err != nil {
 			return err
 		}
-		// The marked_at guard keeps a repo re-dirtied mid-rebuild queued for the next tick.
-		return x.DeleteTapDirtyRepo(ctx, db.DeleteTapDirtyRepoParams{Did: repo.Did, MarkedAt: repo.MarkedAt})
+		return x.DeleteTapDirtyRepo(ctx, db.DeleteTapDirtyRepoParams{Did: repo.Did, MarkedSeq: repo.MarkedSeq})
 	})
 }
 

@@ -102,11 +102,9 @@ type DiscoverHide struct {
 }
 
 type DiscoverIngestCursor struct {
-	ID                  int64  `json:"id"`
-	Seq                 int64  `json:"seq"`
-	BootstrapTipSeq     *int64 `json:"bootstrap_tip_seq"`
-	BootstrapThroughSeq *int64 `json:"bootstrap_through_seq"`
-	UpdatedAt           string `json:"updated_at"`
+	ID        int64  `json:"id"`
+	Seq       int64  `json:"seq"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 type DiscoverPublicationResolution struct {
@@ -224,8 +222,8 @@ type ShareMetadataCache struct {
 }
 
 type TapDirtyRepo struct {
-	Did      string `json:"did"`
-	MarkedAt string `json:"marked_at"`
+	Did       string `json:"did"`
+	MarkedSeq int64  `json:"marked_seq"`
 }
 
 type TapRecord struct {

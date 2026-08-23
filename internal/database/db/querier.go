@@ -25,9 +25,6 @@ type Querier interface {
 	DeleteExpiredAuthRequests(ctx context.Context, expiresAt string) (int64, error)
 	DeleteFeedEntry(ctx context.Context, arg DeleteFeedEntryParams) error
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
-	// The marked_at guard clears only the mark the rebuild actually consumed: a
-	// repo re-dirtied while its rebuild was running keeps a newer row and gets
-	// rebuilt again, instead of having that change silently dropped.
 	DeleteTapDirtyRepo(ctx context.Context, arg DeleteTapDirtyRepoParams) error
 	DeleteTapRecord(ctx context.Context, arg DeleteTapRecordParams) error
 	DeleteTapRecordsForRepo(ctx context.Context, did string) error
@@ -190,8 +187,6 @@ type Querier interface {
 	// the network-wide trending aggregate.
 	ListFeedLanguages(ctx context.Context) ([]ListFeedLanguagesRow, error)
 	ListFeedURLsForUser(ctx context.Context, did string) ([]string, error)
-	// Oldest mark first so a backlog drains in arrival order. marked_at rides
-	// along because DeleteTapDirtyRepo needs the value that was read.
 	ListTapDirtyRepos(ctx context.Context, limit int64) ([]TapDirtyRepo, error)
 	ListTapRecordsForRepo(ctx context.Context, did string) ([]TapRecord, error)
 	ListUserFollows(ctx context.Context, did string) ([]UserFollow, error)
@@ -281,9 +276,6 @@ type Querier interface {
 	UpsertDiscoverCrawlShareState(ctx context.Context, arg UpsertDiscoverCrawlShareStateParams) error
 	UpsertDiscoverCrawlState(ctx context.Context, arg UpsertDiscoverCrawlStateParams) error
 	UpsertDiscoverHide(ctx context.Context, arg UpsertDiscoverHideParams) error
-	// Writes the whole position at once: advancing the live seq must clear the
-	// bootstrap columns in the same statement, or a restart would re-enter a
-	// backfill that already finished.
 	UpsertDiscoverIngestCursor(ctx context.Context, arg UpsertDiscoverIngestCursorParams) error
 	UpsertDiscoverPublicationResolution(ctx context.Context, arg UpsertDiscoverPublicationResolutionParams) error
 	// On-demand discovery success; only touches the favicon columns, never the posts ladder (fetched_at/failure_count/next_retry_at).

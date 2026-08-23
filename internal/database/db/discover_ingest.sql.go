@@ -10,56 +10,37 @@ import (
 )
 
 const getDiscoverIngestCursor = `-- name: GetDiscoverIngestCursor :one
-SELECT seq, bootstrap_tip_seq, bootstrap_through_seq, updated_at
+SELECT seq, updated_at
 FROM discover_ingest_cursor
 WHERE id = 1
 `
 
 type GetDiscoverIngestCursorRow struct {
-	Seq                 int64  `json:"seq"`
-	BootstrapTipSeq     *int64 `json:"bootstrap_tip_seq"`
-	BootstrapThroughSeq *int64 `json:"bootstrap_through_seq"`
-	UpdatedAt           string `json:"updated_at"`
+	Seq       int64  `json:"seq"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 func (q *Queries) GetDiscoverIngestCursor(ctx context.Context) (GetDiscoverIngestCursorRow, error) {
 	row := q.db.QueryRowContext(ctx, getDiscoverIngestCursor)
 	var i GetDiscoverIngestCursorRow
-	err := row.Scan(
-		&i.Seq,
-		&i.BootstrapTipSeq,
-		&i.BootstrapThroughSeq,
-		&i.UpdatedAt,
-	)
+	err := row.Scan(&i.Seq, &i.UpdatedAt)
 	return i, err
 }
 
 const upsertDiscoverIngestCursor = `-- name: UpsertDiscoverIngestCursor :exec
-INSERT INTO discover_ingest_cursor (id, seq, bootstrap_tip_seq, bootstrap_through_seq, updated_at)
-VALUES (1, ?, ?, ?, ?)
+INSERT INTO discover_ingest_cursor (id, seq, updated_at)
+VALUES (1, ?, ?)
 ON CONFLICT (id) DO UPDATE SET
-    seq                   = excluded.seq,
-    bootstrap_tip_seq     = excluded.bootstrap_tip_seq,
-    bootstrap_through_seq = excluded.bootstrap_through_seq,
-    updated_at            = excluded.updated_at
+    seq        = excluded.seq,
+    updated_at = excluded.updated_at
 `
 
 type UpsertDiscoverIngestCursorParams struct {
-	Seq                 int64  `json:"seq"`
-	BootstrapTipSeq     *int64 `json:"bootstrap_tip_seq"`
-	BootstrapThroughSeq *int64 `json:"bootstrap_through_seq"`
-	UpdatedAt           string `json:"updated_at"`
+	Seq       int64  `json:"seq"`
+	UpdatedAt string `json:"updated_at"`
 }
 
-// Writes the whole position at once: advancing the live seq must clear the
-// bootstrap columns in the same statement, or a restart would re-enter a
-// backfill that already finished.
 func (q *Queries) UpsertDiscoverIngestCursor(ctx context.Context, arg UpsertDiscoverIngestCursorParams) error {
-	_, err := q.db.ExecContext(ctx, upsertDiscoverIngestCursor,
-		arg.Seq,
-		arg.BootstrapTipSeq,
-		arg.BootstrapThroughSeq,
-		arg.UpdatedAt,
-	)
+	_, err := q.db.ExecContext(ctx, upsertDiscoverIngestCursor, arg.Seq, arg.UpdatedAt)
 	return err
 }

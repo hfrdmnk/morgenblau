@@ -10,8 +10,10 @@ type PersonCandidate struct {
 	TangledFollow bool
 	// FollowedByDID is the alphabetically-first reader-network friend who follows this candidate; empty if not reached that way.
 	FollowedByDID string
-	// Activity is this candidate's own reader-network records; a non-empty Activity is the hard eligibility bar, regardless of graph proximity.
+	// Activity contains canonical, scored reader-network signals and preserves eligibility for existing callers when non-empty.
 	Activity []Signal
+	// Eligible records visible reader-network presence that cannot produce scored activity, such as an unresolved share preview.
+	Eligible bool
 	// SharedSourceCount is the taste-overlap bonus input: canonical source keys this candidate shares with the viewer's own subscriptions.
 	SharedSourceCount int
 }

@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 )
@@ -47,14 +48,13 @@ func reconcileCollection[L any](ctx context.Context, runTx txRunner, p reconcile
 		keep[d.rkey] = struct{}{}
 	}
 
-	// Per-statement errors are logged and tolerated so one bad row doesn't lose its siblings; only the snapshot read or a Begin/Commit failure rolls the batch back.
 	return runTx(ctx, func(q SyncStore) error {
 		local, err := p.snapshot(ctx, q)
 		if err != nil {
 			return err
 		}
 
-		deleteStale := func() {
+		deleteStale := func(fatal bool) error {
 			for _, row := range local {
 				rkey := p.rkeyOf(row)
 				if _, alive := keep[rkey]; alive {
@@ -65,25 +65,34 @@ func reconcileCollection[L any](ctx context.Context, runTx txRunner, p reconcile
 					continue
 				}
 				if err := p.deleteRow(ctx, q, rkey); err != nil {
+					if fatal {
+						return fmt.Errorf("reconcile %s delete %q: %w", p.collection, rkey, err)
+					}
 					slog.Warn("reconcile: delete failed", "collection", p.collection, "rkey", rkey, "err", err)
 				}
 			}
+			return nil
 		}
-		upsertDesired := func() {
+		upsertDesired := func(fatal bool) error {
 			for _, d := range p.desired {
 				if err := d.write(ctx, q); err != nil {
+					if fatal {
+						return fmt.Errorf("reconcile %s upsert %q: %w", p.collection, d.rkey, err)
+					}
 					slog.Warn("reconcile: upsert failed", "collection", p.collection, "rkey", d.rkey, "err", err)
 				}
 			}
+			return nil
 		}
 
 		if p.deleteFirst {
-			deleteStale()
-			upsertDesired()
-			return nil
+			if err := deleteStale(true); err != nil {
+				return err
+			}
+			return upsertDesired(true)
 		}
-		upsertDesired()
-		deleteStale()
+		_ = upsertDesired(false)
+		_ = deleteStale(false)
 		return nil
 	})
 }

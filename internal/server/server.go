@@ -185,8 +185,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	discoverMemos := discovermemo.NewGroup(discoverSourcesMemo, discoverPeopleMemo)
 
 	// SPEC <discovery> Global/Trending: the ingest consumer mirrors the reader network's records straight off Jetstream, and the rebuild worker turns them into aggregates.
-	discoverRepoFetcher := discoveringest.NewRepoFetcher(identityDir, safeClient)
-	discoverIngest := discoveringest.NewConsumer(discoveringest.Config{URL: jetstreamURL, APIKey: jetstreamAPIKey}, qr, discoverRepoFetcher).WithTxRunner(db.Writer)
+	discoverIngest := discoveringest.NewConsumer(discoveringest.Config{URL: jetstreamURL, APIKey: jetstreamAPIKey}, qr).WithTxRunner(db.Writer)
 	discoverIngest.Start()
 	discoverRebuild := discoveringest.NewRebuildWorker(qr, crawlClient, identityDir, qr).
 		WithTxRunner(db.Writer).

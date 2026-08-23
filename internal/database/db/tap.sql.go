@@ -10,19 +10,16 @@ import (
 )
 
 const deleteTapDirtyRepo = `-- name: DeleteTapDirtyRepo :exec
-DELETE FROM tap_dirty_repos WHERE did = ? AND marked_at <= ?
+DELETE FROM tap_dirty_repos WHERE did = ? AND marked_seq = ?
 `
 
 type DeleteTapDirtyRepoParams struct {
-	Did      string `json:"did"`
-	MarkedAt string `json:"marked_at"`
+	Did       string `json:"did"`
+	MarkedSeq int64  `json:"marked_seq"`
 }
 
-// The marked_at guard clears only the mark the rebuild actually consumed: a
-// repo re-dirtied while its rebuild was running keeps a newer row and gets
-// rebuilt again, instead of having that change silently dropped.
 func (q *Queries) DeleteTapDirtyRepo(ctx context.Context, arg DeleteTapDirtyRepoParams) error {
-	_, err := q.db.ExecContext(ctx, deleteTapDirtyRepo, arg.Did, arg.MarkedAt)
+	_, err := q.db.ExecContext(ctx, deleteTapDirtyRepo, arg.Did, arg.MarkedSeq)
 	return err
 }
 
@@ -70,11 +67,9 @@ func (q *Queries) GetTapRepoState(ctx context.Context, did string) (TapRepoState
 }
 
 const listTapDirtyRepos = `-- name: ListTapDirtyRepos :many
-SELECT did, marked_at FROM tap_dirty_repos ORDER BY marked_at, did LIMIT ?
+SELECT did, marked_seq FROM tap_dirty_repos ORDER BY marked_seq, did LIMIT ?
 `
 
-// Oldest mark first so a backlog drains in arrival order. marked_at rides
-// along because DeleteTapDirtyRepo needs the value that was read.
 func (q *Queries) ListTapDirtyRepos(ctx context.Context, limit int64) ([]TapDirtyRepo, error) {
 	rows, err := q.db.QueryContext(ctx, listTapDirtyRepos, limit)
 	if err != nil {
@@ -84,7 +79,7 @@ func (q *Queries) ListTapDirtyRepos(ctx context.Context, limit int64) ([]TapDirt
 	var items []TapDirtyRepo
 	for rows.Next() {
 		var i TapDirtyRepo
-		if err := rows.Scan(&i.Did, &i.MarkedAt); err != nil {
+		if err := rows.Scan(&i.Did, &i.MarkedSeq); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -134,17 +129,17 @@ func (q *Queries) ListTapRecordsForRepo(ctx context.Context, did string) ([]TapR
 }
 
 const markTapRepoDirty = `-- name: MarkTapRepoDirty :exec
-INSERT INTO tap_dirty_repos (did, marked_at) VALUES (?, ?)
-ON CONFLICT (did) DO UPDATE SET marked_at = excluded.marked_at
+INSERT INTO tap_dirty_repos (did, marked_seq) VALUES (?, ?)
+ON CONFLICT (did) DO UPDATE SET marked_seq = MAX(tap_dirty_repos.marked_seq, excluded.marked_seq)
 `
 
 type MarkTapRepoDirtyParams struct {
-	Did      string `json:"did"`
-	MarkedAt string `json:"marked_at"`
+	Did       string `json:"did"`
+	MarkedSeq int64  `json:"marked_seq"`
 }
 
 func (q *Queries) MarkTapRepoDirty(ctx context.Context, arg MarkTapRepoDirtyParams) error {
-	_, err := q.db.ExecContext(ctx, markTapRepoDirty, arg.Did, arg.MarkedAt)
+	_, err := q.db.ExecContext(ctx, markTapRepoDirty, arg.Did, arg.MarkedSeq)
 	return err
 }
 
