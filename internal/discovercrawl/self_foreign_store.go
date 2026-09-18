@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -65,38 +64,31 @@ func (c *CachedOwnForeignCrawler) WithTxRunner(w *sql.DB) *CachedOwnForeignCrawl
 
 // CrawlOwnForeignSubscriptions serves cached subscriptions within ttl, else crawls fresh; the write tx opens only after the crawl returns.
 func (c *CachedOwnForeignCrawler) CrawlOwnForeignSubscriptions(ctx context.Context, did syntax.DID) ([]ForeignSubscription, error) {
-	didStr := did.String()
-
-	state, err := c.reader.GetDiscoverCrawlOwnForeignState(ctx, didStr)
-	switch {
-	case err == nil:
-		fetchedAt, perr := time.Parse(time.RFC3339, state.FetchedAt)
-		if perr == nil && c.now().Sub(fetchedAt) < c.ttl {
+	return cachedFetch[ForeignSubscription]{
+		label: "own-foreign-subscriptions",
+		ttl:   c.ttl,
+		now:   c.now,
+		getState: func(ctx context.Context, didStr string) (string, error) {
+			state, err := c.reader.GetDiscoverCrawlOwnForeignState(ctx, didStr)
+			if err != nil {
+				return "", err
+			}
+			return state.FetchedAt, nil
+		},
+		listCached: func(ctx context.Context, didStr string) ([]ForeignSubscription, error) {
 			rows, err := c.reader.ListDiscoverCrawlOwnForeignSubscriptions(ctx, didStr)
 			if err != nil {
 				return nil, err
 			}
 			return rowsToForeignSubscriptions(rows), nil
-		}
-	case errors.Is(err, sql.ErrNoRows):
-		// Never crawled, fall through to a fresh crawl.
-	default:
-		return nil, err
-	}
-
-	results, err := c.crawler.CrawlOwnForeignSubscriptions(ctx, did)
-	if err != nil {
-		return nil, err
-	}
-
-	fetchedAt := c.now().UTC().Format(time.RFC3339)
-	if err := c.runTx(ctx, func(w OwnForeignSubscriptionCacheWriter) error {
-		return storeOwnForeignSubscriptionResults(ctx, w, didStr, results, fetchedAt)
-	}); err != nil {
-		// Network already succeeded; a cache-write failure just means the next call re-crawls, never fatal.
-		slog.Warn("discovercrawl: own-foreign subscription cache write failed", "did", didStr, "err", err)
-	}
-	return results, nil
+		},
+		crawl: c.crawler.CrawlOwnForeignSubscriptions,
+		store: func(ctx context.Context, didStr string, results []ForeignSubscription, fetchedAt string) error {
+			return c.runTx(ctx, func(w OwnForeignSubscriptionCacheWriter) error {
+				return storeOwnForeignSubscriptionResults(ctx, w, didStr, results, fetchedAt)
+			})
+		},
+	}.fetch(ctx, did)
 }
 
 func storeOwnForeignSubscriptionResults(ctx context.Context, w OwnForeignSubscriptionCacheWriter, did string, results []ForeignSubscription, fetchedAt string) error {

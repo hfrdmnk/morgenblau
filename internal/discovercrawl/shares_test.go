@@ -56,7 +56,7 @@ func TestClient_CrawlShares_AggregatesRSSStandardfeedAndSkyreader(t *testing.T) 
 	}
 }
 
-// TestClient_CrawlShares_FeedURLProvenanceCanonicalized proves normalization reaches share provenance, since discoverbatch's resolveReactionKey keys on this field directly.
+// TestClient_CrawlShares_FeedURLProvenanceCanonicalized proves normalization reaches share provenance, since feedkey.ResolveReactionKey keys on this field directly.
 func TestClient_CrawlShares_FeedURLProvenanceCanonicalized(t *testing.T) {
 	byCollection := map[string][]map[string]any{
 		morgenShareCollection: {

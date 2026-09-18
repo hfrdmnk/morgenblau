@@ -22,6 +22,18 @@ func TestRankPeople_ExcludesPeopleWithNoReaderNetworkActivity(t *testing.T) {
 	}
 }
 
+func TestRankPeople_ExplicitEligibilityAllowsZeroScoredActivity(t *testing.T) {
+	candidates := []PersonCandidate{
+		{DID: "did:plc:preview-only", BlueskyFollow: true, Eligible: true},
+	}
+
+	got := rankPeople(candidates, nil, 8, testSeed)
+
+	if len(got) != 1 || got[0].DID != "did:plc:preview-only" {
+		t.Fatalf("got = %+v, want explicitly eligible person with zero scored activity", got)
+	}
+}
+
 func TestRankPeople_BlueskyOnlyCandidateProducesBlueskyReason(t *testing.T) {
 	candidates := []PersonCandidate{
 		{DID: "did:plc:alice", BlueskyFollow: true, Activity: []Signal{subscribeSignal()}},

@@ -4,11 +4,6 @@
 
 package db
 
-type DiscoverBatchState struct {
-	ID        int64  `json:"id"`
-	LastRunAt string `json:"last_run_at"`
-}
-
 type DiscoverCrawlAdjacentFollow struct {
 	Did        string `json:"did"`
 	SubjectDid string `json:"subject_did"`
@@ -104,6 +99,12 @@ type DiscoverHide struct {
 	HideCount   int64  `json:"hide_count"`
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
+}
+
+type DiscoverIngestCursor struct {
+	ID        int64  `json:"id"`
+	Seq       int64  `json:"seq"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 type DiscoverPublicationResolution struct {
@@ -221,8 +222,8 @@ type ShareMetadataCache struct {
 }
 
 type TapDirtyRepo struct {
-	Did      string `json:"did"`
-	MarkedAt string `json:"marked_at"`
+	Did       string `json:"did"`
+	MarkedSeq int64  `json:"marked_seq"`
 }
 
 type TapRecord struct {
@@ -240,11 +241,6 @@ type TapRepoState struct {
 	IsActive  int64  `json:"is_active"`
 	Status    string `json:"status"`
 	UpdatedAt string `json:"updated_at"`
-}
-
-type TapSeederState struct {
-	Did      string `json:"did"`
-	SeededAt string `json:"seeded_at"`
 }
 
 type UserFollow struct {

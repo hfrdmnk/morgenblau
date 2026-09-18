@@ -1,4 +1,4 @@
-package tapingest
+package discoveringest
 
 import (
 	"context"
@@ -14,13 +14,17 @@ import (
 
 	"morgenblau/internal/database"
 	"morgenblau/internal/database/db"
-	"morgenblau/internal/discoverbatch"
 	"morgenblau/internal/discovercrawl"
 	"morgenblau/internal/standardfeed"
 )
 
+// Resolver supplies identity metadata needed when an authored publication has no mirrored handle.
+type Resolver interface {
+	LookupDID(ctx context.Context, did syntax.DID) (*identity.Identity, error)
+}
+
 const (
-	// defaultRebuildInterval paces the drain. Tap marks repos dirty continuously, so this is a coalescing window rather than a freshness budget.
+	// defaultRebuildInterval paces the drain. The stream marks repos dirty continuously, so this is a coalescing window rather than a freshness budget.
 	defaultRebuildInterval = 30 * time.Second
 	// dirtyBatchLimit bounds one tick's work; the rest of the backlog waits for the next tick.
 	dirtyBatchLimit = 100
@@ -33,34 +37,20 @@ type MirrorReader interface {
 	GetTapRepoState(ctx context.Context, did string) (db.TapRepoState, error)
 }
 
-// RebuildWriter is one repo's write batch: discoverbatch's aggregate replace surface plus the dirty-mark clear, so both land or neither does.
-type RebuildWriter interface {
-	discoverbatch.Writer
-	DeleteTapDirtyRepo(ctx context.Context, arg db.DeleteTapDirtyRepoParams) error
-}
-
-// EntryResolver maps a share or save reaction onto its canonical source key via Tier-2 provenance.
-type EntryResolver = discoverbatch.EntryResolver
-
-// RecordDecoder turns mirrored rows into the shapes ReduceRepoSignals consumes; *discovercrawl.Client satisfies it.
+// RecordDecoder turns mirrored rows into the shapes the reduction consumes; *discovercrawl.Client satisfies it.
 // Both methods may reach the network (publication resolution, well-known probes), so neither may run inside a transaction.
 type RecordDecoder interface {
 	DecodeSubscriptions(ctx context.Context, byCollection map[string][]discovercrawl.RecordEntry) []discovercrawl.Subscription
 	DecodeAuthoredPublications(ctx context.Context, byCollection map[string][]discovercrawl.RecordEntry, did syntax.DID, handle syntax.Handle) ([]discovercrawl.AuthoredPublication, error)
 }
 
-// Resolver looks a repo's handle up for the authorship check; production must pass the SSRF-guarded directory.
-type Resolver interface {
-	LookupDID(ctx context.Context, did syntax.DID) (*identity.Identity, error)
-}
-
-// RebuildWorker turns dirty mirrors into discover's trending aggregates, replacing the daily listRecords crawl.
+// RebuildWorker turns dirty mirrors into discover's trending aggregates.
 type RebuildWorker struct {
 	reader        MirrorReader
 	decoder       RecordDecoder
 	resolver      Resolver
 	entries       EntryResolver
-	runTx         func(ctx context.Context, fn func(RebuildWriter) error) error
+	runTx         func(ctx context.Context, fn func(rebuildWriter) error) error
 	invalidateAll func()
 	interval      time.Duration
 	batchSize     int64
@@ -84,15 +74,15 @@ func NewRebuildWorker(reader MirrorReader, decoder RecordDecoder, resolver Resol
 		now:       time.Now,
 		ctx:       ctx,
 		cancel:    cancel,
-		runTx: func(ctx context.Context, fn func(RebuildWriter) error) error {
-			return errors.New("tapingest: no transaction runner configured (call WithTxRunner)")
+		runTx: func(ctx context.Context, fn func(rebuildWriter) error) error {
+			return errors.New("discoveringest: no transaction runner configured (call WithTxRunner)")
 		},
 	}
 }
 
 // WithTxRunner commits each repo's aggregate replace in one transaction on the writer pool.
 func (w *RebuildWorker) WithTxRunner(writer *sql.DB) *RebuildWorker {
-	w.runTx = func(ctx context.Context, fn func(RebuildWriter) error) error {
+	w.runTx = func(ctx context.Context, fn func(rebuildWriter) error) error {
 		return database.WithTx(ctx, writer, func(q *db.Queries) error {
 			return fn(q)
 		})
@@ -144,7 +134,7 @@ func (w *RebuildWorker) Shutdown(ctx context.Context) error {
 func (w *RebuildWorker) drain(ctx context.Context) {
 	repos, err := w.reader.ListTapDirtyRepos(ctx, w.batchSize)
 	if err != nil {
-		slog.Warn("tapingest: dirty repo read failed", "err", err)
+		slog.Warn("discoveringest: dirty repo read failed", "err", err)
 		return
 	}
 	rebuilt := 0
@@ -153,7 +143,7 @@ func (w *RebuildWorker) drain(ctx context.Context) {
 			return
 		}
 		if err := w.rebuildRepo(ctx, repo); err != nil {
-			slog.Warn("tapingest: repo rebuild failed, leaving it dirty", "did", repo.Did, "err", err)
+			slog.Warn("discoveringest: repo rebuild failed, leaving it dirty", "did", repo.Did, "err", err)
 			continue
 		}
 		rebuilt++
@@ -165,7 +155,7 @@ func (w *RebuildWorker) drain(ctx context.Context) {
 	if w.invalidateAll != nil {
 		w.invalidateAll()
 	}
-	slog.Debug("tapingest: rebuild drain complete", "repos", rebuilt)
+	slog.Debug("discoveringest: rebuild drain complete", "repos", rebuilt)
 }
 
 // rebuildRepo decodes the repo's whole mirror and replaces its aggregate rows. All decoding, and therefore all network I/O, happens before the transaction opens.
@@ -183,7 +173,7 @@ func (w *RebuildWorker) rebuildRepo(ctx context.Context, repo db.TapDirtyRepo) e
 		return err
 	}
 
-	var signals map[string]discoverbatch.RepoSource
+	var signals map[string]repoSource
 	var follows []discovercrawl.ReaderNetworkFollow
 	if !hasState || state.IsActive != 0 {
 		rows, err := w.reader.ListTapRecordsForRepo(ctx, repo.Did)
@@ -204,7 +194,7 @@ func (w *RebuildWorker) rebuildRepo(ctx context.Context, repo db.TapDirtyRepo) e
 			}
 		}
 
-		signals = discoverbatch.ReduceRepoSignals(
+		signals = reduceRepoSignals(
 			ctx,
 			w.decoder.DecodeSubscriptions(ctx, byCollection),
 			pubs,
@@ -216,15 +206,14 @@ func (w *RebuildWorker) rebuildRepo(ctx context.Context, repo db.TapDirtyRepo) e
 	}
 
 	fetchedAt := w.now().UTC().Format(time.RFC3339)
-	return w.runTx(ctx, func(x RebuildWriter) error {
-		if err := discoverbatch.ReplaceRepoSignals(ctx, x, repo.Did, signals, fetchedAt); err != nil {
+	return w.runTx(ctx, func(x rebuildWriter) error {
+		if err := replaceRepoSignals(ctx, x, repo.Did, signals, fetchedAt); err != nil {
 			return err
 		}
-		if err := discoverbatch.ReplaceRepoFollows(ctx, x, repo.Did, follows, fetchedAt); err != nil {
+		if err := replaceRepoFollows(ctx, x, repo.Did, follows, fetchedAt); err != nil {
 			return err
 		}
-		// The marked_at guard keeps a repo re-dirtied mid-rebuild queued for the next tick.
-		return x.DeleteTapDirtyRepo(ctx, db.DeleteTapDirtyRepoParams{Did: repo.Did, MarkedAt: repo.MarkedAt})
+		return x.DeleteTapDirtyRepo(ctx, db.DeleteTapDirtyRepoParams{Did: repo.Did, MarkedSeq: repo.MarkedSeq})
 	})
 }
 
@@ -243,7 +232,7 @@ func (w *RebuildWorker) repoHandle(ctx context.Context, did syntax.DID, state db
 
 // refreshTrendingCounts rebuilds both quality-bar count tables in one transaction; every trending read joins them, so skipping it leaves the surfaces empty however many signals were written.
 func (w *RebuildWorker) refreshTrendingCounts(ctx context.Context) {
-	if err := w.runTx(ctx, func(x RebuildWriter) error {
+	if err := w.runTx(ctx, func(x rebuildWriter) error {
 		if err := x.DeleteDiscoverTrendingSourceCounts(ctx); err != nil {
 			return err
 		}
@@ -256,7 +245,7 @@ func (w *RebuildWorker) refreshTrendingCounts(ctx context.Context) {
 		return x.RebuildDiscoverTrendingFollowCounts(ctx)
 	}); err != nil {
 		// Prior counts survive the failed transaction, so trending stays on the previous bar rather than going dark.
-		slog.Warn("tapingest: trending counts refresh failed", "err", err)
+		slog.Warn("discoveringest: trending counts refresh failed", "err", err)
 	}
 }
 
@@ -266,7 +255,7 @@ func partitionByCollection(did string, rows []db.TapRecord) map[string][]discove
 	for _, row := range rows {
 		var value map[string]any
 		if err := json.Unmarshal([]byte(row.Record), &value); err != nil {
-			slog.Warn("tapingest: skipping unparseable mirror row", "did", did, "collection", row.Collection, "rkey", row.Rkey, "err", err)
+			slog.Warn("discoveringest: skipping unparseable mirror row", "did", did, "collection", row.Collection, "rkey", row.Rkey, "err", err)
 			continue
 		}
 		out[row.Collection] = append(out[row.Collection], discovercrawl.NewRecordEntry(did, row.Collection, row.Rkey, row.Cid, value))

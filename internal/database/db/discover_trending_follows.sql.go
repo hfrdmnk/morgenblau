@@ -50,7 +50,7 @@ FROM discover_trending_follows
 `
 
 // Whole-table read; kept for callers that genuinely need every row (see
-// internal/discoverbatch's write-path tests). The trending handler reads
+// internal/discoveringest's write-path tests). The trending handler reads
 // ListDiscoverTrendingFollowsAboveBar instead (see that query's comment).
 func (q *Queries) ListDiscoverTrendingFollows(ctx context.Context) ([]DiscoverTrendingFollow, error) {
 	rows, err := q.db.QueryContext(ctx, listDiscoverTrendingFollows)

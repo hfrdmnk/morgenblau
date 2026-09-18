@@ -171,21 +171,8 @@ func FollowsDeleteHandler(reader FollowsIndexReader, writer FollowsIndexWriter, 
 			return
 		}
 
-		records, err := pds.ListRecords(r.Context(), sess, syntax.NSID(followCollection))
-		if err != nil {
-			slog.Warn("/api/follows DELETE: list failed", "err", err)
-			writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+		if !sweepDuplicates(r.Context(), w, sess, pds, "/api/follows DELETE", syntax.NSID(followCollection), stringField("subject"), row.SubjectDid) {
 			return
-		}
-		for _, rec := range records {
-			if subject, _ := rec.Value["subject"].(string); subject != row.SubjectDid {
-				continue
-			}
-			if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(followCollection), atprepo.RkeyFromATURI(rec.URI)); err != nil {
-				slog.Warn("/api/follows DELETE: PDS delete failed", "uri", rec.URI, "err", err)
-				writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
-				return
-			}
 		}
 
 		mirrorOrRepair(r.Context(), disp, sess, "/api/follows DELETE: Tier-1 delete", func() error {

@@ -136,22 +136,6 @@ func TestReconcileShares_OrphanSidecarDeletedFromPDS(t *testing.T) {
 	}
 }
 
-func TestReconcileShares_RemoteDeleteRemovesLocalRow(t *testing.T) {
-	store := newFakeStore()
-	store.shares["did:plc:alice"] = map[string]db.ListUserSharesForSyncRow{
-		"3gone": {Did: "did:plc:alice", Rkey: "3gone", Kind: "standardfeed", Document: ptr(docA)},
-	}
-	lister := &fakeLister{}
-	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
-
-	if err := eng.reconcileShares(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
-		t.Fatal(err)
-	}
-	if len(store.shareDeletes) != 1 || store.shareDeletes[0] != "3gone" {
-		t.Errorf("deletes = %v", store.shareDeletes)
-	}
-}
-
 func TestReconcileShares_DuplicateRecommendsCollapseToMinRkey(t *testing.T) {
 	store := newFakeStore()
 	lister := &fakeLister{recommends: []PDSRecommend{

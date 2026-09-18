@@ -1,10 +1,9 @@
 -- +goose Up
 -- +goose StatementBegin
 
--- marked_at prevents a rebuild from clearing a newer dirty generation.
 CREATE TABLE tap_dirty_repos (
-    did       TEXT PRIMARY KEY,
-    marked_at TEXT NOT NULL
+    did        TEXT PRIMARY KEY,
+    marked_seq INTEGER NOT NULL
 );
 
 -- +goose StatementEnd

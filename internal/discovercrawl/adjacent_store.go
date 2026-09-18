@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -68,38 +67,31 @@ func (c *CachedAdjacentFollowCrawler) WithTxRunner(w *sql.DB) *CachedAdjacentFol
 
 // CrawlAdjacentFollows serves cached follows within ttl, else crawls fresh; the write tx opens only after the crawl returns.
 func (c *CachedAdjacentFollowCrawler) CrawlAdjacentFollows(ctx context.Context, did syntax.DID) ([]AdjacentFollow, error) {
-	didStr := did.String()
-
-	state, err := c.reader.GetDiscoverCrawlAdjacentState(ctx, didStr)
-	switch {
-	case err == nil:
-		fetchedAt, perr := time.Parse(time.RFC3339, state.FetchedAt)
-		if perr == nil && c.now().Sub(fetchedAt) < c.ttl {
+	return cachedFetch[AdjacentFollow]{
+		label: "adjacent-follows",
+		ttl:   c.ttl,
+		now:   c.now,
+		getState: func(ctx context.Context, didStr string) (string, error) {
+			state, err := c.reader.GetDiscoverCrawlAdjacentState(ctx, didStr)
+			if err != nil {
+				return "", err
+			}
+			return state.FetchedAt, nil
+		},
+		listCached: func(ctx context.Context, didStr string) ([]AdjacentFollow, error) {
 			rows, err := c.reader.ListDiscoverCrawlAdjacentFollows(ctx, didStr)
 			if err != nil {
 				return nil, err
 			}
 			return rowsToAdjacentFollows(rows), nil
-		}
-	case errors.Is(err, sql.ErrNoRows):
-		// Never crawled, fall through to a fresh crawl.
-	default:
-		return nil, err
-	}
-
-	results, err := c.crawler.CrawlAdjacentFollows(ctx, did)
-	if err != nil {
-		return nil, err
-	}
-
-	fetchedAt := c.now().UTC().Format(time.RFC3339)
-	if err := c.runTx(ctx, func(w AdjacentFollowCacheWriter) error {
-		return storeAdjacentFollowResults(ctx, w, didStr, results, fetchedAt)
-	}); err != nil {
-		// Network already succeeded; a cache-write failure just means the next call re-crawls, never fatal.
-		slog.Warn("discovercrawl: adjacent follow cache write failed", "did", didStr, "err", err)
-	}
-	return results, nil
+		},
+		crawl: c.crawler.CrawlAdjacentFollows,
+		store: func(ctx context.Context, didStr string, results []AdjacentFollow, fetchedAt string) error {
+			return c.runTx(ctx, func(w AdjacentFollowCacheWriter) error {
+				return storeAdjacentFollowResults(ctx, w, didStr, results, fetchedAt)
+			})
+		},
+	}.fetch(ctx, did)
 }
 
 func storeAdjacentFollowResults(ctx context.Context, w AdjacentFollowCacheWriter, did string, results []AdjacentFollow, fetchedAt string) error {

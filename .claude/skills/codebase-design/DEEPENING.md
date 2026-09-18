@@ -18,7 +18,7 @@ A deepening that widens a module's schema footprint widens those per-test schema
 
 ### 3. Remote but owned (Ports & Adapters)
 
-Services you control across a network boundary, plus protocol services you write against a spec: the tap sidecar, a user's PDS over XRPC. Define a **port** (interface) at the seam, the way `atprepo.Writer` and `tapingest.TapStore` do. The deep module owns the logic; the transport is injected as an **adapter**. Tests use an in-memory adapter. Production uses the XRPC or HTTP adapter.
+Services you control across a network boundary, plus protocol services you write against a spec: a hosted Jetstream instance, a user's PDS over XRPC. Define a **port** (interface) at the seam, the way `atprepo.Writer` and `discoveringest.RecordFetcher` do. The deep module owns the logic; the transport is injected as an **adapter**. Tests use an in-memory adapter. Production uses the XRPC or HTTP adapter.
 
 Recommendation shape: *"Define a port at the seam, implement an XRPC adapter for production and an in-memory adapter for testing, so the logic sits in one deep module even though it's deployed across a network."*
 

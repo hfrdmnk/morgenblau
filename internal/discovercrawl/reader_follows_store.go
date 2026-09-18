@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -67,38 +66,31 @@ func (c *CachedReaderFollowCrawler) WithTxRunner(w *sql.DB) *CachedReaderFollowC
 
 // FetchReaderNetworkFollows returns cached follows when within ttl, else crawls fresh; the write tx opens only after the crawl returns.
 func (c *CachedReaderFollowCrawler) FetchReaderNetworkFollows(ctx context.Context, did syntax.DID) ([]ReaderNetworkFollow, error) {
-	didStr := did.String()
-
-	state, err := c.reader.GetDiscoverCrawlFollowState(ctx, didStr)
-	switch {
-	case err == nil:
-		fetchedAt, perr := time.Parse(time.RFC3339, state.FetchedAt)
-		if perr == nil && c.now().Sub(fetchedAt) < c.ttl {
+	return cachedFetch[ReaderNetworkFollow]{
+		label: "reader-network-follows",
+		ttl:   c.ttl,
+		now:   c.now,
+		getState: func(ctx context.Context, didStr string) (string, error) {
+			state, err := c.reader.GetDiscoverCrawlFollowState(ctx, didStr)
+			if err != nil {
+				return "", err
+			}
+			return state.FetchedAt, nil
+		},
+		listCached: func(ctx context.Context, didStr string) ([]ReaderNetworkFollow, error) {
 			rows, err := c.reader.ListDiscoverCrawlFollows(ctx, didStr)
 			if err != nil {
 				return nil, err
 			}
 			return rowsToReaderNetworkFollows(rows), nil
-		}
-	case errors.Is(err, sql.ErrNoRows):
-		// Never crawled, fall through to a fresh crawl.
-	default:
-		return nil, err
-	}
-
-	results, err := c.crawler.CrawlReaderNetworkFollows(ctx, did)
-	if err != nil {
-		return nil, err
-	}
-
-	fetchedAt := c.now().UTC().Format(time.RFC3339)
-	if err := c.runTx(ctx, func(w ReaderFollowCacheWriter) error {
-		return storeReaderNetworkFollowResults(ctx, w, didStr, results, fetchedAt)
-	}); err != nil {
-		// Network already succeeded; a cache-write failure just means the next call re-crawls, never fatal.
-		slog.Warn("discovercrawl: reader-network follow cache write failed", "did", didStr, "err", err)
-	}
-	return results, nil
+		},
+		crawl: c.crawler.CrawlReaderNetworkFollows,
+		store: func(ctx context.Context, didStr string, results []ReaderNetworkFollow, fetchedAt string) error {
+			return c.runTx(ctx, func(w ReaderFollowCacheWriter) error {
+				return storeReaderNetworkFollowResults(ctx, w, didStr, results, fetchedAt)
+			})
+		},
+	}.fetch(ctx, did)
 }
 
 // FetchReaderNetworkFollowsBatch is FetchReaderNetworkFollows over the viewer's whole follow list; see FetchSubscriptionsBatch for the read/crawl split and degrade posture.

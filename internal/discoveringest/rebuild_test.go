@@ -1,4 +1,4 @@
-package tapingest
+package discoveringest
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/bluesky-social/jetstream"
 
 	"morgenblau/internal/database"
 	"morgenblau/internal/database/db"
@@ -31,14 +32,19 @@ CREATE TABLE tap_records (
     PRIMARY KEY (did, collection, rkey)
 );
 CREATE TABLE tap_dirty_repos (
-    did       TEXT PRIMARY KEY,
-    marked_at TEXT NOT NULL
+    did        TEXT PRIMARY KEY,
+    marked_seq INTEGER NOT NULL
 );
 CREATE TABLE tap_repo_states (
     did        TEXT PRIMARY KEY,
     handle     TEXT NOT NULL,
     is_active  INTEGER NOT NULL,
     status     TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE discover_ingest_cursor (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    seq        INTEGER NOT NULL,
     updated_at TEXT NOT NULL
 );
 CREATE TABLE discover_trending_signals (
@@ -68,13 +74,6 @@ CREATE TABLE discover_trending_follow_counts (
 );
 `
 
-const (
-	repoA     = "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"
-	repoB     = "did:plc:bbbbbbbbbbbbbbbbbbbbbbbb"
-	repoC     = "did:plc:cccccccccccccccccccccccc"
-	subjectID = "did:plc:dddddddddddddddddddddddd"
-)
-
 func openRebuildTestDB(t *testing.T) *database.DB {
 	t.Helper()
 	t.Setenv("DB_PATH", filepath.Join(t.TempDir(), "test.db"))
@@ -91,17 +90,16 @@ func openRebuildTestDB(t *testing.T) *database.DB {
 
 func seedMirror(t *testing.T, dbs *database.DB, did, collection, rkey, record string) {
 	t.Helper()
-	q := db.New(dbs.Writer)
-	if err := q.UpsertTapRecord(context.Background(), db.UpsertTapRecordParams{
+	if err := db.New(dbs.Writer).UpsertTapRecord(context.Background(), db.UpsertTapRecordParams{
 		Did: did, Collection: collection, Rkey: rkey, Cid: testCID, Record: record, IndexedAt: "2026-07-10T00:00:00Z",
 	}); err != nil {
 		t.Fatalf("UpsertTapRecord: %v", err)
 	}
 }
 
-func markDirty(t *testing.T, dbs *database.DB, did, markedAt string) {
+func markDirty(t *testing.T, dbs *database.DB, did string, markedSeq int64) {
 	t.Helper()
-	if err := db.New(dbs.Writer).MarkTapRepoDirty(context.Background(), db.MarkTapRepoDirtyParams{Did: did, MarkedAt: markedAt}); err != nil {
+	if err := db.New(dbs.Writer).MarkTapRepoDirty(context.Background(), db.MarkTapRepoDirtyParams{Did: did, MarkedSeq: markedSeq}); err != nil {
 		t.Fatalf("MarkTapRepoDirty: %v", err)
 	}
 }
@@ -122,37 +120,45 @@ func seedRepoState(t *testing.T, dbs *database.DB, did, handle string, active bo
 // noEntries is the Tier-2 provenance resolver; the fixtures all carry their own feedUrl, so nothing has to be looked up.
 type noEntries struct{}
 
-func (noEntries) GetFeedURLByGuid(ctx context.Context, guid string) (string, error) {
+func (noEntries) GetFeedURLByGuid(context.Context, string) (string, error) {
 	return "", errors.New("not found")
 }
 
-func (noEntries) GetFeedURLByItemURL(ctx context.Context, url string) (string, error) {
+func (noEntries) GetFeedURLByItemURL(context.Context, string) (string, error) {
 	return "", errors.New("not found")
 }
 
 // hookEntries re-dirties a repo the moment the rebuild consults Tier-2, which happens before the write transaction opens.
 type hookEntries struct {
-	once sync.Once
-	hook func()
+	once    sync.Once
+	hook    func()
+	feedURL string
 }
 
-func (h *hookEntries) GetFeedURLByGuid(ctx context.Context, guid string) (string, error) {
+func (h *hookEntries) GetFeedURLByGuid(context.Context, string) (string, error) {
 	h.once.Do(h.hook)
+	if h.feedURL != "" {
+		return h.feedURL, nil
+	}
 	return "", errors.New("not found")
 }
 
-func (h *hookEntries) GetFeedURLByItemURL(ctx context.Context, url string) (string, error) {
+func (h *hookEntries) GetFeedURLByItemURL(context.Context, string) (string, error) {
 	h.once.Do(h.hook)
+	if h.feedURL != "" {
+		return h.feedURL, nil
+	}
 	return "", errors.New("not found")
 }
 
-type fakeResolver struct {
+// stubDirectory stands in for the SSRF-guarded identity directory.
+type stubDirectory struct {
 	handle syntax.Handle
 	err    error
 	calls  int
 }
 
-func (f *fakeResolver) LookupDID(ctx context.Context, did syntax.DID) (*identity.Identity, error) {
+func (f *stubDirectory) LookupDID(_ context.Context, did syntax.DID) (*identity.Identity, error) {
 	f.calls++
 	if f.err != nil {
 		return nil, f.err
@@ -169,11 +175,11 @@ type stubDecoder struct {
 	authoredIn int
 }
 
-func (s *stubDecoder) DecodeSubscriptions(ctx context.Context, byCollection map[string][]discovercrawl.RecordEntry) []discovercrawl.Subscription {
+func (s *stubDecoder) DecodeSubscriptions(context.Context, map[string][]discovercrawl.RecordEntry) []discovercrawl.Subscription {
 	return s.subs
 }
 
-func (s *stubDecoder) DecodeAuthoredPublications(ctx context.Context, byCollection map[string][]discovercrawl.RecordEntry, did syntax.DID, handle syntax.Handle) ([]discovercrawl.AuthoredPublication, error) {
+func (s *stubDecoder) DecodeAuthoredPublications(_ context.Context, byCollection map[string][]discovercrawl.RecordEntry, did syntax.DID, handle syntax.Handle) ([]discovercrawl.AuthoredPublication, error) {
 	s.authoredIn = len(byCollection[standardfeed.CollectionPublication])
 	s.gotDID = did
 	s.gotHandle = handle
@@ -208,16 +214,16 @@ func signalsByKey(t *testing.T, dbs *database.DB) map[string]db.DiscoverTrending
 
 func TestRebuildWorker_RebuildsMirroredRecordsIntoSignalsAndFollows(t *testing.T) {
 	dbs := openRebuildTestDB(t)
-	seedMirror(t, dbs, repoA, lexicon.Subscription, "3sub",
+	seedMirror(t, dbs, testDID, lexicon.Subscription, "3sub",
 		`{"source":{"$type":"blue.morgen.feed.subscription#rssFeed","feedUrl":"https://a.example/feed","siteUrl":"https://a.example"},"title":"Example Publication","createdAt":"2026-07-01T00:00:00Z"}`)
-	seedMirror(t, dbs, repoA, lexicon.Save, "3sav",
+	seedMirror(t, dbs, testDID, lexicon.Save, "3sav",
 		`{"itemUrl":"https://b.example/post","feedUrl":"https://b.example/feed","createdAt":"2026-07-02T00:00:00Z"}`)
-	seedMirror(t, dbs, repoA, lexicon.Share, "3sha",
+	seedMirror(t, dbs, testDID, lexicon.Share, "3sha",
 		`{"itemUrl":"https://c.example/post","feedUrl":"https://c.example/feed","createdAt":"2026-07-03T00:00:00Z"}`)
-	seedMirror(t, dbs, repoA, lexicon.Follow, "3fol", fmt.Sprintf(`{"subject":%q,"createdAt":"2026-07-04T00:00:00Z"}`, subjectID))
-	markDirty(t, dbs, repoA, "2026-07-10T00:00:00Z")
+	seedMirror(t, dbs, testDID, lexicon.Follow, "3fol", fmt.Sprintf(`{"subject":%q,"createdAt":"2026-07-04T00:00:00Z"}`, subjectDID))
+	markDirty(t, dbs, testDID, 10)
 
-	w := newTestWorker(t, dbs, discovercrawl.NewClient(nil, nil, nil, nil, nil), noEntries{}, &fakeResolver{})
+	w := newTestWorker(t, dbs, discovercrawl.NewClient(nil, nil, nil, nil, nil), noEntries{}, &stubDirectory{})
 	w.drain(context.Background())
 
 	got := signalsByKey(t, dbs)
@@ -226,6 +232,10 @@ func TestRebuildWorker_RebuildsMirroredRecordsIntoSignalsAndFollows(t *testing.T
 	}
 	if s := got["https://a.example/feed"]; s.SignalKind != "subscribe" || s.Title == nil || *s.Title != "Example Publication" {
 		t.Errorf("subscription signal = %+v", s)
+	}
+	// The signal timestamp comes from the record's own createdAt, never from when the stream witnessed it.
+	if s := got["https://a.example/feed"]; s.SignalAt == nil || *s.SignalAt != "2026-07-01T00:00:00Z" {
+		t.Errorf("subscription signal_at = %v, want the record's createdAt", s.SignalAt)
 	}
 	if s := got["https://b.example/feed"]; s.SignalKind != "save" {
 		t.Errorf("save signal = %+v", s)
@@ -238,8 +248,8 @@ func TestRebuildWorker_RebuildsMirroredRecordsIntoSignalsAndFollows(t *testing.T
 	if err != nil {
 		t.Fatalf("ListDiscoverTrendingFollows: %v", err)
 	}
-	if len(follows) != 1 || follows[0].SubjectDid != subjectID {
-		t.Fatalf("follows = %+v, want one row for %s", follows, subjectID)
+	if len(follows) != 1 || follows[0].SubjectDid != subjectDID {
+		t.Fatalf("follows = %+v, want one row for %s", follows, subjectDID)
 	}
 
 	dirty, err := db.New(dbs.Reader).ListTapDirtyRepos(context.Background(), 10)
@@ -253,21 +263,21 @@ func TestRebuildWorker_RebuildsMirroredRecordsIntoSignalsAndFollows(t *testing.T
 
 func TestRebuildWorker_ReplacesRatherThanAccumulates(t *testing.T) {
 	dbs := openRebuildTestDB(t)
-	seedMirror(t, dbs, repoA, lexicon.Subscription, "3sub",
+	seedMirror(t, dbs, testDID, lexicon.Subscription, "3sub",
 		`{"source":{"$type":"blue.morgen.feed.subscription#rssFeed","feedUrl":"https://old.example/feed"},"createdAt":"2026-07-01T00:00:00Z"}`)
-	markDirty(t, dbs, repoA, "2026-07-10T00:00:00Z")
+	markDirty(t, dbs, testDID, 10)
 
-	w := newTestWorker(t, dbs, discovercrawl.NewClient(nil, nil, nil, nil, nil), noEntries{}, &fakeResolver{})
+	w := newTestWorker(t, dbs, discovercrawl.NewClient(nil, nil, nil, nil, nil), noEntries{}, &stubDirectory{})
 	w.drain(context.Background())
 
 	if err := db.New(dbs.Writer).DeleteTapRecord(context.Background(), db.DeleteTapRecordParams{
-		Did: repoA, Collection: lexicon.Subscription, Rkey: "3sub",
+		Did: testDID, Collection: lexicon.Subscription, Rkey: "3sub",
 	}); err != nil {
 		t.Fatalf("DeleteTapRecord: %v", err)
 	}
-	seedMirror(t, dbs, repoA, lexicon.Subscription, "3new",
+	seedMirror(t, dbs, testDID, lexicon.Subscription, "3new",
 		`{"source":{"$type":"blue.morgen.feed.subscription#rssFeed","feedUrl":"https://new.example/feed"},"createdAt":"2026-07-11T00:00:00Z"}`)
-	markDirty(t, dbs, repoA, "2026-07-11T00:00:00Z")
+	markDirty(t, dbs, testDID, 11)
 	w.drain(context.Background())
 
 	got := signalsByKey(t, dbs)
@@ -279,35 +289,84 @@ func TestRebuildWorker_ReplacesRatherThanAccumulates(t *testing.T) {
 	}
 }
 
-// The dirty-mark delete is guarded by marked_at, so a change that lands while a rebuild is in flight keeps the repo queued instead of being silently dropped.
 func TestRebuildWorker_RepoReDirtiedMidRebuildStaysQueued(t *testing.T) {
 	dbs := openRebuildTestDB(t)
-	seedMirror(t, dbs, repoA, lexicon.Save, "3sav", `{"itemUrl":"https://b.example/post","createdAt":"2026-07-02T00:00:00Z"}`)
-	markDirty(t, dbs, repoA, "2026-07-10T00:00:00Z")
+	seedMirror(t, dbs, testDID, lexicon.Save, "3sav", `{"itemUrl":"https://b.example/post","createdAt":"2026-07-02T00:00:00Z"}`)
+	markDirty(t, dbs, testDID, 10)
 
-	entries := &hookEntries{hook: func() { markDirty(t, dbs, repoA, "2026-07-10T00:00:05Z") }}
-	w := newTestWorker(t, dbs, discovercrawl.NewClient(nil, nil, nil, nil, nil), entries, &fakeResolver{})
+	consumer := newConsumer(Config{}, requestCursorReader{}, nil).WithTxRunner(dbs.Writer)
+	entries := &hookEntries{
+		feedURL: "https://old.example/feed",
+		hook: func() {
+			err := consumer.foldBatch(context.Background(), sourceBatch{
+				cursor: 11,
+				events: []jetstream.Event{commitEvent(11, "3later", map[string]any{
+					"$type": "blue.morgen.feed.save", "itemUrl": "https://later.example/post", "feedUrl": "https://later.example/feed",
+				})},
+			})
+			if err != nil {
+				t.Fatalf("fold later event: %v", err)
+			}
+		},
+	}
+	w := newTestWorker(t, dbs, discovercrawl.NewClient(nil, nil, nil, nil, nil), entries, &stubDirectory{})
 	w.drain(context.Background())
+	got := signalsByKey(t, dbs)
+	if _, ok := got["https://old.example/feed"]; !ok {
+		t.Fatalf("signals = %+v, want the old snapshot committed", got)
+	}
+	if _, ok := got["https://later.example/feed"]; ok {
+		t.Fatalf("signals = %+v, later mirror event belongs to the next rebuild", got)
+	}
 
 	dirty, err := db.New(dbs.Reader).ListTapDirtyRepos(context.Background(), 10)
 	if err != nil {
 		t.Fatalf("ListTapDirtyRepos: %v", err)
 	}
-	if len(dirty) != 1 || dirty[0].MarkedAt != "2026-07-10T00:00:05Z" {
+	if len(dirty) != 1 || dirty[0].MarkedSeq != 11 {
 		t.Fatalf("dirty = %+v, want the newer mark to survive the rebuild", dirty)
+	}
+}
+
+func TestDirtyGenerationCannotMoveBackwardAndExactGenerationClears(t *testing.T) {
+	dbs := openRebuildTestDB(t)
+	markDirty(t, dbs, testDID, 11)
+	markDirty(t, dbs, testDID, 10)
+
+	q := db.New(dbs.Writer)
+	rows, err := q.ListTapDirtyRepos(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ListTapDirtyRepos: %v", err)
+	}
+	if len(rows) != 1 || rows[0].MarkedSeq != 11 {
+		t.Fatalf("dirty = %+v, want generation 11", rows)
+	}
+	if err := q.DeleteTapDirtyRepo(context.Background(), db.DeleteTapDirtyRepoParams{Did: testDID, MarkedSeq: 10}); err != nil {
+		t.Fatalf("DeleteTapDirtyRepo stale: %v", err)
+	}
+	rows, err = q.ListTapDirtyRepos(context.Background(), 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("stale cleanup removed row: rows=%+v err=%v", rows, err)
+	}
+	if err := q.DeleteTapDirtyRepo(context.Background(), db.DeleteTapDirtyRepoParams{Did: testDID, MarkedSeq: 11}); err != nil {
+		t.Fatalf("DeleteTapDirtyRepo exact: %v", err)
+	}
+	rows, err = q.ListTapDirtyRepos(context.Background(), 10)
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("exact cleanup did not remove row: rows=%+v err=%v", rows, err)
 	}
 }
 
 func TestRebuildWorker_RefreshesTrendingCountsSoBarReadsSeeRows(t *testing.T) {
 	dbs := openRebuildTestDB(t)
-	for _, repo := range []string{repoA, repoB, repoC} {
+	for _, repo := range []string{testDID, otherDID, thirdDID} {
 		seedMirror(t, dbs, repo, lexicon.Subscription, "3sub",
 			`{"source":{"$type":"blue.morgen.feed.subscription#rssFeed","feedUrl":"https://shared.example/feed"},"createdAt":"2026-07-01T00:00:00Z"}`)
-		seedMirror(t, dbs, repo, lexicon.Follow, "3fol", fmt.Sprintf(`{"subject":%q}`, subjectID))
-		markDirty(t, dbs, repo, "2026-07-10T00:00:00Z")
+		seedMirror(t, dbs, repo, lexicon.Follow, "3fol", fmt.Sprintf(`{"subject":%q}`, subjectDID))
+		markDirty(t, dbs, repo, 10)
 	}
 
-	w := newTestWorker(t, dbs, discovercrawl.NewClient(nil, nil, nil, nil, nil), noEntries{}, &fakeResolver{})
+	w := newTestWorker(t, dbs, discovercrawl.NewClient(nil, nil, nil, nil, nil), noEntries{}, &stubDirectory{})
 	w.drain(context.Background())
 
 	q := db.New(dbs.Reader)
@@ -329,14 +388,14 @@ func TestRebuildWorker_RefreshesTrendingCountsSoBarReadsSeeRows(t *testing.T) {
 
 func TestRebuildWorker_InvalidatesCachesOncePerProductiveDrain(t *testing.T) {
 	dbs := openRebuildTestDB(t)
-	for _, repo := range []string{repoA, repoB} {
+	for _, repo := range []string{testDID, otherDID} {
 		seedMirror(t, dbs, repo, lexicon.Subscription, "3sub",
 			`{"source":{"$type":"blue.morgen.feed.subscription#rssFeed","feedUrl":"https://shared.example/feed"},"createdAt":"2026-07-01T00:00:00Z"}`)
-		markDirty(t, dbs, repo, "2026-07-10T00:00:00Z")
+		markDirty(t, dbs, repo, 10)
 	}
 
 	calls := 0
-	w := newTestWorker(t, dbs, discovercrawl.NewClient(nil, nil, nil, nil, nil), noEntries{}, &fakeResolver{})
+	w := newTestWorker(t, dbs, discovercrawl.NewClient(nil, nil, nil, nil, nil), noEntries{}, &stubDirectory{})
 	w.WithInvalidator(func() { calls++ })
 
 	w.drain(context.Background())
@@ -351,17 +410,17 @@ func TestRebuildWorker_InvalidatesCachesOncePerProductiveDrain(t *testing.T) {
 
 func TestRebuildWorker_FailedRepoStaysDirtyAndOthersStillRebuild(t *testing.T) {
 	dbs := openRebuildTestDB(t)
-	for _, repo := range []string{repoA, repoB} {
+	for _, repo := range []string{testDID, otherDID} {
 		seedMirror(t, dbs, repo, lexicon.Subscription, "3sub",
 			`{"source":{"$type":"blue.morgen.feed.subscription#rssFeed","feedUrl":"https://shared.example/feed"},"createdAt":"2026-07-01T00:00:00Z"}`)
-		markDirty(t, dbs, repo, "2026-07-10T00:00:00Z")
+		markDirty(t, dbs, repo, 10)
 	}
 
-	w := newTestWorker(t, dbs, discovercrawl.NewClient(nil, nil, nil, nil, nil), noEntries{}, &fakeResolver{})
+	w := newTestWorker(t, dbs, discovercrawl.NewClient(nil, nil, nil, nil, nil), noEntries{}, &stubDirectory{})
 	commit := w.runTx
-	w.runTx = func(ctx context.Context, fn func(RebuildWriter) error) error {
-		return commit(ctx, func(x RebuildWriter) error {
-			return fn(&failingWriter{RebuildWriter: x, failFor: repoA})
+	w.runTx = func(ctx context.Context, fn func(rebuildWriter) error) error {
+		return commit(ctx, func(x rebuildWriter) error {
+			return fn(&failingWriter{rebuildWriter: x, failFor: testDID})
 		})
 	}
 	w.drain(context.Background())
@@ -370,21 +429,21 @@ func TestRebuildWorker_FailedRepoStaysDirtyAndOthersStillRebuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTapDirtyRepos: %v", err)
 	}
-	if len(dirty) != 1 || dirty[0].Did != repoA {
+	if len(dirty) != 1 || dirty[0].Did != testDID {
 		t.Fatalf("dirty = %+v, want only the failed repo left queued", dirty)
 	}
 	rows, err := db.New(dbs.Reader).ListDiscoverTrendingSignals(context.Background())
 	if err != nil {
 		t.Fatalf("ListDiscoverTrendingSignals: %v", err)
 	}
-	if len(rows) != 1 || rows[0].RepoDid != repoB {
+	if len(rows) != 1 || rows[0].RepoDid != otherDID {
 		t.Errorf("signals = %+v, want only the healthy repo's row", rows)
 	}
 }
 
 // failingWriter fails the signal insert for one repo, leaving its dirty mark in place.
 type failingWriter struct {
-	RebuildWriter
+	rebuildWriter
 	failFor string
 }
 
@@ -392,17 +451,17 @@ func (f *failingWriter) InsertDiscoverTrendingSignal(ctx context.Context, arg db
 	if arg.RepoDid == f.failFor {
 		return errors.New("insert refused")
 	}
-	return f.RebuildWriter.InsertDiscoverTrendingSignal(ctx, arg)
+	return f.rebuildWriter.InsertDiscoverTrendingSignal(ctx, arg)
 }
 
 func TestRebuildWorker_ResolvesTheRepoHandleOnlyForPublicationBearingRepos(t *testing.T) {
 	dbs := openRebuildTestDB(t)
-	seedMirror(t, dbs, repoA, standardfeed.CollectionPublication, "3pub", `{"name":"Example Zine","url":"https://zine.example"}`)
-	seedMirror(t, dbs, repoB, lexicon.Save, "3sav", `{"itemUrl":"https://b.example/post","feedUrl":"https://b.example/feed"}`)
-	markDirty(t, dbs, repoA, "2026-07-10T00:00:00Z")
-	markDirty(t, dbs, repoB, "2026-07-10T00:00:01Z")
+	seedMirror(t, dbs, testDID, standardfeed.CollectionPublication, "3pub", `{"name":"Example Zine","url":"https://zine.example"}`)
+	seedMirror(t, dbs, otherDID, lexicon.Save, "3sav", `{"itemUrl":"https://b.example/post","feedUrl":"https://b.example/feed"}`)
+	markDirty(t, dbs, testDID, 10)
+	markDirty(t, dbs, otherDID, 11)
 
-	resolver := &fakeResolver{handle: syntax.Handle("reader.example")}
+	resolver := &stubDirectory{handle: syntax.Handle("reader.example")}
 	decoder := &stubDecoder{}
 	w := newTestWorker(t, dbs, decoder, noEntries{}, resolver)
 	w.drain(context.Background())
@@ -410,7 +469,7 @@ func TestRebuildWorker_ResolvesTheRepoHandleOnlyForPublicationBearingRepos(t *te
 	if resolver.calls != 1 {
 		t.Errorf("identity lookups = %d, want 1 (only the repo with publication rows needs a handle)", resolver.calls)
 	}
-	if decoder.gotHandle != syntax.Handle("reader.example") || decoder.gotDID.String() != repoA {
+	if decoder.gotHandle != syntax.Handle("reader.example") || decoder.gotDID.String() != testDID {
 		t.Errorf("decoder got did=%q handle=%q", decoder.gotDID, decoder.gotHandle)
 	}
 	if decoder.authoredIn != 1 {
@@ -421,10 +480,10 @@ func TestRebuildWorker_ResolvesTheRepoHandleOnlyForPublicationBearingRepos(t *te
 // Without a handle the well-known authority check can only match the DID form, so the repo stays queued rather than being written short a signal.
 func TestRebuildWorker_IdentityFailureLeavesPublicationRepoDirty(t *testing.T) {
 	dbs := openRebuildTestDB(t)
-	seedMirror(t, dbs, repoA, standardfeed.CollectionPublication, "3pub", `{"name":"Example Zine","url":"https://zine.example"}`)
-	markDirty(t, dbs, repoA, "2026-07-10T00:00:00Z")
+	seedMirror(t, dbs, testDID, standardfeed.CollectionPublication, "3pub", `{"name":"Example Zine","url":"https://zine.example"}`)
+	markDirty(t, dbs, testDID, 10)
 
-	w := newTestWorker(t, dbs, &stubDecoder{}, noEntries{}, &fakeResolver{err: errors.New("directory down")})
+	w := newTestWorker(t, dbs, &stubDecoder{}, noEntries{}, &stubDirectory{err: errors.New("directory down")})
 	w.drain(context.Background())
 
 	dirty, err := db.New(dbs.Reader).ListTapDirtyRepos(context.Background(), 10)
@@ -438,18 +497,18 @@ func TestRebuildWorker_IdentityFailureLeavesPublicationRepoDirty(t *testing.T) {
 
 func TestRebuildWorker_InactiveRepoClearsAggregatesWithoutPurgingMirrorOrResolvingIdentity(t *testing.T) {
 	dbs := openRebuildTestDB(t)
-	seedMirror(t, dbs, repoA, lexicon.Subscription, "3sub",
+	seedMirror(t, dbs, testDID, lexicon.Subscription, "3sub",
 		`{"source":{"$type":"blue.morgen.feed.subscription#rssFeed","feedUrl":"https://zine.example/feed"},"createdAt":"2026-07-01T00:00:00Z"}`)
-	seedRepoState(t, dbs, repoA, "reader.example", false, "suspended")
-	markDirty(t, dbs, repoA, "2026-07-10T00:00:00Z")
+	seedRepoState(t, dbs, testDID, "reader.example", false, "suspended")
+	markDirty(t, dbs, testDID, 10)
 	if err := db.New(dbs.Writer).InsertDiscoverTrendingSignal(context.Background(), db.InsertDiscoverTrendingSignalParams{
-		RepoDid: repoA, SourceKey: "https://zine.example/feed",
+		RepoDid: testDID, SourceKey: "https://zine.example/feed",
 		Kind: "rss", SignalKind: "subscribe", FetchedAt: "2026-07-09T00:00:00Z",
 	}); err != nil {
 		t.Fatalf("seed signal: %v", err)
 	}
 
-	resolver := &fakeResolver{err: errors.New("must not resolve inactive repo")}
+	resolver := &stubDirectory{err: errors.New("must not resolve inactive repo")}
 	decoder := &stubDecoder{subs: []discovercrawl.Subscription{{
 		Key: "https://zine.example/feed", Kind: "rss", CreatedAt: "2026-07-01T00:00:00Z",
 	}}}
@@ -459,7 +518,7 @@ func TestRebuildWorker_InactiveRepoClearsAggregatesWithoutPurgingMirrorOrResolvi
 	if got := signalsByKey(t, dbs); len(got) != 0 {
 		t.Fatalf("signals = %+v, want inactive repo removed from discovery", got)
 	}
-	rows, err := db.New(dbs.Reader).ListTapRecordsForRepo(context.Background(), repoA)
+	rows, err := db.New(dbs.Reader).ListTapRecordsForRepo(context.Background(), testDID)
 	if err != nil {
 		t.Fatalf("ListTapRecordsForRepo: %v", err)
 	}
@@ -470,41 +529,41 @@ func TestRebuildWorker_InactiveRepoClearsAggregatesWithoutPurgingMirrorOrResolvi
 		t.Fatalf("identity lookups = %d, want 0 for inactive repo", resolver.calls)
 	}
 
-	seedRepoState(t, dbs, repoA, "reader.example", true, "active")
-	markDirty(t, dbs, repoA, "2026-07-10T00:00:01Z")
+	seedRepoState(t, dbs, testDID, "reader.example", true, "active")
+	markDirty(t, dbs, testDID, 11)
 	w.drain(context.Background())
 	if got := signalsByKey(t, dbs); len(got) != 1 {
 		t.Fatalf("signals after reactivation = %+v, want rebuilt retained subscription", got)
 	}
 }
 
-func TestRebuildWorker_ActiveRepoUsesTapHandleWithoutIdentityLookup(t *testing.T) {
+func TestRebuildWorker_ActiveRepoUsesMirroredHandleWithoutIdentityLookup(t *testing.T) {
 	dbs := openRebuildTestDB(t)
-	seedMirror(t, dbs, repoA, standardfeed.CollectionPublication, "3pub", `{"name":"Example Zine","url":"https://zine.example"}`)
-	seedRepoState(t, dbs, repoA, "new-handle.example", true, "active")
-	markDirty(t, dbs, repoA, "2026-07-10T00:00:00Z")
+	seedMirror(t, dbs, testDID, standardfeed.CollectionPublication, "3pub", `{"name":"Example Zine","url":"https://zine.example"}`)
+	seedRepoState(t, dbs, testDID, "new-handle.example", true, "active")
+	markDirty(t, dbs, testDID, 10)
 
 	decoder := &stubDecoder{}
-	resolver := &fakeResolver{err: errors.New("stored Tap handle should avoid lookup")}
+	resolver := &stubDirectory{err: errors.New("the mirrored handle should avoid a lookup")}
 	w := newTestWorker(t, dbs, decoder, noEntries{}, resolver)
 	w.drain(context.Background())
 
 	if decoder.gotHandle != syntax.Handle("new-handle.example") {
-		t.Fatalf("decoder handle = %q, want Tap identity handle", decoder.gotHandle)
+		t.Fatalf("decoder handle = %q, want the mirrored identity handle", decoder.gotHandle)
 	}
 	if resolver.calls != 0 {
 		t.Fatalf("identity lookups = %d, want 0", resolver.calls)
 	}
 }
 
-func TestRebuildWorker_InvalidTapHandleFallsBackToIdentityLookup(t *testing.T) {
+func TestRebuildWorker_InvalidMirroredHandleFallsBackToIdentityLookup(t *testing.T) {
 	dbs := openRebuildTestDB(t)
-	seedMirror(t, dbs, repoA, standardfeed.CollectionPublication, "3pub", `{"name":"Example Zine","url":"https://zine.example"}`)
-	seedRepoState(t, dbs, repoA, "not a handle", true, "active")
-	markDirty(t, dbs, repoA, "2026-07-10T00:00:00Z")
+	seedMirror(t, dbs, testDID, standardfeed.CollectionPublication, "3pub", `{"name":"Example Zine","url":"https://zine.example"}`)
+	seedRepoState(t, dbs, testDID, "not a handle", true, "active")
+	markDirty(t, dbs, testDID, 10)
 
 	decoder := &stubDecoder{}
-	resolver := &fakeResolver{handle: syntax.Handle("resolved.example")}
+	resolver := &stubDirectory{handle: syntax.Handle("resolved.example")}
 	w := newTestWorker(t, dbs, decoder, noEntries{}, resolver)
 	w.drain(context.Background())
 
@@ -521,24 +580,24 @@ type mutableWellKnown struct {
 	err   error
 }
 
-func (f *mutableWellKnown) FetchWellKnown(ctx context.Context, siteURL string) (string, error) {
+func (f *mutableWellKnown) FetchWellKnown(context.Context, string) (string, error) {
 	return f.value, f.err
 }
 
 func TestRebuildWorker_ProbeFailurePreservesVerifiedSignalAndDirtyMarkUntilRetry(t *testing.T) {
 	dbs := openRebuildTestDB(t)
-	uri := "at://" + repoA + "/" + standardfeed.CollectionPublication + "/3pub"
-	seedMirror(t, dbs, repoA, standardfeed.CollectionPublication, "3pub", `{"name":"Example Zine","url":"https://zine.example"}`)
-	markDirty(t, dbs, repoA, "2026-07-10T00:00:00Z")
+	uri := "at://" + testDID + "/" + standardfeed.CollectionPublication + "/3pub"
+	seedMirror(t, dbs, testDID, standardfeed.CollectionPublication, "3pub", `{"name":"Example Zine","url":"https://zine.example"}`)
+	markDirty(t, dbs, testDID, 10)
 	if err := db.New(dbs.Writer).InsertDiscoverTrendingSignal(context.Background(), db.InsertDiscoverTrendingSignalParams{
-		RepoDid: repoA, SourceKey: uri, Kind: "standardfeed", SignalKind: "author", FetchedAt: "2026-07-09T00:00:00Z",
+		RepoDid: testDID, SourceKey: uri, Kind: "standardfeed", SignalKind: "author", FetchedAt: "2026-07-09T00:00:00Z",
 	}); err != nil {
 		t.Fatalf("seed signal: %v", err)
 	}
 
 	probe := &mutableWellKnown{err: errors.New("site unavailable")}
 	decoder := discovercrawl.NewClient(nil, nil, nil, probe, nil)
-	w := newTestWorker(t, dbs, decoder, noEntries{}, &fakeResolver{handle: syntax.Handle("reader.example")})
+	w := newTestWorker(t, dbs, decoder, noEntries{}, &stubDirectory{handle: syntax.Handle("reader.example")})
 	w.drain(context.Background())
 
 	if got := signalsByKey(t, dbs); len(got) != 1 {
@@ -569,11 +628,11 @@ func TestRebuildWorker_ProbeFailurePreservesVerifiedSignalAndDirtyMarkUntilRetry
 
 func TestRebuildWorker_TickerDrainsWithoutAnExplicitCall(t *testing.T) {
 	dbs := openRebuildTestDB(t)
-	seedMirror(t, dbs, repoA, lexicon.Subscription, "3sub",
+	seedMirror(t, dbs, testDID, lexicon.Subscription, "3sub",
 		`{"source":{"$type":"blue.morgen.feed.subscription#rssFeed","feedUrl":"https://a.example/feed"},"createdAt":"2026-07-01T00:00:00Z"}`)
-	markDirty(t, dbs, repoA, "2026-07-10T00:00:00Z")
+	markDirty(t, dbs, testDID, 10)
 
-	w := newTestWorker(t, dbs, discovercrawl.NewClient(nil, nil, nil, nil, nil), noEntries{}, &fakeResolver{})
+	w := newTestWorker(t, dbs, discovercrawl.NewClient(nil, nil, nil, nil, nil), noEntries{}, &stubDirectory{})
 	w.interval = 5 * time.Millisecond
 	w.Start()
 

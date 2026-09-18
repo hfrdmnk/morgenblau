@@ -1,4 +1,4 @@
-package discoverbatch
+package discoveringest
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 	"morgenblau/internal/discovercrawl"
 )
 
-// Writer replaces one repo's aggregate rows inside a transaction. SPEC <discovery>: diff, not accumulate.
-// The Delete/Rebuild pairs refresh the precomputed quality-bar counts the trending reads join against.
-type Writer interface {
+// rebuildWriter is one repo's write batch: the aggregate replace surface plus the dirty-mark clear, so both land or neither does.
+// The Delete/Rebuild pairs refresh the precomputed quality-bar counts every trending read joins against.
+type rebuildWriter interface {
 	DeleteDiscoverTrendingSignalsForRepo(ctx context.Context, repoDid string) error
 	InsertDiscoverTrendingSignal(ctx context.Context, arg db.InsertDiscoverTrendingSignalParams) error
 	DeleteDiscoverTrendingFollowsForRepo(ctx context.Context, repoDid string) error
@@ -19,10 +19,11 @@ type Writer interface {
 	RebuildDiscoverTrendingSourceCounts(ctx context.Context) error
 	DeleteDiscoverTrendingFollowCounts(ctx context.Context) error
 	RebuildDiscoverTrendingFollowCounts(ctx context.Context) error
+	DeleteTapDirtyRepo(ctx context.Context, arg db.DeleteTapDirtyRepoParams) error
 }
 
-// ReplaceRepoSignals deletes then reinserts a repo's rows in one transaction so reruns diff rather than accumulate. SPEC <discovery>.
-func ReplaceRepoSignals(ctx context.Context, w Writer, repoDID string, signals map[string]RepoSource, fetchedAt string) error {
+// replaceRepoSignals deletes then reinserts a repo's rows in one transaction so reruns diff rather than accumulate. SPEC <discovery>.
+func replaceRepoSignals(ctx context.Context, w rebuildWriter, repoDID string, signals map[string]repoSource, fetchedAt string) error {
 	if err := w.DeleteDiscoverTrendingSignalsForRepo(ctx, repoDID); err != nil {
 		return err
 	}
@@ -43,8 +44,8 @@ func ReplaceRepoSignals(ctx context.Context, w Writer, repoDID string, signals m
 	return nil
 }
 
-// ReplaceRepoFollows applies the same diff/replace contract as ReplaceRepoSignals, scoped to the follower aggregate.
-func ReplaceRepoFollows(ctx context.Context, w Writer, repoDID string, follows []discovercrawl.ReaderNetworkFollow, fetchedAt string) error {
+// replaceRepoFollows applies the same diff/replace contract as replaceRepoSignals, scoped to the follower aggregate.
+func replaceRepoFollows(ctx context.Context, w rebuildWriter, repoDID string, follows []discovercrawl.ReaderNetworkFollow, fetchedAt string) error {
 	if err := w.DeleteDiscoverTrendingFollowsForRepo(ctx, repoDID); err != nil {
 		return err
 	}

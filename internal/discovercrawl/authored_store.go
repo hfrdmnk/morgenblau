@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -66,39 +65,34 @@ func (c *CachedAuthoredCrawler) WithTxRunner(w *sql.DB) *CachedAuthoredCrawler {
 }
 
 // FetchAuthoredPublications returns cached publications when within ttl, else crawls fresh; the write tx opens only after the crawl returns.
+// filterVerified is the one behavioral divergence from the other five CachedX types: it gates both the cached and freshly crawled paths alike.
 func (c *CachedAuthoredCrawler) FetchAuthoredPublications(ctx context.Context, did syntax.DID) ([]AuthoredPublication, error) {
-	didStr := did.String()
-
-	state, err := c.reader.GetDiscoverCrawlAuthoredState(ctx, didStr)
-	switch {
-	case err == nil:
-		fetchedAt, perr := time.Parse(time.RFC3339, state.FetchedAt)
-		if perr == nil && c.now().Sub(fetchedAt) < c.ttl {
+	return cachedFetch[AuthoredPublication]{
+		label: "authored",
+		ttl:   c.ttl,
+		now:   c.now,
+		getState: func(ctx context.Context, didStr string) (string, error) {
+			state, err := c.reader.GetDiscoverCrawlAuthoredState(ctx, didStr)
+			if err != nil {
+				return "", err
+			}
+			return state.FetchedAt, nil
+		},
+		listCached: func(ctx context.Context, didStr string) ([]AuthoredPublication, error) {
 			rows, err := c.reader.ListDiscoverCrawlAuthored(ctx, didStr)
 			if err != nil {
 				return nil, err
 			}
-			return filterVerified(rowsToAuthored(rows)), nil
-		}
-	case errors.Is(err, sql.ErrNoRows):
-		// Never crawled, fall through to a fresh crawl.
-	default:
-		return nil, err
-	}
-
-	results, err := c.crawler.CrawlAuthoredPublications(ctx, did)
-	if err != nil {
-		return nil, err
-	}
-
-	fetchedAt := c.now().UTC().Format(time.RFC3339)
-	if err := c.runTx(ctx, func(w AuthoredCacheWriter) error {
-		return storeAuthoredResults(ctx, w, didStr, results, fetchedAt)
-	}); err != nil {
-		// Network already succeeded; a cache-write failure just means the next call re-crawls, never fatal.
-		slog.Warn("discovercrawl: authored cache write failed", "did", didStr, "err", err)
-	}
-	return filterVerified(results), nil
+			return rowsToAuthored(rows), nil
+		},
+		crawl: c.crawler.CrawlAuthoredPublications,
+		store: func(ctx context.Context, didStr string, results []AuthoredPublication, fetchedAt string) error {
+			return c.runTx(ctx, func(w AuthoredCacheWriter) error {
+				return storeAuthoredResults(ctx, w, didStr, results, fetchedAt)
+			})
+		},
+		postProcess: filterVerified,
+	}.fetch(ctx, did)
 }
 
 // FetchAuthoredPublicationsBatch is FetchAuthoredPublications over a whole fan-out; see FetchSubscriptionsBatch for the read/crawl split and degrade posture. The cached path keeps filterVerified as its single gate, same as the per-DID one.

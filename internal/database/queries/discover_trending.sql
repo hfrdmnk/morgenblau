@@ -1,6 +1,6 @@
 -- name: ListDiscoverTrendingSignals :many
 -- Whole-table read; kept for callers that genuinely need every row (see
--- internal/discoverbatch's write-path tests). The trending handler reads
+-- internal/discoveringest's write-path tests). The trending handler reads
 -- ListDiscoverTrendingSignalsAboveBar instead (see that query's comment).
 SELECT repo_did, source_key, kind, title, site_url, signal_kind, signal_at, fetched_at
 FROM discover_trending_signals;
@@ -73,9 +73,3 @@ INSERT INTO discover_trending_signals (
     repo_did, source_key, kind, title, site_url, signal_kind, signal_at, fetched_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
--- name: GetDiscoverBatchState :one
-SELECT id, last_run_at FROM discover_batch_state WHERE id = 1;
-
--- name: UpsertDiscoverBatchState :exec
-INSERT INTO discover_batch_state (id, last_run_at) VALUES (1, ?)
-ON CONFLICT (id) DO UPDATE SET last_run_at = excluded.last_run_at;

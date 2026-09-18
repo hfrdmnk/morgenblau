@@ -10,19 +10,16 @@ import (
 )
 
 const deleteTapDirtyRepo = `-- name: DeleteTapDirtyRepo :exec
-DELETE FROM tap_dirty_repos WHERE did = ? AND marked_at <= ?
+DELETE FROM tap_dirty_repos WHERE did = ? AND marked_seq = ?
 `
 
 type DeleteTapDirtyRepoParams struct {
-	Did      string `json:"did"`
-	MarkedAt string `json:"marked_at"`
+	Did       string `json:"did"`
+	MarkedSeq int64  `json:"marked_seq"`
 }
 
-// The marked_at guard clears only the mark the rebuild actually consumed: a
-// repo re-dirtied while its rebuild was running keeps a newer row and gets
-// rebuilt again, instead of having that change silently dropped.
 func (q *Queries) DeleteTapDirtyRepo(ctx context.Context, arg DeleteTapDirtyRepoParams) error {
-	_, err := q.db.ExecContext(ctx, deleteTapDirtyRepo, arg.Did, arg.MarkedAt)
+	_, err := q.db.ExecContext(ctx, deleteTapDirtyRepo, arg.Did, arg.MarkedSeq)
 	return err
 }
 
@@ -69,29 +66,10 @@ func (q *Queries) GetTapRepoState(ctx context.Context, did string) (TapRepoState
 	return i, err
 }
 
-const insertTapSeededDid = `-- name: InsertTapSeededDid :exec
-INSERT INTO tap_seeder_state (did, seeded_at) VALUES (?, ?)
-ON CONFLICT (did) DO NOTHING
-`
-
-type InsertTapSeededDidParams struct {
-	Did      string `json:"did"`
-	SeededAt string `json:"seeded_at"`
-}
-
-// DO NOTHING keeps seeded_at at the first successful backfill, so a re-run
-// never rewrites the stamp it is meant to check.
-func (q *Queries) InsertTapSeededDid(ctx context.Context, arg InsertTapSeededDidParams) error {
-	_, err := q.db.ExecContext(ctx, insertTapSeededDid, arg.Did, arg.SeededAt)
-	return err
-}
-
 const listTapDirtyRepos = `-- name: ListTapDirtyRepos :many
-SELECT did, marked_at FROM tap_dirty_repos ORDER BY marked_at, did LIMIT ?
+SELECT did, marked_seq FROM tap_dirty_repos ORDER BY marked_seq, did LIMIT ?
 `
 
-// Oldest mark first so a backlog drains in arrival order. marked_at rides
-// along because DeleteTapDirtyRepo needs the value that was read.
 func (q *Queries) ListTapDirtyRepos(ctx context.Context, limit int64) ([]TapDirtyRepo, error) {
 	rows, err := q.db.QueryContext(ctx, listTapDirtyRepos, limit)
 	if err != nil {
@@ -101,7 +79,7 @@ func (q *Queries) ListTapDirtyRepos(ctx context.Context, limit int64) ([]TapDirt
 	var items []TapDirtyRepo
 	for rows.Next() {
 		var i TapDirtyRepo
-		if err := rows.Scan(&i.Did, &i.MarkedAt); err != nil {
+		if err := rows.Scan(&i.Did, &i.MarkedSeq); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -150,46 +128,37 @@ func (q *Queries) ListTapRecordsForRepo(ctx context.Context, did string) ([]TapR
 	return items, nil
 }
 
-const listTapSeededDids = `-- name: ListTapSeededDids :many
-SELECT did FROM tap_seeder_state
-`
-
-func (q *Queries) ListTapSeededDids(ctx context.Context) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listTapSeededDids)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var did string
-		if err := rows.Scan(&did); err != nil {
-			return nil, err
-		}
-		items = append(items, did)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const markTapRepoDirty = `-- name: MarkTapRepoDirty :exec
-INSERT INTO tap_dirty_repos (did, marked_at) VALUES (?, ?)
-ON CONFLICT (did) DO UPDATE SET marked_at = excluded.marked_at
+INSERT INTO tap_dirty_repos (did, marked_seq) VALUES (?, ?)
+ON CONFLICT (did) DO UPDATE SET marked_seq = MAX(tap_dirty_repos.marked_seq, excluded.marked_seq)
 `
 
 type MarkTapRepoDirtyParams struct {
-	Did      string `json:"did"`
-	MarkedAt string `json:"marked_at"`
+	Did       string `json:"did"`
+	MarkedSeq int64  `json:"marked_seq"`
 }
 
 func (q *Queries) MarkTapRepoDirty(ctx context.Context, arg MarkTapRepoDirtyParams) error {
-	_, err := q.db.ExecContext(ctx, markTapRepoDirty, arg.Did, arg.MarkedAt)
+	_, err := q.db.ExecContext(ctx, markTapRepoDirty, arg.Did, arg.MarkedSeq)
 	return err
+}
+
+const tapRepoIsMirrored = `-- name: TapRepoIsMirrored :one
+SELECT EXISTS (
+    SELECT 1 FROM tap_records r WHERE r.did = ?1
+    UNION ALL
+    SELECT 1 FROM tap_repo_states s WHERE s.did = ?1
+) AS mirrored
+`
+
+// Existence probe for the network-wide identity/account/sync stream. Those
+// markers reach every subscriber regardless of the collection filter, so a
+// marker for a repo we never mirrored must not mint state rows for it.
+func (q *Queries) TapRepoIsMirrored(ctx context.Context, did string) (bool, error) {
+	row := q.db.QueryRowContext(ctx, tapRepoIsMirrored, did)
+	var mirrored bool
+	err := row.Scan(&mirrored)
+	return mirrored, err
 }
 
 const upsertTapRecord = `-- name: UpsertTapRecord :exec
@@ -219,6 +188,56 @@ func (q *Queries) UpsertTapRecord(ctx context.Context, arg UpsertTapRecordParams
 		arg.Record,
 		arg.IndexedAt,
 	)
+	return err
+}
+
+const upsertTapRepoAccount = `-- name: UpsertTapRepoAccount :exec
+INSERT INTO tap_repo_states (did, handle, is_active, status, updated_at)
+VALUES (?, '', ?, ?, ?)
+ON CONFLICT (did) DO UPDATE SET
+    is_active  = excluded.is_active,
+    status     = excluded.status,
+    updated_at = excluded.updated_at
+`
+
+type UpsertTapRepoAccountParams struct {
+	Did       string `json:"did"`
+	IsActive  int64  `json:"is_active"`
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// Status-only upsert. An account event carries no handle, so an existing row
+// keeps the handle identity last resolved instead of blanking it.
+func (q *Queries) UpsertTapRepoAccount(ctx context.Context, arg UpsertTapRepoAccountParams) error {
+	_, err := q.db.ExecContext(ctx, upsertTapRepoAccount,
+		arg.Did,
+		arg.IsActive,
+		arg.Status,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
+const upsertTapRepoHandle = `-- name: UpsertTapRepoHandle :exec
+INSERT INTO tap_repo_states (did, handle, is_active, status, updated_at)
+VALUES (?, ?, 1, '', ?)
+ON CONFLICT (did) DO UPDATE SET
+    handle     = excluded.handle,
+    updated_at = excluded.updated_at
+`
+
+type UpsertTapRepoHandleParams struct {
+	Did       string `json:"did"`
+	Handle    string `json:"handle"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// Handle-only upsert. An identity event carries no hosting status, so an
+// existing row keeps whatever the account stream last said; a brand new row
+// defaults to active, which is what a repo emitting identity events is.
+func (q *Queries) UpsertTapRepoHandle(ctx context.Context, arg UpsertTapRepoHandleParams) error {
+	_, err := q.db.ExecContext(ctx, upsertTapRepoHandle, arg.Did, arg.Handle, arg.UpdatedAt)
 	return err
 }
 

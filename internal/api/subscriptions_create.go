@@ -160,20 +160,15 @@ func SubscriptionsCreateHandler(
 				source      map[string]any
 			)
 			if isStandard {
+				source = sourceUnion(kind, key, "")
 				// The existence record is the portable standard subscription.
-				var err error
-				ref, err = pds.CreateRecord(r.Context(), sess, syntax.NSID(standardfeed.CollectionSubscription), map[string]any{
-					"publication": key,
-					"createdAt":   now,
-				})
-				if err != nil {
-					slog.Warn("/api/subscriptions: standard record create failed", "err", err)
-					writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
-					return
+				spec := sidecarWriteSpec{
+					Existence:           map[string]any{"publication": key, "createdAt": now},
+					ExistenceCollection: syntax.NSID(standardfeed.CollectionSubscription),
+					ExistenceOp:         "/api/subscriptions: standard record create failed",
 				}
 				// Lazy blue.morgen sidecar, only when metadata was customized; written second so a failure still leaves an adoptable standard record.
 				if item.Title != "" || item.Primary || len(tagList) > 0 {
-					source = sourceUnion(kind, key, "")
 					sidecar := map[string]any{
 						"source":    source,
 						"createdAt": now,
@@ -187,16 +182,17 @@ func SubscriptionsCreateHandler(
 					if len(tagList) > 0 {
 						sidecar["tags"] = tagList
 					}
-					scRef, err := pds.CreateRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), sidecar)
-					if err != nil {
-						slog.Warn("/api/subscriptions: sidecar create failed (standard record already on PDS; reconcile will adopt it)", "err", err)
-						writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
-						return
-					}
-					scRkey := atprepo.RkeyFromATURI(scRef.URI)
-					sidecarRkey = &scRkey
-				} else {
-					source = sourceUnion(kind, key, "")
+					spec.Sidecar = sidecar
+					spec.SidecarCollection = syntax.NSID(subscriptionCollection)
+					spec.SidecarOp = "/api/subscriptions: sidecar create failed (standard record already on PDS; reconcile will adopt it)"
+				}
+				result, ok := writeSidecarPair(r.Context(), w, sess, pds, spec)
+				if !ok {
+					return
+				}
+				ref = result.ExistenceRef
+				if result.SidecarRkey != "" {
+					sidecarRkey = &result.SidecarRkey
 				}
 			} else {
 				// Title was resolver-prefilled client-side; the user may have overridden it before submit.

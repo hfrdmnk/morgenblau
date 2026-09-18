@@ -75,7 +75,7 @@ func TestClient_CrawlSaves_MorgenRecordCarriesFeedURLProvenance(t *testing.T) {
 	}
 }
 
-// TestClient_CrawlSaves_FeedURLProvenanceCanonicalized proves save provenance normalization matches discoverbatch's resolveReactionKey, which keys reactions on this field.
+// TestClient_CrawlSaves_FeedURLProvenanceCanonicalized proves save provenance normalization matches feedkey.ResolveReactionKey, which keys reactions on this field.
 func TestClient_CrawlSaves_FeedURLProvenanceCanonicalized(t *testing.T) {
 	byCollection := map[string][]map[string]any{
 		morgenSaveCollection: {

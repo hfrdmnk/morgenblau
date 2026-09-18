@@ -123,6 +123,59 @@ func groupRowsByDID[R, T any](rows []R, did func(R) string, convert func([]R) []
 	return out
 }
 
+// cachedFetch is the singular-path twin of batchCache: serve from cache within ttl, else crawl and write through; CachedX methods build one per call from closures so the generic never sees their concrete types.
+type cachedFetch[T any] struct {
+	label      string
+	ttl        time.Duration
+	now        func() time.Time
+	getState   func(ctx context.Context, didStr string) (fetchedAt string, err error)
+	listCached func(ctx context.Context, didStr string) ([]T, error)
+	crawl      func(ctx context.Context, did syntax.DID) ([]T, error)
+	store      func(ctx context.Context, didStr string, results []T, fetchedAt string) error
+	// postProcess runs on whichever result set is served, cached or freshly crawled; nil means identity.
+	postProcess func([]T) []T
+}
+
+func (c cachedFetch[T]) fetch(ctx context.Context, did syntax.DID) ([]T, error) {
+	didStr := did.String()
+
+	fetchedAtStr, err := c.getState(ctx, didStr)
+	switch {
+	case err == nil:
+		fetchedAt, perr := time.Parse(time.RFC3339, fetchedAtStr)
+		if perr == nil && c.now().Sub(fetchedAt) < c.ttl {
+			rows, err := c.listCached(ctx, didStr)
+			if err != nil {
+				return nil, err
+			}
+			return c.apply(rows), nil
+		}
+	case errors.Is(err, sql.ErrNoRows):
+		// Never crawled: falls through to a fresh crawl below.
+	default:
+		return nil, err
+	}
+
+	results, err := c.crawl(ctx, did)
+	if err != nil {
+		return nil, err
+	}
+
+	fetchedAt := c.now().UTC().Format(time.RFC3339)
+	if err := c.store(ctx, didStr, results, fetchedAt); err != nil {
+		// Cache-write failure isn't fatal: the next call just re-crawls instead of using a stale cache.
+		slog.Warn("discovercrawl: cache write failed", "cache", c.label, "did", didStr, "err", err)
+	}
+	return c.apply(results), nil
+}
+
+func (c cachedFetch[T]) apply(rows []T) []T {
+	if c.postProcess == nil {
+		return rows
+	}
+	return c.postProcess(rows)
+}
+
 // Crawler is the seam CachedCrawler depends on so cache-logic tests inject a fake instead of a fake PDS.
 type Crawler interface {
 	Crawl(ctx context.Context, did syntax.DID) ([]Subscription, error)
@@ -178,38 +231,31 @@ func (c *CachedCrawler) WithTxRunner(w *sql.DB) *CachedCrawler {
 
 // FetchSubscriptions serves from cache within ttl, otherwise crawls fresh and refreshes the cache.
 func (c *CachedCrawler) FetchSubscriptions(ctx context.Context, did syntax.DID) ([]Subscription, error) {
-	didStr := did.String()
-
-	state, err := c.reader.GetDiscoverCrawlState(ctx, didStr)
-	switch {
-	case err == nil:
-		fetchedAt, perr := time.Parse(time.RFC3339, state.FetchedAt)
-		if perr == nil && c.now().Sub(fetchedAt) < c.ttl {
+	return cachedFetch[Subscription]{
+		label: "subscriptions",
+		ttl:   c.ttl,
+		now:   c.now,
+		getState: func(ctx context.Context, didStr string) (string, error) {
+			state, err := c.reader.GetDiscoverCrawlState(ctx, didStr)
+			if err != nil {
+				return "", err
+			}
+			return state.FetchedAt, nil
+		},
+		listCached: func(ctx context.Context, didStr string) ([]Subscription, error) {
 			rows, err := c.reader.ListDiscoverCrawlSubscriptions(ctx, didStr)
 			if err != nil {
 				return nil, err
 			}
 			return rowsToSubscriptions(rows), nil
-		}
-	case errors.Is(err, sql.ErrNoRows):
-		// Never crawled: falls through to a fresh crawl below.
-	default:
-		return nil, err
-	}
-
-	results, err := c.crawler.Crawl(ctx, did)
-	if err != nil {
-		return nil, err
-	}
-
-	fetchedAt := c.now().UTC().Format(time.RFC3339)
-	if err := c.runTx(ctx, func(w CacheWriter) error {
-		return storeResults(ctx, w, didStr, results, fetchedAt)
-	}); err != nil {
-		// Cache-write failure isn't fatal: the next call just re-crawls instead of using a stale cache.
-		slog.Warn("discovercrawl: cache write failed", "did", didStr, "err", err)
-	}
-	return results, nil
+		},
+		crawl: c.crawler.Crawl,
+		store: func(ctx context.Context, didStr string, results []Subscription, fetchedAt string) error {
+			return c.runTx(ctx, func(w CacheWriter) error {
+				return storeResults(ctx, w, didStr, results, fetchedAt)
+			})
+		},
+	}.fetch(ctx, did)
 }
 
 // FetchSubscriptionsBatch serves a whole fan-out of followed repos from two IN-reads, crawling only the DIDs whose cache is stale or missing. A DID whose crawl fails maps to nil rather than failing the batch, mirroring how the handlers degraded one candidate at a time.

@@ -24,10 +24,53 @@ func (e *Engine) reconcileFollows(ctx context.Context, did syntax.DID, sess *oau
 	}
 
 	didStr := did.String()
-	validRemote := make([]PDSFollow, 0, len(remote))
+	validRemote := e.tombstoneSelfFollows(ctx, sess, remote, didStr)
+
+	canonicalBySubject := canonicalByKey(validRemote,
+		func(r PDSFollow) string { return r.SubjectDID },
+		func(r PDSFollow) string { return r.Rkey })
+
+	now := e.now().UTC().Format(time.RFC3339)
+
+	desired := make([]desiredRow, 0, len(canonicalBySubject))
+	for _, r := range canonicalBySubject {
+		params := db.UpsertUserFollowParams{
+			Did:        didStr,
+			Rkey:       r.Rkey,
+			AtUri:      r.URI,
+			SubjectDid: r.SubjectDID,
+			CreatedAt:  orNow(r.CreatedAt, now),
+			UpdatedAt:  now,
+		}
+		desired = append(desired, desiredRow{
+			rkey:  r.Rkey,
+			write: func(ctx context.Context, q SyncStore) error { return q.UpsertUserFollow(ctx, params) },
+		})
+	}
+
+	return reconcileCollection(ctx, e.runTx, reconcilePass[db.ListUserFollowsForSyncRow]{
+		collection: "follows",
+		snapshotAt: snapshotAt,
+		snapshot: func(ctx context.Context, q SyncStore) ([]db.ListUserFollowsForSyncRow, error) {
+			return q.ListUserFollowsForSync(ctx, didStr)
+		},
+		rkeyOf:      func(row db.ListUserFollowsForSyncRow) string { return row.Rkey },
+		createdAtOf: func(row db.ListUserFollowsForSyncRow) string { return row.CreatedAt },
+		desired:     desired,
+		deleteRow: func(ctx context.Context, q SyncStore, rkey string) error {
+			return q.DeleteUserFollow(ctx, db.DeleteUserFollowParams{Did: didStr, Rkey: rkey})
+		},
+		// A changed canonical rkey leaves the stale row holding (did, subject_did), which the unique index would trip on the new upsert.
+		deleteFirst: true,
+	})
+}
+
+// tombstoneSelfFollows drops self-follows from the desired set and deletes their PDS records; a nil pds only drops them locally.
+func (e *Engine) tombstoneSelfFollows(ctx context.Context, sess *oauth.ClientSession, remote []PDSFollow, didStr string) []PDSFollow {
+	valid := make([]PDSFollow, 0, len(remote))
 	for _, r := range remote {
 		if r.SubjectDID != didStr {
-			validRemote = append(validRemote, r)
+			valid = append(valid, r)
 			continue
 		}
 		if e.pds == nil {
@@ -37,56 +80,5 @@ func (e *Engine) reconcileFollows(ctx context.Context, did syntax.DID, sess *oau
 			slog.Warn("reconcile: self-follow PDS delete failed", "rkey", r.Rkey, "err", err)
 		}
 	}
-
-	canonicalBySubject := canonicalByKey(validRemote,
-		func(r PDSFollow) string { return r.SubjectDID },
-		func(r PDSFollow) string { return r.Rkey })
-	desired := make(map[string]PDSFollow, len(canonicalBySubject))
-	for _, r := range canonicalBySubject {
-		desired[r.Rkey] = r
-	}
-
-	now := e.now().UTC().Format(time.RFC3339)
-
-	return e.runTx(ctx, func(q SyncStore) error {
-		snapshot, err := q.ListUserFollowsForSync(ctx, didStr)
-		if err != nil {
-			return err
-		}
-
-		// Deletes first: if the canonical rkey for a subject changes, the stale row still holds (did, subject_did) and would collide with the unique index on upsert.
-		for _, row := range snapshot {
-			if _, keep := desired[row.Rkey]; keep {
-				continue
-			}
-			if createdAfterSnapshot(row.CreatedAt, snapshotAt) {
-				slog.Debug("reconcile: follows delete skipped, row newer than the PDS snapshot", "rkey", row.Rkey, "createdAt", row.CreatedAt)
-				continue
-			}
-			if err := q.DeleteUserFollow(ctx, db.DeleteUserFollowParams{
-				Did:  didStr,
-				Rkey: row.Rkey,
-			}); err != nil {
-				slog.Warn("reconcile: follows delete failed", "rkey", row.Rkey, "err", err)
-			}
-		}
-
-		for rkey, r := range desired {
-			createdAt := r.CreatedAt
-			if createdAt == "" {
-				createdAt = now
-			}
-			if err := q.UpsertUserFollow(ctx, db.UpsertUserFollowParams{
-				Did:        didStr,
-				Rkey:       rkey,
-				AtUri:      r.URI,
-				SubjectDid: r.SubjectDID,
-				CreatedAt:  createdAt,
-				UpdatedAt:  now,
-			}); err != nil {
-				slog.Warn("reconcile: follows upsert failed", "rkey", rkey, "err", err)
-			}
-		}
-		return nil
-	})
+	return valid
 }
