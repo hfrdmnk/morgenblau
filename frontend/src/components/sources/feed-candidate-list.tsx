@@ -251,8 +251,7 @@ const FeedCandidateCard = memo(function FeedCandidateCard({
                                     <TooltipContent>
                                         This subscription lives in your own
                                         account: it travels with you across
-                                        apps, and anything you share reaches
-                                        the whole Atmosphere.
+                                        apps.
                                     </TooltipContent>
                                 </Tooltip>
                             )}

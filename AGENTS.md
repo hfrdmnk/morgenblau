@@ -2,7 +2,7 @@
 
 A calm content platform powered by RSS and ATProto — daily digests instead of infinite feeds.
 
-> **Branch note (`lets-go`):** stack is being rebuilt on Go (backend) + React without Inertia (frontend). Most stack-specific guidance is intentionally absent until the new layout settles.
+> Stack: Go backend and React frontend. The v1 boundary is defined in `SPEC.md`.
 
 ## Spec Compliance
 
@@ -23,7 +23,7 @@ Docs point, they don't mirror. In durable project docs (this file, `SPEC.md`, `.
 
 ## Lexicons
 
-Lexicon schemas live in `SPEC.md` under `<lexicons>`. Morgenblau owns `blue.morgen.*`; external lexicons we interoperate with (Bluesky, margin.at, Glean, Skyreader) are listed in the same section.
+Lexicon schemas live under `lexicons/`; runtime constants and validation live in `internal/lexicon/`. `SPEC.md` defines the compatibility boundary. Preserve all existing schemas even when their product features are outside v1.
 
 ## Database
 

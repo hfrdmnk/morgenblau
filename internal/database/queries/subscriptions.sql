@@ -2,43 +2,28 @@
 -- kind defaults to 'rss' via NULLIF so pre-standardfeed callers passing the
 -- zero value keep working; it is never changed on conflict. title is the
 -- cached publication name; COALESCE keeps rss callers (nil) from clobbering it.
--- language is the pipeline's freshly-detected value (discoverlang); COALESCE
--- keeps an inconclusive detection on this fetch from erasing a previously
--- known language (SPEC <discovery>: detection runs on entry content already
--- fetched, no dedicated network call).
 -- All params are named (not positional): mixing sqlc.arg() with bare ? makes
 -- sqlc emit non-contiguous placeholder numbers that modernc.org/sqlite can't
 -- bind ("missing argument with index N").
-INSERT INTO feeds (feed_url, kind, site_url, title, language, created_at, updated_at)
+INSERT INTO feeds (feed_url, kind, site_url, title, created_at, updated_at)
 VALUES (
     sqlc.arg(feed_url),
     COALESCE(NULLIF(sqlc.arg(kind), ''), 'rss'),
     sqlc.arg(site_url),
     sqlc.arg(title),
-    sqlc.arg(language),
     sqlc.arg(created_at),
     sqlc.arg(updated_at)
 )
 ON CONFLICT (feed_url) DO UPDATE SET
     site_url = COALESCE(NULLIF(excluded.site_url, ''), feeds.site_url),
     title = COALESCE(excluded.title, feeds.title),
-    language = COALESCE(excluded.language, feeds.language),
     updated_at = excluded.updated_at;
 
 -- name: GetFeed :one
 -- Column order matches the table's physical layout so sqlc reuses the Feed
--- model instead of minting a one-off row type (see
--- ListDiscoverCrawlSubscriptions for the same convention).
-SELECT feed_url, kind, site_url, title, language, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at, consecutive_failures, next_fetch_at
+-- model instead of minting a one-off row type.
+SELECT feed_url, kind, site_url, title, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at, consecutive_failures, next_fetch_at
 FROM feeds WHERE feed_url = ?;
-
--- name: ListFeedLanguages :many
--- Discover trending's language-filter lookup (SPEC <discovery> "Global/
--- Trending ranking"): every Tier-2 source with a known detected language, in
--- one query rather than one per candidate. Tier-2 only holds feeds a
--- Morgenblau user actually subscribes to, so this table is small relative to
--- the network-wide trending aggregate.
-SELECT feed_url, language FROM feeds WHERE language IS NOT NULL;
 
 -- name: GetFeedIconURL :one
 -- Returns the stored icon URL for a feed. Drives the favicon-proxy SSRF guard:

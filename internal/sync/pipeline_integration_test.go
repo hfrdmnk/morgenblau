@@ -19,7 +19,7 @@ import (
 	"morgenblau/internal/standardfeed"
 )
 
-// pipelineSchemaSQL must stay in sync with internal/database/migrations/*_subscriptions_and_feeds.sql, *_feed_entries.sql, *_feeds_language.sql, and *_feed_fetch_backoff.sql.
+// pipelineSchemaSQL must stay in sync with the feed catalog in internal/database/migrations.
 const pipelineSchemaSQL = `
 CREATE TABLE feeds (
     feed_url         TEXT PRIMARY KEY,
@@ -33,7 +33,6 @@ CREATE TABLE feeds (
     icon_fetched_at  TEXT,
     created_at       TEXT NOT NULL,
     updated_at       TEXT NOT NULL,
-    language         TEXT,
     consecutive_failures INTEGER NOT NULL DEFAULT 0,
     next_fetch_at    TEXT
 );

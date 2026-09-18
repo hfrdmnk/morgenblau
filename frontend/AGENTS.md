@@ -29,18 +29,17 @@ paths:
 ## API contract
 
 - Backend errors are JSON `{code, message}` with optional `errors` (field map). Reauth is exactly `403` plus `code: "reauth_required"`; missing-or-not-owned resources are `404` on every verb.
-- All API calls go through `api()` from `src/lib/api.ts`; never call `fetch` inline. It throws `ApiError` (`status`, `code`, `message`, `errors`, `.isReauth`); pass `signal` for cancellable calls. Best-effort profile lookups live in `src/lib/profile.ts`.
+- All API calls go through `api()` from `src/lib/api.ts`; never call `fetch` inline. It throws `ApiError` (`status`, `code`, `message`, `errors`, `.isReauth`); pass `signal` for cancellable calls.
 
 ## Session caches and mutation signals
 
-- Session caches follow the `lib/discover-cache.ts` shape (module-level entry, TTL, `read*`/`write*` pair); the Library twin is `lib/library-cache.ts`. They bridge a page across mount/unmount within one session; React state stays the source of truth.
+- Session caches follow the `lib/library-cache.ts` shape (module-level entry, TTL, `read*`/`write*` pair). They bridge a page across mount/unmount within one session; React state stays the source of truth.
 - A mutation **clears** the affected entry, never appends or patches it: mutation responses carry no list fields, so the next mount refetches. The cache module subscribes to the mutation bus itself, so components never wire invalidation.
 - Cross-component mutation signals follow the `lib/subscription-events.ts` pattern (module-level listener set, `emit*` + `subscribe*` pair); the Library twin is `lib/library-events.ts`.
 
 ## Interaction patterns
 
 - List row highlight is one CSS element that travels (~150ms) across both hover and keyboard selection, driven by a unified active index. Never a JS animation library for this.
-- `motion` (motion.dev) tweens real geometry values for the discover card break-up (margins/radii/height via the tokens in `src/lib/motion-transitions.ts`), not layout projection. Always pass an explicit transition (its default layout spring violates the no-spring rule), wrap motion trees in `MotionConfig reducedMotion="user"`, and drive animated values through `animate`, never a spring.
 
 ## Codebase hygiene
 

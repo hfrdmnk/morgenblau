@@ -62,30 +62,6 @@ var reconcileGuardCases = []reconcileGuardCase{
 		},
 		deletes: func(s *fakeStore) []string { return s.saveDeletes },
 	},
-	{
-		name: "shares",
-		seed: func(s *fakeStore, createdAt string) {
-			s.shares[guardDID] = map[string]db.ListUserSharesForSyncRow{
-				"3inflight": {Did: guardDID, Rkey: "3inflight", AtUri: "at://" + guardDID + "/blue.morgen.feed.share/3inflight", Kind: "rss", ItemUrl: ptr("https://example.test/post"), CreatedAt: createdAt},
-			}
-		},
-		run: func(e *Engine) error {
-			return e.reconcileShares(context.Background(), mustDID(guardDID), newSession(guardDID))
-		},
-		deletes: func(s *fakeStore) []string { return s.shareDeletes },
-	},
-	{
-		name: "follows",
-		seed: func(s *fakeStore, createdAt string) {
-			s.follows[guardDID] = map[string]db.ListUserFollowsForSyncRow{
-				"3inflight": {Did: guardDID, Rkey: "3inflight", AtUri: "at://" + guardDID + "/blue.morgen.graph.follow/3inflight", SubjectDid: "did:plc:bob", CreatedAt: createdAt},
-			}
-		},
-		run: func(e *Engine) error {
-			return e.reconcileFollows(context.Background(), mustDID(guardDID), newSession(guardDID))
-		},
-		deletes: func(s *fakeStore) []string { return s.followDeletes },
-	},
 }
 
 // A row written in-app after the PDS listing was taken is absent from that listing without having been deleted remotely; reconcile must not mistake it for a remote delete.

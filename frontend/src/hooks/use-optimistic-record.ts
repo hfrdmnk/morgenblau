@@ -8,7 +8,7 @@ type OptimisticRecordOptions = {
     onDeleteError?: (error: unknown) => void;
 };
 
-// The rkey-backed record state shared by the save and share toggles: remove() flips state before the DELETE lands and rolls back on failure.
+// remove() flips local record state before the DELETE lands and rolls back on failure.
 export function useOptimisticRecord(options: OptimisticRecordOptions) {
     const [active, setActive] = useState(Boolean(options.initial));
     const [rkey, setRkey] = useState<string | null>(

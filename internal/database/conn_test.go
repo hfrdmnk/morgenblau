@@ -24,7 +24,6 @@ CREATE TABLE feeds (
     icon_fetched_at  TEXT,
     created_at       TEXT NOT NULL,
     updated_at       TEXT NOT NULL,
-    language         TEXT,
     consecutive_failures INTEGER NOT NULL DEFAULT 0,
     next_fetch_at    TEXT
 );`

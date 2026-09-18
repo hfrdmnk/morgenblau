@@ -15,15 +15,10 @@ import (
 const (
 	subscriptionCollection = lexicon.Subscription
 	saveCollection         = lexicon.Save
-	shareCollection        = lexicon.Share
-	followCollection       = lexicon.Follow
 )
 
-// Standardfeed collections hold existence records for subscriptions/shares; blue.morgen records are their metadata sidecars.
-const (
-	standardSubscriptionCollection = standardfeed.CollectionSubscription
-	standardRecommendCollection    = standardfeed.CollectionRecommend
-)
+// Standardfeed subscriptions hold portable existence records; blue.morgen subscriptions carry optional metadata sidecars.
+const standardSubscriptionCollection = standardfeed.CollectionSubscription
 
 // SessionPDSLister pages com.atproto.repo.listRecords against the session's PDS until the cursor is exhausted.
 type SessionPDSLister struct{}
@@ -83,57 +78,6 @@ func (SessionPDSLister) ListSaves(ctx context.Context, sess *oauth.ClientSession
 			continue
 		}
 		out = append(out, s)
-	}
-	return out, nil
-}
-
-func (SessionPDSLister) ListShares(ctx context.Context, sess *oauth.ClientSession) ([]PDSShare, error) {
-	records, err := pageRecords(ctx, sess.APIClient(), sess.Data.AccountDID.String(), shareCollection)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]PDSShare, 0, len(records))
-	for _, r := range records {
-		s, ok := toPDSShare(r)
-		if !ok {
-			slog.Warn("pdslister: skipping share without itemUrl", "uri", r.URI)
-			continue
-		}
-		out = append(out, s)
-	}
-	return out, nil
-}
-
-func (SessionPDSLister) ListFollows(ctx context.Context, sess *oauth.ClientSession) ([]PDSFollow, error) {
-	records, err := pageRecords(ctx, sess.APIClient(), sess.Data.AccountDID.String(), followCollection)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]PDSFollow, 0, len(records))
-	for _, r := range records {
-		f, ok := toPDSFollow(r)
-		if !ok {
-			slog.Warn("pdslister: skipping follow without subject", "uri", r.URI)
-			continue
-		}
-		out = append(out, f)
-	}
-	return out, nil
-}
-
-func (SessionPDSLister) ListRecommends(ctx context.Context, sess *oauth.ClientSession) ([]PDSRecommend, error) {
-	records, err := pageRecords(ctx, sess.APIClient(), sess.Data.AccountDID.String(), standardRecommendCollection)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]PDSRecommend, 0, len(records))
-	for _, r := range records {
-		rec, ok := toPDSRecommend(r)
-		if !ok {
-			slog.Warn("pdslister: skipping recommend without document", "uri", r.URI)
-			continue
-		}
-		out = append(out, rec)
 	}
 	return out, nil
 }
@@ -263,58 +207,6 @@ func toPDSSave(r recordEntry) (PDSSave, bool) {
 		Rkey:      atprepo.RkeyFromATURI(r.URI),
 		ItemURL:   itemURL,
 		FeedURL:   feedURL,
-		CreatedAt: createdAt,
-	}, true
-}
-
-// toPDSShare maps a blue.morgen.feed.share record; itemUrl is required. A
-// document field marks a standardfeed comment sidecar, its absence marks an rss share.
-func toPDSShare(r recordEntry) (PDSShare, bool) {
-	itemURL, _ := r.Value["itemUrl"].(string)
-	if itemURL == "" {
-		return PDSShare{}, false
-	}
-	document, _ := r.Value["document"].(string)
-	feedURL, _ := r.Value["feedUrl"].(string)
-	comment, _ := r.Value["comment"].(string)
-	createdAt, _ := r.Value["createdAt"].(string)
-	return PDSShare{
-		URI:       r.URI,
-		Rkey:      atprepo.RkeyFromATURI(r.URI),
-		ItemURL:   itemURL,
-		Document:  document,
-		FeedURL:   feedURL,
-		Comment:   comment,
-		CreatedAt: createdAt,
-	}, true
-}
-
-// toPDSFollow maps a blue.morgen.graph.follow record; subject is lexicon-required, missing records are skipped.
-func toPDSFollow(r recordEntry) (PDSFollow, bool) {
-	subject, _ := r.Value["subject"].(string)
-	if subject == "" {
-		return PDSFollow{}, false
-	}
-	createdAt, _ := r.Value["createdAt"].(string)
-	return PDSFollow{
-		URI:        r.URI,
-		Rkey:       atprepo.RkeyFromATURI(r.URI),
-		SubjectDID: subject,
-		CreatedAt:  createdAt,
-	}, true
-}
-
-// toPDSRecommend maps a site.standard.graph.recommend record, the existence authority for a standardfeed share; document is required, createdAt optional.
-func toPDSRecommend(r recordEntry) (PDSRecommend, bool) {
-	document, _ := r.Value["document"].(string)
-	if document == "" {
-		return PDSRecommend{}, false
-	}
-	createdAt, _ := r.Value["createdAt"].(string)
-	return PDSRecommend{
-		URI:       r.URI,
-		Rkey:      atprepo.RkeyFromATURI(r.URI),
-		Document:  document,
 		CreatedAt: createdAt,
 	}, true
 }

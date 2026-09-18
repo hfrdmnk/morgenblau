@@ -1,13 +1,11 @@
-type LibraryMutation = { kind: 'save' | 'share' };
-
-type Listener = (event: LibraryMutation) => void;
+type Listener = () => void;
 
 const listeners = new Set<Listener>();
 
-// Saving or sharing changes lists the mutating surface doesn't own, so it announces instead of patching them.
-export function emitLibraryMutation(event: LibraryMutation): void {
+// Saving changes a list the reader doesn't own, so it announces instead of patching it.
+export function emitLibraryMutation(): void {
     for (const listener of listeners) {
-        listener(event);
+        listener();
     }
 }
 

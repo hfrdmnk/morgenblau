@@ -82,21 +82,15 @@ func (c *Client) GetPublication(ctx context.Context, rawURI string) (*Publicatio
 		uri = fmt.Sprintf("at://%s/%s/%s", ref.did, CollectionPublication, ref.uri.RecordKey())
 	}
 	pub := &Publication{
-		URI:            uri,
-		CID:            out.CID,
-		DID:            ref.did.String(),
-		Name:           name,
-		URL:            trimTrailingSlash(pubURL),
-		ShowInDiscover: true,
+		URI:  uri,
+		CID:  out.CID,
+		DID:  ref.did.String(),
+		Name: name,
+		URL:  trimTrailingSlash(pubURL),
 	}
 	pub.Description, _ = out.Value["description"].(string)
 	if cid := blobRefCID(out.Value["icon"]); cid != "" {
 		pub.IconURL = blobURL(ref.endpoint, ref.did, cid)
-	}
-	if prefs, ok := out.Value["preferences"].(map[string]any); ok {
-		if show, ok := prefs["showInDiscover"].(bool); ok {
-			pub.ShowInDiscover = show
-		}
 	}
 	return pub, nil
 }
@@ -163,38 +157,6 @@ func (c *Client) ListDocuments(ctx context.Context, pubURI string) ([]Document, 
 		}
 		cursor = resp.Cursor
 	}
-}
-
-// ListRecentDocuments returns up to limit of pubURI's documents from a single default-ordered page, no cursor
-// follow-up; listRecords defaults to rkey descending (newest first), and TID rkeys approximate creation order, so
-// this is a best-effort preview fetch (SPEC <discovery>), not the exhaustive listing ListDocuments needs for sweep diffing.
-func (c *Client) ListRecentDocuments(ctx context.Context, pubURI string, limit int) ([]Document, error) {
-	ref, err := c.resolveRepo(ctx, pubURI, CollectionPublication)
-	if err != nil {
-		return nil, err
-	}
-
-	// site stores the DID-form uri; pubURI may be handle-form, so match both.
-	didURI := fmt.Sprintf("at://%s/%s/%s", ref.did, CollectionPublication, ref.uri.RecordKey())
-
-	var resp listRecordsResp
-	params := map[string]any{
-		"repo":       ref.did.String(),
-		"collection": CollectionDocument,
-		"limit":      limit,
-	}
-	if err := c.apiClient(ref.endpoint).Get(ctx, syntax.NSID("com.atproto.repo.listRecords"), params, &resp); err != nil {
-		return nil, fmt.Errorf("standardfeed: listRecords %s: %w", pubURI, err)
-	}
-
-	var out []Document
-	for _, r := range resp.Records {
-		if site, _ := r.Value["site"].(string); site != pubURI && site != didURI {
-			continue
-		}
-		out = append(out, toDocument(r, ref))
-	}
-	return out, nil
 }
 
 func toDocument(r recordEntry, ref repoRef) Document {

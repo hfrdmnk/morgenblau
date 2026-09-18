@@ -14,6 +14,12 @@ import (
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
+	mux := s.routes()
+	gate := auth.New(s.oauthApp, s.store, s.sealer)
+	return s.corsMiddleware(gate(mux))
+}
+
+func (s *Server) routes() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/health", s.healthHandler)
@@ -22,46 +28,24 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("POST /oauth/login", handler.LoginHandler(s.oauthApp))
 	mux.Handle("GET /oauth/callback", handler.CallbackHandler(s.oauthApp, s.sealer, s.sync))
 	mux.Handle("POST /oauth/logout", handler.LogoutHandler(s.oauthApp, s.sealer, s.store))
-	mux.Handle("GET /api/profiles", api.ProfilesBatchHandler(s.profiles))
 	mux.Handle("GET /api/profiles/me", api.MeProfileHandler(s.profiles))
-	mux.Handle("GET /api/profiles/{did}", api.ProfileByDIDHandler(s.profiles))
 
 	pdsWriter := atprepo.SessionWriter{}
 	// POST/PATCH/DELETE routes below make PDS writes; auth.holdsSessionLock must match this set.
 	mux.Handle("GET /api/subscriptions", api.SubscriptionsListHandler(s.qr))
 	mux.Handle("POST /api/subscriptions/resolve", api.SubscriptionsResolveHandler(s.qr, s.feedfinder))
-	mux.Handle("POST /api/subscriptions", api.SubscriptionsCreateHandler(s.qr, s.qw, pdsWriter, s.sync, s.discoverMemos))
+	mux.Handle("POST /api/subscriptions", api.SubscriptionsCreateHandler(s.qr, s.qw, pdsWriter, s.sync))
 	mux.Handle("GET /api/subscriptions/tags", api.SubscriptionsTagsHandler(s.qr))
 	mux.Handle("GET /api/subscriptions/{rkey}", api.SubscriptionGetHandler(s.qr))
 	mux.Handle("GET /api/subscriptions/{rkey}/entries", api.SubscriptionEntriesHandler(s.qr))
-	mux.Handle("PATCH /api/subscriptions/{rkey}", api.SubscriptionsPatchHandler(s.qr, s.qw, pdsWriter, s.sync, s.discoverMemos))
-	mux.Handle("DELETE /api/subscriptions/{rkey}", api.SubscriptionsDeleteHandler(s.qr, s.qw, pdsWriter, s.sync, s.discoverMemos))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", api.SubscriptionsPatchHandler(s.qr, s.qw, pdsWriter, s.sync))
+	mux.Handle("DELETE /api/subscriptions/{rkey}", api.SubscriptionsDeleteHandler(s.qr, s.qw, pdsWriter, s.sync))
 
-	mux.Handle("GET /api/favicon", api.FaviconProxyHandler(s.qr, s.qr, s.qr, s.discoverFavicon, s.safeClient))
+	mux.Handle("GET /api/favicon", api.FaviconProxyHandler(s.qr, s.safeClient))
 
 	mux.Handle("GET /api/saves", api.SavesListHandler(s.qr))
 	mux.Handle("POST /api/saves", api.SavesCreateHandler(s.qr, s.qw, pdsWriter, s.sync))
 	mux.Handle("DELETE /api/saves/{rkey}", api.SavesDeleteHandler(s.qr, s.qw, pdsWriter, s.sync))
-
-	mux.Handle("GET /api/shares", api.SharesListHandler(s.qr, s.shareMetadata))
-	mux.Handle("POST /api/shares", api.SharesCreateHandler(s.qr, s.qw, pdsWriter, s.sync))
-	mux.Handle("DELETE /api/shares/{rkey}", api.SharesDeleteHandler(s.qr, s.qw, pdsWriter, s.sync))
-
-	mux.Handle("GET /api/follows", api.FollowsListHandler(s.qr))
-	mux.Handle("POST /api/follows", api.FollowsCreateHandler(s.qr, s.qw, pdsWriter, s.identityDir, s.sync, s.discoverMemos))
-	mux.Handle("DELETE /api/follows/{rkey}", api.FollowsDeleteHandler(s.qr, s.qw, pdsWriter, s.sync, s.discoverMemos))
-
-	mux.Handle("GET /api/discover/sources", api.DiscoverSourcesHandler(s.qr, s.discoverAdjacent, s.discoverOwnForeign, s.qr, s.discover, s.discoverAuthored, s.discoverShares, s.qr, s.qr, s.qr, s.qr, s.qr, s.discoverSourcesMemo))
-	mux.Handle("GET /api/discover/people", api.DiscoverPeopleHandler(s.qr, s.discoverAdjacent, s.discoverFollows, s.qr, s.discover, s.discoverAuthored, s.discoverShares, s.qr, s.qr, s.qr, s.discoverPeopleMemo, s.qr))
-	mux.Handle("POST /api/discover/hides", api.DiscoverHidesCreateHandler(s.qr, s.qw, s.discoverMemos))
-	mux.Handle("GET /api/discover/sources/posts", api.DiscoverSourcePostsHandler(s.discoverPosts))
-	mux.Handle("GET /api/discover/people/preview", api.DiscoverPersonPreviewHandler(s.personInspector, s.qr, s.shareMetadata))
-	mux.Handle("GET /api/search/people", api.SearchPeopleHandler(s.peopleSearcher))
-
-	mux.Handle("GET /api/profile/{id}", api.ProfileHandler(s.identityDir, s.profiles, s.qr, s.qr, s.personInspector))
-	mux.Handle("GET /api/profile/{id}/{segment}", api.ProfileSegmentHandler(s.identityDir, s.qr, s.personInspector, s.shareMetadata))
-
-	mux.Handle("GET /api/library/network-shares", api.LibraryNetworkSharesHandler(s.qr, s.discoverShares, s.shareMetadata))
 
 	mux.Handle("GET /api/jobs/active", api.JobsActiveHandler(s.jobs))
 	mux.Handle("GET /api/jobs/{id}", api.JobsGetHandler(s.jobs))
@@ -75,8 +59,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("GET /about", api.AboutHandler())
 	mux.Handle("/", spaHandler())
 
-	gate := auth.New(s.oauthApp, s.store, s.sealer)
-	return s.corsMiddleware(gate(mux))
+	return mux
 }
 
 func (s *Server) corsMiddleware(next http.Handler) http.Handler {

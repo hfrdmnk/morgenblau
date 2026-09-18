@@ -45,7 +45,7 @@ func genP384B64PEM(t *testing.T) string {
 func baseEnv(t *testing.T) map[string]string {
 	return map[string]string{
 		"BLUESKY_OAUTH_PRIVATE_KEY": genP256B64PEM(t),
-		"BLUESKY_OAUTH_SCOPE":       "atproto repo:blue.morgen.feed.subscription repo:blue.morgen.feed.save repo:blue.morgen.feed.share repo:blue.morgen.graph.follow",
+		"BLUESKY_OAUTH_SCOPE":       "atproto include:blue.morgen.access repo:site.standard.graph.subscription",
 		"BLUESKY_OAUTH_CLIENT_NAME": "Morgenblau",
 		"BLUESKY_OAUTH_CLIENT_URI":  "https://app.example.com",
 	}

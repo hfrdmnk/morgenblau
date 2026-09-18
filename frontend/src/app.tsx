@@ -12,11 +12,9 @@ import { PATHS } from '@/lib/paths';
 
 // Named exports, not default, so each lazy() adapts the module to the shape React.lazy requires.
 const Digest = lazy(() => import('@/pages/digest').then((m) => ({ default: m.Digest })));
-const Discover = lazy(() => import('@/pages/discover').then((m) => ({ default: m.Discover })));
 const Entry = lazy(() => import('@/pages/entry').then((m) => ({ default: m.Entry })));
 const Library = lazy(() => import('@/pages/library').then((m) => ({ default: m.Library })));
 const Login = lazy(() => import('@/pages/login').then((m) => ({ default: m.Login })));
-const Profile = lazy(() => import('@/pages/profile').then((m) => ({ default: m.Profile })));
 const Source = lazy(() => import('@/pages/source').then((m) => ({ default: m.Source })));
 const Sources = lazy(() => import('@/pages/sources').then((m) => ({ default: m.Sources })));
 const Welcome = lazy(() => import('@/pages/welcome').then((m) => ({ default: m.Welcome })));
@@ -37,8 +35,6 @@ const CHROME_PAGES: PageDef[] = [
     { path: PATHS.library, Component: Library },
     { path: PATHS.sources, Component: Sources },
     { path: `${PATHS.sources}/:rkey`, Component: Source },
-    { path: PATHS.discover, Component: Discover },
-    { path: `${PATHS.profile}/:handleOrDid`, Component: Profile },
 ];
 
 // Derived from CHROME_PAGES so the outer Route can't silently drift from the inner Switch.

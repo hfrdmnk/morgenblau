@@ -4,173 +4,11 @@
 
 package db
 
-type DiscoverCrawlAdjacentFollow struct {
-	Did        string `json:"did"`
-	SubjectDid string `json:"subject_did"`
-	Network    string `json:"network"`
-	FetchedAt  string `json:"fetched_at"`
-}
-
-type DiscoverCrawlAdjacentState struct {
-	Did       string `json:"did"`
-	FetchedAt string `json:"fetched_at"`
-}
-
-type DiscoverCrawlAuthored struct {
-	FollowedDid     string  `json:"followed_did"`
-	CanonicalKey    string  `json:"canonical_key"`
-	Kind            string  `json:"kind"`
-	Title           *string `json:"title"`
-	SiteUrl         *string `json:"site_url"`
-	LastPublishedAt *string `json:"last_published_at"`
-	FetchedAt       string  `json:"fetched_at"`
-	Verification    string  `json:"verification"`
-}
-
-type DiscoverCrawlAuthoredState struct {
-	FollowedDid string `json:"followed_did"`
-	FetchedAt   string `json:"fetched_at"`
-}
-
-type DiscoverCrawlFollow struct {
-	FollowedDid string `json:"followed_did"`
-	SubjectDid  string `json:"subject_did"`
-	FetchedAt   string `json:"fetched_at"`
-}
-
-type DiscoverCrawlFollowState struct {
-	FollowedDid string `json:"followed_did"`
-	FetchedAt   string `json:"fetched_at"`
-}
-
-type DiscoverCrawlOwnForeignState struct {
-	Did       string `json:"did"`
-	FetchedAt string `json:"fetched_at"`
-}
-
-type DiscoverCrawlOwnForeignSubscription struct {
-	Did          string  `json:"did"`
-	CanonicalKey string  `json:"canonical_key"`
-	Kind         string  `json:"kind"`
-	App          string  `json:"app"`
-	Title        *string `json:"title"`
-	SiteUrl      *string `json:"site_url"`
-	CreatedAt    *string `json:"created_at"`
-	FetchedAt    string  `json:"fetched_at"`
-}
-
-type DiscoverCrawlShare struct {
-	FollowedDid string  `json:"followed_did"`
-	DedupeKey   string  `json:"dedupe_key"`
-	Kind        string  `json:"kind"`
-	ItemUrl     *string `json:"item_url"`
-	Document    *string `json:"document"`
-	FeedUrl     *string `json:"feed_url"`
-	Comment     *string `json:"comment"`
-	CreatedAt   string  `json:"created_at"`
-	FetchedAt   string  `json:"fetched_at"`
-}
-
-type DiscoverCrawlShareState struct {
-	FollowedDid string `json:"followed_did"`
-	FetchedAt   string `json:"fetched_at"`
-}
-
-type DiscoverCrawlState struct {
-	FollowedDid string `json:"followed_did"`
-	FetchedAt   string `json:"fetched_at"`
-}
-
-type DiscoverCrawlSubscription struct {
-	FollowedDid  string  `json:"followed_did"`
-	CanonicalKey string  `json:"canonical_key"`
-	Kind         string  `json:"kind"`
-	Title        *string `json:"title"`
-	SiteUrl      *string `json:"site_url"`
-	CreatedAt    *string `json:"created_at"`
-	FetchedAt    string  `json:"fetched_at"`
-}
-
-type DiscoverHide struct {
-	Did         string `json:"did"`
-	TargetKind  string `json:"target_kind"`
-	TargetKey   string `json:"target_key"`
-	HiddenUntil string `json:"hidden_until"`
-	HideCount   int64  `json:"hide_count"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
-}
-
-type DiscoverIngestCursor struct {
-	ID        int64  `json:"id"`
-	Seq       int64  `json:"seq"`
-	UpdatedAt string `json:"updated_at"`
-}
-
-type DiscoverPublicationResolution struct {
-	PublicationUri string  `json:"publication_uri"`
-	CanonicalKey   *string `json:"canonical_key"`
-	Kind           *string `json:"kind"`
-	Title          *string `json:"title"`
-	SiteUrl        *string `json:"site_url"`
-	IconUrl        *string `json:"icon_url"`
-	FailureCount   int64   `json:"failure_count"`
-	FetchedAt      string  `json:"fetched_at"`
-	NextRetryAt    string  `json:"next_retry_at"`
-}
-
-type DiscoverSourcePost struct {
-	SourceKey   string  `json:"source_key"`
-	Position    int64   `json:"position"`
-	Title       string  `json:"title"`
-	PublishedAt *string `json:"published_at"`
-	Url         *string `json:"url"`
-	PostKey     string  `json:"post_key"`
-}
-
-type DiscoverSourcePostsState struct {
-	SourceKey           string  `json:"source_key"`
-	FetchedAt           *string `json:"fetched_at"`
-	FaviconUrl          *string `json:"favicon_url"`
-	FailureCount        int64   `json:"failure_count"`
-	NextRetryAt         *string `json:"next_retry_at"`
-	FaviconFailureCount int64   `json:"favicon_failure_count"`
-	FaviconNextRetryAt  *string `json:"favicon_next_retry_at"`
-}
-
-type DiscoverTrendingFollow struct {
-	RepoDid    string `json:"repo_did"`
-	SubjectDid string `json:"subject_did"`
-	FetchedAt  string `json:"fetched_at"`
-}
-
-type DiscoverTrendingFollowCount struct {
-	SubjectDid    string `json:"subject_did"`
-	DistinctRepos int64  `json:"distinct_repos"`
-}
-
-type DiscoverTrendingSignal struct {
-	RepoDid    string  `json:"repo_did"`
-	SourceKey  string  `json:"source_key"`
-	Kind       string  `json:"kind"`
-	Title      *string `json:"title"`
-	SiteUrl    *string `json:"site_url"`
-	SignalKind string  `json:"signal_kind"`
-	SignalAt   *string `json:"signal_at"`
-	FetchedAt  string  `json:"fetched_at"`
-}
-
-type DiscoverTrendingSourceCount struct {
-	SourceKey     string `json:"source_key"`
-	DistinctRepos int64  `json:"distinct_repos"`
-}
-
 type Feed struct {
 	FeedUrl             string  `json:"feed_url"`
 	Kind                string  `json:"kind"`
 	SiteUrl             *string `json:"site_url"`
 	Title               *string `json:"title"`
-	Language            *string `json:"language"`
 	Etag                *string `json:"etag"`
 	LastModified        *string `json:"last_modified"`
 	LastFetchedAt       *string `json:"last_fetched_at"`
@@ -212,46 +50,6 @@ type OauthSession struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-type ShareMetadataCache struct {
-	TargetKey    string  `json:"target_key"`
-	Title        *string `json:"title"`
-	TargetUrl    *string `json:"target_url"`
-	FetchedAt    *string `json:"fetched_at"`
-	FailureCount int64   `json:"failure_count"`
-	NextRetryAt  *string `json:"next_retry_at"`
-}
-
-type TapDirtyRepo struct {
-	Did       string `json:"did"`
-	MarkedSeq int64  `json:"marked_seq"`
-}
-
-type TapRecord struct {
-	Did        string `json:"did"`
-	Collection string `json:"collection"`
-	Rkey       string `json:"rkey"`
-	Cid        string `json:"cid"`
-	Record     string `json:"record"`
-	IndexedAt  string `json:"indexed_at"`
-}
-
-type TapRepoState struct {
-	Did       string `json:"did"`
-	Handle    string `json:"handle"`
-	IsActive  int64  `json:"is_active"`
-	Status    string `json:"status"`
-	UpdatedAt string `json:"updated_at"`
-}
-
-type UserFollow struct {
-	Did        string `json:"did"`
-	Rkey       string `json:"rkey"`
-	AtUri      string `json:"at_uri"`
-	SubjectDid string `json:"subject_did"`
-	CreatedAt  string `json:"created_at"`
-	UpdatedAt  string `json:"updated_at"`
-}
-
 type UserSave struct {
 	Did       string  `json:"did"`
 	Rkey      string  `json:"rkey"`
@@ -260,20 +58,6 @@ type UserSave struct {
 	FeedUrl   *string `json:"feed_url"`
 	CreatedAt string  `json:"created_at"`
 	UpdatedAt string  `json:"updated_at"`
-}
-
-type UserShare struct {
-	Did         string  `json:"did"`
-	Rkey        string  `json:"rkey"`
-	AtUri       string  `json:"at_uri"`
-	Kind        string  `json:"kind"`
-	ItemUrl     *string `json:"item_url"`
-	Document    *string `json:"document"`
-	Comment     *string `json:"comment"`
-	FeedUrl     *string `json:"feed_url"`
-	SidecarRkey *string `json:"sidecar_rkey"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
 }
 
 type UserSubscription struct {

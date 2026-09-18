@@ -16,128 +16,45 @@ import (
 )
 
 type fakeStore struct {
-	mu                 sync.Mutex
-	rows               map[string]map[string]db.ListUserSubscriptionsForSyncRow // did -> rkey -> row
-	deletes            []string
-	upserts            int
-	upsertParams       map[string]db.UpsertUserSubscriptionParams // rkey -> last params
-	feedUps            int
-	feedParams         []db.UpsertFeedParams
-	feedErr            func(feedURL string) error
-	saves              map[string]map[string]db.ListUserSavesForSyncRow // did -> rkey -> row
-	saveDeletes        []string
-	saveUpserts        int
-	saveUpsertParams   map[string]db.UpsertUserSaveParams                // rkey -> last params
-	shares             map[string]map[string]db.ListUserSharesForSyncRow // did -> rkey -> row
-	shareDeletes       []string
-	shareUpsertParams  map[string]db.UpsertUserShareParams                // rkey -> last params
-	follows            map[string]map[string]db.ListUserFollowsForSyncRow // did -> rkey -> row
-	followDeletes      []string
-	followUpserts      int
-	followUpsertParams map[string]db.UpsertUserFollowParams // rkey -> last params
+	mu               sync.Mutex
+	rows             map[string]map[string]db.ListUserSubscriptionsForSyncRow // did -> rkey -> row
+	deletes          []string
+	upserts          int
+	upsertParams     map[string]db.UpsertUserSubscriptionParams // rkey -> last params
+	feedUps          int
+	feedParams       []db.UpsertFeedParams
+	feedErr          func(feedURL string) error
+	saves            map[string]map[string]db.ListUserSavesForSyncRow // did -> rkey -> row
+	saveDeletes      []string
+	saveUpserts      int
+	saveUpsertParams map[string]db.UpsertUserSaveParams // rkey -> last params
 	// ops is a single ordered log across deletes and upserts so tests can assert delete-before-rekeyed-upsert ordering, which the maps above lose.
-	ops       []string
-	entryURLs map[string]string // guid -> cached feed_entries.url
+	ops []string
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		rows:               map[string]map[string]db.ListUserSubscriptionsForSyncRow{},
-		upsertParams:       map[string]db.UpsertUserSubscriptionParams{},
-		saves:              map[string]map[string]db.ListUserSavesForSyncRow{},
-		saveUpsertParams:   map[string]db.UpsertUserSaveParams{},
-		shares:             map[string]map[string]db.ListUserSharesForSyncRow{},
-		shareUpsertParams:  map[string]db.UpsertUserShareParams{},
-		follows:            map[string]map[string]db.ListUserFollowsForSyncRow{},
-		followUpsertParams: map[string]db.UpsertUserFollowParams{},
+		rows:             map[string]map[string]db.ListUserSubscriptionsForSyncRow{},
+		upsertParams:     map[string]db.UpsertUserSubscriptionParams{},
+		saves:            map[string]map[string]db.ListUserSavesForSyncRow{},
+		saveUpsertParams: map[string]db.UpsertUserSaveParams{},
 	}
 }
 
-func (s *fakeStore) ListUserFollowsForSync(_ context.Context, did string) ([]db.ListUserFollowsForSyncRow, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	rows := make([]db.ListUserFollowsForSyncRow, 0, len(s.follows[did]))
-	for _, r := range s.follows[did] {
-		rows = append(rows, r)
+func (s *fakeStore) assertDeleteBeforeUpsert(t *testing.T, delRkey, upRkey string) {
+	t.Helper()
+	delIndex, upsertIndex := -1, -1
+	for i, op := range s.ops {
+		if delIndex == -1 && op == "delete:"+delRkey {
+			delIndex = i
+		}
+		if upsertIndex == -1 && op == "upsert:"+upRkey {
+			upsertIndex = i
+		}
 	}
-	return rows, nil
-}
-
-func (s *fakeStore) UpsertUserFollow(_ context.Context, arg db.UpsertUserFollowParams) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.followUpserts++
-	s.followUpsertParams[arg.Rkey] = arg
-	if _, ok := s.follows[arg.Did]; !ok {
-		s.follows[arg.Did] = map[string]db.ListUserFollowsForSyncRow{}
+	if delIndex == -1 || upsertIndex == -1 || delIndex >= upsertIndex {
+		t.Fatalf("operations = %v, want delete:%s before upsert:%s", s.ops, delRkey, upRkey)
 	}
-	s.follows[arg.Did][arg.Rkey] = db.ListUserFollowsForSyncRow{
-		Did:        arg.Did,
-		Rkey:       arg.Rkey,
-		AtUri:      arg.AtUri,
-		SubjectDid: arg.SubjectDid,
-	}
-	return nil
-}
-
-func (s *fakeStore) DeleteUserFollow(_ context.Context, arg db.DeleteUserFollowParams) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.followDeletes = append(s.followDeletes, arg.Rkey)
-	if m, ok := s.follows[arg.Did]; ok {
-		delete(m, arg.Rkey)
-	}
-	return nil
-}
-
-func (s *fakeStore) ListUserSharesForSync(_ context.Context, did string) ([]db.ListUserSharesForSyncRow, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	rows := make([]db.ListUserSharesForSyncRow, 0, len(s.shares[did]))
-	for _, r := range s.shares[did] {
-		rows = append(rows, r)
-	}
-	return rows, nil
-}
-
-func (s *fakeStore) UpsertUserShare(_ context.Context, arg db.UpsertUserShareParams) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ops = append(s.ops, "upsert:"+arg.Rkey)
-	s.shareUpsertParams[arg.Rkey] = arg
-	if _, ok := s.shares[arg.Did]; !ok {
-		s.shares[arg.Did] = map[string]db.ListUserSharesForSyncRow{}
-	}
-	s.shares[arg.Did][arg.Rkey] = db.ListUserSharesForSyncRow{
-		Did:         arg.Did,
-		Rkey:        arg.Rkey,
-		AtUri:       arg.AtUri,
-		Kind:        arg.Kind,
-		ItemUrl:     arg.ItemUrl,
-		Document:    arg.Document,
-		SidecarRkey: arg.SidecarRkey,
-	}
-	return nil
-}
-
-func (s *fakeStore) DeleteUserShare(_ context.Context, arg db.DeleteUserShareParams) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ops = append(s.ops, "delete:"+arg.Rkey)
-	s.shareDeletes = append(s.shareDeletes, arg.Rkey)
-	if m, ok := s.shares[arg.Did]; ok {
-		delete(m, arg.Rkey)
-	}
-	return nil
-}
-
-func (s *fakeStore) GetFeedEntryURLByGuid(_ context.Context, guid string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if url, ok := s.entryURLs[guid]; ok {
-		return url, nil
-	}
-	return "", errors.New("no rows")
 }
 
 func (s *fakeStore) ListUserSavesForSync(_ context.Context, did string) ([]db.ListUserSavesForSyncRow, error) {
@@ -245,12 +162,8 @@ type fakeLister struct {
 	saves         []PDSSave
 	standardSubs  []PDSStandardSubscription
 	standardErr   error
-	shares        []PDSShare
-	sharesErr     error
-	recommends    []PDSRecommend
-	recommendsErr error
-	follows       []PDSFollow
-	followsErr    error
+	savesCalls    atomic.Int32
+	standardCalls atomic.Int32
 }
 
 func (f *fakeLister) ListSubscriptions(_ context.Context, _ *oauth.ClientSession) ([]PDSSubscription, error) {
@@ -262,23 +175,13 @@ func (f *fakeLister) ListSubscriptions(_ context.Context, _ *oauth.ClientSession
 }
 
 func (f *fakeLister) ListSaves(_ context.Context, _ *oauth.ClientSession) ([]PDSSave, error) {
+	f.savesCalls.Add(1)
 	return f.saves, nil
 }
 
 func (f *fakeLister) ListStandardSubscriptions(_ context.Context, _ *oauth.ClientSession) ([]PDSStandardSubscription, error) {
+	f.standardCalls.Add(1)
 	return f.standardSubs, f.standardErr
-}
-
-func (f *fakeLister) ListShares(_ context.Context, _ *oauth.ClientSession) ([]PDSShare, error) {
-	return f.shares, f.sharesErr
-}
-
-func (f *fakeLister) ListRecommends(_ context.Context, _ *oauth.ClientSession) ([]PDSRecommend, error) {
-	return f.recommends, f.recommendsErr
-}
-
-func (f *fakeLister) ListFollows(_ context.Context, _ *oauth.ClientSession) ([]PDSFollow, error) {
-	return f.follows, f.followsErr
 }
 
 type countingFetcher struct {
@@ -312,26 +215,20 @@ func newSession(did string) *oauth.ClientSession {
 	}
 }
 
-func TestSyncUser_ReconcileFollows_RunsInDualTrack(t *testing.T) {
-	store := newFakeStore()
-	lister := &fakeLister{follows: []PDSFollow{
-		{URI: "at://x/f/3fa", Rkey: "3fa", SubjectDID: "did:plc:bob", CreatedAt: "2026-07-01T00:00:00Z"},
-	}}
-	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
+func TestSyncUser_ReconcilesOnlyRetainedCollections(t *testing.T) {
+	lister := &fakeLister{}
+	eng := NewEngine(jobs.New(), newFakeStore(), lister, &countingFetcher{}, nil, nil)
 	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
 		t.Fatal(err)
 	}
-	if store.followUpserts != 1 {
-		t.Errorf("followUpserts = %d, want 1", store.followUpserts)
+	if got := atomic.LoadInt32(&lister.calls); got != 1 {
+		t.Errorf("subscription list calls = %d, want 1", got)
 	}
-}
-
-func TestSyncUser_ReconcileFollowsFailure_DoesNotFailRun(t *testing.T) {
-	store := newFakeStore()
-	lister := &fakeLister{followsErr: errors.New("pds down")}
-	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
-	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
-		t.Fatalf("runDualTrack failed on a follows-only error: %v", err)
+	if got := lister.standardCalls.Load(); got != 1 {
+		t.Errorf("standard subscription list calls = %d, want 1", got)
+	}
+	if got := lister.savesCalls.Load(); got != 1 {
+		t.Errorf("save list calls = %d, want 1", got)
 	}
 }
 
@@ -448,7 +345,6 @@ func TestSyncUser_FK_NotCalledOnTier2Failure(t *testing.T) {
 		return nil
 	}
 	lister := &fakeLister{subs: []PDSSubscription{
-		{URI: "at://x/a/ok", Kind: "rss", Rkey: "ok", FeedURL: "https://ok/feed"},
 		{URI: "at://x/a/broken", Kind: "rss", Rkey: "broken", FeedURL: "https://broken/feed"},
 	}}
 	fetcher := &countingFetcher{}
@@ -461,15 +357,6 @@ func TestSyncUser_FK_NotCalledOnTier2Failure(t *testing.T) {
 		if u == "https://broken/feed" {
 			t.Errorf("broken URL was fetched: would have hit FK violation; fetched = %v", fetcher.seen())
 		}
-	}
-	found := false
-	for _, u := range fetcher.seen() {
-		if u == "https://ok/feed" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("ok URL was not fetched: %v", fetcher.seen())
 	}
 }
 

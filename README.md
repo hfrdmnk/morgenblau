@@ -1,8 +1,10 @@
 # Morgenblau
 
-A calm content platform powered by RSS and ATProto. See [SPEC.md](./SPEC.md) for the product vision and [CLAUDE.md](./CLAUDE.md) for stack conventions.
+A personal daily newspaper powered by RSS and ATProto. See [SPEC.md](./SPEC.md) for the v1 boundary and [AGENTS.md](./AGENTS.md) for stack conventions.
 
 > Stack: Go API (`cmd/api`) + React/Vite/Tailwind v4 frontend (`frontend/`), SQLite with goose migrations and sqlc-generated queries.
+
+This branch simplifies the existing reader by removing social features and discovery. It does not yet implement every v1 requirement; the boundary between retained behavior and future work lives in `SPEC.md`.
 
 ## Prerequisites
 
@@ -23,7 +25,7 @@ go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 ## Setup
 
 ```sh
-cp .env.example .env           # then fill in BLUESKY_OAUTH_PRIVATE_KEY (DB_PATH has a sane default)
+cp .env.example .env           # fill in signing and session keys documented there
 bun install --cwd ./frontend
 make migrate-up
 ```
@@ -50,23 +52,21 @@ In `APP_ENV=local`, the Go server reverse-proxies `/` to the Vite dev server (HM
 
 `make run` starts Go + Vite without `mprocs` if you'd rather use your own terminal layout.
 
-### Jetstream
-
-Discover's trending data comes from [Jetstream](https://github.com/bluesky-social/jetstream), Bluesky's hosted firehose. Nothing to install or start: the app dials out to `JETSTREAM_URL` (defaults to `wss://jetstream.us-east.bsky.network`) and streams the reader-network collections straight into the local mirror. Set `JETSTREAM_API_KEY` if you've registered a key with Bluesky.
-
 ## OAuth
 
 Local dev uses a **loopback client**: `client_id` is `http://localhost`, callback is `http://127.0.0.1:8000/oauth/callback`, and the AS skips the client-metadata fetch entirely. Leave `BLUESKY_CLIENT_ID` and `BLUESKY_REDIRECT` empty in `.env` and sign in straight from `http://127.0.0.1:8000` — no tunnel, no public hostname.
 
-For prod, set both env vars to your public URLs and serve `oauth-client-metadata.json` + `jwks.json` from that origin.
+For prod, set both env vars to your public URLs and serve `oauth-client-metadata.json` + `oauth-jwks.json` from that origin.
 
 ### Scopes
 
-`BLUESKY_OAUTH_SCOPE` (see `.env.example`) requests `atproto include:blue.morgen.access` plus the two co-owned Standardfeed grants `repo:site.standard.graph.subscription` and `repo:site.standard.graph.recommend`. The Standardfeed grants back the publication-source and share flows; sessions minted before they were added still work for RSS, but Standardfeed writes return `403 {"code":"reauth_required"}` and the UI shows a calm "sign in again" prompt. Widening the scope requires a fresh sign-in — the app can't upgrade an existing session's grant.
+The retained OAuth scopes are configured in `.env.example` and checked in `internal/oauth/scopes/`. Standardfeed subscription writes require their own grant. Sessions without it still work for RSS, but a Standardfeed write prompts a fresh sign-in. The existing Morgenblau permission set stays unchanged for lexicon compatibility; sharing and following have no runtime feature in v1.
 
 ## Database
 
 SQLite via the pure-Go `modernc.org/sqlite` driver — the DB file lives at `$DB_PATH` (default `./data/morgenblau.db`) and is created on first open. WAL mode, foreign keys on, and a 5s busy timeout are set via DSN pragmas. Plain SQL, no ORM. Migrations live in `internal/database/migrations/`, handwritten queries in `internal/database/queries/`, generated code in `internal/database/db/`.
+
+The simplified migration baseline requires a fresh local database. Before starting this branch against an older checkout's data, stop the server and point `DB_PATH` at a new file, then run `make migrate-up`. Sign in again to reconcile retained subscriptions and saves from the PDS; feed content is fetched again. Existing external share and follow records remain untouched.
 
 ```sh
 make migrate-up                       # apply pending migrations

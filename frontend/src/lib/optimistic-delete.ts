@@ -1,6 +1,6 @@
 import { api } from '@/lib/api';
 
-// Shared by the save and share toggles: clear local state before the DELETE lands, restore it if the request fails.
+// Clear local state before the DELETE lands, then restore it if the request fails.
 export function optimisticDelete(options: {
     path: string;
     clear: () => void;

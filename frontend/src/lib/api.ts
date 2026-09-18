@@ -27,7 +27,7 @@ export class ApiError extends Error {
     }
 }
 
-// Every optimistic mutation (save, share, subscription edit/delete) collapses its failure into one of these two buckets.
+// Every optimistic mutation collapses its failure into one of these two buckets.
 export type MutationErrorKind = 'reauth' | 'failed';
 
 export function classifyMutationError(error: unknown): MutationErrorKind {

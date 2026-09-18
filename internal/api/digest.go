@@ -21,26 +21,20 @@ type DigestReader interface {
 // EntryWire is the on-the-wire entry shape; Body is pre-sanitized HTML the frontend trusts as-is.
 // SavedState stays nil here (only the entry detail handler sets it) to avoid N+1 lookups on the digest list.
 type EntryWire struct {
-	ID          int64        `json:"id"`
-	EntrySlug   string       `json:"entrySlug"`
-	Title       *string      `json:"title"`
-	URL         string       `json:"url"`
-	ContentType string       `json:"contentType"`
-	PublishedAt string       `json:"publishedAt"`
-	Source      SourceMeta   `json:"source"`
-	Body        *string      `json:"body"`
-	Metadata    *string      `json:"metadata,omitempty"`
-	SavedState  *SavedState  `json:"savedState"`
-	SharedState *SharedState `json:"sharedState"`
+	ID          int64       `json:"id"`
+	EntrySlug   string      `json:"entrySlug"`
+	Title       *string     `json:"title"`
+	URL         string      `json:"url"`
+	ContentType string      `json:"contentType"`
+	PublishedAt string      `json:"publishedAt"`
+	Source      SourceMeta  `json:"source"`
+	Body        *string     `json:"body"`
+	Metadata    *string     `json:"metadata,omitempty"`
+	SavedState  *SavedState `json:"savedState"`
 }
 
 // SavedState mirrors the frontend's view; Rkey is what the client DELETEs on un-save.
 type SavedState struct {
-	Rkey string `json:"rkey"`
-}
-
-// SharedState mirrors SavedState; Rkey is the recommend rkey for standardfeed shares, the share rkey for rss.
-type SharedState struct {
 	Rkey string `json:"rkey"`
 }
 
@@ -206,7 +200,7 @@ func displayTitle(userTitle, catalogTitle *string) *string {
 	return catalogTitle
 }
 
-// buildSourceMeta returns the sync-resolved favicon, or nil when discovery hasn't populated one (the frontend renders a placeholder).
+// buildSourceMeta returns the cached source favicon, or nil when none is known.
 func buildSourceMeta(feedURL string, title, siteURL, feedIconURL *string) SourceMeta {
 	var favicon *string
 	if feedIconURL != nil && *feedIconURL != "" {

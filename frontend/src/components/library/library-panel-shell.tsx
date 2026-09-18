@@ -9,16 +9,15 @@ import {
     useListNavigation,
     type ListNavigation,
 } from '@/hooks/use-list-navigation';
-import { shareTargetPresentation, type ShareTarget } from '@/lib/share-target';
+import { savePresentation, type Save } from '@/lib/library';
 import { cn } from '@/lib/utils';
 
-export function Divider() {
+function Divider() {
     return <div aria-hidden className="mx-6 border-t border-border" />;
 }
 
-// Card scaffold shared by every list tab: masthead, nav-highlight tracking, and
-// open-on-select behavior (external link vs in-app route) driven by ShareTarget fields.
-export function ListPanelShell<T extends ShareTarget>({
+// Card scaffold for the Library list: masthead, nav-highlight tracking, and open-on-select behavior.
+export function ListPanelShell({
     eyebrow,
     heading,
     items,
@@ -26,13 +25,13 @@ export function ListPanelShell<T extends ShareTarget>({
 }: {
     eyebrow: string;
     heading: string;
-    items: readonly T[];
+    items: readonly Save[];
     children: (nav: ListNavigation) => ReactNode;
 }) {
     const [, navigate] = useLocation();
     const onOpen = useCallback(
-        (item: T) => {
-            const target = shareTargetPresentation(item);
+        (item: Save) => {
+            const target = savePresentation(item);
             if (!target.href) return;
             if (target.external) {
                 window.open(target.href, '_blank', 'noopener,noreferrer');

@@ -195,27 +195,11 @@ func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *oauth.C
 		return nil
 	})
 
-	// Phase 1D: shares reconcile. Same contract as saves: best-effort.
-	g.Go(func() error {
-		if err := e.reconcileShares(gctx, did, sess); err != nil {
-			slog.Warn("sync_user: shares reconcile failed", "did", did, "err", err)
-		}
-		return nil
-	})
-
-	// Phase 1E: follows reconcile. Same contract as saves/shares: best-effort.
-	g.Go(func() error {
-		if err := e.reconcileFollows(gctx, did, sess); err != nil {
-			slog.Warn("sync_user: follows reconcile failed", "did", did, "err", err)
-		}
-		return nil
-	})
-
 	if err := g.Wait(); err != nil {
 		return err
 	}
 
-	// Phase 2: top-up, fetch newly-discovered URLs that 1B didn't already cover.
+	// Phase 2: top-up, fetch newly added URLs that 1B didn't already cover.
 	already := make(map[string]struct{}, len(snapURLs))
 	for _, u := range snapURLs {
 		already[u] = struct{}{}

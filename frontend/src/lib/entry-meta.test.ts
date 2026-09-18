@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { metaLine, readAuthor } from './entry-meta';
+import { readAuthor } from './entry-meta';
 
 describe('readAuthor', () => {
     test('returns the author string from metadata JSON', () => {
@@ -22,24 +22,5 @@ describe('readAuthor', () => {
 
     test('returns null for invalid JSON', () => {
         expect(readAuthor('not json')).toBeNull();
-    });
-});
-
-describe('metaLine', () => {
-    test('joins present parts with a middot', () => {
-        expect(metaLine(['Jun 11, 2026', 'example.com'])).toBe(
-            'Jun 11, 2026 · example.com',
-        );
-    });
-
-    test('drops null, undefined, and empty parts', () => {
-        expect(metaLine([null, 'example.com', undefined, ''])).toBe(
-            'example.com',
-        );
-    });
-
-    test('returns null when nothing is present', () => {
-        expect(metaLine([])).toBeNull();
-        expect(metaLine([null, undefined])).toBeNull();
     });
 });

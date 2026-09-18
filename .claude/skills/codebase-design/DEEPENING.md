@@ -18,13 +18,13 @@ A deepening that widens a module's schema footprint widens those per-test schema
 
 ### 3. Remote but owned (Ports & Adapters)
 
-Services you control across a network boundary, plus protocol services you write against a spec: a hosted Jetstream instance, a user's PDS over XRPC. Define a **port** (interface) at the seam, the way `atprepo.Writer` and `discoveringest.RecordFetcher` do. The deep module owns the logic; the transport is injected as an **adapter**. Tests use an in-memory adapter. Production uses the XRPC or HTTP adapter.
+Services you control across a network boundary, plus protocol services you write against a spec, such as a user's PDS over XRPC. Define a **port** (interface) at the seam, as `atprepo.Writer` does. The deep module owns the logic; the transport is injected as an **adapter**. Tests use an in-memory adapter. Production uses the XRPC or HTTP adapter.
 
 Recommendation shape: *"Define a port at the seam, implement an XRPC adapter for production and an in-memory adapter for testing, so the logic sits in one deep module even though it's deployed across a network."*
 
 ### 4. True external (Mock)
 
-Services you don't control: publisher RSS/Atom endpoints, the relay firehose, favicon and page fetches. The deepened module takes the dependency as an injected port (see `feedfinder.HTTPDoer`); tests provide a mock adapter, or stand up an `httptest.NewServer` when the wire format is what's under test.
+Services you don't control: publisher RSS/Atom endpoints, favicon and page fetches. The deepened module takes the dependency as an injected port (see `feedfinder.HTTPDoer`); tests provide a mock adapter, or stand up an `httptest.NewServer` when the wire format is what's under test.
 
 ## Seam discipline
 

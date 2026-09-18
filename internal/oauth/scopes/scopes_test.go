@@ -10,15 +10,14 @@ func sessionWith(scopes []string) *oauth.ClientSession {
 	return &oauth.ClientSession{Data: &oauth.ClientSessionData{Scopes: scopes}}
 }
 
-func TestHasStandardWrite(t *testing.T) {
+func TestHasStandardSubscriptionWrite(t *testing.T) {
 	cases := []struct {
 		name string
 		sess *oauth.ClientSession
 		want bool
 	}{
-		{"both grants", sessionWith([]string{"atproto", "include:blue.morgen.access", StandardSubscription, StandardRecommend}), true},
-		{"subscription only", sessionWith([]string{"atproto", StandardSubscription}), false},
-		{"recommend only", sessionWith([]string{"atproto", StandardRecommend}), false},
+		{"subscription grant", sessionWith([]string{"atproto", "include:blue.morgen.access", StandardSubscription}), true},
+		{"unrelated repo grant", sessionWith([]string{"atproto", "repo:site.standard.graph.recommend"}), false},
 		{"pre-change grant", sessionWith([]string{"atproto", "include:blue.morgen.access"}), false},
 		{"nil scopes", sessionWith(nil), false},
 		{"empty string elements", sessionWith([]string{"", ""}), false},
@@ -27,8 +26,8 @@ func TestHasStandardWrite(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := HasStandardWrite(tc.sess); got != tc.want {
-				t.Fatalf("HasStandardWrite = %v, want %v", got, tc.want)
+			if got := HasStandardSubscriptionWrite(tc.sess); got != tc.want {
+				t.Fatalf("HasStandardSubscriptionWrite = %v, want %v", got, tc.want)
 			}
 		})
 	}

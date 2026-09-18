@@ -1,14 +1,12 @@
 import {
     BookmarkIcon,
     OpenIcon,
-    SendIcon,
     SparkleIcon,
     SpinnerIcon,
 } from '@proicons/react';
 import { useEffect, useState } from 'react';
 
 import type { SaveControl } from '@/hooks/use-save-toggle';
-import type { ShareControl } from '@/hooks/use-share-toggle';
 import { cn, safeHref } from '@/lib/utils';
 
 export type ExtractedToggleState = 'inactive' | 'active' | 'loading';
@@ -22,7 +20,6 @@ type ReaderRailProps = {
     sourceUrl: string | null;
     extractedToggle?: ExtractedToggle;
     save?: SaveControl;
-    share?: ShareControl;
     showProgress?: boolean;
 };
 
@@ -33,7 +30,6 @@ export function ReaderRail({
     sourceUrl,
     extractedToggle,
     save,
-    share,
     showProgress = true,
 }: ReaderRailProps) {
     const progress = useScrollProgress(showProgress);
@@ -49,7 +45,6 @@ export function ReaderRail({
                         sourceUrl={sourceUrl}
                         extractedToggle={extractedToggle}
                         save={save}
-                        share={share}
                     />
                     {showProgress ? (
                         <ScrollProgressTrack
@@ -75,7 +70,6 @@ export function ReaderRail({
                         sourceUrl={sourceUrl}
                         extractedToggle={extractedToggle}
                         save={save}
-                        share={share}
                     />
                 </div>
             </aside>
@@ -87,19 +81,16 @@ function RailIcons({
     sourceUrl,
     extractedToggle,
     save,
-    share,
 }: {
     sourceUrl: string | null;
     extractedToggle?: ExtractedToggle;
     save?: SaveControl;
-    share?: ShareControl;
 }) {
     const safeSource = safeHref(sourceUrl);
 
     return (
         <>
             {save ? <SaveRailButton {...save} /> : null}
-            {share ? <ShareRailButton {...share} /> : null}
             {extractedToggle ? (
                 <ExtractedToggleIcon
                     state={extractedToggle.state}
@@ -185,32 +176,6 @@ function SaveRailButton({ saved, busy, onToggle }: SaveControl) {
             )}
         >
             <BookmarkIcon className="size-[1.125rem]" />
-        </button>
-    );
-}
-
-function ShareRailButton({ shared, busy, onToggle }: ShareControl) {
-    const { displayed, swapping } = useDeferredState(shared);
-    const label = shared ? 'Unshare' : 'Share';
-
-    return (
-        <button
-            type="button"
-            onClick={onToggle}
-            disabled={busy}
-            aria-pressed={displayed}
-            aria-label={label}
-            aria-busy={busy || undefined}
-            data-swapping={swapping || undefined}
-            className={cn(
-                RAIL_BUTTON_BASE,
-                'disabled:cursor-wait',
-                displayed
-                    ? 'text-primary hover:text-primary'
-                    : 'text-muted-foreground hover:text-foreground',
-            )}
-        >
-            <SendIcon className="size-[1.125rem]" />
         </button>
     );
 }

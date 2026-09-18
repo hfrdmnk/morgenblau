@@ -64,7 +64,6 @@ func SubscriptionsCreateHandler(
 	writer IndexWriter,
 	pds atprepo.Writer,
 	disp FetchDispatcher,
-	memo DiscoverInvalidator,
 ) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -290,10 +289,6 @@ func SubscriptionsCreateHandler(
 			out.JobIDs = append(out.JobIDs, jobID)
 		}
 
-		// A batch of pure dedupe hits changed nothing the suggestion pool reads.
-		if len(out.JobIDs) > 0 {
-			invalidateDiscover(memo, didStr)
-		}
 		writeJSON(w, out)
 	})
 }
