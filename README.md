@@ -89,6 +89,6 @@ make test                           # go test ./... -v
 
 ## Git & PRs
 
-[GitHub](https://github.com/hfrdmnk/morgenblau) is the source of truth; [Tangled](https://tangled.org/dominik.social/morgenblau) is a read-only mirror. Open pull requests on GitHub.
+[GitHub](https://github.com/hfrdmnk/morgenblau) is the source of truth; [Tangled](https://tangled.org/dominikhofer.me/morgenblau) is a read-only mirror. Open pull requests on GitHub.
 
 Local pushes reach both forges through `origin`. After merging a pull request in GitHub, run `scripts/sync-tangled.sh` to update Tangled's `main` branch.
