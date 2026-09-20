@@ -3,10 +3,12 @@ import { entryHref } from '@/lib/paths';
 import { hostnameOf, safeHref } from '@/lib/utils';
 
 export type Save = {
-    rkey: string;
+    kind?: 'newsletter';
+    id?: string;
+    rkey?: string;
     uri?: string;
     cid?: string;
-    itemUrl: string;
+    itemUrl?: string;
     feedUrl?: string;
     createdAt: string;
     title?: string;
@@ -44,6 +46,12 @@ export function savePresentation(save: Save): SavePresentation {
         href: externalHref,
         external: Boolean(externalHref),
     };
+}
+
+export function saveKey(save: Save): string {
+    return save.kind === 'newsletter'
+        ? `newsletter:${save.id ?? save.entrySlug ?? save.createdAt}`
+        : `feed:${save.rkey ?? save.itemUrl ?? save.createdAt}`;
 }
 
 function readableTitle(value: string | undefined): string | undefined {

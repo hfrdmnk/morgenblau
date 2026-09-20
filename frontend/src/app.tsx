@@ -14,6 +14,9 @@ import { PATHS } from '@/lib/paths';
 const Digest = lazy(() => import('@/pages/digest').then((m) => ({ default: m.Digest })));
 const Entry = lazy(() => import('@/pages/entry').then((m) => ({ default: m.Entry })));
 const Library = lazy(() => import('@/pages/library').then((m) => ({ default: m.Library })));
+const NewsletterSource = lazy(() =>
+    import('@/pages/newsletter-source').then((m) => ({ default: m.NewsletterSourcePage })),
+);
 const Login = lazy(() => import('@/pages/login').then((m) => ({ default: m.Login })));
 const Source = lazy(() => import('@/pages/source').then((m) => ({ default: m.Source })));
 const Sources = lazy(() => import('@/pages/sources').then((m) => ({ default: m.Sources })));
@@ -34,6 +37,7 @@ const CHROME_PAGES: PageDef[] = [
     { path: PATHS.digest, Component: Digest },
     { path: PATHS.library, Component: Library },
     { path: PATHS.sources, Component: Sources },
+    { path: `${PATHS.sources}/newsletters/:id`, Component: NewsletterSource },
     { path: `${PATHS.sources}/:rkey`, Component: Source },
 ];
 

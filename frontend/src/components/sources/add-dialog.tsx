@@ -3,6 +3,7 @@ import type { FormEvent, KeyboardEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { FeedCandidateList } from '@/components/sources/feed-candidate-list';
+import { NewsletterAddress } from '@/components/newsletters/newsletter-address';
 import { ApiError, api } from '@/lib/api';
 import { candidateKey, type FeedCandidate } from '@/lib/candidates';
 import { InputError } from '@/components/input-error';
@@ -493,7 +494,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                 <DialogHeader>
                     <DialogTitle>Add a source</DialogTitle>
                     <DialogDescription>
-                        Paste a website, RSS feed, or YouTube channel.
+                        Subscribe from the web or receive a newsletter.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -502,7 +503,12 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                     noValidate
                     className="flex min-h-0 min-w-0 flex-col gap-5"
                 >
+                    <NewsletterAddress open={open} />
+
+                    <div aria-hidden className="border-t border-border" />
+
                     <div className="space-y-2">
+                        <h2 className="text-heading">From the web</h2>
                         <Label htmlFor="source-url" className="sr-only">
                             URL
                         </Label>
@@ -548,10 +554,6 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                         {discoverError && (
                             <InputError message={discoverError} />
                         )}
-                        <p className="text-sm font-light text-muted-foreground">
-                            Your sources are currently all public.
-                            (Selective private sources are coming.)
-                        </p>
                     </div>
 
                     {hasCandidates && (

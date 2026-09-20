@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/lexicon"
+	"morgenblau/internal/newsletter"
 )
 
 const saveCollection = "blue.morgen.feed.save"
@@ -42,6 +44,18 @@ type SavesIndexReader interface {
 type SavesIndexWriter interface {
 	UpsertUserSave(ctx context.Context, arg db.UpsertUserSaveParams) error
 	DeleteUserSave(ctx context.Context, arg db.DeleteUserSaveParams) error
+}
+
+type newsletterSaveLister interface {
+	ListSaves(context.Context, string) ([]newsletter.SaveItem, error)
+}
+
+type newsletterSaveWire struct {
+	Kind      string `json:"kind"`
+	ID        string `json:"id"`
+	CreatedAt string `json:"createdAt"`
+	Title     string `json:"title,omitempty"`
+	EntrySlug string `json:"entrySlug"`
 }
 
 // --- POST /api/saves ---
@@ -167,7 +181,7 @@ func SavesDeleteHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 // --- GET /api/saves ---
 
 // SavesListHandler returns the user's saves, newest first, joining entry title/slug/target when the entry is still cached.
-func SavesListHandler(reader SavesIndexReader) http.Handler {
+func SavesListHandler(reader SavesIndexReader, privateListers ...newsletterSaveLister) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -179,11 +193,35 @@ func SavesListHandler(reader SavesIndexReader) http.Handler {
 			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
-		out := make([]SaveWire, 0, len(rows))
-		for _, row := range rows {
-			out = append(out, saveListRowToWire(row))
+		type datedSave struct {
+			created time.Time
+			value   any
 		}
-		writeJSON(w, out)
+		out := make([]datedSave, 0, len(rows))
+		for _, row := range rows {
+			created, _ := time.Parse(time.RFC3339, row.CreatedAt)
+			out = append(out, datedSave{created: created, value: saveListRowToWire(row)})
+		}
+		if len(privateListers) > 0 && privateListers[0] != nil {
+			privateResponse(w)
+			items, err := privateListers[0].ListSaves(r.Context(), sess.Data.AccountDID.String())
+			if err != nil {
+				writeNewsletterError(w, err)
+				return
+			}
+			for _, item := range items {
+				out = append(out, datedSave{created: item.CreatedAt, value: newsletterSaveWire{
+					Kind: "newsletter", ID: item.ID, CreatedAt: item.CreatedAt.Format(time.RFC3339),
+					Title: item.Title, EntrySlug: item.EntrySlug,
+				}})
+			}
+		}
+		sort.SliceStable(out, func(i, j int) bool { return out[i].created.After(out[j].created) })
+		values := make([]any, 0, len(out))
+		for _, item := range out {
+			values = append(values, item.value)
+		}
+		writeJSON(w, values)
 	})
 }
 

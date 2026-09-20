@@ -1,6 +1,5 @@
 import { SpinnerIcon } from '@proicons/react';
-import { useCallback, useState } from 'react';
-import type { FormEvent } from 'react';
+import { useCallback, useState, type FormEvent } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { CreatableCombobox } from '@/components/ui/creatable-combobox';
@@ -35,10 +34,128 @@ type Props = {
     initialTitle: string;
     initialPrimary: boolean;
     initialTags: string[];
-    initialFeedUrl: string;
+    initialFeedUrl?: string;
     tagSuggestions: string[];
     onSave: (patch: SourcePatch) => Promise<boolean>;
 };
+
+function sourceFeedSettings(initialFeedUrl: string | undefined) {
+    const channelFeedUrl = initialFeedUrl
+        ? youtubeChannelFeedUrl(initialFeedUrl)
+        : null;
+    return {
+        channelFeedUrl,
+        initialExcludeShorts: initialFeedUrl
+            ? isYoutubeShortsFreeFeedUrl(initialFeedUrl)
+            : false,
+    };
+}
+
+function shortsFreeFeedUrl(channelFeedUrl: string) {
+    const feedUrl = youtubeShortsFreeFeedUrl(channelFeedUrl);
+    return feedUrl === null ? channelFeedUrl : feedUrl;
+}
+
+function changedFeedUrl(
+    channelFeedUrl: string | null,
+    excludeShorts: boolean,
+    initialExcludeShorts: boolean,
+) {
+    if (!channelFeedUrl) return undefined;
+    if (excludeShorts === initialExcludeShorts) return undefined;
+    if (!excludeShorts) return channelFeedUrl;
+    return shortsFreeFeedUrl(channelFeedUrl);
+}
+
+function TitleField({
+    title,
+    onChange,
+}: {
+    title: string;
+    onChange: (title: string) => void;
+}) {
+    return (
+        <div className="space-y-2">
+            <Label htmlFor="source-title" className="text-xs">
+                Title
+            </Label>
+            <Input
+                id="source-title"
+                autoFocus
+                value={title}
+                onChange={(event) => onChange(event.target.value)}
+                placeholder="Source title"
+            />
+        </div>
+    );
+}
+
+function SwitchField({
+    id,
+    label,
+    description,
+    checked,
+    onCheckedChange,
+}: {
+    id: string;
+    label: string;
+    description: string;
+    checked: boolean;
+    onCheckedChange: (checked: boolean) => void;
+}) {
+    return (
+        <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-0.5">
+                <Label htmlFor={id} className="cursor-pointer text-xs">
+                    {label}
+                </Label>
+                <span className="text-xs font-light text-muted-foreground">
+                    {description}
+                </span>
+            </div>
+            <Switch
+                id={id}
+                checked={checked}
+                onCheckedChange={onCheckedChange}
+            />
+        </div>
+    );
+}
+
+function TagsField({
+    tags,
+    suggestions,
+    onChange,
+}: {
+    tags: string[];
+    suggestions: string[];
+    onChange: (tags: string[]) => void;
+}) {
+    return (
+        <div className="space-y-2">
+            <Label htmlFor="source-tags" className="text-xs">
+                Tags
+            </Label>
+            <CreatableCombobox
+                id="source-tags"
+                value={tags}
+                onValueChange={onChange}
+                suggestions={suggestions}
+                placeholder="Add tags…"
+            />
+        </div>
+    );
+}
+
+function SaveButton({ saving }: { saving: boolean }) {
+    if (!saving) return <Button type="submit">Save</Button>;
+    return (
+        <Button type="submit" disabled>
+            <SpinnerIcon className="motion-safe:animate-spin" />
+            Saving…
+        </Button>
+    );
+}
 
 // EditSourceDialog mirrors AddSourceDialog's chrome; delete lives on the row, not here.
 export function EditSourceDialog({
@@ -51,25 +168,21 @@ export function EditSourceDialog({
     tagSuggestions,
     onSave,
 }: Props) {
-    // Exclude-Shorts applies only to YouTube feeds; its state is encoded in the feed URL, not a stored flag.
-    const channelFeedUrl = youtubeChannelFeedUrl(initialFeedUrl);
-    const isYoutube = channelFeedUrl !== null;
-    const initialExcludeShorts = isYoutubeShortsFreeFeedUrl(initialFeedUrl);
-
+    const { channelFeedUrl, initialExcludeShorts } =
+        sourceFeedSettings(initialFeedUrl);
     const [title, setTitle] = useState(initialTitle);
     const [primary, setPrimary] = useState(initialPrimary);
     const [tags, setTags] = useState<string[]>(initialTags);
     const [excludeShorts, setExcludeShorts] = useState(initialExcludeShorts);
     const [saving, setSaving] = useState(false);
 
-    const handleOpenChangeComplete = useCallback(
+    const reset = useCallback(
         (nextOpen: boolean) => {
-            if (!nextOpen) {
-                setTitle(initialTitle);
-                setPrimary(initialPrimary);
-                setTags(initialTags);
-                setExcludeShorts(initialExcludeShorts);
-            }
+            if (nextOpen) return;
+            setTitle(initialTitle);
+            setPrimary(initialPrimary);
+            setTags(initialTags);
+            setExcludeShorts(initialExcludeShorts);
         },
         [initialTitle, initialPrimary, initialTags, initialExcludeShorts],
     );
@@ -77,21 +190,17 @@ export function EditSourceDialog({
     const submit = async (event: FormEvent) => {
         event.preventDefault();
         if (saving) return;
-        // Keep the existing title rather than wiping it to empty; the backend no-ops the PATCH if unchanged.
-        const nextTitle = title.trim() || initialTitle;
-        // Re-point the feed only when the Shorts toggle moved, so an untouched save never triggers a re-fetch.
-        let feedUrl: string | undefined;
-        if (
-            isYoutube &&
-            channelFeedUrl &&
-            excludeShorts !== initialExcludeShorts
-        ) {
-            feedUrl = excludeShorts
-                ? (youtubeShortsFreeFeedUrl(channelFeedUrl) ?? channelFeedUrl)
-                : channelFeedUrl;
-        }
         setSaving(true);
-        const ok = await onSave({ title: nextTitle, primary, tags, feedUrl });
+        const ok = await onSave({
+            title: title.trim() || initialTitle,
+            primary,
+            tags,
+            feedUrl: changedFeedUrl(
+                channelFeedUrl,
+                excludeShorts,
+                initialExcludeShorts,
+            ),
+        });
         setSaving(false);
         if (ok) onOpenChange(false);
     };
@@ -100,7 +209,7 @@ export function EditSourceDialog({
         <Dialog
             open={open}
             onOpenChange={onOpenChange}
-            onOpenChangeComplete={handleOpenChangeComplete}
+            onOpenChangeComplete={reset}
         >
             <DialogContent>
                 <DialogHeader>
@@ -109,80 +218,33 @@ export function EditSourceDialog({
                         Rename it, mark it primary, or organise it with tags.
                     </DialogDescription>
                 </DialogHeader>
-
                 <form
                     onSubmit={submit}
                     noValidate
                     className="flex flex-col gap-5"
                 >
-                    <div className="space-y-2">
-                        <Label htmlFor="source-title" className="text-xs">
-                            Title
-                        </Label>
-                        <Input
-                            id="source-title"
-                            autoFocus
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            placeholder="Source title"
+                    <TitleField title={title} onChange={setTitle} />
+                    <SwitchField
+                        id="source-primary"
+                        label="Primary source"
+                        description="Featured prominently in your digest."
+                        checked={primary}
+                        onCheckedChange={setPrimary}
+                    />
+                    {channelFeedUrl ? (
+                        <SwitchField
+                            id="source-exclude-shorts"
+                            label="Exclude Shorts"
+                            description="Subscribe to long-form uploads only."
+                            checked={excludeShorts}
+                            onCheckedChange={setExcludeShorts}
                         />
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                        <div className="flex flex-col gap-0.5">
-                            <Label
-                                htmlFor="source-primary"
-                                className="cursor-pointer text-xs"
-                            >
-                                Primary source
-                            </Label>
-                            <span className="text-xs font-light text-muted-foreground">
-                                Featured prominently in your digest.
-                            </span>
-                        </div>
-                        <Switch
-                            id="source-primary"
-                            checked={primary}
-                            onCheckedChange={(checked) => setPrimary(checked)}
-                        />
-                    </div>
-
-                    {isYoutube && (
-                        <div className="flex items-center justify-between gap-3">
-                            <div className="flex flex-col gap-0.5">
-                                <Label
-                                    htmlFor="source-exclude-shorts"
-                                    className="cursor-pointer text-xs"
-                                >
-                                    Exclude Shorts
-                                </Label>
-                                <span className="text-xs font-light text-muted-foreground">
-                                    Subscribe to long-form uploads only.
-                                </span>
-                            </div>
-                            <Switch
-                                id="source-exclude-shorts"
-                                checked={excludeShorts}
-                                onCheckedChange={(checked) =>
-                                    setExcludeShorts(checked)
-                                }
-                            />
-                        </div>
-                    )}
-
-                    <div className="space-y-2">
-                        <Label htmlFor="source-tags" className="text-xs">
-                            Tags
-                        </Label>
-                        <CreatableCombobox
-                            id="source-tags"
-                            value={tags}
-                            onValueChange={setTags}
-                            suggestions={tagSuggestions}
-                            placeholder="Add tags…"
-                        />
-                    </div>
-
+                    ) : null}
+                    <TagsField
+                        tags={tags}
+                        suggestions={tagSuggestions}
+                        onChange={setTags}
+                    />
                     <DialogFooter>
                         <Button
                             type="button"
@@ -192,16 +254,7 @@ export function EditSourceDialog({
                         >
                             Cancel
                         </Button>
-                        <Button type="submit" disabled={saving}>
-                            {saving ? (
-                                <>
-                                    <SpinnerIcon className="motion-safe:animate-spin" />
-                                    Saving…
-                                </>
-                            ) : (
-                                'Save'
-                            )}
-                        </Button>
+                        <SaveButton saving={saving} />
                     </DialogFooter>
                 </form>
             </DialogContent>

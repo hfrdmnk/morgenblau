@@ -18,6 +18,7 @@ import {
     parseISODate,
     startOfLocalDay,
 } from '@/lib/date';
+import { digestRequestPath } from '@/lib/digest';
 import { subscribeSubscriptionAdded } from '@/lib/subscription-events';
 
 type DigestResponse = {
@@ -67,7 +68,7 @@ export function Digest() {
         let cancelled = false;
         const load = async () => {
             try {
-                const url = `/api/digest?date=${encodeURIComponent(formatISODate(selectedDate))}`;
+                const url = digestRequestPath(selectedDate);
                 const data = await api<DigestResponse>(url);
                 if (cancelled) return;
                 setState({

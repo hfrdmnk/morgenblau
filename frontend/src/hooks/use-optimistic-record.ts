@@ -3,37 +3,37 @@ import { useState } from 'react';
 import { optimisticDelete } from '@/lib/optimistic-delete';
 
 type OptimisticRecordOptions = {
-    initial: { rkey: string } | null;
-    deletePath: (rkey: string) => string;
+    initial: { id: string } | null;
+    deletePath: (id: string) => string;
     onDeleteError?: (error: unknown) => void;
 };
 
 // remove() flips local record state before the DELETE lands and rolls back on failure.
 export function useOptimisticRecord(options: OptimisticRecordOptions) {
     const [active, setActive] = useState(Boolean(options.initial));
-    const [rkey, setRkey] = useState<string | null>(
-        options.initial?.rkey ?? null,
+    const [key, setKey] = useState<string | null>(
+        options.initial?.id ?? null,
     );
     const [busy, setBusy] = useState(false);
 
     const remove = () => {
-        if (!rkey) return;
-        const previousRkey = rkey;
+        if (!key) return;
+        const previousKey = key;
         setBusy(true);
         optimisticDelete({
-            path: options.deletePath(previousRkey),
+            path: options.deletePath(previousKey),
             clear: () => {
                 setActive(false);
-                setRkey(null);
+                setKey(null);
             },
             restore: () => {
                 setActive(true);
-                setRkey(previousRkey);
+                setKey(previousKey);
             },
             onError: options.onDeleteError,
             settle: () => setBusy(false),
         });
     };
 
-    return { active, busy, setActive, setRkey, setBusy, remove };
+    return { active, busy, setActive, setKey, setBusy, remove };
 }

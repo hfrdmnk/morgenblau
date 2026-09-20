@@ -2,6 +2,7 @@ import {
     ChatIcon,
     CoffeeHotIcon,
     DocumentIcon,
+    MailIcon,
     OpenIcon,
     VideoIcon,
 } from '@proicons/react';
@@ -21,20 +22,22 @@ import { pickGreeting, pickPastTitle } from '@/lib/greetings';
 import { type EntryFrom } from '@/lib/paths';
 import { safeHref } from '@/lib/utils';
 
-export type ContentType = 'blogpost' | 'microblog' | 'video';
+export type ContentType = 'blogpost' | 'microblog' | 'newsletter' | 'video';
 
 export type Source = {
-    feedUrl: string;
+    kind?: 'rss' | 'standardfeed' | 'newsletter';
+    id?: string;
+    feedUrl?: string;
     title: string | null;
     siteUrl: string | null;
     faviconUrl: string | null;
 };
 
 export type Entry = {
-    id: number;
+    id: number | string;
     entrySlug: string;
     title: string | null;
-    url: string;
+    url?: string | null;
     contentType: ContentType;
     publishedAt: string;
     source: Source;
@@ -45,6 +48,7 @@ export type Entry = {
 const TYPE_ICONS: Record<ContentType, typeof DocumentIcon> = {
     blogpost: DocumentIcon,
     microblog: ChatIcon,
+    newsletter: MailIcon,
     video: VideoIcon,
 };
 
@@ -204,7 +208,7 @@ function StandardRow({
         <div className="flex flex-col gap-1.5">
             <RowHeader
                 entry={entry}
-                lead={entry.source.title ?? entry.source.feedUrl}
+                lead={entry.source.title ?? entry.source.feedUrl ?? 'Newsletter'}
             />
             <h3 className="line-clamp-3 text-lg font-medium tracking-tight text-foreground">
                 {entry.title ?? (
@@ -283,7 +287,12 @@ function InlineRow({
             <div className="flex flex-col gap-3">
                 <RowHeader
                     entry={entry}
-                    lead={meta ?? entry.source.title ?? entry.source.feedUrl}
+                    lead={
+                        meta ??
+                        entry.source.title ??
+                        entry.source.feedUrl ??
+                        'Newsletter'
+                    }
                     linkHref={entry.url}
                 />
                 {entry.body ? <MicroblogBody html={entry.body} /> : null}
@@ -317,7 +326,11 @@ function RowHeader({
 
     return (
         <div className="flex items-center gap-2">
-            <Favicon src={entry.source.faviconUrl} />
+            {entry.contentType === 'newsletter' ? (
+                <MailIcon className="size-4 text-muted-foreground" />
+            ) : (
+                <Favicon src={entry.source.faviconUrl} />
+            )}
             <p className="line-clamp-1 min-w-0 flex-1 text-sm font-light text-muted-foreground">
                 {lead}
             </p>
@@ -332,7 +345,9 @@ function RowHeader({
                     <OpenIcon className="size-[1.125rem] shrink-0" />
                 </a>
             ) : null}
-            <TypeIcon className="size-[1.125rem] shrink-0 text-muted-foreground" />
+            {entry.contentType !== 'newsletter' ? (
+                <TypeIcon className="size-[1.125rem] shrink-0 text-muted-foreground" />
+            ) : null}
         </div>
     );
 }

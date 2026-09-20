@@ -61,6 +61,22 @@ describe('fetchSaves', () => {
         });
     });
 
+    test('opens a private newsletter save without a public URL', () => {
+        const save: Save = {
+            kind: 'newsletter',
+            id: 'save-private-one',
+            createdAt: '2026-07-01T00:00:00Z',
+            title: 'A private issue',
+            entrySlug: 'newsletter-one',
+        };
+
+        expect(savePresentation(save)).toEqual({
+            label: 'A private issue',
+            href: '/entry/newsletter-one',
+            external: false,
+        });
+    });
+
     test('falls back to the hostname for an uncached save', () => {
         expect(
             savePresentation({

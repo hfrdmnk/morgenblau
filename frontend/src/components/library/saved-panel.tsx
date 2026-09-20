@@ -9,6 +9,7 @@ import {
 import { formatDate } from '@/lib/date';
 import {
     fetchSaves,
+    saveKey,
     savePresentation,
     type Save,
     type SavePresentation,
@@ -103,7 +104,7 @@ function Saves({
     return (
         <ul className="flex flex-col">
             {state.saves.map((save, index) => (
-                <Fragment key={save.rkey}>
+                <Fragment key={saveKey(save)}>
                     {index > 0 ? <RowDivider /> : null}
                     <SaveRow
                         save={save}

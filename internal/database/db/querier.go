@@ -9,12 +9,25 @@ import (
 )
 
 type Querier interface {
+	AllowNewsletterRemoteImages(ctx context.Context, arg AllowNewsletterRemoteImagesParams) error
+	CreateManualNewsletterSource(ctx context.Context, arg CreateManualNewsletterSourceParams) error
+	CreateNewsletterAddress(ctx context.Context, arg CreateNewsletterAddressParams) error
+	CreateNewsletterInlineAsset(ctx context.Context, arg CreateNewsletterInlineAssetParams) error
+	CreateNewsletterMessage(ctx context.Context, arg CreateNewsletterMessageParams) (string, error)
+	CreateNewsletterReceipt(ctx context.Context, arg CreateNewsletterReceiptParams) error
+	CreateNewsletterSave(ctx context.Context, arg CreateNewsletterSaveParams) error
+	CreateNewsletterSource(ctx context.Context, arg CreateNewsletterSourceParams) error
 	DeleteAuthRequest(ctx context.Context, state string) error
 	DeleteExpiredAuthRequests(ctx context.Context, expiresAt string) (int64, error)
 	DeleteFeedEntry(ctx context.Context, arg DeleteFeedEntryParams) error
+	DeleteNewsletterReceipt(ctx context.Context, id string) error
+	DeleteNewsletterSave(ctx context.Context, arg DeleteNewsletterSaveParams) error
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
+	DeleteStoppedUnsavedNewsletterMessage(ctx context.Context, arg DeleteStoppedUnsavedNewsletterMessageParams) error
+	DeleteUnsavedNewsletterMessages(ctx context.Context, arg DeleteUnsavedNewsletterMessagesParams) error
 	DeleteUserSave(ctx context.Context, arg DeleteUserSaveParams) error
 	DeleteUserSubscription(ctx context.Context, arg DeleteUserSubscriptionParams) error
+	EnableNewsletterSource(ctx context.Context, arg EnableNewsletterSourceParams) error
 	GetAuthRequest(ctx context.Context, state string) (GetAuthRequestRow, error)
 	// Column order matches the table's physical layout so sqlc reuses the Feed
 	// model instead of minting a one-off row type.
@@ -23,6 +36,18 @@ type Querier interface {
 	// Returns the stored icon URL for a feed. Drives the favicon-proxy SSRF guard:
 	// the proxy only streams URLs the sync pipeline has already vetted.
 	GetFeedIconURL(ctx context.Context, feedUrl string) (*string, error)
+	GetNewsletterAddress(ctx context.Context, did string) (NewsletterAddress, error)
+	GetNewsletterAddressByLocalPart(ctx context.Context, localPart string) (NewsletterAddress, error)
+	GetNewsletterGlobalStorageBytes(ctx context.Context) (int64, error)
+	GetNewsletterInlineAsset(ctx context.Context, arg GetNewsletterInlineAssetParams) (NewsletterInlineAsset, error)
+	GetNewsletterMessage(ctx context.Context, arg GetNewsletterMessageParams) (GetNewsletterMessageRow, error)
+	GetNewsletterMessageBySlug(ctx context.Context, arg GetNewsletterMessageBySlugParams) (GetNewsletterMessageBySlugRow, error)
+	GetNewsletterOwnerStorageBytes(ctx context.Context, did string) (int64, error)
+	GetNewsletterSave(ctx context.Context, arg GetNewsletterSaveParams) (NewsletterSafe, error)
+	GetNewsletterSaveForMessage(ctx context.Context, arg GetNewsletterSaveForMessageParams) (NewsletterSafe, error)
+	GetNewsletterSource(ctx context.Context, arg GetNewsletterSourceParams) (NewsletterSource, error)
+	GetNewsletterSourceByKey(ctx context.Context, arg GetNewsletterSourceByKeyParams) (NewsletterSource, error)
+	GetNextNewsletterReceipt(ctx context.Context, nextAttemptAt *string) (NewsletterReceipt, error)
 	GetSession(ctx context.Context, arg GetSessionParams) ([]byte, error)
 	GetUserSave(ctx context.Context, arg GetUserSaveParams) (UserSave, error)
 	GetUserSaveByItemURL(ctx context.Context, arg GetUserSaveByItemURLParams) (UserSave, error)
@@ -34,6 +59,7 @@ type Querier interface {
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserSubscriptionByFeedURLParams) (UserSubscription, error)
 	ListAllEntriesForUser(ctx context.Context, did string) ([]ListAllEntriesForUserRow, error)
 	ListAllFeedURLs(ctx context.Context) ([]string, error)
+	ListAllNewsletterMessagesForDigest(ctx context.Context, did string) ([]ListAllNewsletterMessagesForDigestRow, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
 	// Entries from a single feed, newest first, bounded by limit. The join to
 	// user_subscriptions doubles as an ownership filter; the handler still
@@ -41,6 +67,10 @@ type Querier interface {
 	ListEntriesForSource(ctx context.Context, arg ListEntriesForSourceParams) ([]ListEntriesForSourceRow, error)
 	ListFeedEntriesForDiff(ctx context.Context, feedUrl string) ([]ListFeedEntriesForDiffRow, error)
 	ListFeedURLsForUser(ctx context.Context, did string) ([]string, error)
+	ListNewsletterMessagesForDigest(ctx context.Context, arg ListNewsletterMessagesForDigestParams) ([]ListNewsletterMessagesForDigestRow, error)
+	ListNewsletterMessagesForSource(ctx context.Context, arg ListNewsletterMessagesForSourceParams) ([]ListNewsletterMessagesForSourceRow, error)
+	ListNewsletterSaves(ctx context.Context, did string) ([]ListNewsletterSavesRow, error)
+	ListNewsletterSources(ctx context.Context, arg ListNewsletterSourcesParams) ([]ListNewsletterSourcesRow, error)
 	// Newest first. The entry join resolves title/slug/target for saves whose entry
 	// is still cached; url is not unique in feed_entries, so the newest matching
 	// entry is picked by id rather than joined on url directly, which would fan one
@@ -62,9 +92,14 @@ type Querier interface {
 	// resolve handler can flag candidates that point at the same site under the
 	// other kind (rss vs standardfeed).
 	ListUserSubscriptionsWithSiteURL(ctx context.Context, did string) ([]ListUserSubscriptionsWithSiteURLRow, error)
+	MarkNewsletterReceiptFailed(ctx context.Context, arg MarkNewsletterReceiptFailedParams) error
+	MoveNewsletterMessage(ctx context.Context, arg MoveNewsletterMessageParams) error
+	PatchNewsletterSource(ctx context.Context, arg PatchNewsletterSourceParams) error
 	PutAuthRequest(ctx context.Context, arg PutAuthRequestParams) error
 	PutSession(ctx context.Context, arg PutSessionParams) error
 	SetFeedIconURL(ctx context.Context, arg SetFeedIconURLParams) error
+	SetNewsletterSourceStatus(ctx context.Context, arg SetNewsletterSourceStatusParams) error
+	TouchNewsletterSource(ctx context.Context, arg TouchNewsletterSourceParams) error
 	UpdateFeedEntryExtractedBody(ctx context.Context, arg UpdateFeedEntryExtractedBodyParams) error
 	// SPEC <feed-sources> failure handling; success (UpdateFeedFetchState) resets both.
 	UpdateFeedFetchFailure(ctx context.Context, arg UpdateFeedFetchFailureParams) error

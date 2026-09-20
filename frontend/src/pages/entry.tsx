@@ -1,13 +1,15 @@
-import { PlayIcon } from '@proicons/react';
+import { MailIcon, PhotoIcon, PlayIcon, SpinnerIcon } from '@proicons/react';
 import DOMPurify from 'dompurify';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearch } from 'wouter';
 
 import { Favicon } from '@/components/favicon';
+import { MoveMessageDialog } from '@/components/newsletters/move-message-dialog';
 import { ReaderBody } from '@/components/reader-body';
 import { ReaderRail } from '@/components/reader-rail';
 import type { ExtractedToggleState } from '@/components/reader-rail';
 import { ReaderHeader, ReaderShell } from '@/components/reader-shell';
+import { Button } from '@/components/ui/button';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useGoBackOr } from '@/hooks/use-go-back-or';
@@ -17,32 +19,46 @@ import type { SavedToggle } from '@/hooks/use-save-toggle';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/date';
 import { readAuthor } from '@/lib/entry-meta';
-import { digestHref, sourceHref } from '@/lib/paths';
+import type {
+    NewsletterMessageMeta,
+    NewsletterSource,
+} from '@/lib/newsletters';
+import { toastMutationError } from '@/lib/mutation-toast';
+import {
+    digestHref,
+    newsletterSourceHref,
+    sourceHref,
+} from '@/lib/paths';
 import { cn, hostnameOf, safeHref } from '@/lib/utils';
 
-type ContentType = 'blogpost' | 'microblog' | 'video';
+type ContentType = 'blogpost' | 'microblog' | 'newsletter' | 'video';
 
 type Source = {
-    feedUrl: string;
+    kind?: 'rss' | 'standardfeed' | 'newsletter';
+    id?: string;
+    feedUrl?: string;
     title: string | null;
     siteUrl: string | null;
     faviconUrl: string | null;
     rkey?: string;
 };
 
-type SavedState = { rkey: string };
+type SavedState =
+    | { rkey: string; kind?: 'feed' }
+    | { kind: 'newsletter'; id: string };
 
 type Entry = {
-    id: number;
+    id: number | string;
     entrySlug: string;
     title: string | null;
-    url: string;
+    url?: string | null;
     contentType: ContentType;
     publishedAt: string;
     source: Source;
     body: string | null;
     metadata?: string | null;
     savedState: SavedState | null;
+    newsletter?: NewsletterMessageMeta;
 };
 
 type State =
@@ -52,11 +68,45 @@ type State =
 
 type Override = 'auto' | 'feed' | 'extracted';
 
+type NewsletterImageState = {
+    body: string | null;
+    remoteImagesAllowed: boolean;
+    hasBlockedRemoteImages: boolean;
+};
+
+function isNewsletterEntry(
+    entry: Entry,
+): entry is Entry & { newsletter: NewsletterMessageMeta } {
+    return entry.contentType === 'newsletter' && entry.newsletter !== undefined;
+}
+
+function feedSavedToggle(entry: Entry): SavedToggle {
+    return {
+        kind: 'feed',
+        initial: feedSavedInitial(entry.savedState),
+        itemUrl: entry.url || '',
+        feedUrl: entry.source.feedUrl || null,
+    };
+}
+
+function feedSavedInitial(savedState: SavedState | null) {
+    if (!savedState || !('rkey' in savedState)) return null;
+    return { rkey: savedState.rkey };
+}
+
+function useFeedSave(entry: Entry) {
+    return useSaveToggle(feedSavedToggle(entry));
+}
+
 function backHrefFromLocation(search: string): string {
     const params = new URLSearchParams(search);
     const rkey = params.get('fromSource');
     if (rkey && /^[A-Za-z0-9._~-]+$/.test(rkey)) {
         return sourceHref(rkey);
+    }
+    const newsletterId = params.get('fromNewsletter');
+    if (newsletterId) {
+        return newsletterSourceHref(newsletterId);
     }
     const date = params.get('from');
     if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -114,6 +164,15 @@ export function Entry() {
 
     if (state.entry.contentType === 'video') {
         return <WatchView entry={state.entry} backHref={backHref} />;
+    }
+    if (isNewsletterEntry(state.entry)) {
+        return (
+            <NewsletterReaderView
+                key={state.entry.entrySlug}
+                entry={state.entry}
+                backHref={backHref}
+            />
+        );
     }
 
     return <ReaderView entry={state.entry} backHref={backHref} />;
@@ -173,13 +232,8 @@ function ReaderView({ entry, backHref }: { entry: Entry; backHref: string }) {
 
     const sourceLink = safeHref(entry.url);
     // A path-less Standardfeed document has no canonical URL to use as a save index key.
-    const canSave = entry.url !== '';
-    const savedToggle: SavedToggle = {
-        initial: entry.savedState,
-        itemUrl: entry.url,
-        feedUrl: entry.source.feedUrl ?? null,
-    };
-    const save = useSaveToggle(savedToggle);
+    const canSave = Boolean(entry.url);
+    const save = useFeedSave(entry);
 
     useKeyboard({
         Escape: () => {
@@ -225,16 +279,176 @@ function ReaderView({ entry, backHref }: { entry: Entry; backHref: string }) {
     );
 }
 
+function newsletterSavedToggle(
+    entry: Entry & { newsletter: NewsletterMessageMeta },
+): SavedToggle {
+    const initial =
+        entry.savedState?.kind === 'newsletter' ? entry.savedState : null;
+    return {
+        kind: 'newsletter',
+        initial,
+        messageId: entry.newsletter.messageId,
+    };
+}
+
+function newsletterReaderSource(
+    original: Source,
+    moved: NewsletterSource | null,
+): Source {
+    if (!moved) return original;
+    return {
+        kind: 'newsletter',
+        id: moved.id,
+        title: moved.title,
+        siteUrl: null,
+        faviconUrl: null,
+    };
+}
+
+function initialNewsletterImages(
+    entry: Entry & { newsletter: NewsletterMessageMeta },
+): NewsletterImageState {
+    return {
+        body: entry.body,
+        remoteImagesAllowed: entry.newsletter.remoteImagesAllowed,
+        hasBlockedRemoteImages: entry.newsletter.hasBlockedRemoteImages,
+    };
+}
+
+function useNewsletterImages(
+    entry: Entry & { newsletter: NewsletterMessageMeta },
+) {
+    const [loaded, setLoaded] = useState<NewsletterImageState | null>(null);
+    const [loading, setLoading] = useState(false);
+    const images = loaded ?? initialNewsletterImages(entry);
+
+    const load = async () => {
+        if (loading) return;
+        setLoading(true);
+        try {
+            const next = await api<NewsletterImageState>(
+                `/api/newsletters/messages/${encodeURIComponent(entry.newsletter.messageId)}/images`,
+                { method: 'POST' },
+            );
+            setLoaded(next);
+        } catch (error) {
+            toastMutationError(error, "Couldn't load these images. Try again.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return { images, loading, load };
+}
+
+function NewsletterMessageContent({
+    entry,
+}: {
+    entry: Entry & { newsletter: NewsletterMessageMeta };
+}) {
+    const { images, loading, load } = useNewsletterImages(entry);
+    const showImageNotice =
+        images.hasBlockedRemoteImages && !images.remoteImagesAllowed;
+    return (
+        <>
+            <RemoteImageNotice
+                visible={showImageNotice}
+                loading={loading}
+                onLoad={load}
+            />
+            {images.body ? <ReaderBody html={images.body} /> : null}
+        </>
+    );
+}
+
+function RemoteImageNotice({
+    visible,
+    loading,
+    onLoad,
+}: {
+    visible: boolean;
+    loading: boolean;
+    onLoad: () => void;
+}) {
+    if (!visible) return null;
+    return (
+        <div className="mb-6 flex items-center justify-between gap-4 rounded-xl bg-muted px-3 py-2.5 font-sans">
+            <p className="text-label text-muted-foreground">
+                Remote images are blocked to protect your privacy.
+            </p>
+            <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={loading}
+                onClick={onLoad}
+            >
+                {loading ? (
+                    <SpinnerIcon className="size-4 motion-safe:animate-spin" />
+                ) : (
+                    <PhotoIcon className="size-4" />
+                )}
+                Load images
+            </Button>
+        </div>
+    );
+}
+
+function NewsletterReaderView({
+    entry,
+    backHref,
+}: {
+    entry: Entry & { newsletter: NewsletterMessageMeta };
+    backHref: string;
+}) {
+    const goBackOr = useGoBackOr();
+    const [moveOpen, setMoveOpen] = useState(false);
+    const [movedSource, setMovedSource] = useState<NewsletterSource | null>(null);
+    const source = newsletterReaderSource(entry.source, movedSource);
+    const save = useSaveToggle(newsletterSavedToggle(entry));
+
+    useKeyboard({
+        Escape: () => goBackOr(backHref),
+        b: () => save.onToggle(),
+    });
+
+    return (
+        <div className="min-h-svh bg-card">
+            <ReaderHeader backHref={backHref} />
+            <ReaderRail
+                sourceUrl={null}
+                save={save}
+                move={{ onClick: () => setMoveOpen(true) }}
+            />
+            <article className="mx-auto w-full max-w-2xl px-4 pt-8 pb-24 sm:px-6">
+                <header className="mb-8 flex flex-col gap-4">
+                    <FeedLine source={source} />
+                    {entry.title ? (
+                        <h1 className="text-display text-balance">
+                            {entry.title}
+                        </h1>
+                    ) : null}
+                    <NewsletterByline entry={entry} />
+                </header>
+
+                <NewsletterMessageContent entry={entry} />
+            </article>
+            <MoveMessageDialog
+                open={moveOpen}
+                onOpenChange={setMoveOpen}
+                messageId={entry.newsletter.messageId}
+                currentSourceId={source.id}
+                onMoved={setMovedSource}
+            />
+        </div>
+    );
+}
+
 function WatchView({ entry, backHref }: { entry: Entry; backHref: string }) {
     const goBackOr = useGoBackOr();
-    const embed = useMemo(() => resolveVideoEmbed(entry.url), [entry.url]);
+    const embed = useMemo(() => resolveVideoEmbed(entry.url ?? ''), [entry.url]);
     const sourceLink = safeHref(entry.url);
-    const savedToggle: SavedToggle = {
-        initial: entry.savedState,
-        itemUrl: entry.url,
-        feedUrl: entry.source.feedUrl ?? null,
-    };
-    const save = useSaveToggle(savedToggle);
+    const save = useFeedSave(entry);
 
     useKeyboard({
         Escape: () => {
@@ -367,18 +581,19 @@ function Thumbnail({ src }: { src: string }) {
 }
 
 function FeedLine({ source }: { source: Source }) {
-    const label = source.title ?? source.feedUrl;
+    const label = source.title ?? source.feedUrl ?? 'Newsletter';
+    const href = sourcePageHref(source);
     const content = (
         <>
-            <Favicon src={source.faviconUrl} />
+            <SourceIcon source={source} />
             <span className="line-clamp-1 text-sm font-light">{label}</span>
         </>
     );
-    if (source.rkey) {
+    if (href) {
         return (
             <Link
-                href={sourceHref(source.rkey)}
-                className="flex w-fit items-center gap-2 rounded-sm font-sans text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
+                href={href}
+                className="flex w-fit items-center gap-2 rounded-sm font-sans text-muted-foreground outline-none transition-colors duration-200 ease-out hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
             >
                 {content}
             </Link>
@@ -391,12 +606,26 @@ function FeedLine({ source }: { source: Source }) {
     );
 }
 
+function SourceIcon({ source }: { source: Source }) {
+    return source.kind === 'newsletter' ? (
+        <MailIcon className="size-4" />
+    ) : (
+        <Favicon src={source.faviconUrl} />
+    );
+}
+
+function sourcePageHref(source: Source): string | null {
+    if (source.rkey) return sourceHref(source.rkey);
+    if (source.kind !== 'newsletter' || !source.id) return null;
+    return newsletterSourceHref(source.id);
+}
+
 function Byline({ entry }: { entry: Entry }) {
     const bits: string[] = [];
     const author = readAuthor(entry.metadata);
     if (author) bits.push(author);
     if (entry.publishedAt) bits.push(formatDate(entry.publishedAt));
-    const host = hostnameOf(entry.url);
+    const host = entry.url ? hostnameOf(entry.url) : null;
     if (host) bits.push(host);
     if (bits.length === 0) return null;
     return (
@@ -404,6 +633,42 @@ function Byline({ entry }: { entry: Entry }) {
             {bits.join(' · ')}
         </p>
     );
+}
+
+function NewsletterByline({
+    entry,
+}: {
+    entry: Entry & { newsletter: NewsletterMessageMeta };
+}) {
+    const bits = newsletterBylineBits(entry);
+    return (
+        <p className="font-sans text-label text-muted-foreground">
+            {bits.join(' · ')}
+        </p>
+    );
+}
+
+function newsletterBylineBits(
+    entry: Entry & { newsletter: NewsletterMessageMeta },
+): string[] {
+    const received = entry.publishedAt ? formatDate(entry.publishedAt) : null;
+    return [
+        newsletterSender(entry.newsletter),
+        received,
+        originalSentDate(entry.newsletter.sentAt, entry.publishedAt),
+    ].filter((bit): bit is string => Boolean(bit));
+}
+
+function newsletterSender(newsletter: NewsletterMessageMeta): string {
+    return newsletter.senderName || newsletter.senderAddress;
+}
+
+function originalSentDate(
+    sentAt: string | null | undefined,
+    receivedAt: string,
+): string | null {
+    if (!sentAt || sentAt === receivedAt) return null;
+    return `Sent ${formatDate(sentAt)}`;
 }
 
 function Description({ html }: { html: string }) {

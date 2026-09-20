@@ -59,6 +59,8 @@ The Sources page groups RSS/Atom and Standardfeed subscriptions under **Feeds**,
 
 Opening Morgenblau lands on today's digest. New content can arrive during the day; previous days remain available. Skipped days never accumulate into an unread queue. The digest contains only content from sources the user chose.
 
+Digest dates use the browser's local calendar boundaries for every source type, so a selected day means the reader's local day regardless of the server timezone.
+
 Primary sources appear at the top with distinct presentation. This is a user preference, not a social ranking signal.
 
 The in-app reader remains the default for articles, with an option to open the original URL. YouTube playback and inline microblog rendering remain supported. Default content-type filters and custom Views are retained product scope.
@@ -91,9 +93,19 @@ OPML import/export covers RSS/Atom subscriptions, including YouTube feeds. It ex
 
 ## Private Newsletter Data
 
-Each user receives one random, replaceable inbound email address, privately mapped to their DID. The address is neither derived from the DID nor published in the PDS. An address derived from a public identity would be predictable and unnecessarily connect incoming email to that identity.
+Each user receives one random inbound email address for v1, privately mapped to their DID. Replacing or rotating that address is outside v1. The address is neither derived from the DID nor published in the PDS. An address derived from a public identity would be predictable and unnecessarily connect incoming email to that identity.
 
-Newsletter addresses, email subscriptions, message content, and email-only Library saves are private server-owned data. This is an explicit exception to PDS authority: public records must not expose personal email content, delivery addresses, or personalized links such as unsubscribe URLs.
+Giving that address to a publisher is the reader's decision to add the source. The first incoming message automatically creates a private Newsletter source without another approval step. While the source is active, confirmation, welcome, account, and other messages delivered to the address remain readable.
+
+Forwarded mail remains readable and uses structured original newsletter identity when available; otherwise it is grouped under the forwarding sender so the reader can correct that message's attribution, without guessing among quoted messages or silently losing or misassigning content. A correction applies only to that message and does not create a rule for future deliveries.
+
+Newsletter messages belong to the digest date on which they are received, so forwarded or delayed mail is not hidden in an older digest. The reader may also display the original sent date.
+
+Remote images are blocked by default so image requests do not reveal message opens. Loading images is a private per-message choice remembered for that message only; all other messages remain blocked by default. Embedded images display as part of the message. V1 does not include general attachment downloads.
+
+Newsletter addresses, email subscriptions, message content, and Newsletter Library saves are private server-owned data. A save originating from a newsletter remains private even when the message includes a public web-version URL. This is an explicit exception to PDS authority: public records must not expose personal email content, delivery addresses, or personalized links such as unsubscribe URLs.
+
+Stopping a Newsletter moves it to **Stopped newsletters**, where it can be re-enabled. Unsaved newsletter messages are deleted, while saved messages remain in the Library. Future mail that still matches the stopped source is accepted and discarded without storing a new message, avoiding a bounce that could prevent the reader from resuming later; re-enabling affects only future deliveries. V1 has no separate permanent deletion action, and a publisher identity change may arrive as a new source rather than matching the stopped one.
 
 Newsletter data is scoped to its owner and must never enter the shared feed-content cache. The existing public lexicons remain unchanged for this release.
 
@@ -107,7 +119,7 @@ Newsletter data is scoped to its owner and must never enter the shared feed-cont
 
 The Library contains the user's own saved entries, with optional commentary and flat, user-defined tags. There is no Shared or Network section.
 
-Existing URL-based saves remain `blue.morgen.feed.save` records. They are product-private: those PDS records are technically public, but Morgenblau does not display another person's saves or derive popularity signals from them. Email-only saves follow the private newsletter storage rule above.
+Existing URL-based saves remain `blue.morgen.feed.save` records. They are product-private: those PDS records are technically public, but Morgenblau does not display another person's saves or derive popularity signals from them. Newsletter saves follow the private newsletter storage rule above, including when the message has a public web-version URL.
 
 </library>
 

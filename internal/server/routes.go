@@ -43,15 +43,38 @@ func (s *Server) routes() *http.ServeMux {
 
 	mux.Handle("GET /api/favicon", api.FaviconProxyHandler(s.qr, s.safeClient))
 
-	mux.Handle("GET /api/saves", api.SavesListHandler(s.qr))
+	if s.newsletters != nil {
+		mux.Handle("GET /api/newsletters/address", api.NewsletterAddressHandler(s.newsletters))
+		mux.Handle("GET /api/newsletters", api.NewslettersListHandler(s.newsletters))
+		mux.Handle("GET /api/newsletters/{id}", api.NewsletterGetHandler(s.newsletters))
+		mux.Handle("PATCH /api/newsletters/{id}", api.NewsletterPatchHandler(s.newsletters))
+		mux.Handle("POST /api/newsletters/{id}/stop", api.NewsletterStopHandler(s.newsletters))
+		mux.Handle("POST /api/newsletters/{id}/enable", api.NewsletterEnableHandler(s.newsletters))
+		mux.Handle("GET /api/newsletters/{id}/entries", api.NewsletterEntriesHandler(s.newsletters))
+		mux.Handle("POST /api/newsletters/messages/{id}/images", api.NewsletterRemoteImagesHandler(s.newsletters))
+		mux.Handle("POST /api/newsletters/messages/{id}/move", api.NewsletterMoveHandler(s.newsletters))
+		mux.Handle("GET /api/newsletter-assets/{token}", api.NewsletterAssetHandler(s.newsletters))
+		mux.Handle("POST /api/newsletter-saves", api.NewsletterSaveCreateHandler(s.newsletters))
+		mux.Handle("DELETE /api/newsletter-saves/{id}", api.NewsletterSaveDeleteHandler(s.newsletters))
+	}
+
+	savesList := api.SavesListHandler(s.qr)
+	digest := api.DigestHandler(s.qr, s.jobs)
+	entry := api.EntryHandler(s.qr)
+	if s.newsletters != nil {
+		savesList = api.SavesListHandler(s.qr, s.newsletters)
+		digest = api.DigestHandler(s.qr, s.jobs, s.newsletters)
+		entry = api.EntryHandler(s.qr, s.newsletters)
+	}
+	mux.Handle("GET /api/saves", savesList)
 	mux.Handle("POST /api/saves", api.SavesCreateHandler(s.qr, s.qw, pdsWriter, s.sync))
 	mux.Handle("DELETE /api/saves/{rkey}", api.SavesDeleteHandler(s.qr, s.qw, pdsWriter, s.sync))
 
 	mux.Handle("GET /api/jobs/active", api.JobsActiveHandler(s.jobs))
 	mux.Handle("GET /api/jobs/{id}", api.JobsGetHandler(s.jobs))
-	mux.Handle("GET /api/digest", api.DigestHandler(s.qr, s.jobs))
+	mux.Handle("GET /api/digest", digest)
 	mux.Handle("POST /api/digest/refresh", api.DigestRefreshHandler(s.sync))
-	mux.Handle("GET /api/entries/{slug}", api.EntryHandler(s.qr))
+	mux.Handle("GET /api/entries/{slug}", entry)
 	mux.Handle("POST /api/entries/{slug}/extract", api.EntryExtractHandler(s.qr, s.qw, s.safeClient))
 
 	mux.HandleFunc("/api/", http.NotFound)

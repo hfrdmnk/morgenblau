@@ -16,6 +16,7 @@ import (
 
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/middleware/auth"
+	"morgenblau/internal/newsletter"
 	"morgenblau/internal/safehttp"
 )
 
@@ -32,9 +33,30 @@ type EntryExtractWriter interface {
 	UpdateFeedEntryExtractedBody(ctx context.Context, arg db.UpdateFeedEntryExtractedBodyParams) error
 }
 
+type newsletterEntryReader interface {
+	GetMessageBySlug(context.Context, string, string) (newsletter.Message, error)
+}
+
 // EntryHandler returns the full entry plus source metadata and saved-state, avoiding a second round-trip for the frontend.
-func EntryHandler(reader EntryReader) http.Handler {
+func EntryHandler(reader EntryReader, privateReaders ...newsletterEntryReader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(privateReaders) > 0 && privateReaders[0] != nil {
+			sess, ok := requireSession(w, r)
+			if !ok {
+				return
+			}
+			message, err := privateReaders[0].GetMessageBySlug(r.Context(), sess.Data.AccountDID.String(), r.PathValue("slug"))
+			if err == nil {
+				privateResponse(w)
+				writeJSON(w, newsletterMessageToWire(message))
+				return
+			}
+			if !errors.Is(err, newsletter.ErrNotFound) {
+				privateResponse(w)
+				writeNewsletterError(w, err)
+				return
+			}
+		}
 		entry, sub, feed, ok := loadAndAuthorize(w, r, reader)
 		if !ok {
 			return
@@ -134,11 +156,12 @@ func entryRowToWire(row db.FeedEntry, sub db.UserSubscription, feed db.Feed, sav
 	}
 	source := buildSourceMeta(row.FeedUrl, displayTitle(sub.Title, feed.Title), feed.SiteUrl, feed.IconUrl)
 	source.Rkey = sub.Rkey
+	entryURL := row.Url
 	return EntryWire{
 		ID:          row.ID,
 		EntrySlug:   row.EntrySlug,
 		Title:       row.Title,
-		URL:         row.Url,
+		URL:         &entryURL,
 		ContentType: row.ContentType,
 		PublishedAt: row.PublishedAt,
 		Source:      source,

@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -14,6 +16,7 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
+	gosmtp "github.com/emersion/go-smtp"
 
 	"morgenblau/internal/atidentity"
 	"morgenblau/internal/atprepo"
@@ -23,6 +26,7 @@ import (
 	"morgenblau/internal/feedfinder"
 	"morgenblau/internal/fetcher"
 	"morgenblau/internal/jobs"
+	"morgenblau/internal/newsletter"
 	"morgenblau/internal/oauth/config"
 	"morgenblau/internal/oauth/cookie"
 	"morgenblau/internal/oauth/store"
@@ -35,18 +39,19 @@ import (
 type Server struct {
 	port int
 
-	db         *database.DB
-	qr         *dbqueries.Queries
-	qw         *dbqueries.Queries
-	oauthCfg   *config.Config
-	oauthApp   *oauth.ClientApp
-	store      *store.Store
-	sealer     *cookie.Sealer
-	profiles   *profiles.Cache
-	jobs       *jobs.Tracker
-	sync       *internalsync.Orchestrator
-	feedfinder *feedfinder.Finder
-	safeClient *http.Client
+	db          *database.DB
+	qr          *dbqueries.Queries
+	qw          *dbqueries.Queries
+	oauthCfg    *config.Config
+	oauthApp    *oauth.ClientApp
+	store       *store.Store
+	sealer      *cookie.Sealer
+	profiles    *profiles.Cache
+	jobs        *jobs.Tracker
+	sync        *internalsync.Orchestrator
+	feedfinder  *feedfinder.Finder
+	safeClient  *http.Client
+	newsletters *newsletter.Service
 
 	gcCancel context.CancelFunc
 }
@@ -69,6 +74,11 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 			return nil, nil, fmt.Errorf("invalid FETCH_INTERVAL_MINUTES %q: %w", raw, err)
 		}
 		fetchMinutes = n
+	}
+
+	newsletterCfg, err := loadNewsletterRuntimeConfig()
+	if err != nil {
+		return nil, nil, fmt.Errorf("load newsletter config: %w", err)
 	}
 
 	db, err := database.Open()
@@ -115,6 +125,27 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	router := internalsync.NewSourceRouter(pipeline, stdPipeline)
 	engine := internalsync.NewEngine(tracker, qw, internalsync.SessionPDSLister{}, router, oauthApp, atprepo.SessionWriter{}).WithLocker(st).WithTxRunner(db.Writer)
 	orchestrator := internalsync.New(tracker, router, engine)
+	newsletterService := newsletter.NewService(db.Reader, db.Writer, newsletter.Config{Domain: effectiveNewsletterDomain(newsletterCfg)})
+
+	var smtpServer *gosmtp.Server
+	var smtpDone chan error
+	if newsletterCfg.smtpEnabled() {
+		var smtpAddr net.Addr
+		smtpServer, smtpAddr, smtpDone, err = startNewsletterSMTP(newsletterService, newsletterCfg)
+		if err != nil {
+			gcCancel()
+			_ = orchestrator.Shutdown(context.Background())
+			_ = db.Close()
+			return nil, nil, fmt.Errorf("listen SMTP on %s: %w", newsletterCfg.ListenAddr, err)
+		}
+		slog.Info("newsletter SMTP enabled", "address", smtpAddr.String(), "domain", newsletterCfg.Domain, "hostname", newsletterCfg.Hostname, "starttls", newsletterCfg.TLSConfig != nil)
+	} else {
+		slog.Info("newsletter SMTP disabled")
+	}
+
+	processorCtx, processorCancel := context.WithCancel(context.Background())
+	processorDone := make(chan error, 1)
+	go func() { processorDone <- newsletterService.RunProcessor(processorCtx) }()
 
 	if fetchMinutes > 0 {
 		interval := time.Duration(fetchMinutes) * time.Minute
@@ -126,20 +157,21 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	}
 
 	srv := &Server{
-		port:       port,
-		db:         db,
-		qr:         qr,
-		qw:         qw,
-		oauthCfg:   oauthCfg,
-		oauthApp:   oauthApp,
-		store:      st,
-		sealer:     sealer,
-		profiles:   profileCache,
-		jobs:       tracker,
-		sync:       orchestrator,
-		feedfinder: finder,
-		safeClient: safeClient,
-		gcCancel:   gcCancel,
+		port:        port,
+		db:          db,
+		qr:          qr,
+		qw:          qw,
+		oauthCfg:    oauthCfg,
+		oauthApp:    oauthApp,
+		store:       st,
+		sealer:      sealer,
+		profiles:    profileCache,
+		jobs:        tracker,
+		sync:        orchestrator,
+		feedfinder:  finder,
+		safeClient:  safeClient,
+		newsletters: newsletterService,
+		gcCancel:    gcCancel,
 	}
 
 	server := &http.Server{
@@ -153,6 +185,28 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	server.RegisterOnShutdown(gcCancel)
 
 	cleanup := func(ctx context.Context) error {
+		if smtpServer != nil {
+			if err := smtpServer.Close(); err != nil && !errors.Is(err, gosmtp.ErrServerClosed) {
+				slog.Warn("newsletter SMTP shutdown", "err", err)
+			}
+			select {
+			case err := <-smtpDone:
+				if err != nil && !errors.Is(err, gosmtp.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
+					slog.Warn("newsletter SMTP serve", "err", err)
+				}
+			case <-ctx.Done():
+				slog.Warn("newsletter SMTP shutdown timed out", "err", ctx.Err())
+			}
+		}
+		processorCancel()
+		select {
+		case err := <-processorDone:
+			if err != nil && !errors.Is(err, context.Canceled) {
+				slog.Warn("newsletter processor shutdown", "err", err)
+			}
+		case <-ctx.Done():
+			slog.Warn("newsletter processor shutdown timed out", "err", ctx.Err())
+		}
 		if err := orchestrator.Shutdown(ctx); err != nil {
 			slog.Warn("sync orchestrator shutdown", "err", err)
 		}
@@ -160,6 +214,22 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	}
 
 	return server, cleanup, nil
+}
+
+func startNewsletterSMTP(service *newsletter.Service, cfg newsletterRuntimeConfig) (*gosmtp.Server, net.Addr, chan error, error) {
+	server := newsletter.NewSMTPServer(service, newsletter.SMTPConfig{
+		Addr: cfg.ListenAddr, Domain: cfg.Hostname, TLSConfig: cfg.TLSConfig,
+		MaxMessageBytes: cfg.MaxMessageBytes, MaxConnections: cfg.MaxConnections,
+	})
+	listener, err := net.Listen("tcp", cfg.ListenAddr)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	addr := listener.Addr()
+	limited := newsletter.LimitSMTPListener(listener, cfg.MaxConnections)
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(limited) }()
+	return server, addr, done, nil
 }
 
 func loadCookieSealer() (*cookie.Sealer, error) {
