@@ -37,12 +37,6 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --cwd ./frontend --frozen-lockfile
 
-      - name: Run Go race tests
-        run: go test -race ./...
-
-      - name: Run Go vet
-        run: go vet ./...
-
       - name: Run frontend tests
         run: bun run --cwd ./frontend test
 
@@ -51,6 +45,12 @@ jobs:
 
       - name: Build frontend
         run: bun run --cwd ./frontend build
+
+      - name: Run Go race tests
+        run: go test -race ./...
+
+      - name: Run Go vet
+        run: go vet ./...
 
       - name: Build Linux binary
         env:
