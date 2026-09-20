@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-TANGLED_URL="git@tangled.org:dominik.social/morgenblau"
+TANGLED_URL="git@tangled.org:dominikhofer.me/morgenblau"
 
 if ! git remote get-url tangled >/dev/null 2>&1; then
     echo "Adding 'tangled' remote: $TANGLED_URL"

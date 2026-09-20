@@ -1,23 +1,26 @@
 import { BookmarkIcon, SpinnerIcon } from '@proicons/react';
 import { Fragment, useEffect, useState } from 'react';
+import { Link } from 'wouter';
 
 import {
     ListPanelShell,
     SectionState,
 } from '@/components/library/library-panel-shell';
-import {
-    RowDivider,
-    RowOverlayLink,
-    ROW_CLASS,
-} from '@/components/library/share-row';
 import { formatDate } from '@/lib/date';
-import { fetchSaves, type Save } from '@/lib/library';
+import {
+    fetchSaves,
+    savePresentation,
+    type Save,
+    type SavePresentation,
+} from '@/lib/library';
 import {
     readSavedCache,
     writeCachedSaves,
     writeSavedCache,
 } from '@/lib/library-cache';
-import { shareTargetPresentation } from '@/lib/share-target';
+
+const ROW_CLASS =
+    'relative flex items-start gap-3 px-6 py-5 transition-colors duration-200 ease-out has-[a:focus-visible]:outline-1 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-solid has-[a:focus-visible]:outline-ring';
 
 type State =
     | { kind: 'loading' }
@@ -27,7 +30,7 @@ type State =
 // Stable empty list so list navigation doesn't reset every render while loading.
 const EMPTY_SAVES: Save[] = [];
 
-// SavedPanel: the Library "Saved" tab — everything this reader has kept for later.
+// SavedPanel lists everything this reader has kept for later.
 export function SavedPanel() {
     const [state, setState] = useState<State>(() => {
         const cached = readSavedCache();
@@ -122,7 +125,7 @@ function SaveRow({
     index: number;
     onActivate: (index: number) => void;
 }) {
-    const target = shareTargetPresentation(save);
+    const target = savePresentation(save);
 
     return (
         <li
@@ -140,5 +143,32 @@ function SaveRow({
                 </p>
             </div>
         </li>
+    );
+}
+
+function RowDivider() {
+    return <li aria-hidden className="mx-6 border-t border-border" />;
+}
+
+// The overlay makes the whole row clickable while keeping its content out of the link.
+function RowOverlayLink({ target }: { target: SavePresentation }) {
+    if (!target.href) return null;
+    if (target.external) {
+        return (
+            <a
+                href={target.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={target.label}
+                className="absolute inset-0 outline-none"
+            />
+        );
+    }
+    return (
+        <Link
+            href={target.href}
+            aria-label={target.label}
+            className="absolute inset-0 outline-none"
+        />
     );
 }

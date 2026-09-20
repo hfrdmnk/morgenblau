@@ -8,10 +8,3 @@ export function readAuthor(metadata: string | null | undefined): string | null {
         return null;
     }
 }
-
-export function metaLine(
-    parts: Array<string | null | undefined>,
-): string | null {
-    const bits = parts.filter((p): p is string => Boolean(p));
-    return bits.length > 0 ? bits.join(' · ') : null;
-}

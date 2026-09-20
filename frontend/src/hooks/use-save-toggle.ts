@@ -28,7 +28,7 @@ export function useSaveToggle(toggle: SavedToggle): SaveControl {
         if (record.busy) return;
         if (record.active) {
             record.remove();
-            emitLibraryMutation({ kind: 'save' });
+            emitLibraryMutation();
             return;
         }
         record.setBusy(true);
@@ -42,7 +42,7 @@ export function useSaveToggle(toggle: SavedToggle): SaveControl {
         })
             .then((payload) => {
                 record.setRkey(payload.rkey);
-                emitLibraryMutation({ kind: 'save' });
+                emitLibraryMutation();
             })
             .catch((err) => {
                 record.setActive(false);

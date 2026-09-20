@@ -233,77 +233,6 @@ func TestFeedPipeline_FetchAndStore_SanitizerStripsScriptTags(t *testing.T) {
 	}
 }
 
-func TestFeedPipeline_FetchAndStore_DetectsLanguageFromContent(t *testing.T) {
-	frenchItem := `<item>
-<title>Article</title>
-<link>https://site.example.com/a</link>
-<guid>guid-a</guid>
-<description><![CDATA[Le rapide renard brun saute par-dessus le chien paresseux pendant que le soleil se couche lentement derriere les collines lointaines.]]></description>
-</item>`
-	feedURL, closeServer := serveFeed(t, rssWithLink("https://site.example.com/", frenchItem))
-	defer closeServer()
-
-	q := &fakePipelineQueries{getErr: sql.ErrNoRows}
-	p := newTestPipeline(q, &fakeFaviconDiscoverer{}, time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC))
-
-	if err := p.FetchAndStore(context.Background(), feedURL); err != nil {
-		t.Fatalf("FetchAndStore: %v", err)
-	}
-	if len(q.feeds) != 1 {
-		t.Fatalf("UpsertFeed calls = %d, want 1", len(q.feeds))
-	}
-	if q.feeds[0].Language == nil || *q.feeds[0].Language != "fr" {
-		t.Errorf("Language = %v, want fr (detected from item content)", q.feeds[0].Language)
-	}
-}
-
-func TestFeedPipeline_FetchAndStore_FallsBackToFeedTagWhenContentTooShort(t *testing.T) {
-	feedURL, closeServer := serveFeed(t, rssWithLanguage("https://site.example.com/", "en-US", `<item>
-<title>Hi</title>
-<link>https://site.example.com/a</link>
-<guid>guid-a</guid>
-<description>Hi</description>
-</item>`))
-	defer closeServer()
-
-	q := &fakePipelineQueries{getErr: sql.ErrNoRows}
-	p := newTestPipeline(q, &fakeFaviconDiscoverer{}, time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC))
-
-	if err := p.FetchAndStore(context.Background(), feedURL); err != nil {
-		t.Fatalf("FetchAndStore: %v", err)
-	}
-	if len(q.feeds) != 1 {
-		t.Fatalf("UpsertFeed calls = %d, want 1", len(q.feeds))
-	}
-	if q.feeds[0].Language == nil || *q.feeds[0].Language != "en" {
-		t.Errorf("Language = %v, want en (from the feed's own tag, content too short to detect)", q.feeds[0].Language)
-	}
-}
-
-func TestFeedPipeline_FetchAndStore_ContentWinsOverDisagreeingFeedTag(t *testing.T) {
-	frenchItem := `<item>
-<title>Article</title>
-<link>https://site.example.com/a</link>
-<guid>guid-a</guid>
-<description><![CDATA[Le rapide renard brun saute par-dessus le chien paresseux pendant que le soleil se couche lentement derriere les collines lointaines.]]></description>
-</item>`
-	feedURL, closeServer := serveFeed(t, rssWithLanguage("https://site.example.com/", "en-US", frenchItem))
-	defer closeServer()
-
-	q := &fakePipelineQueries{getErr: sql.ErrNoRows}
-	p := newTestPipeline(q, &fakeFaviconDiscoverer{}, time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC))
-
-	if err := p.FetchAndStore(context.Background(), feedURL); err != nil {
-		t.Fatalf("FetchAndStore: %v", err)
-	}
-	if len(q.feeds) != 1 {
-		t.Fatalf("UpsertFeed calls = %d, want 1", len(q.feeds))
-	}
-	if q.feeds[0].Language == nil || *q.feeds[0].Language != "fr" {
-		t.Errorf("Language = %v, want fr (content detection must win over the en-US tag)", q.feeds[0].Language)
-	}
-}
-
 func TestFeedPipeline_FetchAndStore_RecordsFailureOnFirstError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -524,21 +453,13 @@ func serveFeed(t *testing.T, body string) (string, func()) {
 }
 
 func rssWithLink(link string, items string) string {
-	return rssWithLanguage(link, "", items)
-}
-
-func rssWithLanguage(link, language, items string) string {
 	linkXML := ""
 	if link != "" {
 		linkXML = "<link>" + link + "</link>"
 	}
-	languageXML := ""
-	if language != "" {
-		languageXML = "<language>" + language + "</language>"
-	}
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
-<title>Example Feed</title>` + linkXML + languageXML + `
+<title>Example Feed</title>` + linkXML + `
 <description>Example</description>
 ` + items + `
 </channel></rss>`

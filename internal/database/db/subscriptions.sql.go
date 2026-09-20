@@ -24,13 +24,12 @@ func (q *Queries) DeleteUserSubscription(ctx context.Context, arg DeleteUserSubs
 }
 
 const getFeed = `-- name: GetFeed :one
-SELECT feed_url, kind, site_url, title, language, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at, consecutive_failures, next_fetch_at
+SELECT feed_url, kind, site_url, title, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at, consecutive_failures, next_fetch_at
 FROM feeds WHERE feed_url = ?
 `
 
 // Column order matches the table's physical layout so sqlc reuses the Feed
-// model instead of minting a one-off row type (see
-// ListDiscoverCrawlSubscriptions for the same convention).
+// model instead of minting a one-off row type.
 func (q *Queries) GetFeed(ctx context.Context, feedUrl string) (Feed, error) {
 	row := q.db.QueryRowContext(ctx, getFeed, feedUrl)
 	var i Feed
@@ -39,7 +38,6 @@ func (q *Queries) GetFeed(ctx context.Context, feedUrl string) (Feed, error) {
 		&i.Kind,
 		&i.SiteUrl,
 		&i.Title,
-		&i.Language,
 		&i.Etag,
 		&i.LastModified,
 		&i.LastFetchedAt,
@@ -218,43 +216,6 @@ func (q *Queries) GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserS
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const listFeedLanguages = `-- name: ListFeedLanguages :many
-SELECT feed_url, language FROM feeds WHERE language IS NOT NULL
-`
-
-type ListFeedLanguagesRow struct {
-	FeedUrl  string  `json:"feed_url"`
-	Language *string `json:"language"`
-}
-
-// Discover trending's language-filter lookup (SPEC <discovery> "Global/
-// Trending ranking"): every Tier-2 source with a known detected language, in
-// one query rather than one per candidate. Tier-2 only holds feeds a
-// Morgenblau user actually subscribes to, so this table is small relative to
-// the network-wide trending aggregate.
-func (q *Queries) ListFeedLanguages(ctx context.Context) ([]ListFeedLanguagesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listFeedLanguages)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListFeedLanguagesRow
-	for rows.Next() {
-		var i ListFeedLanguagesRow
-		if err := rows.Scan(&i.FeedUrl, &i.Language); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const listUserSourcesWithStats = `-- name: ListUserSourcesWithStats :many
@@ -562,20 +523,18 @@ func (q *Queries) UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchS
 }
 
 const upsertFeed = `-- name: UpsertFeed :exec
-INSERT INTO feeds (feed_url, kind, site_url, title, language, created_at, updated_at)
+INSERT INTO feeds (feed_url, kind, site_url, title, created_at, updated_at)
 VALUES (
     ?1,
     COALESCE(NULLIF(?2, ''), 'rss'),
     ?3,
     ?4,
     ?5,
-    ?6,
-    ?7
+    ?6
 )
 ON CONFLICT (feed_url) DO UPDATE SET
     site_url = COALESCE(NULLIF(excluded.site_url, ''), feeds.site_url),
     title = COALESCE(excluded.title, feeds.title),
-    language = COALESCE(excluded.language, feeds.language),
     updated_at = excluded.updated_at
 `
 
@@ -584,7 +543,6 @@ type UpsertFeedParams struct {
 	Kind      interface{} `json:"kind"`
 	SiteUrl   *string     `json:"site_url"`
 	Title     *string     `json:"title"`
-	Language  *string     `json:"language"`
 	CreatedAt string      `json:"created_at"`
 	UpdatedAt string      `json:"updated_at"`
 }
@@ -592,10 +550,6 @@ type UpsertFeedParams struct {
 // kind defaults to 'rss' via NULLIF so pre-standardfeed callers passing the
 // zero value keep working; it is never changed on conflict. title is the
 // cached publication name; COALESCE keeps rss callers (nil) from clobbering it.
-// language is the pipeline's freshly-detected value (discoverlang); COALESCE
-// keeps an inconclusive detection on this fetch from erasing a previously
-// known language (SPEC <discovery>: detection runs on entry content already
-// fetched, no dedicated network call).
 // All params are named (not positional): mixing sqlc.arg() with bare ? makes
 // sqlc emit non-contiguous placeholder numbers that modernc.org/sqlite can't
 // bind ("missing argument with index N").
@@ -605,7 +559,6 @@ func (q *Queries) UpsertFeed(ctx context.Context, arg UpsertFeedParams) error {
 		arg.Kind,
 		arg.SiteUrl,
 		arg.Title,
-		arg.Language,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

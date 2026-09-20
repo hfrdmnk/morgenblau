@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 
@@ -18,7 +17,6 @@ import (
 	"morgenblau/internal/backoff"
 	"morgenblau/internal/database"
 	"morgenblau/internal/database/db"
-	"morgenblau/internal/discoverlang"
 	"morgenblau/internal/favicon"
 	"morgenblau/internal/fetcher"
 	"morgenblau/internal/safehttp"
@@ -52,7 +50,6 @@ type FeedPipeline struct {
 	sanitizer *bluemonday.Policy
 	now       func() time.Time
 	favicon   FaviconDiscoverer
-	detector  discoverlang.Detector
 	runTx     func(ctx context.Context, fn func(pipelineQueries) error) error
 }
 
@@ -72,7 +69,6 @@ func NewFeedPipeline(f *fetcher.Fetcher, q pipelineQueries) *FeedPipeline {
 		sanitizer: bluemonday.UGCPolicy(),
 		now:       time.Now,
 		favicon:   defaultFaviconDiscoverer(),
-		detector:  discoverlang.NewDetector(),
 	}
 	// No transaction by default so fake-based tests work; production installs a real runner via WithTxRunner.
 	p.runTx = func(ctx context.Context, fn func(pipelineQueries) error) error {
@@ -161,9 +157,6 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 		}
 	}
 
-	// SPEC <discovery> Global/Trending ranking: content-based detection primary, feed tag only a hint; reuses this fetch's content instead of a dedicated call.
-	language := languageOrNil(p.detector, languageSample(res.Feed.Items), res.Feed.Language)
-
 	// Per-entry errors are tolerated (SQLite statement errors don't poison the
 	// tx) so fn always returns nil; only a Begin/Commit failure rolls the batch back.
 	return p.runTx(ctx, func(q pipelineQueries) error {
@@ -173,7 +166,6 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 		if err := q.UpsertFeed(ctx, db.UpsertFeedParams{
 			FeedUrl:   feedURL,
 			SiteUrl:   nilIfEmpty(feedSite),
-			Language:  language,
 			CreatedAt: nowStr,
 			UpdatedAt: nowStr,
 		}); err != nil {
@@ -368,43 +360,6 @@ func shouldDiscoverIcon(f db.Feed, now time.Time) bool {
 		return true
 	}
 	return now.Sub(fetched) > iconRefreshAfter
-}
-
-// languageSampleMaxItems/Bytes cap detection cost: enough prose for a confident trigram read, capped so a huge feed can't blow up per-fetch CPU.
-const (
-	languageSampleMaxItems = 10
-	languageSampleMaxBytes = 4000
-)
-
-var htmlTagPattern = regexp.MustCompile(`<[^>]+>`)
-
-// languageSample builds rough plain text for language.Detect; a trigram detector tolerates leftover markup, so this skips full HTML extraction.
-func languageSample(items []*gofeed.Item) string {
-	var b strings.Builder
-	for i, item := range items {
-		if i >= languageSampleMaxItems || b.Len() >= languageSampleMaxBytes {
-			break
-		}
-		b.WriteString(item.Title)
-		b.WriteString(" ")
-		b.WriteString(htmlTagPattern.ReplaceAllString(chooseBody(item), " "))
-		b.WriteString(" ")
-	}
-	sample := b.String()
-	if len(sample) > languageSampleMaxBytes {
-		sample = sample[:languageSampleMaxBytes]
-	}
-	return sample
-}
-
-// languageOrNil returns nil for undetermined language (SPEC <discovery>: undetermined sources still pass the filter, nil is never a guess).
-func languageOrNil(detector discoverlang.Detector, sample, tagHint string) *string {
-	lang, ok := discoverlang.SourceLanguage(detector, sample, tagHint)
-	if !ok {
-		return nil
-	}
-	s := string(lang)
-	return &s
 }
 
 func nilIfEmpty(s string) *string {

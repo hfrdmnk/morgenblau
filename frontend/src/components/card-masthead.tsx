@@ -1,5 +1,3 @@
-import { Skeleton } from '@/components/ui/skeleton';
-
 export function CardMasthead({
     eyebrow,
     heading,
@@ -18,15 +16,6 @@ export function CardMasthead({
                     <p className="shrink-0 text-body text-muted-foreground">{meta}</p>
                 ) : null}
             </div>
-        </div>
-    );
-}
-
-export function CardMastheadSkeleton() {
-    return (
-        <div className="flex flex-col gap-1 px-6 pt-6 pb-5">
-            <Skeleton className="h-4 w-20" />
-            <Skeleton className="h-6 w-2/3" />
         </div>
     );
 }

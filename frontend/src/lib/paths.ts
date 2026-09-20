@@ -4,8 +4,6 @@ export const PATHS = {
     digest: '/digest',
     library: '/library',
     sources: '/sources',
-    discover: '/discover',
-    profile: '/profile',
     entry: '/entry',
     oauthLogin: '/oauth/login',
     oauthLogout: '/oauth/logout',
@@ -30,13 +28,4 @@ export function digestHref(date?: string): string {
 
 export function sourceHref(rkey: string): string {
     return `${PATHS.sources}/${rkey}`;
-}
-
-function profileHref(handleOrDid: string): string {
-    return `${PATHS.profile}/${handleOrDid}`;
-}
-
-// SPEC <discovery> Profile page: handle preferred in links, DID the stable fallback.
-export function personHref(did: string, handle?: string): string {
-    return profileHref(handle ?? did);
 }

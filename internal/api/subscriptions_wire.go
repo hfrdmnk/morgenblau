@@ -40,9 +40,16 @@ func wireKind(kind string) string {
 	return "rss"
 }
 
-// requireStandardWrite gates site.standard.graph.* writes on the session's scope; pre-migration sessions get a 403 the frontend turns into a re-auth prompt.
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// requireStandardWrite gates standard subscription writes on the session's scope; older sessions get a 403 the frontend turns into a re-auth prompt.
 func requireStandardWrite(w http.ResponseWriter, sess *oauth.ClientSession) bool {
-	if scopes.HasStandardWrite(sess) {
+	if scopes.HasStandardSubscriptionWrite(sess) {
 		return true
 	}
 	writeError(w, http.StatusForbidden, codeReauthRequired, "sign in again to enable ATProto subscriptions")

@@ -32,9 +32,9 @@ function stubFetch(
 
 describe('api', () => {
     test('returns the parsed JSON body on 200', async () => {
-        stubFetch(200, { handle: 'alice.bsky.social' });
-        const data = await api<{ handle: string }>('/api/profiles/x');
-        expect(data.handle).toBe('alice.bsky.social');
+        stubFetch(200, { handle: 'reader.test' });
+        const data = await api<{ handle: string }>('/api/profiles/me');
+        expect(data.handle).toBe('reader.test');
     });
 
     test('returns undefined on 204 no-content', async () => {
@@ -52,16 +52,18 @@ describe('api', () => {
     test('sends JSON body with content-type and same-origin credentials', async () => {
         const capture: { url?: string; init?: RequestInit } = {};
         stubFetch(200, {}, capture);
-        await api('/api/follows', {
+        await api('/api/subscriptions', {
             method: 'POST',
-            body: { handle: 'alice.test' },
+            body: { feedUrl: 'https://feed.example.test/rss' },
         });
         expect(capture.init?.method).toBe('POST');
         expect(capture.init?.credentials).toBe('same-origin');
         expect(capture.init?.headers).toEqual({
             'content-type': 'application/json',
         });
-        expect(capture.init?.body).toBe('{"handle":"alice.test"}');
+        expect(capture.init?.body).toBe(
+            '{"feedUrl":"https://feed.example.test/rss"}',
+        );
     });
 
     test('omits content-type header when there is no body', async () => {
@@ -100,19 +102,19 @@ describe('api', () => {
 
     test('isReauth only for 403 + reauth_required', async () => {
         stubFetch(403, { code: 'reauth_required', message: 'Session expired' });
-        const reauth = (await api('/api/shares', { method: 'POST', body: {} }).catch(
+        const reauth = (await api('/api/saves', { method: 'POST', body: {} }).catch(
             (e: unknown) => e,
         )) as ApiError;
         expect(reauth.isReauth).toBe(true);
 
         stubFetch(403, { code: 'forbidden' });
-        const forbidden = (await api('/api/shares').catch(
+        const forbidden = (await api('/api/saves').catch(
             (e: unknown) => e,
         )) as ApiError;
         expect(forbidden.isReauth).toBe(false);
 
         stubFetch(500, { code: 'reauth_required' });
-        const serverError = (await api('/api/shares').catch(
+        const serverError = (await api('/api/saves').catch(
             (e: unknown) => e,
         )) as ApiError;
         expect(serverError.isReauth).toBe(false);

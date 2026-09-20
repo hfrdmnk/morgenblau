@@ -14,31 +14,20 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
-	"github.com/bluesky-social/indigo/atproto/identity"
 
-	"morgenblau/internal/api"
 	"morgenblau/internal/atidentity"
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/cache/profiles"
 	"morgenblau/internal/database"
 	dbqueries "morgenblau/internal/database/db"
-	"morgenblau/internal/discovercrawl"
-	"morgenblau/internal/discoverfavicon"
-	"morgenblau/internal/discoveringest"
-	"morgenblau/internal/discovermemo"
-	"morgenblau/internal/discoverperson"
-	"morgenblau/internal/discoverposts"
 	"morgenblau/internal/feedfinder"
 	"morgenblau/internal/fetcher"
 	"morgenblau/internal/jobs"
-	"morgenblau/internal/leafletfeed"
 	"morgenblau/internal/oauth/config"
 	"morgenblau/internal/oauth/cookie"
 	"morgenblau/internal/oauth/store"
-	"morgenblau/internal/personsearch"
 	"morgenblau/internal/safehttp"
 	"morgenblau/internal/secret"
-	"morgenblau/internal/sharemeta"
 	"morgenblau/internal/standardfeed"
 	internalsync "morgenblau/internal/sync"
 )
@@ -46,34 +35,18 @@ import (
 type Server struct {
 	port int
 
-	db                  *database.DB
-	qr                  *dbqueries.Queries
-	qw                  *dbqueries.Queries
-	oauthCfg            *config.Config
-	oauthApp            *oauth.ClientApp
-	store               *store.Store
-	sealer              *cookie.Sealer
-	profiles            *profiles.Cache
-	identityDir         identity.Directory
-	jobs                *jobs.Tracker
-	sync                *internalsync.Orchestrator
-	fetcher             *fetcher.Fetcher
-	feedfinder          *feedfinder.Finder
-	safeClient          *http.Client
-	discover            *discovercrawl.CachedCrawler
-	discoverAuthored    *discovercrawl.CachedAuthoredCrawler
-	discoverShares      *discovercrawl.CachedShareCrawler
-	discoverAdjacent    *discovercrawl.CachedAdjacentFollowCrawler
-	discoverOwnForeign  *discovercrawl.CachedOwnForeignCrawler
-	discoverFollows     *discovercrawl.CachedReaderFollowCrawler
-	discoverPosts       *discoverposts.CachedFetcher
-	discoverFavicon     *discoverfavicon.Resolver
-	discoverSourcesMemo *discovermemo.Cache[api.DiscoverSourcesPayload]
-	discoverPeopleMemo  *discovermemo.Cache[api.DiscoverPeoplePayload]
-	discoverMemos       *discovermemo.Group
-	peopleSearcher      *personsearch.Searcher
-	personInspector     *discoverperson.Inspector
-	shareMetadata       *sharemeta.Resolver
+	db         *database.DB
+	qr         *dbqueries.Queries
+	qw         *dbqueries.Queries
+	oauthCfg   *config.Config
+	oauthApp   *oauth.ClientApp
+	store      *store.Store
+	sealer     *cookie.Sealer
+	profiles   *profiles.Cache
+	jobs       *jobs.Tracker
+	sync       *internalsync.Orchestrator
+	feedfinder *feedfinder.Finder
+	safeClient *http.Client
 
 	gcCancel context.CancelFunc
 }
@@ -96,17 +69,6 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 			return nil, nil, fmt.Errorf("invalid FETCH_INTERVAL_MINUTES %q: %w", raw, err)
 		}
 		fetchMinutes = n
-	}
-
-	jetstreamURL := os.Getenv("JETSTREAM_URL")
-	if jetstreamURL == "" {
-		jetstreamURL = "wss://jetstream.us-east.bsky.network"
-	}
-	jetstreamAPIKey := os.Getenv("JETSTREAM_API_KEY")
-
-	appviewHost := os.Getenv("APPVIEW_HOST")
-	if appviewHost == "" {
-		appviewHost = "https://public.api.bsky.app"
 	}
 
 	db, err := database.Open()
@@ -148,24 +110,8 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	fetcherInst := fetcher.New()
 	pipeline := internalsync.NewFeedPipeline(fetcherInst, qw).WithTxRunner(db.Writer)
 	stdClient := standardfeed.NewClient(identityDir, safeClient)
-	shareMetadataFetcher := sharemeta.NewFetcher(stdClient, safeClient)
-	shareMetadata := sharemeta.NewResolver(qr, qr, shareMetadataFetcher, sharemeta.DefaultTTL).WithTxRunner(db.Writer)
-	postsFetcher := discoverposts.NewFetcher(fetcherInst, stdClient).WithPublicationResolutions(qr)
-	discoverPosts := discoverposts.NewCachedFetcher(postsFetcher, qr, discoverposts.DefaultTTL).WithTxRunner(db.Writer)
-	discoverFavicon := discoverfavicon.NewResolver(qr, qr, qr, discoverfavicon.NewHTTPDiscoverer(), qr).WithTxRunner(db.Writer)
 	finder := feedfinder.New(safeClient).WithStandardResolver(stdClient)
 	stdPipeline := internalsync.NewStandardfeedPipeline(stdClient, qw).WithTxRunner(db.Writer)
-	leafletClient := leafletfeed.NewClient(identityDir, safeClient)
-	crawlClient := discovercrawl.NewClient(identityDir, safeClient, stdClient, stdClient, leafletClient).WithResolutionCache(qr, qw)
-	discover := discovercrawl.NewCachedCrawler(crawlClient, qr, discovercrawl.DefaultTTL).WithTxRunner(db.Writer)
-	discoverAuthored := discovercrawl.NewCachedAuthoredCrawler(crawlClient, qr, discovercrawl.DefaultTTL).WithTxRunner(db.Writer)
-	discoverShares := discovercrawl.NewCachedShareCrawler(crawlClient, qr, discovercrawl.DefaultTTL).WithTxRunner(db.Writer)
-	personInspector := discoverperson.New(discover, discoverAuthored, discoverShares)
-	discoverFollows := discovercrawl.NewCachedReaderFollowCrawler(crawlClient, qr, discovercrawl.DefaultTTL).WithTxRunner(db.Writer)
-	peopleSearcher := personsearch.NewSearcher(personsearch.NewAppView(appviewHost, safeClient), personsearch.NewSQLitePresenceReader(qr))
-	// Same-user crawls (session user's own repo, not a followed person's) get a shorter TTL: staleness here would hide the viewer's own recent actions.
-	discoverAdjacent := discovercrawl.NewCachedAdjacentFollowCrawler(crawlClient, qr, discovercrawl.SelfCrawlTTL).WithTxRunner(db.Writer)
-	discoverOwnForeign := discovercrawl.NewCachedOwnForeignCrawler(crawlClient, qr, discovercrawl.SelfCrawlTTL).WithTxRunner(db.Writer)
 	router := internalsync.NewSourceRouter(pipeline, stdPipeline)
 	engine := internalsync.NewEngine(tracker, qw, internalsync.SessionPDSLister{}, router, oauthApp, atprepo.SessionWriter{}).WithLocker(st).WithTxRunner(db.Writer)
 	orchestrator := internalsync.New(tracker, router, engine)
@@ -179,51 +125,21 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		slog.Info("global feed fetch disabled (FETCH_INTERVAL_MINUTES <= 0)")
 	}
 
-	// One assembled discover payload per user, short-lived; every local write that changes what they should see stales both.
-	discoverSourcesMemo := discovermemo.New[api.DiscoverSourcesPayload](discovermemo.DefaultTTL)
-	discoverPeopleMemo := discovermemo.New[api.DiscoverPeoplePayload](discovermemo.DefaultTTL)
-	discoverMemos := discovermemo.NewGroup(discoverSourcesMemo, discoverPeopleMemo)
-
-	// SPEC <discovery> Global/Trending: the ingest consumer mirrors the reader network's records straight off Jetstream, and the rebuild worker turns them into aggregates.
-	discoverIngest := discoveringest.NewConsumer(discoveringest.Config{URL: jetstreamURL, APIKey: jetstreamAPIKey}, qr).WithTxRunner(db.Writer)
-	discoverIngest.Start()
-	discoverRebuild := discoveringest.NewRebuildWorker(qr, crawlClient, identityDir, qr).
-		WithTxRunner(db.Writer).
-		WithInvalidator(discoverMemos.InvalidateAll)
-	discoverRebuild.Start()
-	slog.Info("discover jetstream ingest enabled", "url", jetstreamURL)
-
 	srv := &Server{
-		port:                port,
-		db:                  db,
-		qr:                  qr,
-		qw:                  qw,
-		oauthCfg:            oauthCfg,
-		oauthApp:            oauthApp,
-		store:               st,
-		sealer:              sealer,
-		profiles:            profileCache,
-		identityDir:         identityDir,
-		jobs:                tracker,
-		sync:                orchestrator,
-		fetcher:             fetcherInst,
-		feedfinder:          finder,
-		safeClient:          safeClient,
-		discover:            discover,
-		discoverAuthored:    discoverAuthored,
-		discoverShares:      discoverShares,
-		discoverAdjacent:    discoverAdjacent,
-		discoverOwnForeign:  discoverOwnForeign,
-		discoverFollows:     discoverFollows,
-		discoverPosts:       discoverPosts,
-		discoverFavicon:     discoverFavicon,
-		discoverSourcesMemo: discoverSourcesMemo,
-		discoverPeopleMemo:  discoverPeopleMemo,
-		discoverMemos:       discoverMemos,
-		peopleSearcher:      peopleSearcher,
-		personInspector:     personInspector,
-		shareMetadata:       shareMetadata,
-		gcCancel:            gcCancel,
+		port:       port,
+		db:         db,
+		qr:         qr,
+		qw:         qw,
+		oauthCfg:   oauthCfg,
+		oauthApp:   oauthApp,
+		store:      st,
+		sealer:     sealer,
+		profiles:   profileCache,
+		jobs:       tracker,
+		sync:       orchestrator,
+		feedfinder: finder,
+		safeClient: safeClient,
+		gcCancel:   gcCancel,
 	}
 
 	server := &http.Server{
@@ -239,12 +155,6 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	cleanup := func(ctx context.Context) error {
 		if err := orchestrator.Shutdown(ctx); err != nil {
 			slog.Warn("sync orchestrator shutdown", "err", err)
-		}
-		if err := discoverIngest.Shutdown(ctx); err != nil {
-			slog.Warn("discover ingest consumer shutdown", "err", err)
-		}
-		if err := discoverRebuild.Shutdown(ctx); err != nil {
-			slog.Warn("discover rebuild worker shutdown", "err", err)
 		}
 		return db.Close()
 	}

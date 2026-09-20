@@ -17,9 +17,8 @@ export function Welcome() {
                     <div className="space-y-3">
                         <h1>Morgenblau</h1>
                         <p className="max-w-xl text-base text-balance">
-                            A reading room and a quiet square on the open web.
-                            Read what you follow, post what you find, see what
-                            others are reading.
+                            Your personal daily web-newspaper. Curate the
+                            sources you care about and read them at your pace.
                         </p>
                     </div>
                     <Button

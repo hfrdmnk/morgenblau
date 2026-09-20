@@ -34,17 +34,6 @@ export function hostnameOf(url: string): string | null {
     }
 }
 
-// Copy-on-write removal so React set-state sees a new reference only when the key was present.
-export function withoutKey(
-    set: ReadonlySet<string>,
-    key: string,
-): ReadonlySet<string> {
-    if (!set.has(key)) return set;
-    const next = new Set(set);
-    next.delete(key);
-    return next;
-}
-
 // True only for an unmodified left click, so middle-click/new-tab keeps native link behavior.
 export function isPlainLeftClick(e: {
     button: number;

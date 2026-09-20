@@ -16,20 +16,18 @@ const (
 	CollectionPublication  = "site.standard.publication"
 	CollectionDocument     = "site.standard.document"
 	CollectionSubscription = "site.standard.graph.subscription"
-	CollectionRecommend    = "site.standard.graph.recommend"
 )
 
 // Publication is the trimmed shape of a site.standard.publication record.
 // URI is DID-normalized so it matches document site fields regardless of the lookup authority.
 type Publication struct {
-	URI            string
-	CID            string
-	DID            string
-	Name           string
-	URL            string // base publication URL, trailing slash stripped
-	Description    string
-	IconURL        string // com.atproto.sync.getBlob URL; empty when no icon
-	ShowInDiscover bool
+	URI         string
+	CID         string
+	DID         string
+	Name        string
+	URL         string // base publication URL, trailing slash stripped
+	Description string
+	IconURL     string // com.atproto.sync.getBlob URL; empty when no icon
 }
 
 // Document is the trimmed shape of a site.standard.document record; Site is the publication at-uri or an https URL for loose documents.

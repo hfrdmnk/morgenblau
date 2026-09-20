@@ -390,7 +390,7 @@ html[data-strip-transition] ::view-transition-group(*) {
 }
 
 /*
- * Reader-rail icons: shared press + state-change feel.
+ * Reader-rail icons: consistent press + state-change feel.
  * Press shrinks; commit moment shrinks further and blurs so the icon-swap is
  * hidden behind it. Only transform + filter animate so this stays on the
  * compositor. The default text-color transition is preserved separately.
@@ -435,56 +435,5 @@ html[data-strip-transition] ::view-transition-group(*) {
             transform 150ms cubic-bezier(0.23, 1, 0.32, 1),
             height 150ms cubic-bezier(0.23, 1, 0.32, 1),
             opacity 120ms ease;
-    }
-}
-
-@keyframes discover-subscribe-pop {
-    0% {
-        transform: scale(1);
-    }
-
-    45% {
-        transform: scale(1.12);
-    }
-
-    100% {
-        transform: scale(1);
-    }
-}
-
-@utility animate-discover-subscribe-pop {
-    animation: discover-subscribe-pop 400ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .animate-discover-subscribe-pop {
-        animation: none;
-    }
-}
-
-/* The cut's CSS-side clocks. motion-transitions.ts owns these same values for its tweens and phase timers; every clock has to keep the same beat or the timers land mid-tween. */
-:root {
-    --cut-split-ms: 320ms;
-    --cut-divider-ms: 140ms;
-}
-
-/* Divider remounts full-bleed after a card merge; retract settles it into its resting mx-6 inset. */
-@keyframes discover-divider-retract {
-    from {
-        margin-inline: 0;
-    }
-
-    to {
-        margin-inline: 1.5rem;
-    }
-}
-
-@utility animate-discover-divider-retract {
-    animation: discover-divider-retract var(--cut-divider-ms) cubic-bezier(0.645, 0.045, 0.355, 1) both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .animate-discover-divider-retract {
-        animation: none;
     }
 }

@@ -108,9 +108,7 @@ func holdsSessionLock(r *http.Request) bool {
 		return false
 	}
 	return strings.HasPrefix(p, "/api/subscriptions") ||
-		strings.HasPrefix(p, "/api/saves") ||
-		strings.HasPrefix(p, "/api/shares") ||
-		strings.HasPrefix(p, "/api/follows")
+		strings.HasPrefix(p, "/api/saves")
 }
 
 func serve(next http.Handler, w http.ResponseWriter, r *http.Request, sess *oauth.ClientSession) {
@@ -151,7 +149,7 @@ func isInfra(path string) bool {
 		}
 	}
 	// Dotted-last-segment means a root-level static file (/favicon.svg), but API
-	// paths carry dotted handles and did:web identifiers, so they never qualify.
+	// route values may also contain dots, so they never qualify.
 	if strings.HasPrefix(path, "/api/") {
 		return false
 	}

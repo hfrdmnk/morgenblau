@@ -19,14 +19,14 @@ func withSession(req *http.Request, did string, sid string) *http.Request {
 	return req.WithContext(auth.WithSession(req.Context(), sess))
 }
 
-// withStandardWriteSession is withSession plus the site.standard.graph.* write scopes (the post-scope-change grant shape).
+// withStandardWriteSession is withSession plus the standard subscription write scope.
 func withStandardWriteSession(req *http.Request, did string, sid string) *http.Request {
 	d, _ := syntax.ParseDID(did)
 	sess := &oauth.ClientSession{
 		Data: &oauth.ClientSessionData{
 			AccountDID: d,
 			SessionID:  sid,
-			Scopes:     []string{scopes.StandardSubscription, scopes.StandardRecommend},
+			Scopes:     []string{scopes.StandardSubscription},
 		},
 	}
 	return req.WithContext(auth.WithSession(req.Context(), sess))

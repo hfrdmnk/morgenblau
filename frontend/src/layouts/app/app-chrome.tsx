@@ -28,7 +28,6 @@ type Tab = {
 };
 
 const TABS: Tab[] = [
-    { label: 'Discover', href: PATHS.discover },
     { label: 'Sources', href: PATHS.sources },
     { label: 'Library', href: PATHS.library },
     { label: 'Digest', href: PATHS.digest },

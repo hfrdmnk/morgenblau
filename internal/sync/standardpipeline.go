@@ -13,7 +13,6 @@ import (
 
 	"morgenblau/internal/database"
 	"morgenblau/internal/database/db"
-	"morgenblau/internal/discoverlang"
 	"morgenblau/internal/standardfeed"
 )
 
@@ -39,7 +38,6 @@ type StandardfeedPipeline struct {
 	queries   stdPipelineQueries
 	sanitizer *bluemonday.Policy
 	now       func() time.Time
-	detector  discoverlang.Detector
 	runTx     func(ctx context.Context, fn func(stdPipelineQueries) error) error
 }
 
@@ -49,7 +47,6 @@ func NewStandardfeedPipeline(source StandardfeedSource, q stdPipelineQueries) *S
 		queries:   q,
 		sanitizer: bluemonday.UGCPolicy(),
 		now:       time.Now,
-		detector:  discoverlang.NewDetector(),
 	}
 	// Default: no transaction (keeps fake-based tests working).
 	p.runTx = func(ctx context.Context, fn func(stdPipelineQueries) error) error {
@@ -82,9 +79,6 @@ func (p *StandardfeedPipeline) FetchAndStore(ctx context.Context, pubURI string)
 
 	nowStr := p.now().UTC().Format(time.RFC3339)
 
-	// SPEC <discovery>: only RSS feeds carry a language tag; standardfeed docs get content-only detection.
-	language := languageOrNil(p.detector, standardLanguageSample(docs), "")
-
 	// The diff read rides inside the tx for a consistent snapshot; per-entry
 	// write errors are tolerated (log-and-continue) so one bad document doesn't roll back the batch.
 	return p.runTx(ctx, func(q stdPipelineQueries) error {
@@ -93,7 +87,6 @@ func (p *StandardfeedPipeline) FetchAndStore(ctx context.Context, pubURI string)
 			Kind:      "standardfeed",
 			SiteUrl:   nilIfEmpty(pub.URL),
 			Title:     nilIfEmpty(pub.Name),
-			Language:  language,
 			CreatedAt: nowStr,
 			UpdatedAt: nowStr,
 		}); err != nil {
@@ -219,29 +212,6 @@ func plaintextToHTML(text string) string {
 		b.WriteString("</p>")
 	}
 	return b.String()
-}
-
-// standardLanguageSample builds a plain-text sample for language detection, bounded the same way languageSample bounds RSS items.
-func standardLanguageSample(docs []standardfeed.Document) string {
-	var b strings.Builder
-	for i, doc := range docs {
-		if i >= languageSampleMaxItems || b.Len() >= languageSampleMaxBytes {
-			break
-		}
-		b.WriteString(doc.Title)
-		b.WriteString(" ")
-		summary := doc.Description
-		if summary == "" {
-			summary = doc.TextContent
-		}
-		b.WriteString(summary)
-		b.WriteString(" ")
-	}
-	sample := b.String()
-	if len(sample) > languageSampleMaxBytes {
-		sample = sample[:languageSampleMaxBytes]
-	}
-	return sample
 }
 
 // normalizeTime reformats an atproto datetime as UTC RFC3339 so published_at sorts lexicographically alongside RSS entries; unparsable values fall back to now.

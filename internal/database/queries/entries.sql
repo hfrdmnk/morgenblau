@@ -31,23 +31,6 @@ ON CONFLICT (feed_url, guid) DO UPDATE SET
 -- name: ListFeedEntriesForDiff :many
 SELECT guid, record_cid FROM feed_entries WHERE feed_url = ?;
 
--- name: GetFeedEntryURLByGuid :one
--- Reconcile backfills a comment-less share's item_url from its cached entry.
--- Standardfeed document guids (the document at-uri) are globally unique.
-SELECT url FROM feed_entries WHERE guid = ? LIMIT 1;
-
--- name: GetFeedURLByGuid :one
--- Discover signal resolution (SPEC <discovery>): a reaction's document
--- at-uri (standardfeed provenance) maps straight to its source's feed_url
--- when the entry is cached.
-SELECT feed_url FROM feed_entries WHERE guid = ? LIMIT 1;
-
--- name: GetFeedURLByItemURL :one
--- Discover signal resolution, Tier-2 fallback (SPEC <discovery>): a reaction
--- carrying only itemUrl resolves to its source via the cached entry's own
--- url match.
-SELECT feed_url FROM feed_entries WHERE url = ? LIMIT 1;
-
 -- name: DeleteFeedEntry :exec
 DELETE FROM feed_entries WHERE feed_url = ? AND guid = ?;
 

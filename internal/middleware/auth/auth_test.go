@@ -147,10 +147,9 @@ func TestMiddleware_Table(t *testing.T) {
 		{name: "api me unauthed", path: "/api/me", method: "GET", wantCode: 401, wantNext: false},
 		{name: "api subscriptions unauthed", path: "/api/subscriptions", method: "GET", wantCode: 401, wantNext: false},
 
-		// Dotted last segments (handles, did:web) must not trip the static-asset heuristic on API paths.
-		{name: "api profile handle unauthed", path: "/api/profile/alice.example", method: "GET", wantCode: 401, wantNext: false},
-		{name: "api profile did:web unauthed", path: "/api/profiles/did:web:alice.example", method: "GET", wantCode: 401, wantNext: false},
-		{name: "api profile handle authed", path: "/api/profile/alice.example", method: "GET", authed: true, wantCode: 200, wantNext: true},
+		// Dotted API route values must not trip the static-asset heuristic.
+		{name: "dotted api path unauthed", path: "/api/example.json", method: "GET", wantCode: 401, wantNext: false},
+		{name: "dotted api path authed", path: "/api/example.json", method: "GET", authed: true, wantCode: 200, wantNext: true},
 
 		{name: "api me authed", path: "/api/me", method: "GET", authed: true, wantCode: 200, wantNext: true},
 	}
@@ -482,25 +481,6 @@ func TestMiddleware_TransientErrorKeepsCookie(t *testing.T) {
 	for _, c := range rr.Result().Cookies() {
 		if c.Name == "mb_session" && c.MaxAge < 0 {
 			t.Error("cookie cleared on transient (ctx.Canceled) error")
-		}
-	}
-}
-
-// Follow create/delete write to the PDS like subscriptions/saves/shares, so they need the session lock; list (read) doesn't.
-func TestHoldsSessionLock_Follows(t *testing.T) {
-	cases := []struct {
-		method string
-		path   string
-		want   bool
-	}{
-		{http.MethodPost, "/api/follows", true},
-		{http.MethodDelete, "/api/follows/3fa", true},
-		{http.MethodGet, "/api/follows", false},
-	}
-	for _, tc := range cases {
-		req := httptest.NewRequest(tc.method, tc.path, nil)
-		if got := holdsSessionLock(req); got != tc.want {
-			t.Errorf("holdsSessionLock(%s %s) = %v, want %v", tc.method, tc.path, got, tc.want)
 		}
 	}
 }

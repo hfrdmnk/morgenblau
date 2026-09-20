@@ -45,7 +45,7 @@ type patchResponse struct {
 }
 
 // SubscriptionsPatchHandler updates the subscription in place; a feedUrl change re-points to a new feed, mirroring the add path (Tier-2 upsert plus fetch dispatch).
-func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds atprepo.Writer, disp FetchDispatcher, memo DiscoverInvalidator) http.Handler {
+func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds atprepo.Writer, disp FetchDispatcher) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -203,7 +203,6 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			row.Tags = newTags
 			row.SidecarRkey = &sidecarRkey
 			row.UpdatedAt = now
-			invalidateDiscover(memo, didStr)
 			writeJSON(w, patchResponse{SubscriptionWire: rowToWire(row)})
 			return
 		}
@@ -269,8 +268,6 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		row.FeedUrl = newFeedURL
 		row.UpdatedAt = now
 		row.AtUri = ref.URI
-		invalidateDiscover(memo, didStr)
-
 		resp := patchResponse{SubscriptionWire: rowToWire(row)}
 		if feedChanged {
 			// The job id lets the client poll /api/jobs/active and refresh once content lands.
@@ -288,7 +285,7 @@ type RepoWriterLister interface {
 
 // SubscriptionsDeleteHandler tombstones the PDS record(s) and removes the Tier-1 row; the Tier-2 feeds row stays since other users may still subscribe.
 // For standardfeed it also sweeps every duplicate standard record for the publication, since another app may have written one and leaving it would resurrect the subscription on reconcile.
-func SubscriptionsDeleteHandler(reader IndexRkeyReader, deleter IndexDeleter, pds RepoWriterLister, disp RepairDispatcher, memo DiscoverInvalidator) http.Handler {
+func SubscriptionsDeleteHandler(reader IndexRkeyReader, deleter IndexDeleter, pds RepoWriterLister, disp RepairDispatcher) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -335,7 +332,6 @@ func SubscriptionsDeleteHandler(reader IndexRkeyReader, deleter IndexDeleter, pd
 		mirrorOrRepair(r.Context(), disp, sess, "/api/subscriptions DELETE: Tier-1 delete", func() error {
 			return deleter.DeleteUserSubscription(r.Context(), db.DeleteUserSubscriptionParams{Did: didStr, Rkey: rkey})
 		})
-		invalidateDiscover(memo, didStr)
 		w.WriteHeader(http.StatusNoContent)
 	})
 }

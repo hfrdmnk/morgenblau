@@ -24,7 +24,7 @@ export function Login() {
         <AuthGoldenLayout>
             <div className="space-y-8 motion-safe:animate-in motion-safe:duration-200 motion-safe:fade-in">
                 <header className="space-y-1">
-                    <h1>Find. Read. Share.</h1>
+                    <h1>Your daily newspaper</h1>
                     <p className="text-sm text-balance text-muted-foreground">
                         A calmer way to be on the open web. Powered by RSS and
                         the AT Protocol.

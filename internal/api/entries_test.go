@@ -27,11 +27,6 @@ type fakeEntryReader struct {
 	save         db.UserSave
 	saveOK       bool
 	saveErr      error
-	share        db.UserShare
-	shareOK      bool
-	shareErr     error
-	shareDoc     db.UserShare
-	shareDocOK   bool
 }
 
 func (f *fakeEntryReader) GetFeedEntryBySlug(_ context.Context, _ string) (db.FeedEntry, error) {
@@ -66,26 +61,6 @@ func (f *fakeEntryReader) GetUserSaveByItemURL(_ context.Context, _ db.GetUserSa
 		return db.UserSave{}, sql.ErrNoRows
 	}
 	return f.save, nil
-}
-
-func (f *fakeEntryReader) GetUserShareByItemURL(_ context.Context, _ db.GetUserShareByItemURLParams) (db.UserShare, error) {
-	if f.shareErr != nil {
-		return db.UserShare{}, f.shareErr
-	}
-	if !f.shareOK {
-		return db.UserShare{}, sql.ErrNoRows
-	}
-	return f.share, nil
-}
-
-func (f *fakeEntryReader) GetUserShareByDocument(_ context.Context, _ db.GetUserShareByDocumentParams) (db.UserShare, error) {
-	if f.shareErr != nil {
-		return db.UserShare{}, f.shareErr
-	}
-	if !f.shareDocOK {
-		return db.UserShare{}, sql.ErrNoRows
-	}
-	return f.shareDoc, nil
 }
 
 func (f *fakeEntryReader) UpdateFeedEntryExtractedBody(_ context.Context, arg db.UpdateFeedEntryExtractedBodyParams) error {
@@ -164,6 +139,9 @@ func TestEntry_HappyPath(t *testing.T) {
 	if got.Source.Rkey != "3laSUB" {
 		t.Errorf("Source.Rkey = %q, want 3laSUB", got.Source.Rkey)
 	}
+	if strings.Contains(rr.Body.String(), "sharedState") {
+		t.Errorf("response still contains removed social context: %s", rr.Body.String())
+	}
 }
 
 func TestEntry_SavedState_Populated(t *testing.T) {
@@ -223,63 +201,6 @@ func TestEntry_SavedState_NotSaved_Nil(t *testing.T) {
 	}
 	if got.SavedState != nil {
 		t.Errorf("savedState = %+v, want nil", got.SavedState)
-	}
-}
-
-func TestEntry_SharedState_Populated(t *testing.T) {
-	r := &fakeEntryReader{
-		entry:        entryFixture(),
-		subOK:        true,
-		subscription: subscriptionFixture(strPtr("Example Source")),
-		feed:         feedFixture(),
-		shareOK:      true,
-		share:        db.UserShare{Did: "did:plc:alice", Rkey: "3laSHARE", Kind: "rss", ItemUrl: strPtr("https://example.test/post")},
-	}
-	mux := http.NewServeMux()
-	mux.Handle("GET /api/entries/{slug}", EntryHandler(r))
-
-	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/abc1234567", nil), "did:plc:alice", "sid-1")
-	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
-	}
-	var got EntryWire
-	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.SharedState == nil || got.SharedState.Rkey != "3laSHARE" {
-		t.Errorf("sharedState = %+v, want rkey 3laSHARE", got.SharedState)
-	}
-}
-
-func TestEntry_SharedState_Standardfeed_UsesDocumentProbe(t *testing.T) {
-	// sharedState must probe by document for standardfeed; the itemUrl probe stays empty so a wrong dispatch would miss.
-	entry := entryFixture()
-	entry.Guid = "at://did:plc:pub/site.standard.document/3doc"
-	r := &fakeEntryReader{
-		entry:        entry,
-		subOK:        true,
-		subscription: db.UserSubscription{Did: "did:plc:alice", Rkey: "3laSUB", FeedUrl: entry.FeedUrl, Kind: "standardfeed"},
-		feed:         feedFixture(),
-		shareDocOK:   true,
-		shareDoc:     db.UserShare{Did: "did:plc:alice", Rkey: "3laDOC", Kind: "standardfeed", Document: strPtr(entry.Guid)},
-	}
-	mux := http.NewServeMux()
-	mux.Handle("GET /api/entries/{slug}", EntryHandler(r))
-
-	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/abc1234567", nil), "did:plc:alice", "sid-1")
-	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
-	}
-	var got EntryWire
-	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.SharedState == nil || got.SharedState.Rkey != "3laDOC" {
-		t.Errorf("sharedState = %+v, want the document probe's row 3laDOC", got.SharedState)
 	}
 }
 

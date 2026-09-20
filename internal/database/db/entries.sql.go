@@ -49,47 +49,6 @@ func (q *Queries) GetFeedEntryBySlug(ctx context.Context, entrySlug string) (Fee
 	return i, err
 }
 
-const getFeedEntryURLByGuid = `-- name: GetFeedEntryURLByGuid :one
-SELECT url FROM feed_entries WHERE guid = ? LIMIT 1
-`
-
-// Reconcile backfills a comment-less share's item_url from its cached entry.
-// Standardfeed document guids (the document at-uri) are globally unique.
-func (q *Queries) GetFeedEntryURLByGuid(ctx context.Context, guid string) (string, error) {
-	row := q.db.QueryRowContext(ctx, getFeedEntryURLByGuid, guid)
-	var url string
-	err := row.Scan(&url)
-	return url, err
-}
-
-const getFeedURLByGuid = `-- name: GetFeedURLByGuid :one
-SELECT feed_url FROM feed_entries WHERE guid = ? LIMIT 1
-`
-
-// Discover signal resolution (SPEC <discovery>): a reaction's document
-// at-uri (standardfeed provenance) maps straight to its source's feed_url
-// when the entry is cached.
-func (q *Queries) GetFeedURLByGuid(ctx context.Context, guid string) (string, error) {
-	row := q.db.QueryRowContext(ctx, getFeedURLByGuid, guid)
-	var feed_url string
-	err := row.Scan(&feed_url)
-	return feed_url, err
-}
-
-const getFeedURLByItemURL = `-- name: GetFeedURLByItemURL :one
-SELECT feed_url FROM feed_entries WHERE url = ? LIMIT 1
-`
-
-// Discover signal resolution, Tier-2 fallback (SPEC <discovery>): a reaction
-// carrying only itemUrl resolves to its source via the cached entry's own
-// url match.
-func (q *Queries) GetFeedURLByItemURL(ctx context.Context, url string) (string, error) {
-	row := q.db.QueryRowContext(ctx, getFeedURLByItemURL, url)
-	var feed_url string
-	err := row.Scan(&feed_url)
-	return feed_url, err
-}
-
 const listAllEntriesForUser = `-- name: ListAllEntriesForUser :many
 SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
