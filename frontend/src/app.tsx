@@ -20,6 +20,7 @@ const NewsletterSource = lazy(() =>
 const Login = lazy(() => import('@/pages/login').then((m) => ({ default: m.Login })));
 const Source = lazy(() => import('@/pages/source').then((m) => ({ default: m.Source })));
 const Sources = lazy(() => import('@/pages/sources').then((m) => ({ default: m.Sources })));
+const Settings = lazy(() => import('@/pages/settings').then((m) => ({ default: m.Settings })));
 const Welcome = lazy(() => import('@/pages/welcome').then((m) => ({ default: m.Welcome })));
 const DEV_STYLEGUIDE_PATH = '/styleguide';
 const Styleguide = import.meta.env.DEV
@@ -37,6 +38,7 @@ const CHROME_PAGES: PageDef[] = [
     { path: PATHS.digest, Component: Digest },
     { path: PATHS.library, Component: Library },
     { path: PATHS.sources, Component: Sources },
+    { path: PATHS.settings, Component: Settings },
     { path: `${PATHS.sources}/newsletters/:id`, Component: NewsletterSource },
     { path: `${PATHS.sources}/:rkey`, Component: Source },
 ];

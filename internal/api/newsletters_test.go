@@ -15,23 +15,28 @@ import (
 )
 
 type fakeNewsletterService struct {
-	address       string
-	groups        newsletter.SourceGroups
-	source        newsletter.Source
-	messages      []newsletter.Message
-	message       newsletter.Message
-	asset         newsletter.InlineAsset
-	save          newsletter.Save
-	saves         []newsletter.SaveItem
-	err           error
-	moveTarget    newsletter.MoveTarget
-	deletedSaveID string
-	digestStart   time.Time
-	digestEnd     time.Time
+	address        string
+	createdAddress string
+	groups         newsletter.SourceGroups
+	source         newsletter.Source
+	messages       []newsletter.Message
+	message        newsletter.Message
+	asset          newsletter.InlineAsset
+	save           newsletter.Save
+	saves          []newsletter.SaveItem
+	err            error
+	moveTarget     newsletter.MoveTarget
+	deletedSaveID  string
+	digestStart    time.Time
+	digestEnd      time.Time
 }
 
 func (f *fakeNewsletterService) Address(context.Context, string) (string, error) {
 	return f.address, f.err
+}
+
+func (f *fakeNewsletterService) CreateAddress(context.Context, string) (string, error) {
+	return f.createdAddress, f.err
 }
 
 func (f *fakeNewsletterService) ListSources(context.Context, string) (newsletter.SourceGroups, error) {
@@ -144,6 +149,35 @@ func TestNewsletterAddress_UnconfiguredIsUnavailable(t *testing.T) {
 
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503", rr.Code)
+	}
+}
+
+func TestNewsletterAddress_UnsetReturnsEmptyAddress(t *testing.T) {
+	h := NewsletterAddressHandler(&fakeNewsletterService{err: newsletter.ErrNotFound})
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/newsletters/address", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK || rr.Body.String() != "{}\n" {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestNewsletterAddressCreate_CreatesPrivateAddress(t *testing.T) {
+	h := NewsletterAddressCreateHandler(&fakeNewsletterService{createdAddress: "random@inbound.example.test"})
+	req := withSession(httptest.NewRequest(http.MethodPost, "/api/newsletters/address", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK || rr.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("status = %d, cache = %q, body = %s", rr.Code, rr.Header().Get("Cache-Control"), rr.Body.String())
+	}
+	var got map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["address"] != "random@inbound.example.test" {
+		t.Errorf("address = %q", got["address"])
 	}
 }
 

@@ -13,8 +13,8 @@ import (
 func TestSMTPAcceptsMultipleOwnerRecipientsOnlyAfterAtomicReceiptCommit(t *testing.T) {
 	service, reader, _ := newTestService(t)
 	ctx := context.Background()
-	alice, _ := service.Address(ctx, "did:plc:alice")
-	bob, _ := service.Address(ctx, "did:plc:bob")
+	alice, _ := service.CreateAddress(ctx, "did:plc:alice")
+	bob, _ := service.CreateAddress(ctx, "did:plc:bob")
 	server, client := serveSMTP(t, service)
 	if err := client.Hello("sender.example"); err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestSMTPRejectsUnknownRecipient(t *testing.T) {
 func TestSMTPReturnsTemporaryFailureWhenReceiptCannotCommit(t *testing.T) {
 	service, _, writer := newTestService(t)
 	ctx := context.Background()
-	address, _ := service.Address(ctx, "did:plc:alice")
+	address, _ := service.CreateAddress(ctx, "did:plc:alice")
 	_, client := serveSMTP(t, service)
 	defer client.Quit()
 	client.Hello("sender.example")
@@ -89,7 +89,7 @@ func TestSMTPReturnsTemporaryFailureBeforeAcceptingOverQuota(t *testing.T) {
 		GlobalStorageBytes: defaultGlobalStorageBytes,
 	})
 	ctx := context.Background()
-	address, _ := service.Address(ctx, "did:plc:alice")
+	address, _ := service.CreateAddress(ctx, "did:plc:alice")
 	_, client := serveSMTP(t, service)
 	defer client.Quit()
 	client.Hello("sender.example")

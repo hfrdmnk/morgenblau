@@ -21,7 +21,7 @@ import (
 func TestNewsletterSMTPToAuthenticatedEntryFlow(t *testing.T) {
 	dbs := openNewsletterIntegrationDB(t)
 	service := newsletter.NewService(dbs.Reader, dbs.Writer, newsletter.Config{Domain: "newsletter.localhost"})
-	address, err := service.Address(context.Background(), "did:plc:alice")
+	address, err := service.CreateAddress(context.Background(), "did:plc:alice")
 	if err != nil {
 		t.Fatal(err)
 	}

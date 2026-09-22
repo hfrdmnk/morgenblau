@@ -45,6 +45,7 @@ func (s *Server) routes() *http.ServeMux {
 
 	if s.newsletters != nil {
 		mux.Handle("GET /api/newsletters/address", api.NewsletterAddressHandler(s.newsletters))
+		mux.Handle("POST /api/newsletters/address", api.NewsletterAddressCreateHandler(s.newsletters))
 		mux.Handle("GET /api/newsletters", api.NewslettersListHandler(s.newsletters))
 		mux.Handle("GET /api/newsletters/{id}", api.NewsletterGetHandler(s.newsletters))
 		mux.Handle("PATCH /api/newsletters/{id}", api.NewsletterPatchHandler(s.newsletters))

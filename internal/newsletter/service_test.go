@@ -14,11 +14,15 @@ import (
 	"morgenblau/internal/database/db"
 )
 
-func TestAddressIsStableAndOwnerScoped(t *testing.T) {
+func TestAddressIsExplicitlyCreatedStableAndOwnerScoped(t *testing.T) {
 	service, _, _ := newTestService(t)
 	ctx := context.Background()
 
-	first, err := service.Address(ctx, "did:plc:alice")
+	if _, err := service.Address(ctx, "did:plc:alice"); err != ErrNotFound {
+		t.Fatalf("Address before creation error = %v, want ErrNotFound", err)
+	}
+
+	first, err := service.CreateAddress(ctx, "did:plc:alice")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +30,7 @@ func TestAddressIsStableAndOwnerScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := service.Address(ctx, "did:plc:bob")
+	other, err := service.CreateAddress(ctx, "did:plc:bob")
 	if err != nil {
 		t.Fatal(err)
 	}

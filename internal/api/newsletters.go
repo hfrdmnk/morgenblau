@@ -13,6 +13,7 @@ import (
 
 type newsletterAddressService interface {
 	Address(context.Context, string) (string, error)
+	CreateAddress(context.Context, string) (string, error)
 }
 
 type newsletterSourceService interface {
@@ -75,6 +76,26 @@ func NewsletterAddressHandler(service newsletterAddressService) http.Handler {
 			return
 		}
 		address, err := service.Address(r.Context(), sess.Data.AccountDID.String())
+		if errors.Is(err, newsletter.ErrNotFound) {
+			writeJSON(w, map[string]string{})
+			return
+		}
+		if err != nil {
+			writeNewsletterError(w, err)
+			return
+		}
+		writeJSON(w, map[string]string{"address": address})
+	})
+}
+
+func NewsletterAddressCreateHandler(service newsletterAddressService) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		privateResponse(w)
+		sess, ok := requireSession(w, r)
+		if !ok {
+			return
+		}
+		address, err := service.CreateAddress(r.Context(), sess.Data.AccountDID.String())
 		if err != nil {
 			writeNewsletterError(w, err)
 			return

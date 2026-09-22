@@ -37,6 +37,10 @@ export type NewsletterPatch = {
     tags: string[];
 };
 
+type NewsletterAddressResponse = {
+    address?: string;
+};
+
 export type NewsletterMessageMeta = {
     messageId: string;
     senderName: string | null;
@@ -48,6 +52,18 @@ export type NewsletterMessageMeta = {
 
 export function fetchNewsletters(signal?: AbortSignal) {
     return api<NewsletterSources>('/api/newsletters', { signal });
+}
+
+export function fetchNewsletterAddress(signal?: AbortSignal) {
+    return api<NewsletterAddressResponse>('/api/newsletters/address', {
+        signal,
+    });
+}
+
+export function createNewsletterAddress() {
+    return api<NewsletterAddressResponse>('/api/newsletters/address', {
+        method: 'POST',
+    });
 }
 
 export function patchNewsletter(id: string, patch: NewsletterPatch) {

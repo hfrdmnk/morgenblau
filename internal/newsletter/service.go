@@ -56,10 +56,26 @@ func (s *Service) Address(ctx context.Context, did string) (string, error) {
 		return "", ErrUnavailable
 	}
 	row, err := s.read.GetNewsletterAddress(ctx, did)
-	if err == nil {
-		return row.LocalPart + "@" + s.domain, nil
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	if err != nil {
+		return "", err
+	}
+	return row.LocalPart + "@" + s.domain, nil
+}
+
+func (s *Service) CreateAddress(ctx context.Context, did string) (string, error) {
+	did = strings.TrimSpace(did)
+	if did == "" {
+		return "", ErrInvalid
+	}
+	if s.domain == "" {
+		return "", ErrUnavailable
+	}
+	if address, err := s.Address(ctx, did); err == nil {
+		return address, nil
+	} else if !errors.Is(err, ErrNotFound) {
 		return "", err
 	}
 	localPart, err := randomLocalPart()
@@ -72,11 +88,7 @@ func (s *Service) Address(ctx context.Context, did string) (string, error) {
 	}); err != nil {
 		return "", err
 	}
-	row, err = s.read.GetNewsletterAddress(ctx, did)
-	if err != nil {
-		return "", err
-	}
-	return row.LocalPart + "@" + s.domain, nil
+	return s.Address(ctx, did)
 }
 
 func (s *Service) ListSources(ctx context.Context, did string) (SourceGroups, error) {

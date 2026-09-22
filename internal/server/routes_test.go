@@ -39,6 +39,7 @@ func TestNewsletterRoutesAreRegistered(t *testing.T) {
 		path   string
 	}{
 		{http.MethodGet, "/api/newsletters/address"},
+		{http.MethodPost, "/api/newsletters/address"},
 		{http.MethodGet, "/api/newsletters"},
 		{http.MethodGet, "/api/newsletters/source-1"},
 		{http.MethodPatch, "/api/newsletters/source-1"},

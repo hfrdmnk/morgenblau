@@ -4,6 +4,7 @@ export const PATHS = {
     digest: '/digest',
     library: '/library',
     sources: '/sources',
+    settings: '/settings',
     entry: '/entry',
     oauthLogin: '/oauth/login',
     oauthLogout: '/oauth/logout',

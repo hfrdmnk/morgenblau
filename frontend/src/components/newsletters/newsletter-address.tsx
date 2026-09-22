@@ -1,28 +1,34 @@
-import { CopyIcon, MailIcon, SpinnerIcon } from '@proicons/react';
+import { CopyIcon, SpinnerIcon } from '@proicons/react';
 import { useEffect, useState } from 'react';
+import { Link } from 'wouter';
 
-import { Button } from '@/components/ui/button';
-import { api } from '@/lib/api';
+import {
+    InputGroup,
+    InputGroupAddon,
+    InputGroupButton,
+    InputGroupInput,
+    InputGroupText,
+} from '@/components/ui/input-group';
+import { fetchNewsletterAddress } from '@/lib/newsletters';
+import { PATHS } from '@/lib/paths';
 
 type AddressState =
     | { kind: 'loading' }
     | { kind: 'ready'; address: string }
-    | { kind: 'unavailable' };
+    | { kind: 'unset' }
+    | { kind: 'error' };
 
 const loadingState: AddressState = { kind: 'loading' };
 
 async function loadAddress(signal: AbortSignal): Promise<AddressState> {
     try {
-        const { address } = await api<{ address?: string }>(
-            '/api/newsletters/address',
-            { signal },
-        );
+        const { address } = await fetchNewsletterAddress(signal);
         const trimmed = address?.trim();
         return trimmed
             ? { kind: 'ready', address: trimmed }
-            : { kind: 'unavailable' };
+            : { kind: 'unset' };
     } catch {
-        return { kind: 'unavailable' };
+        return { kind: 'error' };
     }
 }
 
@@ -43,7 +49,7 @@ function useNewsletterAddress(open: boolean) {
     return state;
 }
 
-function CopyAddress({ address }: { address: string }) {
+export function NewsletterAddressField({ address }: { address: string }) {
     const [copied, setCopied] = useState(false);
 
     const copy = async () => {
@@ -57,43 +63,68 @@ function CopyAddress({ address }: { address: string }) {
     };
 
     return (
-        <div className="flex items-center gap-2 rounded-xl bg-muted p-1 pl-3">
-            <span className="min-w-0 flex-1 truncate text-body select-all">
-                {address}
-            </span>
-            <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={copy}
-            >
-                <CopyIcon className="size-4" />
-                {copied ? 'Copied' : 'Copy'}
-            </Button>
-        </div>
+        <InputGroup>
+            <InputGroupInput
+                aria-label="Newsletter address"
+                readOnly
+                value={address}
+                onFocus={(event) => event.currentTarget.select()}
+            />
+            <InputGroupAddon align="inline-end">
+                <InputGroupButton onClick={copy}>
+                    <CopyIcon />
+                    {copied ? 'Copied' : 'Copy'}
+                </InputGroupButton>
+            </InputGroupAddon>
+        </InputGroup>
     );
 }
 
-function AddressContent({ state }: { state: AddressState }) {
+function AddressContent({
+    state,
+    onSetup,
+}: {
+    state: AddressState;
+    onSetup: () => void;
+}) {
     if (state.kind === 'loading') {
         return (
-            <div className="flex min-h-10 items-center gap-2 rounded-xl bg-muted px-3 text-label text-muted-foreground">
-                <SpinnerIcon className="size-4 motion-safe:animate-spin" />
-                Preparing your address…
-            </div>
+            <InputGroup>
+                <InputGroupAddon>
+                    <SpinnerIcon className="motion-safe:animate-spin" />
+                </InputGroupAddon>
+                <InputGroupText>Loading address…</InputGroupText>
+            </InputGroup>
         );
     }
     if (state.kind === 'ready') {
-        return <CopyAddress address={state.address} />;
+        return <NewsletterAddressField address={state.address} />;
+    }
+    if (state.kind === 'error') {
+        return (
+            <p className="flex min-h-10 items-center text-label text-muted-foreground">
+                Newsletter delivery is unavailable right now.
+            </p>
+        );
     }
     return (
-        <p className="rounded-xl bg-muted px-3 py-2.5 text-label text-muted-foreground">
-            Newsletter delivery is unavailable right now.
-        </p>
+        <Link
+            href={PATHS.settings}
+            onClick={onSetup}
+            className="inline-flex min-h-10 items-center text-body text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
+        >
+            click here to set an address
+        </Link>
     );
 }
 
-export function NewsletterAddress({ open }: { open: boolean }) {
+export function NewsletterAddress({
+    open,
+    onSetup,
+}: {
+    open: boolean;
+    onSetup: () => void;
+}) {
     const state = useNewsletterAddress(open);
 
     return (
@@ -101,17 +132,13 @@ export function NewsletterAddress({ open }: { open: boolean }) {
             className="space-y-2"
             aria-labelledby="newsletter-address-heading"
         >
-            <div className="flex items-center gap-2">
-                <MailIcon className="size-4 text-muted-foreground" />
-                <h2 id="newsletter-address-heading" className="text-heading">
-                    Newsletters
-                </h2>
-            </div>
-            <p className="text-label text-muted-foreground">
-                Use your private address when subscribing. The first email
-                creates the source automatically.
-            </p>
-            <AddressContent state={state} />
+            <h2
+                id="newsletter-address-heading"
+                className="text-base font-medium tracking-tight"
+            >
+                Newsletter
+            </h2>
+            <AddressContent state={state} onSetup={onSetup} />
         </section>
     );
 }
