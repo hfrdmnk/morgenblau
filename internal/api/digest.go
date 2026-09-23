@@ -18,7 +18,6 @@ import (
 // DigestReader is the slice of *db.Queries the digest handler depends on.
 type DigestReader interface {
 	ListDigestForUser(ctx context.Context, arg db.ListDigestForUserParams) ([]db.ListDigestForUserRow, error)
-	ListAllEntriesForUser(ctx context.Context, did string) ([]db.ListAllEntriesForUserRow, error)
 }
 
 // EntryWire is the on-the-wire entry shape; Body is pre-sanitized HTML the frontend trusts as-is.
@@ -81,42 +80,24 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe, privateReaders 
 		dateStr := r.URL.Query().Get("date")
 		did := sess.Data.AccountDID.String()
 
-		var entries []EntryWire
-		var responseDate string
-		var day, next time.Time
-		if dateStr == "" {
-			rows, err := reader.ListAllEntriesForUser(r.Context(), did)
-			if err != nil {
-				slog.Warn("/api/digest: list-all failed", "err", err)
-				writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
-				return
-			}
-			entries = make([]EntryWire, 0, len(rows))
-			for _, row := range rows {
-				entries = append(entries, allEntriesRowToWire(row))
-			}
-			responseDate = time.Now().UTC().Format("2006-01-02")
-		} else {
-			var err error
-			responseDate, day, next, err = digestDayBounds(dateStr, r.URL.Query().Get("timezone"), time.Now())
-			if err != nil {
-				writeError(w, http.StatusBadRequest, codeInvalidRequest, err.Error())
-				return
-			}
-			rows, err := reader.ListDigestForUser(r.Context(), db.ListDigestForUserParams{
-				Did:           did,
-				PublishedAt:   day.Format(time.RFC3339),
-				PublishedAt_2: next.Format(time.RFC3339),
-			})
-			if err != nil {
-				slog.Warn("/api/digest: list failed", "err", err)
-				writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
-				return
-			}
-			entries = make([]EntryWire, 0, len(rows))
-			for _, row := range rows {
-				entries = append(entries, digestRowToWire(row))
-			}
+		responseDate, day, next, err := digestDayBounds(dateStr, r.URL.Query().Get("timezone"), time.Now())
+		if err != nil {
+			writeError(w, http.StatusBadRequest, codeInvalidRequest, err.Error())
+			return
+		}
+		rows, err := reader.ListDigestForUser(r.Context(), db.ListDigestForUserParams{
+			Did:           did,
+			PublishedAt:   day.Format(time.RFC3339),
+			PublishedAt_2: next.Format(time.RFC3339),
+		})
+		if err != nil {
+			slog.Warn("/api/digest: list failed", "err", err)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
+			return
+		}
+		entries := make([]EntryWire, 0, len(rows))
+		for _, row := range rows {
+			entries = append(entries, digestRowToWire(row))
 		}
 
 		if len(privateReaders) > 0 && privateReaders[0] != nil {
@@ -201,24 +182,6 @@ func entryListRowToWire(f entryListFields) EntryWire {
 		Body:        f.ContentHtml,
 		Metadata:    f.Metadata,
 	}
-}
-
-func allEntriesRowToWire(row db.ListAllEntriesForUserRow) EntryWire {
-	return entryListRowToWire(entryListFields{
-		ID:           row.ID,
-		EntrySlug:    row.EntrySlug,
-		Title:        row.Title,
-		Url:          row.Url,
-		ContentType:  row.ContentType,
-		PublishedAt:  row.PublishedAt,
-		FeedUrl:      row.FeedUrl,
-		FeedTitle:    row.FeedTitle,
-		CatalogTitle: row.CatalogTitle,
-		FeedSiteUrl:  row.FeedSiteUrl,
-		FeedIconUrl:  row.FeedIconUrl,
-		ContentHtml:  row.ContentHtml,
-		Metadata:     row.Metadata,
-	})
 }
 
 func digestRowToWire(row db.ListDigestForUserRow) EntryWire {

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -184,11 +185,15 @@ func (s *Service) processNext(ctx context.Context) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
+	slog.Error("newsletter receipt processing failed", "receipt_id", receipt.ID, "err", err)
 	next := formatTime(s.now().Add(receiptBackoff(receipt.Attempts + 1)))
 	genericFailure := "processing failed"
-	_ = database.WithTx(ctx, s.writer, func(q *db.Queries) error {
+	retryErr := database.WithTx(ctx, s.writer, func(q *db.Queries) error {
 		return q.MarkNewsletterReceiptFailed(ctx, db.MarkNewsletterReceiptFailedParams{ID: receipt.ID, LastError: &genericFailure, NextAttemptAt: &next})
 	})
+	if retryErr != nil {
+		slog.Error("newsletter receipt retry state update failed", "receipt_id", receipt.ID, "err", retryErr)
+	}
 	return false, err
 }
 

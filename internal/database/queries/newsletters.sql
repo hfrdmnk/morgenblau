@@ -75,6 +75,18 @@ FROM newsletter_sources s
 WHERE s.did = ?1
 ORDER BY s.title COLLATE NOCASE, s.id;
 
+-- name: GetNewsletterSourceWithStats :one
+SELECT s.*,
+       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id) AS issue_count,
+       (SELECT COUNT(*) FROM newsletter_saves sv WHERE sv.did = s.did AND sv.message_id IN
+           (SELECT id FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id)) AS saved_count,
+       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?3 AND m.received_at < ?4) AS count_7d,
+       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?5 AND m.received_at < ?4) AS count_28d,
+       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?6 AND m.received_at < ?4) AS count_56d,
+       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?7 AND m.received_at < ?4) AS count_84d
+FROM newsletter_sources s
+WHERE s.did = ?1 AND s.id = ?2;
+
 -- name: PatchNewsletterSource :exec
 UPDATE newsletter_sources
 SET title = ?3, is_primary = ?4, tags = ?5, updated_at = ?6
@@ -157,15 +169,6 @@ JOIN newsletter_sources s ON s.id = m.source_id AND s.did = m.did
 LEFT JOIN newsletter_saves sv ON sv.message_id = m.id AND sv.did = m.did
 WHERE m.did = ?1 AND m.received_at >= ?2 AND m.received_at < ?3
   AND s.status = 'active'
-ORDER BY m.received_at DESC, m.id DESC;
-
--- name: ListAllNewsletterMessagesForDigest :many
-SELECT m.*, s.title AS source_title, s.status AS source_status, s.is_primary AS source_primary,
-       sv.id AS save_id, sv.created_at AS saved_at
-FROM newsletter_messages m
-JOIN newsletter_sources s ON s.id = m.source_id AND s.did = m.did
-LEFT JOIN newsletter_saves sv ON sv.message_id = m.id AND sv.did = m.did
-WHERE m.did = ?1 AND s.status = 'active'
 ORDER BY m.received_at DESC, m.id DESC;
 
 -- name: AllowNewsletterRemoteImages :exec

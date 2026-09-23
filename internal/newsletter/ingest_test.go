@@ -1,8 +1,11 @@
 package newsletter
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 )
@@ -222,5 +225,84 @@ func TestMalformedAcceptedMIMEBecomesReadableIssue(t *testing.T) {
 	}
 	if body == "" {
 		t.Fatal("malformed MIME produced empty issue")
+	}
+}
+
+func TestProcessNextLogsPrivacySafeFailureAndPersistsRetryState(t *testing.T) {
+	service, reader, writer := newTestService(t)
+	ctx := context.Background()
+	address, _ := service.CreateAddress(ctx, "did:plc:alice")
+	raw := []byte("From: sender@example.com\r\nSubject: Private issue\r\nContent-Type: text/plain\r\n\r\nPRIVATE_NEWSLETTER_BODY")
+	if err := service.acceptReceipts(ctx, "bounce@example.com", []deliveryRecipient{{DID: "did:plc:alice", Address: address}}, raw); err != nil {
+		t.Fatal(err)
+	}
+	var receiptID string
+	if err := reader.QueryRow("SELECT id FROM newsletter_receipts").Scan(&receiptID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Exec(`CREATE TRIGGER fail_newsletter_message BEFORE INSERT ON newsletter_messages
+		BEGIN SELECT RAISE(ABORT, 'processing failed'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	processed, err := service.processNext(ctx)
+	if err == nil || processed {
+		t.Fatalf("processNext = %v, %v, want failed receipt", processed, err)
+	}
+	if !strings.Contains(logs.String(), receiptID) || !strings.Contains(logs.String(), "newsletter receipt processing failed") || !strings.Contains(logs.String(), "processing failed") {
+		t.Fatalf("processing failure was not logged with receipt ID: %s", logs.String())
+	}
+	if strings.Contains(logs.String(), "PRIVATE_NEWSLETTER_BODY") {
+		t.Fatalf("log contains private message content: %s", logs.String())
+	}
+	var attempts int64
+	var lastError, nextAttempt string
+	if err := reader.QueryRow("SELECT attempts, last_error, next_attempt_at FROM newsletter_receipts WHERE id = ?", receiptID).Scan(&attempts, &lastError, &nextAttempt); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 1 || lastError != "processing failed" || nextAttempt == "" {
+		t.Fatalf("retry state = %d, %q, %q", attempts, lastError, nextAttempt)
+	}
+}
+
+func TestProcessNextLogsRetryStatePersistenceFailure(t *testing.T) {
+	service, reader, writer := newTestService(t)
+	ctx := context.Background()
+	address, _ := service.CreateAddress(ctx, "did:plc:alice")
+	raw := []byte("From: sender@example.com\r\nSubject: Private issue\r\nContent-Type: text/plain\r\n\r\nPRIVATE_NEWSLETTER_BODY")
+	if err := service.acceptReceipts(ctx, "bounce@example.com", []deliveryRecipient{{DID: "did:plc:alice", Address: address}}, raw); err != nil {
+		t.Fatal(err)
+	}
+	var receiptID string
+	if err := reader.QueryRow("SELECT id FROM newsletter_receipts").Scan(&receiptID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Exec(`CREATE TRIGGER fail_newsletter_message BEFORE INSERT ON newsletter_messages
+		BEGIN SELECT RAISE(ABORT, 'processing failed'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Exec(`CREATE TRIGGER fail_newsletter_retry BEFORE UPDATE ON newsletter_receipts
+		BEGIN SELECT RAISE(ABORT, 'retry state unavailable'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	if _, err := service.processNext(ctx); err == nil {
+		t.Fatal("processNext succeeded with injected storage failures")
+	}
+	if !strings.Contains(logs.String(), receiptID) || !strings.Contains(logs.String(), "newsletter receipt retry state update failed") || !strings.Contains(logs.String(), "retry state unavailable") {
+		t.Fatalf("retry persistence failure was not logged with receipt ID: %s", logs.String())
+	}
+	if strings.Contains(logs.String(), "PRIVATE_NEWSLETTER_BODY") {
+		t.Fatalf("log contains private message content: %s", logs.String())
 	}
 }

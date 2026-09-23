@@ -120,16 +120,36 @@ func (s *Service) ListSources(ctx context.Context, did string) (SourceGroups, er
 }
 
 func (s *Service) GetSource(ctx context.Context, did, id string) (Source, error) {
-	groups, err := s.ListSources(ctx, did)
+	now := s.now().UTC()
+	row, err := s.read.GetNewsletterSourceWithStats(ctx, db.GetNewsletterSourceWithStatsParams{
+		Did:          did,
+		ID:           id,
+		ReceivedAt:   formatTime(now.AddDate(0, 0, -7)),
+		ReceivedAt_2: formatTime(now),
+		ReceivedAt_3: formatTime(now.AddDate(0, 0, -28)),
+		ReceivedAt_4: formatTime(now.AddDate(0, 0, -56)),
+		ReceivedAt_5: formatTime(now.AddDate(0, 0, -84)),
+	})
+	if err != nil {
+		return Source{}, publicDBError(err)
+	}
+	source, err := sourceFromRow(db.NewsletterSource{
+		ID: row.ID, Did: row.Did, SourceKey: row.SourceKey, IdentityKind: row.IdentityKind,
+		IdentityValue: row.IdentityValue, Title: row.Title, SenderName: row.SenderName,
+		SenderAddress: row.SenderAddress, Status: row.Status, IsPrimary: row.IsPrimary,
+		Tags: row.Tags, FirstReceivedAt: row.FirstReceivedAt, LastReceivedAt: row.LastReceivedAt,
+		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+	})
 	if err != nil {
 		return Source{}, err
 	}
-	for _, source := range append(groups.Active, groups.Stopped...) {
-		if source.ID == id {
-			return source, nil
-		}
-	}
-	return Source{}, ErrNotFound
+	source.IssueCount = row.IssueCount
+	source.SavedCount = row.SavedCount
+	source.Count7d = row.Count7d
+	source.Count28d = row.Count28d
+	source.Count56d = row.Count56d
+	source.Count84d = row.Count84d
+	return source, nil
 }
 
 func (s *Service) PatchSource(ctx context.Context, did, id string, patch SourcePatch) (Source, error) {
@@ -267,12 +287,12 @@ func (s *Service) MoveMessage(ctx context.Context, did, messageID string, target
 }
 
 func (s *Service) SaveMessage(ctx context.Context, did, messageID string) (Save, error) {
-	if _, err := s.getMessage(ctx, did, messageID); err != nil {
-		return Save{}, err
-	}
 	id := ulid.Make().String()
 	now := formatTime(s.now())
 	if err := database.WithTx(ctx, s.writer, func(q *db.Queries) error {
+		if _, err := q.GetNewsletterMessage(ctx, db.GetNewsletterMessageParams{Did: did, ID: messageID}); err != nil {
+			return publicDBError(err)
+		}
 		return q.CreateNewsletterSave(ctx, db.CreateNewsletterSaveParams{ID: id, Did: did, MessageID: messageID, CreatedAt: now})
 	}); err != nil {
 		return Save{}, err
@@ -322,23 +342,8 @@ func (s *Service) ListSaves(ctx context.Context, did string) ([]SaveItem, error)
 }
 
 func (s *Service) ListDigestMessages(ctx context.Context, did string, start, end time.Time) ([]Message, error) {
-	if start.IsZero() != end.IsZero() || (!start.IsZero() && !start.Before(end)) {
+	if start.IsZero() || end.IsZero() || !start.Before(end) {
 		return nil, ErrInvalid
-	}
-	if start.IsZero() {
-		rows, err := s.read.ListAllNewsletterMessagesForDigest(ctx, did)
-		if err != nil {
-			return nil, err
-		}
-		items := make([]Message, 0, len(rows))
-		for _, row := range rows {
-			message, err := messageFromAllDigestRow(row)
-			if err != nil {
-				return nil, err
-			}
-			items = append(items, message)
-		}
-		return items, nil
 	}
 	rows, err := s.read.ListNewsletterMessagesForDigest(ctx, db.ListNewsletterMessagesForDigestParams{Did: did, ReceivedAt: formatTime(start), ReceivedAt_2: formatTime(end)})
 	if err != nil {

@@ -665,6 +665,92 @@ func (q *Queries) GetNewsletterSourceByKey(ctx context.Context, arg GetNewslette
 	return i, err
 }
 
+const getNewsletterSourceWithStats = `-- name: GetNewsletterSourceWithStats :one
+SELECT s.id, s.did, s.source_key, s.identity_kind, s.identity_value, s.title, s.sender_name, s.sender_address, s.status, s.accept_after, s.is_primary, s.tags, s.first_received_at, s.last_received_at, s.created_at, s.updated_at,
+       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id) AS issue_count,
+       (SELECT COUNT(*) FROM newsletter_saves sv WHERE sv.did = s.did AND sv.message_id IN
+           (SELECT id FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id)) AS saved_count,
+       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?3 AND m.received_at < ?4) AS count_7d,
+       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?5 AND m.received_at < ?4) AS count_28d,
+       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?6 AND m.received_at < ?4) AS count_56d,
+       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?7 AND m.received_at < ?4) AS count_84d
+FROM newsletter_sources s
+WHERE s.did = ?1 AND s.id = ?2
+`
+
+type GetNewsletterSourceWithStatsParams struct {
+	Did          string `json:"did"`
+	ID           string `json:"id"`
+	ReceivedAt   string `json:"received_at"`
+	ReceivedAt_2 string `json:"received_at_2"`
+	ReceivedAt_3 string `json:"received_at_3"`
+	ReceivedAt_4 string `json:"received_at_4"`
+	ReceivedAt_5 string `json:"received_at_5"`
+}
+
+type GetNewsletterSourceWithStatsRow struct {
+	ID              string  `json:"id"`
+	Did             string  `json:"did"`
+	SourceKey       string  `json:"source_key"`
+	IdentityKind    string  `json:"identity_kind"`
+	IdentityValue   *string `json:"identity_value"`
+	Title           string  `json:"title"`
+	SenderName      *string `json:"sender_name"`
+	SenderAddress   string  `json:"sender_address"`
+	Status          string  `json:"status"`
+	AcceptAfter     *string `json:"accept_after"`
+	IsPrimary       int64   `json:"is_primary"`
+	Tags            string  `json:"tags"`
+	FirstReceivedAt *string `json:"first_received_at"`
+	LastReceivedAt  *string `json:"last_received_at"`
+	CreatedAt       string  `json:"created_at"`
+	UpdatedAt       string  `json:"updated_at"`
+	IssueCount      int64   `json:"issue_count"`
+	SavedCount      int64   `json:"saved_count"`
+	Count7d         int64   `json:"count_7d"`
+	Count28d        int64   `json:"count_28d"`
+	Count56d        int64   `json:"count_56d"`
+	Count84d        int64   `json:"count_84d"`
+}
+
+func (q *Queries) GetNewsletterSourceWithStats(ctx context.Context, arg GetNewsletterSourceWithStatsParams) (GetNewsletterSourceWithStatsRow, error) {
+	row := q.db.QueryRowContext(ctx, getNewsletterSourceWithStats,
+		arg.Did,
+		arg.ID,
+		arg.ReceivedAt,
+		arg.ReceivedAt_2,
+		arg.ReceivedAt_3,
+		arg.ReceivedAt_4,
+		arg.ReceivedAt_5,
+	)
+	var i GetNewsletterSourceWithStatsRow
+	err := row.Scan(
+		&i.ID,
+		&i.Did,
+		&i.SourceKey,
+		&i.IdentityKind,
+		&i.IdentityValue,
+		&i.Title,
+		&i.SenderName,
+		&i.SenderAddress,
+		&i.Status,
+		&i.AcceptAfter,
+		&i.IsPrimary,
+		&i.Tags,
+		&i.FirstReceivedAt,
+		&i.LastReceivedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.IssueCount,
+		&i.SavedCount,
+		&i.Count7d,
+		&i.Count28d,
+		&i.Count56d,
+		&i.Count84d,
+	)
+	return i, err
+}
+
 const getNextNewsletterReceipt = `-- name: GetNextNewsletterReceipt :one
 SELECT id, did, envelope_from, recipient, received_at, raw_mime,
        reserved_bytes, attempts, last_error, next_attempt_at, created_at
@@ -691,93 +777,6 @@ func (q *Queries) GetNextNewsletterReceipt(ctx context.Context, nextAttemptAt *s
 		&i.CreatedAt,
 	)
 	return i, err
-}
-
-const listAllNewsletterMessagesForDigest = `-- name: ListAllNewsletterMessagesForDigest :many
-SELECT m.id, m.did, m.source_id, m.entry_slug, m.dedupe_key, m.message_id, m.title, m.sender_name, m.sender_address, m.sent_at, m.received_at, m.body_html_blocked, m.body_html_remote, m.body_text, m.has_blocked_remote_images, m.remote_images_allowed, m.attachment_summary, m.storage_bytes, m.created_at, m.updated_at, s.title AS source_title, s.status AS source_status, s.is_primary AS source_primary,
-       sv.id AS save_id, sv.created_at AS saved_at
-FROM newsletter_messages m
-JOIN newsletter_sources s ON s.id = m.source_id AND s.did = m.did
-LEFT JOIN newsletter_saves sv ON sv.message_id = m.id AND sv.did = m.did
-WHERE m.did = ?1 AND s.status = 'active'
-ORDER BY m.received_at DESC, m.id DESC
-`
-
-type ListAllNewsletterMessagesForDigestRow struct {
-	ID                     string  `json:"id"`
-	Did                    string  `json:"did"`
-	SourceID               string  `json:"source_id"`
-	EntrySlug              string  `json:"entry_slug"`
-	DedupeKey              string  `json:"dedupe_key"`
-	MessageID              *string `json:"message_id"`
-	Title                  *string `json:"title"`
-	SenderName             *string `json:"sender_name"`
-	SenderAddress          string  `json:"sender_address"`
-	SentAt                 *string `json:"sent_at"`
-	ReceivedAt             string  `json:"received_at"`
-	BodyHtmlBlocked        *string `json:"body_html_blocked"`
-	BodyHtmlRemote         *string `json:"body_html_remote"`
-	BodyText               *string `json:"body_text"`
-	HasBlockedRemoteImages int64   `json:"has_blocked_remote_images"`
-	RemoteImagesAllowed    int64   `json:"remote_images_allowed"`
-	AttachmentSummary      *string `json:"attachment_summary"`
-	StorageBytes           int64   `json:"storage_bytes"`
-	CreatedAt              string  `json:"created_at"`
-	UpdatedAt              string  `json:"updated_at"`
-	SourceTitle            string  `json:"source_title"`
-	SourceStatus           string  `json:"source_status"`
-	SourcePrimary          int64   `json:"source_primary"`
-	SaveID                 *string `json:"save_id"`
-	SavedAt                *string `json:"saved_at"`
-}
-
-func (q *Queries) ListAllNewsletterMessagesForDigest(ctx context.Context, did string) ([]ListAllNewsletterMessagesForDigestRow, error) {
-	rows, err := q.db.QueryContext(ctx, listAllNewsletterMessagesForDigest, did)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListAllNewsletterMessagesForDigestRow
-	for rows.Next() {
-		var i ListAllNewsletterMessagesForDigestRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Did,
-			&i.SourceID,
-			&i.EntrySlug,
-			&i.DedupeKey,
-			&i.MessageID,
-			&i.Title,
-			&i.SenderName,
-			&i.SenderAddress,
-			&i.SentAt,
-			&i.ReceivedAt,
-			&i.BodyHtmlBlocked,
-			&i.BodyHtmlRemote,
-			&i.BodyText,
-			&i.HasBlockedRemoteImages,
-			&i.RemoteImagesAllowed,
-			&i.AttachmentSummary,
-			&i.StorageBytes,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.SourceTitle,
-			&i.SourceStatus,
-			&i.SourcePrimary,
-			&i.SaveID,
-			&i.SavedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const listNewsletterMessagesForDigest = `-- name: ListNewsletterMessagesForDigest :many

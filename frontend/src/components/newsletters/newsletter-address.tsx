@@ -1,7 +1,8 @@
 import { CopyIcon, SpinnerIcon } from '@proicons/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 
+import { InputError } from '@/components/input-error';
 import {
     InputGroup,
     InputGroupAddon,
@@ -50,33 +51,61 @@ function useNewsletterAddress(open: boolean) {
 }
 
 export function NewsletterAddressField({ address }: { address: string }) {
-    const [copied, setCopied] = useState(false);
+    const [copyState, setCopyState] = useState<'copied' | 'failed' | null>(
+        null,
+    );
+    const copiedTimeout = useRef<number | undefined>(undefined);
+
+    useEffect(
+        () => () => {
+            if (copiedTimeout.current !== undefined) {
+                window.clearTimeout(copiedTimeout.current);
+            }
+        },
+        [],
+    );
 
     const copy = async () => {
+        if (copiedTimeout.current !== undefined) {
+            window.clearTimeout(copiedTimeout.current);
+            copiedTimeout.current = undefined;
+        }
         try {
             await navigator.clipboard.writeText(address);
-            setCopied(true);
-            window.setTimeout(() => setCopied(false), 1800);
+            setCopyState('copied');
+            copiedTimeout.current = window.setTimeout(() => {
+                setCopyState(null);
+                copiedTimeout.current = undefined;
+            }, 1800);
         } catch {
-            setCopied(false);
+            setCopyState('failed');
         }
     };
 
     return (
-        <InputGroup>
-            <InputGroupInput
-                aria-label="Newsletter address"
-                readOnly
-                value={address}
-                onFocus={(event) => event.currentTarget.select()}
+        <div className="space-y-2">
+            <InputGroup>
+                <InputGroupInput
+                    aria-label="Newsletter address"
+                    readOnly
+                    value={address}
+                    onFocus={(event) => event.currentTarget.select()}
+                />
+                <InputGroupAddon align="inline-end">
+                    <InputGroupButton onClick={copy}>
+                        <CopyIcon />
+                        {copyState === 'copied' ? 'Copied' : 'Copy'}
+                    </InputGroupButton>
+                </InputGroupAddon>
+            </InputGroup>
+            <InputError
+                message={
+                    copyState === 'failed'
+                        ? "Couldn't copy. Click the address to select it, then copy it manually."
+                        : undefined
+                }
             />
-            <InputGroupAddon align="inline-end">
-                <InputGroupButton onClick={copy}>
-                    <CopyIcon />
-                    {copied ? 'Copied' : 'Copy'}
-                </InputGroupButton>
-            </InputGroupAddon>
-        </InputGroup>
+        </div>
     );
 }
 

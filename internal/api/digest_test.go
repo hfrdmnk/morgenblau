@@ -18,9 +18,6 @@ import (
 type fakeDigestReader struct {
 	gotParams db.ListDigestForUserParams
 	rows      []db.ListDigestForUserRow
-
-	gotAllDid string
-	allRows   []db.ListAllEntriesForUserRow
 }
 
 func (f *fakeDigestReader) ListDigestForUser(_ context.Context, arg db.ListDigestForUserParams) ([]db.ListDigestForUserRow, error) {
@@ -28,23 +25,18 @@ func (f *fakeDigestReader) ListDigestForUser(_ context.Context, arg db.ListDiges
 	return f.rows, nil
 }
 
-func (f *fakeDigestReader) ListAllEntriesForUser(_ context.Context, did string) ([]db.ListAllEntriesForUserRow, error) {
-	f.gotAllDid = did
-	return f.allRows, nil
-}
-
 type stubJobsProbe struct{ active *jobs.Job }
 
 func (s *stubJobsProbe) ActiveForUser(_ syntax.DID) *jobs.Job { return s.active }
 
-func TestDigest_NoDate_ReturnsAllEntries(t *testing.T) {
+func TestDigest_NoDate_ReturnsCurrentDayEntries(t *testing.T) {
 	title := "Hello"
 	reader := &fakeDigestReader{
-		allRows: []db.ListAllEntriesForUserRow{
+		rows: []db.ListDigestForUserRow{
 			{
 				ID:          42,
-				FeedUrl:     "https://example.test/feed.xml",
-				Url:         "https://example.test/post",
+				FeedUrl:     "https://feed.example.com/feed.xml",
+				Url:         "https://feed.example.com/post",
 				Title:       &title,
 				ContentType: "blogpost",
 				PublishedAt: time.Now().UTC().Format(time.RFC3339),
@@ -52,9 +44,11 @@ func TestDigest_NoDate_ReturnsAllEntries(t *testing.T) {
 		},
 	}
 	h := DigestHandler(reader, &stubJobsProbe{})
-	req := withSession(httptest.NewRequest(http.MethodGet, "/api/digest", nil), "did:plc:alice", "sid-1")
+	before := time.Now()
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/digest?timezone=Europe%2FZurich", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
+	after := time.Now()
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
@@ -63,8 +57,15 @@ func TestDigest_NoDate_ReturnsAllEntries(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if reader.gotAllDid != "did:plc:alice" {
-		t.Errorf("ListAllEntriesForUser called with did = %q", reader.gotAllDid)
+	if reader.gotParams.Did != "did:plc:alice" {
+		t.Errorf("ListDigestForUser called with did = %q", reader.gotParams.Did)
+	}
+	_, beforeStart, beforeEnd, _ := digestDayBounds("", "Europe/Zurich", before)
+	_, afterStart, afterEnd, _ := digestDayBounds("", "Europe/Zurich", after)
+	gotStart, gotEnd := reader.gotParams.PublishedAt, reader.gotParams.PublishedAt_2
+	if (gotStart != beforeStart.Format(time.RFC3339) || gotEnd != beforeEnd.Format(time.RFC3339)) &&
+		(gotStart != afterStart.Format(time.RFC3339) || gotEnd != afterEnd.Format(time.RFC3339)) {
+		t.Errorf("digest bounds = [%q, %q), want current local day", gotStart, gotEnd)
 	}
 	if len(got.Entries) != 1 || got.Entries[0].ID != float64(42) {
 		t.Errorf("entries = %+v", got.Entries)
@@ -178,18 +179,22 @@ func TestDigest_AggregatesPrivateNewsletterMessagesWithinLocalDay(t *testing.T) 
 	}
 }
 
-func TestDigest_NoDateIncludesUnboundedNewsletterMessages(t *testing.T) {
+func TestDigest_NoDateBoundsNewsletterMessagesToCurrentDay(t *testing.T) {
 	newsletters := &fakeNewsletterService{messages: []newsletter.Message{newsletterMessageFixture()}}
-	h := DigestHandler(&fakeDigestReader{}, &stubJobsProbe{}, newsletters)
-	req := withSession(httptest.NewRequest(http.MethodGet, "/api/digest", nil), "did:plc:alice", "sid-1")
+	reader := &fakeDigestReader{}
+	h := DigestHandler(reader, &stubJobsProbe{}, newsletters)
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/digest?timezone=Europe%2FZurich", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
-	if !newsletters.digestStart.IsZero() || !newsletters.digestEnd.IsZero() {
-		t.Errorf("unbounded newsletter bounds = [%s, %s)", newsletters.digestStart, newsletters.digestEnd)
+	if newsletters.digestStart.IsZero() || !newsletters.digestStart.Before(newsletters.digestEnd) {
+		t.Errorf("newsletter bounds = [%s, %s), want current local day", newsletters.digestStart, newsletters.digestEnd)
+	}
+	if newsletters.digestStart.Format(time.RFC3339) != reader.gotParams.PublishedAt || newsletters.digestEnd.Format(time.RFC3339) != reader.gotParams.PublishedAt_2 {
+		t.Errorf("newsletter bounds = [%s, %s), feed bounds = [%s, %s)", newsletters.digestStart, newsletters.digestEnd, reader.gotParams.PublishedAt, reader.gotParams.PublishedAt_2)
 	}
 	var got DigestResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {

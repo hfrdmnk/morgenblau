@@ -38,6 +38,50 @@ func TestParseMIMEBlocksRemoteImagesAndKeepsInlineRasterAssets(t *testing.T) {
 	}
 }
 
+func TestParseMIMEKeepsImageOnlyListMailAndInlineAsset(t *testing.T) {
+	raw := []byte("From: Example Weekly <hello@example.com>\r\n" +
+		"Subject: Illustrated issue\r\n" +
+		"List-ID: Example Weekly <weekly.example.com>\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/related; boundary=rel\r\n\r\n" +
+		"--rel\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" +
+		`<img alt="Issue cover" src="cid:cover">` + "\r\n" +
+		"--rel\r\nContent-Type: image/png\r\nContent-ID: <cover>\r\n" +
+		"Content-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n" +
+		"--rel--\r\n")
+
+	message := parseMIME(raw, "bounce@example.com")
+	if message.SourceKey != "list-id:weekly.example.com" {
+		t.Fatalf("source key = %q", message.SourceKey)
+	}
+	if len(message.Assets) != 1 || !strings.Contains(message.BodyHTMLBlocked, "/api/newsletter-assets/"+message.Assets[0].Token) {
+		t.Fatalf("inline image not preserved: assets=%+v body=%s", message.Assets, message.BodyHTMLBlocked)
+	}
+}
+
+func TestParseMIMERemoteImageOnlyListMailKeepsConsentVariants(t *testing.T) {
+	const remoteImage = "https://images.example.com/cover.png"
+	raw := []byte("From: Example Weekly <hello@example.com>\r\n" +
+		"Subject: Illustrated issue\r\n" +
+		"List-ID: Example Weekly <weekly.example.com>\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/related; boundary=rel\r\n\r\n" +
+		"--rel\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" +
+		`<img alt="Issue cover" src="` + remoteImage + `">` + "\r\n" +
+		"--rel--\r\n")
+
+	message := parseMIME(raw, "bounce@example.com")
+	if message.SourceKey != "list-id:weekly.example.com" {
+		t.Fatalf("source key = %q", message.SourceKey)
+	}
+	if strings.Contains(message.BodyHTMLBlocked, remoteImage) || !strings.Contains(message.BodyHTMLRemote, remoteImage) {
+		t.Fatalf("remote image variants = blocked %q, allowed %q", message.BodyHTMLBlocked, message.BodyHTMLRemote)
+	}
+	if !message.HasBlockedRemoteImages {
+		t.Fatal("remote image was not marked blocked")
+	}
+}
+
 func TestParseMIMEUsesStructuredForwardedMessageIdentity(t *testing.T) {
 	raw := []byte("From: Alice <alice@example.net>\r\n" +
 		"Subject: Fwd: Inner issue\r\nMIME-Version: 1.0\r\n" +

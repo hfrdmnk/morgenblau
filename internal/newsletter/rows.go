@@ -116,7 +116,3 @@ func messageFromSourceRow(row db.ListNewsletterMessagesForSourceRow) (Message, e
 func messageFromDigestRow(row db.ListNewsletterMessagesForDigestRow) (Message, error) {
 	return messageFromFields(messageFields{id: row.ID, entrySlug: row.EntrySlug, sourceID: row.SourceID, sourceTitle: row.SourceTitle, sourcePrimary: row.SourcePrimary, title: row.Title, senderName: row.SenderName, senderAddress: row.SenderAddress, sentAt: row.SentAt, receivedAt: row.ReceivedAt, bodyHTMLBlocked: row.BodyHtmlBlocked, bodyHTMLRemote: row.BodyHtmlRemote, bodyText: row.BodyText, hasBlockedRemoteImages: row.HasBlockedRemoteImages, remoteImagesAllowed: row.RemoteImagesAllowed, saveID: row.SaveID, savedAt: row.SavedAt})
 }
-
-func messageFromAllDigestRow(row db.ListAllNewsletterMessagesForDigestRow) (Message, error) {
-	return messageFromFields(messageFields{id: row.ID, entrySlug: row.EntrySlug, sourceID: row.SourceID, sourceTitle: row.SourceTitle, sourcePrimary: row.SourcePrimary, title: row.Title, senderName: row.SenderName, senderAddress: row.SenderAddress, sentAt: row.SentAt, receivedAt: row.ReceivedAt, bodyHTMLBlocked: row.BodyHtmlBlocked, bodyHTMLRemote: row.BodyHtmlRemote, bodyText: row.BodyText, hasBlockedRemoteImages: row.HasBlockedRemoteImages, remoteImagesAllowed: row.RemoteImagesAllowed, saveID: row.SaveID, savedAt: row.SavedAt})
-}

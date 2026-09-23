@@ -1,5 +1,5 @@
 import { MailIcon, SpinnerIcon } from '@proicons/react';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { InputError } from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -70,6 +70,7 @@ async function loadDestinations(
 
 function useDestinationChoice(open: boolean, currentSourceId: string | undefined) {
     const [choice, setChoice] = useState<DestinationChoice>(emptyChoice);
+    const [attempt, setAttempt] = useState(0);
 
     useEffect(() => {
         if (!open) return;
@@ -78,7 +79,7 @@ function useDestinationChoice(open: boolean, currentSourceId: string | undefined
             if (!abort.signal.aborted) setChoice(nextChoice);
         });
         return () => abort.abort();
-    }, [open, currentSourceId]);
+    }, [open, currentSourceId, attempt]);
 
     return {
         ...choice,
@@ -90,6 +91,10 @@ function useDestinationChoice(open: boolean, currentSourceId: string | undefined
             })),
         createSource: () =>
             setChoice((current) => ({ ...current, creating: true })),
+        retry: () => {
+            setChoice(emptyChoice);
+            setAttempt((current) => current + 1);
+        },
         reset: () => setChoice(emptyChoice),
     };
 }
@@ -136,48 +141,91 @@ function DestinationButton({
 function DestinationOptions({
     sources,
     loading,
+    error,
     selectedId,
     creating,
     onSelect,
     onCreate,
+    onRetry,
 }: {
     sources: NewsletterSource[];
     loading: boolean;
+    error?: string;
     selectedId: string | null;
     creating: boolean;
     onSelect: (id: string) => void;
     onCreate: () => void;
+    onRetry: () => void;
 }) {
-    if (loading) {
-        return (
-            <p className="flex items-center gap-2 text-label text-muted-foreground">
-                <SpinnerIcon className="size-4 motion-safe:animate-spin" />
-                Loading newsletters…
-            </p>
-        );
-    }
+    const destinationGroup = useRef<HTMLDivElement>(null);
+    const restoreActionFocus = useRef(false);
+
+    useEffect(() => {
+        if (loading || !restoreActionFocus.current) return;
+        destinationGroup.current
+            ?.querySelector<HTMLButtonElement>('button')
+            ?.focus();
+        restoreActionFocus.current = false;
+    }, [error, loading, sources]);
+
+    const retry = () => {
+        restoreActionFocus.current = true;
+        destinationGroup.current?.focus();
+        onRetry();
+    };
 
     return (
-        <div className="max-h-56 space-y-1 overflow-y-auto">
-            {sources.map((source) => (
-                <DestinationButton
-                    key={source.id}
-                    source={source}
-                    selected={!creating && selectedId === source.id}
-                    onSelect={onSelect}
-                />
-            ))}
-            <button
-                type="button"
-                aria-pressed={creating}
-                onClick={onCreate}
-                className={cn(
-                    'w-full rounded-xl px-3 py-2 text-left text-body outline-none transition-colors focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid',
-                    creating ? 'bg-accent' : 'hover:bg-muted',
-                )}
-            >
-                New newsletter…
-            </button>
+        <div
+            ref={destinationGroup}
+            role="group"
+            aria-label="Newsletter destinations"
+            tabIndex={-1}
+        >
+            {loading ? (
+                <p
+                    className="flex items-center gap-2 text-label text-muted-foreground"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                >
+                    <SpinnerIcon className="size-4 motion-safe:animate-spin" />
+                    Loading newsletters…
+                </p>
+            ) : error ? (
+                <div className="space-y-2">
+                    <InputError message={error} />
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={retry}
+                    >
+                        Retry
+                    </Button>
+                </div>
+            ) : (
+                <div className="max-h-56 space-y-1 overflow-y-auto">
+                    {sources.map((source) => (
+                        <DestinationButton
+                            key={source.id}
+                            source={source}
+                            selected={!creating && selectedId === source.id}
+                            onSelect={onSelect}
+                        />
+                    ))}
+                    <button
+                        type="button"
+                        aria-pressed={creating}
+                        onClick={onCreate}
+                        className={cn(
+                            'w-full rounded-xl px-3 py-2 text-left text-body outline-none transition-colors focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid',
+                            creating ? 'bg-accent' : 'hover:bg-muted',
+                        )}
+                    >
+                        New newsletter…
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
@@ -306,17 +354,19 @@ export function MoveMessageDialog({
                     <DestinationOptions
                         sources={destinations.sources}
                         loading={destinations.loading}
+                        error={destinations.error}
                         selectedId={destinations.selectedId}
                         creating={destinations.creating}
                         onSelect={destinations.selectSource}
                         onCreate={destinations.createSource}
+                        onRetry={destinations.retry}
                     />
                     <NewNewsletterTitle
                         creating={destinations.creating}
                         title={newTitle}
                         onChange={setNewTitle}
                     />
-                    <InputError message={moveError ?? destinations.error} />
+                    <InputError message={moveError} />
                     <MoveFooter
                         loading={destinations.loading}
                         submitting={submitting}

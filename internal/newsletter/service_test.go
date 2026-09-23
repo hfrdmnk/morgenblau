@@ -3,9 +3,11 @@ package newsletter
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,6 +41,117 @@ func TestAddressIsExplicitlyCreatedStableAndOwnerScoped(t *testing.T) {
 	}
 	if first == other || !strings.HasSuffix(first, "@news.example") {
 		t.Fatalf("addresses = %q, %q", first, other)
+	}
+}
+
+func TestCreateAddressConcurrentCallsReturnOneStableAddress(t *testing.T) {
+	service, _, _ := newTestService(t)
+	const callers = 16
+	start := make(chan struct{})
+	results := make(chan string, callers)
+	errs := make(chan error, callers)
+	var ready sync.WaitGroup
+	ready.Add(callers)
+	var done sync.WaitGroup
+	for range callers {
+		done.Add(1)
+		go func() {
+			defer done.Done()
+			ready.Done()
+			<-start
+			address, err := service.CreateAddress(context.Background(), "did:plc:alice")
+			if err != nil {
+				errs <- err
+				return
+			}
+			results <- address
+		}()
+	}
+	ready.Wait()
+	close(start)
+	done.Wait()
+	close(results)
+	close(errs)
+
+	for err := range errs {
+		t.Fatalf("concurrent CreateAddress error = %v", err)
+	}
+	var first string
+	for address := range results {
+		if first == "" {
+			first = address
+		} else if address != first {
+			t.Fatalf("concurrent addresses differ: %q and %q", first, address)
+		}
+	}
+	if first == "" {
+		t.Fatal("no address returned")
+	}
+}
+
+func TestSaveMessageReturnsNotFoundWhenStopWinsAfterReadBeforeWrite(t *testing.T) {
+	service, _, writer := newTestService(t)
+	sourceID := seedSource(t, writer, "did:plc:alice", "source-a", SourceActive)
+	messageID := seedMessage(t, writer, "did:plc:alice", sourceID, "race", "dedupe-race")
+
+	stop, err := writer.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop.Rollback()
+	waitsBefore := writer.Stats().WaitCount
+	saveResult := make(chan error, 1)
+	go func() {
+		_, err := service.SaveMessage(context.Background(), "did:plc:alice", messageID)
+		saveResult <- err
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for writer.Stats().WaitCount == waitsBefore && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if writer.Stats().WaitCount == waitsBefore {
+		t.Fatal("SaveMessage did not reach its write transaction")
+	}
+	if _, err := stop.Exec(`UPDATE newsletter_sources SET status = 'stopped' WHERE did = ? AND id = ?`, "did:plc:alice", sourceID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stop.Exec(`DELETE FROM newsletter_messages WHERE did = ? AND source_id = ? AND NOT EXISTS (
+		SELECT 1 FROM newsletter_saves WHERE did = newsletter_messages.did AND message_id = newsletter_messages.id
+	)`, "did:plc:alice", sourceID); err != nil {
+		t.Fatal(err)
+	}
+	if err := stop.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-saveResult; !errors.Is(err, ErrNotFound) {
+		t.Fatalf("SaveMessage error = %v, want ErrNotFound after stop committed", err)
+	}
+}
+
+func TestGetSourceReadsOnlyRequestedSourceAndIncludesItsStats(t *testing.T) {
+	service, reader, writer := newTestService(t)
+	ctx := context.Background()
+	targetID := seedSource(t, writer, "did:plc:alice", "target", SourceActive)
+	otherID := seedSource(t, writer, "did:plc:alice", "other", SourceActive)
+	seedMessageAt(t, writer, "did:plc:alice", targetID, "recent", "dedupe-recent", testNow.Add(-time.Hour))
+	seedMessageAt(t, writer, "did:plc:alice", targetID, "older", "dedupe-older", testNow.AddDate(0, 0, -35))
+	seedMessage(t, writer, "did:plc:alice", otherID, "unrelated", "dedupe-unrelated")
+	if _, err := service.SaveMessage(ctx, "did:plc:alice", "recent"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Exec(`UPDATE newsletter_sources SET tags = 'not-json' WHERE did = ? AND id = ?`, "did:plc:alice", otherID); err != nil {
+		t.Fatal(err)
+	}
+	source, err := service.GetSource(ctx, "did:plc:alice", targetID)
+	if err != nil {
+		t.Fatalf("GetSource error = %v", err)
+	}
+	if source.ID != targetID || source.IssueCount != 2 || source.SavedCount != 1 || source.Count7d != 1 || source.Count28d != 1 || source.Count56d != 2 || source.Count84d != 2 {
+		t.Fatalf("GetSource details = %+v", source)
+	}
+	if got := countRows(t, reader, "newsletter_sources"); got != 2 {
+		t.Fatalf("source count = %d, want 2", got)
 	}
 }
 
@@ -131,6 +244,13 @@ func TestDigestBoundsIncludeFractionalMidnightAndExcludeNextDay(t *testing.T) {
 	}
 	if len(items) != 2 || items[0].ID != "fraction" || items[1].ID != "midnight" {
 		t.Fatalf("digest items = %+v", items)
+	}
+}
+
+func TestListDigestMessagesRequiresDateBounds(t *testing.T) {
+	service, _, _ := newTestService(t)
+	if _, err := service.ListDigestMessages(context.Background(), "did:plc:alice", time.Time{}, time.Time{}); err != ErrInvalid {
+		t.Fatalf("ListDigestMessages without bounds error = %v, want ErrInvalid", err)
 	}
 }
 

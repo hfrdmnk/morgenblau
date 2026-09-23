@@ -47,6 +47,7 @@ type Querier interface {
 	GetNewsletterSaveForMessage(ctx context.Context, arg GetNewsletterSaveForMessageParams) (NewsletterSafe, error)
 	GetNewsletterSource(ctx context.Context, arg GetNewsletterSourceParams) (NewsletterSource, error)
 	GetNewsletterSourceByKey(ctx context.Context, arg GetNewsletterSourceByKeyParams) (NewsletterSource, error)
+	GetNewsletterSourceWithStats(ctx context.Context, arg GetNewsletterSourceWithStatsParams) (GetNewsletterSourceWithStatsRow, error)
 	GetNextNewsletterReceipt(ctx context.Context, nextAttemptAt *string) (NewsletterReceipt, error)
 	GetSession(ctx context.Context, arg GetSessionParams) ([]byte, error)
 	GetUserSave(ctx context.Context, arg GetUserSaveParams) (UserSave, error)
@@ -57,9 +58,7 @@ type Querier interface {
 	GetUserSourceWithStats(ctx context.Context, arg GetUserSourceWithStatsParams) (GetUserSourceWithStatsRow, error)
 	GetUserSubscription(ctx context.Context, arg GetUserSubscriptionParams) (UserSubscription, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserSubscriptionByFeedURLParams) (UserSubscription, error)
-	ListAllEntriesForUser(ctx context.Context, did string) ([]ListAllEntriesForUserRow, error)
 	ListAllFeedURLs(ctx context.Context) ([]string, error)
-	ListAllNewsletterMessagesForDigest(ctx context.Context, did string) ([]ListAllNewsletterMessagesForDigestRow, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
 	// Entries from a single feed, newest first, bounded by limit. The join to
 	// user_subscriptions doubles as an ownership filter; the handler still

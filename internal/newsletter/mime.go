@@ -195,7 +195,17 @@ func parseMIMEAtDepth(raw []byte, depth int) (normalizedMail, bool) {
 		}
 		result.DedupeContentHash = hashStrings(hashes...)
 	}
-	return result, result.BodyText != "" || strings.TrimSpace(bluemonday.StrictPolicy().Sanitize(result.BodyHTMLBlocked)) != ""
+	return result, result.BodyText != "" || strings.TrimSpace(bluemonday.StrictPolicy().Sanitize(result.BodyHTMLBlocked)) != "" ||
+		result.HasBlockedRemoteImages || hasResolvedInlineAsset(result.BodyHTMLBlocked, result.Assets)
+}
+
+func hasResolvedInlineAsset(body string, assets []normalizedAsset) bool {
+	for _, asset := range assets {
+		if strings.Contains(body, "/api/newsletter-assets/"+asset.Token) {
+			return true
+		}
+	}
+	return false
 }
 
 func fallbackMail(raw []byte, envelopeFrom string) normalizedMail {
