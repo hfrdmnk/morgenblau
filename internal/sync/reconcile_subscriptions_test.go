@@ -16,8 +16,10 @@ import (
 
 // fakeRecordWriter records DeleteRecord calls, the reconcile write exception.
 type fakeRecordWriter struct {
-	mu      sync.Mutex
-	deleted []string // "<collection>/<rkey>"
+	mu       sync.Mutex
+	attempts []string
+	deleted  []string // "<collection>/<rkey>"
+	failures map[string]int
 }
 
 func (f *fakeRecordWriter) CreateRecord(context.Context, *oauth.ClientSession, syntax.NSID, map[string]any) (*atprepo.RecordRef, error) {
@@ -31,6 +33,11 @@ func (f *fakeRecordWriter) PutRecord(context.Context, *oauth.ClientSession, synt
 func (f *fakeRecordWriter) DeleteRecord(_ context.Context, _ *oauth.ClientSession, collection syntax.NSID, rkey string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.attempts = append(f.attempts, collection.String()+"/"+rkey)
+	if f.failures[rkey] > 0 {
+		f.failures[rkey]--
+		return errors.New("temporary PDS failure")
+	}
 	f.deleted = append(f.deleted, collection.String()+"/"+rkey)
 	return nil
 }
@@ -63,11 +70,12 @@ func runStandardReconcile(t *testing.T, store *fakeStore, lister *fakeLister, pd
 	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, pds)
 	var added []string
 	var mu sync.Mutex
+	snapshotAt := eng.now().UTC()
 	snapshot, err := store.ListUserSubscriptionsForSync(context.Background(), "did:plc:alice")
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = eng.reconcileTier1(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice"), snapshot, func(url string) {
+	err = eng.reconcileTier1(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice"), snapshot, snapshotAt, func(url string) {
 		mu.Lock()
 		added = append(added, url)
 		mu.Unlock()
@@ -166,7 +174,7 @@ func TestStandardReconcile_DuplicatesCollapseAndRekeySurvives(t *testing.T) {
 func TestRSSReconcile_RekeyedSubscriptionDeletesBeforeUpsert(t *testing.T) {
 	const feedURL = "https://feed.example.com/a"
 	store := newFakeStore()
-	store.rows["did:plc:alice"] = map[string]db.ListUserSubscriptionsForSyncRow{
+	store.rows["did:plc:alice"] = map[string]db.UserSubscription{
 		"3old": {Did: "did:plc:alice", Rkey: "3old", AtUri: "at://did:plc:alice/blue.morgen.feed.subscription/3old", FeedUrl: feedURL, Kind: "rss"},
 	}
 	lister := &fakeLister{subs: []PDSSubscription{
@@ -249,6 +257,22 @@ func TestStandardReconcile_OrphanedSidecarDeletedFromPDS(t *testing.T) {
 	}
 }
 
+func TestStandardReconcile_SidecarCleanupFailureIsRetried(t *testing.T) {
+	store := newFakeStore()
+	pds := &fakeRecordWriter{failures: map[string]int{"3sc": 1}}
+	lister := &fakeLister{subs: []PDSSubscription{sidecar("3sc", pubA, "Orphan")}}
+
+	runStandardReconcile(t, store, lister, pds)
+	if len(pds.deleted) != 0 || len(pds.attempts) != 1 {
+		t.Fatalf("after first pass, attempts=%v deleted=%v", pds.attempts, pds.deleted)
+	}
+
+	runStandardReconcile(t, store, lister, pds)
+	if len(pds.attempts) != 2 || len(pds.deleted) != 1 {
+		t.Fatalf("after retry, attempts=%v deleted=%v", pds.attempts, pds.deleted)
+	}
+}
+
 func TestStandardReconcile_LiveSidecarNotDeleted(t *testing.T) {
 	store := newFakeStore()
 	pds := &fakeRecordWriter{}
@@ -300,7 +324,7 @@ func TestStandardReconcile_ListErrorAbortsBeforeDeletes(t *testing.T) {
 	snapshot, _ := store.ListUserSubscriptionsForSync(context.Background(), "did:plc:alice")
 
 	lister.standardErr = errors.New("pds down")
-	err := eng.reconcileTier1(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice"), snapshot, func(string) {})
+	err := eng.reconcileTier1(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice"), snapshot, eng.now().UTC(), func(string) {})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -310,7 +334,7 @@ func TestStandardReconcile_ListErrorAbortsBeforeDeletes(t *testing.T) {
 
 	lister.standardErr = nil
 	lister.subsErr = errors.New("pds down")
-	err = eng.reconcileTier1(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice"), snapshot, func(string) {})
+	err = eng.reconcileTier1(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice"), snapshot, eng.now().UTC(), func(string) {})
 	if err == nil {
 		t.Fatal("expected error")
 	}

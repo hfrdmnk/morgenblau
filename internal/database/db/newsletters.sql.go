@@ -161,19 +161,20 @@ func (q *Queries) CreateNewsletterMessage(ctx context.Context, arg CreateNewslet
 
 const createNewsletterReceipt = `-- name: CreateNewsletterReceipt :exec
 INSERT INTO newsletter_receipts (
-    id, did, envelope_from, recipient, received_at, raw_mime, reserved_bytes, created_at
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+    id, did, envelope_from, recipient, recipient_local_part, received_at, raw_mime, reserved_bytes, created_at
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
 `
 
 type CreateNewsletterReceiptParams struct {
-	ID            string `json:"id"`
-	Did           string `json:"did"`
-	EnvelopeFrom  string `json:"envelope_from"`
-	Recipient     string `json:"recipient"`
-	ReceivedAt    string `json:"received_at"`
-	RawMime       []byte `json:"raw_mime"`
-	ReservedBytes int64  `json:"reserved_bytes"`
-	CreatedAt     string `json:"created_at"`
+	ID                 string `json:"id"`
+	Did                string `json:"did"`
+	EnvelopeFrom       string `json:"envelope_from"`
+	Recipient          string `json:"recipient"`
+	RecipientLocalPart string `json:"recipient_local_part"`
+	ReceivedAt         string `json:"received_at"`
+	RawMime            []byte `json:"raw_mime"`
+	ReservedBytes      int64  `json:"reserved_bytes"`
+	CreatedAt          string `json:"created_at"`
 }
 
 func (q *Queries) CreateNewsletterReceipt(ctx context.Context, arg CreateNewsletterReceiptParams) error {
@@ -182,6 +183,7 @@ func (q *Queries) CreateNewsletterReceipt(ctx context.Context, arg CreateNewslet
 		arg.Did,
 		arg.EnvelopeFrom,
 		arg.Recipient,
+		arg.RecipientLocalPart,
 		arg.ReceivedAt,
 		arg.RawMime,
 		arg.ReservedBytes,
@@ -760,9 +762,23 @@ ORDER BY created_at
 LIMIT 1
 `
 
-func (q *Queries) GetNextNewsletterReceipt(ctx context.Context, nextAttemptAt *string) (NewsletterReceipt, error) {
+type GetNextNewsletterReceiptRow struct {
+	ID            string  `json:"id"`
+	Did           string  `json:"did"`
+	EnvelopeFrom  string  `json:"envelope_from"`
+	Recipient     string  `json:"recipient"`
+	ReceivedAt    string  `json:"received_at"`
+	RawMime       []byte  `json:"raw_mime"`
+	ReservedBytes int64   `json:"reserved_bytes"`
+	Attempts      int64   `json:"attempts"`
+	LastError     *string `json:"last_error"`
+	NextAttemptAt *string `json:"next_attempt_at"`
+	CreatedAt     string  `json:"created_at"`
+}
+
+func (q *Queries) GetNextNewsletterReceipt(ctx context.Context, nextAttemptAt *string) (GetNextNewsletterReceiptRow, error) {
 	row := q.db.QueryRowContext(ctx, getNextNewsletterReceipt, nextAttemptAt)
-	var i NewsletterReceipt
+	var i GetNextNewsletterReceiptRow
 	err := row.Scan(
 		&i.ID,
 		&i.Did,

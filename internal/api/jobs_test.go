@@ -16,8 +16,10 @@ import (
 )
 
 type fakeJobSource struct {
-	byID   map[string]*jobs.Job
-	active *jobs.Job
+	byID    map[string]*jobs.Job
+	active  *jobs.Job
+	latest  *jobs.Job
+	latestD syntax.DID
 }
 
 func (f *fakeJobSource) Get(id string, did syntax.DID) (*jobs.Job, error) {
@@ -33,6 +35,41 @@ func (f *fakeJobSource) Get(id string, did syntax.DID) (*jobs.Job, error) {
 
 func (f *fakeJobSource) ActiveForUser(_ syntax.DID) *jobs.Job {
 	return f.active
+}
+
+func (f *fakeJobSource) LatestSyncForUser(did syntax.DID) *jobs.Job {
+	f.latestD = did
+	return f.latest
+}
+
+func TestJobsLatest_ReturnsLatestSyncForSessionUser(t *testing.T) {
+	did, _ := syntax.ParseDID("did:plc:alice")
+	src := &fakeJobSource{latest: &jobs.Job{ID: "sync-1", UserDID: did.String(), Kind: jobs.KindSyncUser, Status: jobs.StatusFailed}}
+	h := JobsLatestHandler(src)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/jobs/latest", nil), did.String(), "sid-1"))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	var got jobs.Job
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != "sync-1" || got.Status != jobs.StatusFailed {
+		t.Errorf("job = %+v", got)
+	}
+	if src.latestD != did {
+		t.Errorf("requested DID = %q, want session DID %q", src.latestD, did)
+	}
+}
+
+func TestJobsLatest_NoSyncReturnsNull(t *testing.T) {
+	rr := httptest.NewRecorder()
+	JobsLatestHandler(&fakeJobSource{}).ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/jobs/latest", nil), "did:plc:alice", "sid-1"))
+	if rr.Code != http.StatusOK || strings.TrimSpace(rr.Body.String()) != "null" {
+		t.Errorf("response = %d %q, want 200 null", rr.Code, rr.Body.String())
+	}
 }
 
 func TestJobsGet_HappyPath(t *testing.T) {

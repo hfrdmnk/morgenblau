@@ -48,7 +48,7 @@ type Querier interface {
 	GetNewsletterSource(ctx context.Context, arg GetNewsletterSourceParams) (NewsletterSource, error)
 	GetNewsletterSourceByKey(ctx context.Context, arg GetNewsletterSourceByKeyParams) (NewsletterSource, error)
 	GetNewsletterSourceWithStats(ctx context.Context, arg GetNewsletterSourceWithStatsParams) (GetNewsletterSourceWithStatsRow, error)
-	GetNextNewsletterReceipt(ctx context.Context, nextAttemptAt *string) (NewsletterReceipt, error)
+	GetNextNewsletterReceipt(ctx context.Context, nextAttemptAt *string) (GetNextNewsletterReceiptRow, error)
 	GetSession(ctx context.Context, arg GetSessionParams) ([]byte, error)
 	GetUserSave(ctx context.Context, arg GetUserSaveParams) (UserSave, error)
 	GetUserSaveByItemURL(ctx context.Context, arg GetUserSaveByItemURLParams) (UserSave, error)
@@ -77,7 +77,7 @@ type Querier interface {
 	ListUserSaves(ctx context.Context, did string) ([]ListUserSavesRow, error)
 	// Snapshot of a user's local save index, used by sync_user to diff against the
 	// PDS and reconcile inserts/deletes.
-	ListUserSavesForSync(ctx context.Context, did string) ([]ListUserSavesForSyncRow, error)
+	ListUserSavesForSync(ctx context.Context, did string) ([]UserSave, error)
 	// One row per subscription with feed metadata and windowed entry stats. The
 	// four window cutoffs (7d, 28d, 56d, 84d as ISO timestamps) and "now" are
 	// passed in by the handler so all rows share a single clock.
@@ -86,7 +86,7 @@ type Querier interface {
 	// deterministic across a tag case-collision.
 	ListUserSubscriptionTags(ctx context.Context, did string) ([]*string, error)
 	ListUserSubscriptions(ctx context.Context, did string) ([]UserSubscription, error)
-	ListUserSubscriptionsForSync(ctx context.Context, did string) ([]ListUserSubscriptionsForSyncRow, error)
+	ListUserSubscriptionsForSync(ctx context.Context, did string) ([]UserSubscription, error)
 	// Sibling-guard read: every subscription with its catalog site_url so the
 	// resolve handler can flag candidates that point at the same site under the
 	// other kind (rss vs standardfeed).

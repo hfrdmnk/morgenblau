@@ -5,23 +5,28 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 // coreRow stands in for any collection's snapshot row, so these tests exercise the diff and not a schema.
 type coreRow struct {
 	rkey      string
 	createdAt string
+	updatedAt string
 }
 
 // coreHarness builds a reconcilePass over coreRow and logs every statement the core issues, in order.
 type coreHarness struct {
-	local       []coreRow
-	desiredKeys []string
-	guarded     bool
-	deleteFirst bool
-	snapshotErr error
-	upsertFail  map[string]error
-	deleteFail  map[string]error
+	local        []coreRow
+	baseline     []coreRow
+	desiredKeys  []string
+	guarded      bool
+	updatedGuard bool
+	changedGuard bool
+	deleteFirst  bool
+	snapshotErr  error
+	upsertFail   map[string]error
+	deleteFail   map[string]error
 
 	ops []string
 	// store is what the tx handed the pass closures; the core must never reach past them to a store of its own.
@@ -49,6 +54,18 @@ func (h *coreHarness) pass() reconcilePass[coreRow] {
 	}
 	if h.guarded {
 		p.createdAtOf = func(r coreRow) string { return r.createdAt }
+	}
+	if h.updatedGuard {
+		p.updatedAtOf = func(r coreRow) string { return r.updatedAt }
+	}
+	if h.updatedGuard || h.changedGuard {
+		p.guardLocalChanges = true
+		p.baseline = h.baseline
+	}
+	if h.changedGuard {
+		p.changedSinceSnapshot = func(current, baseline coreRow) bool {
+			return current.updatedAt != baseline.updatedAt
+		}
 	}
 	for _, k := range h.desiredKeys {
 		p.desired = append(p.desired, desiredRow{
@@ -170,6 +187,36 @@ func TestReconcileCollection_GuardSparesRowsNewerThanTheSnapshot(t *testing.T) {
 	}
 }
 
+func TestReconcileCollection_SparesLocalSubscriptionUpdatedAfterSnapshot(t *testing.T) {
+	h := &coreHarness{
+		updatedGuard: true,
+		local:        []coreRow{{rkey: "a", updatedAt: "2026-07-20T12:00:01Z"}},
+		baseline:     []coreRow{{rkey: "a", updatedAt: "2026-07-20T11:59:59Z"}},
+		desiredKeys:  []string{"a"},
+	}
+	tx := &txSpy{}
+
+	if err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
+		t.Fatal(err)
+	}
+	assertOps(t, h.ops)
+}
+
+func TestReconcileCollection_SparesLocalSubscriptionUpdatedInSnapshotSecond(t *testing.T) {
+	h := &coreHarness{
+		changedGuard: true,
+		local:        []coreRow{{rkey: "a", updatedAt: guardSnapshotAt.Format(time.RFC3339)}},
+		baseline:     []coreRow{{rkey: "a", updatedAt: "2026-07-20T11:59:59Z"}},
+		desiredKeys:  []string{"a"},
+	}
+	tx := &txSpy{}
+
+	if err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
+		t.Fatal(err)
+	}
+	assertOps(t, h.ops)
+}
+
 // A pass whose snapshot query carries no created_at leaves createdAtOf nil and deletes on absence alone.
 func TestReconcileCollection_WithoutCreatedAtOf_DeletesUnguarded(t *testing.T) {
 	h := &coreHarness{local: []coreRow{{rkey: "a", createdAt: "2026-07-20T12:00:01Z"}}}
@@ -181,7 +228,7 @@ func TestReconcileCollection_WithoutCreatedAtOf_DeletesUnguarded(t *testing.T) {
 	assertOps(t, h.ops, "delete:a")
 }
 
-func TestReconcileCollection_PerStatementErrorsAreTolerated(t *testing.T) {
+func TestReconcileCollection_PerStatementErrorsFailThePass(t *testing.T) {
 	h := &coreHarness{
 		local:       []coreRow{{rkey: "a"}, {rkey: "b"}},
 		desiredKeys: []string{"c", "d"},
@@ -190,12 +237,12 @@ func TestReconcileCollection_PerStatementErrorsAreTolerated(t *testing.T) {
 	}
 	tx := &txSpy{}
 
-	if err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
-		t.Fatalf("a failing statement must not fail the pass: %v", err)
+	if err := reconcileCollection(context.Background(), tx.run, h.pass()); err == nil {
+		t.Fatal("reconcile returned nil despite a failed local write")
 	}
-	assertOpSet(t, h.ops, "upsert:c", "upsert:d", "delete:a", "delete:b")
-	if tx.inner != nil {
-		t.Errorf("tx closure returned %v, want nil so the batch commits", tx.inner)
+	assertOps(t, h.ops, "upsert:c")
+	if tx.inner == nil {
+		t.Error("tx closure returned nil; the batch would commit despite the failed write")
 	}
 }
 

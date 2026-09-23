@@ -17,14 +17,18 @@ import (
 
 type fakeStore struct {
 	mu               sync.Mutex
-	rows             map[string]map[string]db.ListUserSubscriptionsForSyncRow // did -> rkey -> row
+	rows             map[string]map[string]db.UserSubscription // did -> rkey -> row
 	deletes          []string
 	upserts          int
 	upsertParams     map[string]db.UpsertUserSubscriptionParams // rkey -> last params
 	feedUps          int
 	feedParams       []db.UpsertFeedParams
 	feedErr          func(feedURL string) error
-	saves            map[string]map[string]db.ListUserSavesForSyncRow // did -> rkey -> row
+	subUpsertErr     error
+	subDeleteErr     error
+	saveUpsertErr    error
+	saveDeleteErr    error
+	saves            map[string]map[string]db.UserSave // did -> rkey -> row
 	saveDeletes      []string
 	saveUpserts      int
 	saveUpsertParams map[string]db.UpsertUserSaveParams // rkey -> last params
@@ -34,9 +38,9 @@ type fakeStore struct {
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		rows:             map[string]map[string]db.ListUserSubscriptionsForSyncRow{},
+		rows:             map[string]map[string]db.UserSubscription{},
 		upsertParams:     map[string]db.UpsertUserSubscriptionParams{},
-		saves:            map[string]map[string]db.ListUserSavesForSyncRow{},
+		saves:            map[string]map[string]db.UserSave{},
 		saveUpsertParams: map[string]db.UpsertUserSaveParams{},
 	}
 }
@@ -57,10 +61,10 @@ func (s *fakeStore) assertDeleteBeforeUpsert(t *testing.T, delRkey, upRkey strin
 	}
 }
 
-func (s *fakeStore) ListUserSavesForSync(_ context.Context, did string) ([]db.ListUserSavesForSyncRow, error) {
+func (s *fakeStore) ListUserSavesForSync(_ context.Context, did string) ([]db.UserSave, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows := make([]db.ListUserSavesForSyncRow, 0, len(s.saves[did]))
+	rows := make([]db.UserSave, 0, len(s.saves[did]))
 	for _, r := range s.saves[did] {
 		rows = append(rows, r)
 	}
@@ -72,33 +76,41 @@ func (s *fakeStore) UpsertUserSave(_ context.Context, arg db.UpsertUserSaveParam
 	defer s.mu.Unlock()
 	s.saveUpserts++
 	s.saveUpsertParams[arg.Rkey] = arg
+	if s.saveUpsertErr != nil {
+		return s.saveUpsertErr
+	}
 	if _, ok := s.saves[arg.Did]; !ok {
-		s.saves[arg.Did] = map[string]db.ListUserSavesForSyncRow{}
+		s.saves[arg.Did] = map[string]db.UserSave{}
 	}
-	s.saves[arg.Did][arg.Rkey] = db.ListUserSavesForSyncRow{
-		Did:     arg.Did,
-		Rkey:    arg.Rkey,
-		AtUri:   arg.AtUri,
-		ItemUrl: arg.ItemUrl,
-		FeedUrl: arg.FeedUrl,
+	s.saves[arg.Did][arg.Rkey] = db.UserSave{
+		Did:       arg.Did,
+		Rkey:      arg.Rkey,
+		AtUri:     arg.AtUri,
+		ItemUrl:   arg.ItemUrl,
+		FeedUrl:   arg.FeedUrl,
+		CreatedAt: arg.CreatedAt,
+		UpdatedAt: arg.UpdatedAt,
 	}
-	return nil
+	return s.saveUpsertErr
 }
 
 func (s *fakeStore) DeleteUserSave(_ context.Context, arg db.DeleteUserSaveParams) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.saveDeletes = append(s.saveDeletes, arg.Rkey)
+	if s.saveDeleteErr != nil {
+		return s.saveDeleteErr
+	}
 	if m, ok := s.saves[arg.Did]; ok {
 		delete(m, arg.Rkey)
 	}
-	return nil
+	return s.saveDeleteErr
 }
 
-func (s *fakeStore) ListUserSubscriptionsForSync(_ context.Context, did string) ([]db.ListUserSubscriptionsForSyncRow, error) {
+func (s *fakeStore) ListUserSubscriptionsForSync(_ context.Context, did string) ([]db.UserSubscription, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows := make([]db.ListUserSubscriptionsForSyncRow, 0, len(s.rows[did]))
+	rows := make([]db.UserSubscription, 0, len(s.rows[did]))
 	for _, r := range s.rows[did] {
 		rows = append(rows, r)
 	}
@@ -111,14 +123,17 @@ func (s *fakeStore) UpsertUserSubscription(_ context.Context, arg db.UpsertUserS
 	s.ops = append(s.ops, "upsert:"+arg.Rkey)
 	s.upserts++
 	s.upsertParams[arg.Rkey] = arg
+	if s.subUpsertErr != nil {
+		return s.subUpsertErr
+	}
 	if _, ok := s.rows[arg.Did]; !ok {
-		s.rows[arg.Did] = map[string]db.ListUserSubscriptionsForSyncRow{}
+		s.rows[arg.Did] = map[string]db.UserSubscription{}
 	}
 	kind := "rss"
 	if k, ok := arg.Kind.(string); ok && k != "" {
 		kind = k
 	}
-	s.rows[arg.Did][arg.Rkey] = db.ListUserSubscriptionsForSyncRow{
+	s.rows[arg.Did][arg.Rkey] = db.UserSubscription{
 		Did:         arg.Did,
 		Rkey:        arg.Rkey,
 		AtUri:       arg.AtUri,
@@ -126,8 +141,12 @@ func (s *fakeStore) UpsertUserSubscription(_ context.Context, arg db.UpsertUserS
 		Kind:        kind,
 		SidecarRkey: arg.SidecarRkey,
 		Title:       arg.Title,
+		IsPrimary:   arg.IsPrimary,
+		Tags:        arg.Tags,
+		CreatedAt:   arg.CreatedAt,
+		UpdatedAt:   arg.UpdatedAt,
 	}
-	return nil
+	return s.subUpsertErr
 }
 
 func (s *fakeStore) DeleteUserSubscription(_ context.Context, arg db.DeleteUserSubscriptionParams) error {
@@ -135,10 +154,13 @@ func (s *fakeStore) DeleteUserSubscription(_ context.Context, arg db.DeleteUserS
 	defer s.mu.Unlock()
 	s.ops = append(s.ops, "delete:"+arg.Rkey)
 	s.deletes = append(s.deletes, arg.Rkey)
+	if s.subDeleteErr != nil {
+		return s.subDeleteErr
+	}
 	if m, ok := s.rows[arg.Did]; ok {
 		delete(m, arg.Rkey)
 	}
-	return nil
+	return s.subDeleteErr
 }
 
 func (s *fakeStore) UpsertFeed(_ context.Context, arg db.UpsertFeedParams) error {
@@ -159,7 +181,10 @@ type fakeLister struct {
 	delay         time.Duration
 	subs          []PDSSubscription
 	subsErr       error
+	beforeSubs    func()
 	saves         []PDSSave
+	savesErr      error
+	beforeSaves   func()
 	standardSubs  []PDSStandardSubscription
 	standardErr   error
 	savesCalls    atomic.Int32
@@ -171,12 +196,18 @@ func (f *fakeLister) ListSubscriptions(_ context.Context, _ *oauth.ClientSession
 	if f.delay > 0 {
 		time.Sleep(f.delay)
 	}
+	if f.beforeSubs != nil {
+		f.beforeSubs()
+	}
 	return f.subs, f.subsErr
 }
 
 func (f *fakeLister) ListSaves(_ context.Context, _ *oauth.ClientSession) ([]PDSSave, error) {
 	f.savesCalls.Add(1)
-	return f.saves, nil
+	if f.beforeSaves != nil {
+		f.beforeSaves()
+	}
+	return f.saves, f.savesErr
 }
 
 func (f *fakeLister) ListStandardSubscriptions(_ context.Context, _ *oauth.ClientSession) ([]PDSStandardSubscription, error) {
@@ -234,7 +265,7 @@ func TestSyncUser_ReconcilesOnlyRetainedCollections(t *testing.T) {
 
 func TestSyncUser_ReconcileApplies_InsertsAndDeletes(t *testing.T) {
 	store := newFakeStore()
-	store.rows["did:plc:alice"] = map[string]db.ListUserSubscriptionsForSyncRow{
+	store.rows["did:plc:alice"] = map[string]db.UserSubscription{
 		"oldA": {Did: "did:plc:alice", Rkey: "oldA", AtUri: "at://x/a/oldA", FeedUrl: "https://feed/old"},
 	}
 	lister := &fakeLister{subs: []PDSSubscription{
@@ -286,7 +317,7 @@ func TestSyncUser_DualTrackParallelism(t *testing.T) {
 	const delay = 80 * time.Millisecond
 
 	store := newFakeStore()
-	store.rows["did:plc:alice"] = map[string]db.ListUserSubscriptionsForSyncRow{
+	store.rows["did:plc:alice"] = map[string]db.UserSubscription{
 		"k1": {Did: "did:plc:alice", Rkey: "k1", AtUri: "at://x/a/k1", FeedUrl: "https://existing"},
 	}
 	lister := &fakeLister{delay: delay, subs: []PDSSubscription{
@@ -307,7 +338,7 @@ func TestSyncUser_DualTrackParallelism(t *testing.T) {
 
 func TestSyncUser_Phase2FetchesOnlyNewURLs(t *testing.T) {
 	store := newFakeStore()
-	store.rows["did:plc:alice"] = map[string]db.ListUserSubscriptionsForSyncRow{
+	store.rows["did:plc:alice"] = map[string]db.UserSubscription{
 		"k1": {Did: "did:plc:alice", Rkey: "k1", AtUri: "at://x/a/k1", FeedUrl: "https://old"},
 	}
 	lister := &fakeLister{subs: []PDSSubscription{
@@ -335,6 +366,82 @@ func TestSyncUser_Phase2FetchesOnlyNewURLs(t *testing.T) {
 	}
 }
 
+func TestSyncUser_FailsWhenSubscriptionMirrorDoesNotReconcile(t *testing.T) {
+	store := newFakeStore()
+	store.subUpsertErr = errors.New("subscription write failed")
+	lister := &fakeLister{subs: []PDSSubscription{{URI: "at://did:plc:alice/blue.morgen.feed.subscription/3sub", Kind: "rss", Rkey: "3sub", FeedURL: "https://example.com/feed"}}}
+	tracker := jobs.New()
+	eng := NewEngine(tracker, store, lister, &countingFetcher{}, &nopResumer{}, nil)
+	did := mustDID("did:plc:alice")
+	id, err := eng.SyncUser(context.Background(), did, "sid-1", jobs.TriggerManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := waitForTerminalJob(t, tracker, id, did)
+	if job.Status != jobs.StatusFailed {
+		t.Fatalf("status = %q, want failed after a subscription write error", job.Status)
+	}
+}
+
+func TestSyncUser_FailsWhenSaveMirrorDoesNotReconcile(t *testing.T) {
+	store := newFakeStore()
+	store.saveUpsertErr = errors.New("save write failed")
+	lister := &fakeLister{saves: []PDSSave{{URI: "at://did:plc:alice/blue.morgen.feed.save/3save", Rkey: "3save", ItemURL: "https://example.com/post", CreatedAt: "2026-07-20T12:00:00Z"}}}
+	tracker := jobs.New()
+	eng := NewEngine(tracker, store, lister, &countingFetcher{}, &nopResumer{}, nil)
+	did := mustDID("did:plc:alice")
+	id, err := eng.SyncUser(context.Background(), did, "sid-1", jobs.TriggerManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := waitForTerminalJob(t, tracker, id, did)
+	if job.Status != jobs.StatusFailed {
+		t.Fatalf("status = %q, want failed after a save write error", job.Status)
+	}
+}
+
+type failingFetcher struct{ err error }
+
+func (f failingFetcher) FetchAndStore(context.Context, string) error { return f.err }
+
+func TestSyncUser_FetchFailureDoesNotFailReconciliation(t *testing.T) {
+	store := newFakeStore()
+	store.rows["did:plc:alice"] = map[string]db.UserSubscription{
+		"3sub": {Did: "did:plc:alice", Rkey: "3sub", AtUri: "at://did:plc:alice/blue.morgen.feed.subscription/3sub", FeedUrl: "https://example.com/feed", Kind: "rss"},
+	}
+	lister := &fakeLister{subs: []PDSSubscription{{URI: "at://did:plc:alice/blue.morgen.feed.subscription/3sub", Kind: "rss", Rkey: "3sub", FeedURL: "https://example.com/feed"}}}
+	tracker := jobs.New()
+	eng := NewEngine(tracker, store, lister, failingFetcher{err: errors.New("upstream unavailable")}, &nopResumer{}, nil)
+	did := mustDID("did:plc:alice")
+	id, err := eng.SyncUser(context.Background(), did, "sid-1", jobs.TriggerManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := waitForTerminalJob(t, tracker, id, did)
+	if job.Status != jobs.StatusDone {
+		t.Fatalf("status = %q, want done when only fetch failed", job.Status)
+	}
+}
+
+func waitForTerminalJob(t *testing.T, tracker *jobs.Tracker, id string, did syntax.DID) *jobs.Job {
+	t.Helper()
+	deadline := time.After(time.Second)
+	for {
+		job, err := tracker.Get(id, did)
+		if err != nil {
+			t.Fatalf("load job: %v", err)
+		}
+		if job.Status == jobs.StatusDone || job.Status == jobs.StatusFailed {
+			return job
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("job did not finish: %+v", job)
+		case <-time.After(time.Millisecond):
+		}
+	}
+}
+
 func TestSyncUser_FK_NotCalledOnTier2Failure(t *testing.T) {
 	// A fetch on Tier-2 UpsertFeed failure would silently violate the feed_entries.feed_url FK.
 	store := newFakeStore()
@@ -349,8 +456,11 @@ func TestSyncUser_FK_NotCalledOnTier2Failure(t *testing.T) {
 	}}
 	fetcher := &countingFetcher{}
 	eng := NewEngine(jobs.New(), store, lister, fetcher, nil, nil)
-	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
-		t.Fatal(err)
+	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err == nil {
+		t.Fatal("expected Tier-2 failure to fail reconciliation")
+	}
+	if store.upserts != 0 {
+		t.Errorf("Tier-1 upserts = %d, want none after Tier-2 failure", store.upserts)
 	}
 
 	for _, u := range fetcher.seen() {
@@ -372,6 +482,159 @@ func TestSyncUser_InFlightGuard_Coalesces(t *testing.T) {
 	id2, _ := eng.SyncUser(context.Background(), did, "sid-1", jobs.TriggerLogin)
 	if id1 != id2 {
 		t.Errorf("guard didn't coalesce: id1=%s id2=%s", id1, id2)
+	}
+}
+
+type blockingPDSLister struct {
+	calls         atomic.Int32
+	firstStarted  chan struct{}
+	firstContinue chan struct{}
+	secondStarted chan struct{}
+	secondWait    chan struct{}
+}
+
+func (l *blockingPDSLister) ListSubscriptions(context.Context, *oauth.ClientSession) ([]PDSSubscription, error) {
+	switch l.calls.Add(1) {
+	case 1:
+		close(l.firstStarted)
+		<-l.firstContinue
+	case 2:
+		close(l.secondStarted)
+		<-l.secondWait
+	}
+	return nil, nil
+}
+
+func (*blockingPDSLister) ListStandardSubscriptions(context.Context, *oauth.ClientSession) ([]PDSStandardSubscription, error) {
+	return nil, nil
+}
+
+func (*blockingPDSLister) ListSaves(context.Context, *oauth.ClientSession) ([]PDSSave, error) {
+	return nil, nil
+}
+
+type sessionIDResumer struct{ sessions chan string }
+
+func (r *sessionIDResumer) ResumeSession(_ context.Context, did syntax.DID, sessionID string) (*oauth.ClientSession, error) {
+	r.sessions <- sessionID
+	return &oauth.ClientSession{Data: &oauth.ClientSessionData{AccountDID: did, SessionID: sessionID}}, nil
+}
+
+func TestSyncUser_ManualRefreshDuringAutomaticRunWaitsForLaterPass(t *testing.T) {
+	lister := &blockingPDSLister{
+		firstStarted:  make(chan struct{}),
+		firstContinue: make(chan struct{}),
+		secondStarted: make(chan struct{}),
+		secondWait:    make(chan struct{}),
+	}
+	tracker := jobs.New()
+	eng := NewEngine(tracker, newFakeStore(), lister, &countingFetcher{}, &nopResumer{}, nil)
+	did := mustDID("did:plc:alice")
+
+	id, err := eng.SyncUser(context.Background(), did, "sid-1", jobs.TriggerLogin)
+	if err != nil {
+		t.Fatalf("start login sync: %v", err)
+	}
+	select {
+	case <-lister.firstStarted:
+	case <-time.After(time.Second):
+		t.Fatal("first PDS pass did not start")
+	}
+
+	manualID, err := eng.SyncUser(context.Background(), did, "sid-1", jobs.TriggerManual)
+	if err != nil {
+		t.Fatalf("start manual sync: %v", err)
+	}
+	if manualID != id {
+		t.Fatalf("manual job id = %q, want coalesced id %q", manualID, id)
+	}
+	close(lister.firstContinue)
+
+	select {
+	case <-lister.secondStarted:
+	case <-time.After(time.Second):
+		t.Fatal("manual request completed without a later PDS pass")
+	}
+	if job, err := tracker.Get(id, did); err != nil || job.Status == jobs.StatusDone || job.Status == jobs.StatusFailed {
+		t.Fatalf("job completed before the later pass: job=%+v err=%v", job, err)
+	}
+	close(lister.secondWait)
+
+	deadline := time.After(time.Second)
+	for {
+		job, err := tracker.Get(id, did)
+		if err != nil {
+			t.Fatalf("load job: %v", err)
+		}
+		if job.Status == jobs.StatusDone {
+			break
+		}
+		if job.Status == jobs.StatusFailed {
+			t.Fatalf("job failed after successful later pass: %+v", job)
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("job did not finish: %+v", job)
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if got := lister.calls.Load(); got != 2 {
+		t.Errorf("PDS passes = %d, want 2", got)
+	}
+}
+
+func TestSyncUser_NewSessionDuringAutomaticRunUsesLatestSessionOnLaterPass(t *testing.T) {
+	lister := &blockingPDSLister{
+		firstStarted:  make(chan struct{}),
+		firstContinue: make(chan struct{}),
+		secondStarted: make(chan struct{}),
+		secondWait:    make(chan struct{}),
+	}
+	resumer := &sessionIDResumer{sessions: make(chan string, 2)}
+	tracker := jobs.New()
+	eng := NewEngine(tracker, newFakeStore(), lister, &countingFetcher{}, resumer, nil)
+	did := mustDID("did:plc:alice")
+
+	id, err := eng.SyncUser(context.Background(), did, "sid-old", jobs.TriggerLogin)
+	if err != nil {
+		t.Fatalf("start first login sync: %v", err)
+	}
+	select {
+	case <-lister.firstStarted:
+	case <-time.After(time.Second):
+		t.Fatal("first PDS pass did not start")
+	}
+	if got := <-resumer.sessions; got != "sid-old" {
+		t.Fatalf("first session ID = %q, want sid-old", got)
+	}
+
+	coalescedID, err := eng.SyncUser(context.Background(), did, "sid-new", jobs.TriggerLogin)
+	if err != nil {
+		t.Fatalf("start second login sync: %v", err)
+	}
+	if coalescedID != id {
+		t.Fatalf("coalesced job id = %q, want %q", coalescedID, id)
+	}
+	close(lister.firstContinue)
+
+	select {
+	case <-lister.secondStarted:
+	case <-time.After(time.Second):
+		t.Fatal("new session did not queue a later PDS pass")
+	}
+	select {
+	case got := <-resumer.sessions:
+		if got != "sid-new" {
+			t.Fatalf("later pass session ID = %q, want sid-new", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("later pass did not resume a session")
+	}
+	close(lister.secondWait)
+
+	job := waitForTerminalJob(t, tracker, id, did)
+	if job.Status != jobs.StatusDone {
+		t.Fatalf("job status = %q, want done", job.Status)
 	}
 }
 

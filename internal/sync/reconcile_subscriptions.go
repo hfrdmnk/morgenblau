@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -17,7 +18,8 @@ func (e *Engine) reconcileTier1(
 	ctx context.Context,
 	did syntax.DID,
 	sess *oauth.ClientSession,
-	snapshot []db.ListUserSubscriptionsForSyncRow,
+	snapshot []db.UserSubscription,
+	snapshotAt time.Time,
 	onAdded func(feedURL string),
 ) error {
 	// Both lists are fetched before any mutation, so a failed listing can't leave deletes running against a partial snapshot.
@@ -29,18 +31,19 @@ func (e *Engine) reconcileTier1(
 	if err != nil {
 		return err
 	}
-	e.reconcileRSS(ctx, did, snapshot, remote, onAdded)
-	e.reconcileStandardfeed(ctx, did, sess, snapshot, remote, standard, onAdded)
-	return nil
+	rssErr := e.reconcileRSS(ctx, did, snapshot, snapshotAt, remote, onAdded)
+	standardErr := e.reconcileStandardfeed(ctx, did, sess, snapshot, snapshotAt, remote, standard, onAdded)
+	return errors.Join(rssErr, standardErr)
 }
 
 func (e *Engine) reconcileRSS(
 	ctx context.Context,
 	did syntax.DID,
-	snapshot []db.ListUserSubscriptionsForSyncRow,
+	snapshot []db.UserSubscription,
+	snapshotAt time.Time,
 	remote []PDSSubscription,
 	onAdded func(feedURL string),
-) {
+) error {
 	// This pass only touches kind=rss rows; standardfeed rows belong to reconcileStandardfeed and must never be deleted here.
 	local := filterSubscriptions(snapshot, isRSS)
 	localByRkey := rkeySet(local)
@@ -84,21 +87,25 @@ func (e *Engine) reconcileRSS(
 		})
 	}
 
-	if err := reconcileCollection(ctx, e.runTx, reconcilePass[db.ListUserSubscriptionsForSyncRow]{
-		collection: "subscriptions.rss",
-		snapshot: func(context.Context, SyncStore) ([]db.ListUserSubscriptionsForSyncRow, error) {
-			return local, nil
+	return reconcileCollection(ctx, e.runTx, reconcilePass[db.UserSubscription]{
+		collection:           "subscriptions.rss",
+		snapshotAt:           snapshotAt,
+		baseline:             local,
+		guardLocalChanges:    true,
+		updatedAtOf:          func(row db.UserSubscription) string { return row.UpdatedAt },
+		changedSinceSnapshot: subscriptionChangedSinceSnapshot,
+		snapshot: func(ctx context.Context, q SyncStore) ([]db.UserSubscription, error) {
+			rows, err := q.ListUserSubscriptionsForSync(ctx, didStr)
+			return filterSubscriptions(rows, isRSS), err
 		},
-		rkeyOf:  func(row db.ListUserSubscriptionsForSyncRow) string { return row.Rkey },
+		rkeyOf:  func(row db.UserSubscription) string { return row.Rkey },
 		desired: desired,
 		deleteRow: func(ctx context.Context, q SyncStore, rkey string) error {
 			return q.DeleteUserSubscription(ctx, db.DeleteUserSubscriptionParams{Did: didStr, Rkey: rkey})
 		},
 		// A subscription delete+recreated on the PDS keeps its feed URL, so the stale row must vacate before the new rkey upserts or UNIQUE(did, feed_url) rejects it.
 		deleteFirst: true,
-	}); err != nil {
-		slog.Warn("reconcile: rss tx failed", "did", didStr, "err", err)
-	}
+	})
 }
 
 // reconcileStandardfeed applies the publication-source model (SPEC <sync-architecture>).
@@ -106,11 +113,12 @@ func (e *Engine) reconcileStandardfeed(
 	ctx context.Context,
 	did syntax.DID,
 	sess *oauth.ClientSession,
-	snapshot []db.ListUserSubscriptionsForSyncRow,
+	snapshot []db.UserSubscription,
+	snapshotAt time.Time,
 	morgen []PDSSubscription,
 	standard []PDSStandardSubscription,
 	onAdded func(feedURL string),
-) {
+) error {
 	local := filterSubscriptions(snapshot, isStandardfeed)
 	localByRkey := rkeySet(local)
 
@@ -166,19 +174,26 @@ func (e *Engine) reconcileStandardfeed(
 		})
 	}
 
-	if err := reconcileCollection(ctx, e.runTx, reconcilePass[db.ListUserSubscriptionsForSyncRow]{
-		collection: "subscriptions.standardfeed",
-		snapshot: func(context.Context, SyncStore) ([]db.ListUserSubscriptionsForSyncRow, error) {
-			return local, nil
+	err := reconcileCollection(ctx, e.runTx, reconcilePass[db.UserSubscription]{
+		collection:           "subscriptions.standardfeed",
+		snapshotAt:           snapshotAt,
+		baseline:             local,
+		guardLocalChanges:    true,
+		updatedAtOf:          func(row db.UserSubscription) string { return row.UpdatedAt },
+		changedSinceSnapshot: subscriptionChangedSinceSnapshot,
+		snapshot: func(ctx context.Context, q SyncStore) ([]db.UserSubscription, error) {
+			rows, err := q.ListUserSubscriptionsForSync(ctx, didStr)
+			return filterSubscriptions(rows, isStandardfeed), err
 		},
-		rkeyOf:  func(row db.ListUserSubscriptionsForSyncRow) string { return row.Rkey },
+		rkeyOf:  func(row db.UserSubscription) string { return row.Rkey },
 		desired: desired,
 		deleteRow: func(ctx context.Context, q SyncStore, rkey string) error {
 			return q.DeleteUserSubscription(ctx, db.DeleteUserSubscriptionParams{Did: didStr, Rkey: rkey})
 		},
 		// A canonical-rkey change (duplicate collapse, delete+recreate elsewhere) would trip UNIQUE(did, feed_url) if the new upsert ran before the stale row was gone.
 		deleteFirst: true,
-	}); err != nil {
+	})
+	if err != nil {
 		slog.Warn("reconcile: standardfeed tx failed", "did", didStr, "err", err)
 	}
 
@@ -190,6 +205,7 @@ func (e *Engine) reconcileStandardfeed(
 		func(rkey string, err error) {
 			slog.Warn("reconcile: sidecar cleanup failed", "rkey", rkey, "err", err)
 		})
+	return err
 }
 
 // tier2ThenTier1 upserts the catalog row before the subscription: the FK from feed_entries.feed_url requires it,
@@ -206,7 +222,7 @@ func tier2ThenTier1(feed db.UpsertFeedParams, sub db.UpsertUserSubscriptionParam
 	}
 }
 
-func rkeySet(rows []db.ListUserSubscriptionsForSyncRow) map[string]struct{} {
+func rkeySet(rows []db.UserSubscription) map[string]struct{} {
 	set := make(map[string]struct{}, len(rows))
 	for _, row := range rows {
 		set[row.Rkey] = struct{}{}
@@ -214,9 +230,23 @@ func rkeySet(rows []db.ListUserSubscriptionsForSyncRow) map[string]struct{} {
 	return set
 }
 
-// filterSubscriptions splits the caller's Tier-1 snapshot, read once before the PDS listing on purpose: that ordering is these passes' in-flight-write guard, so never re-read it inside the tx.
-func filterSubscriptions(snapshot []db.ListUserSubscriptionsForSyncRow, keep func(db.ListUserSubscriptionsForSyncRow) bool) []db.ListUserSubscriptionsForSyncRow {
-	out := make([]db.ListUserSubscriptionsForSyncRow, 0, len(snapshot))
+func subscriptionChangedSinceSnapshot(current, baseline db.UserSubscription) bool {
+	return current.AtUri != baseline.AtUri || current.FeedUrl != baseline.FeedUrl || current.Kind != baseline.Kind ||
+		current.IsPrimary != baseline.IsPrimary || current.CreatedAt != baseline.CreatedAt || current.UpdatedAt != baseline.UpdatedAt ||
+		optionalStringChanged(current.SidecarRkey, baseline.SidecarRkey) || optionalStringChanged(current.Title, baseline.Title) ||
+		optionalStringChanged(current.Tags, baseline.Tags)
+}
+
+func optionalStringChanged(current, baseline *string) bool {
+	if current == nil || baseline == nil {
+		return current != baseline
+	}
+	return *current != *baseline
+}
+
+// filterSubscriptions keeps the RSS and Standardfeed passes separate when comparing pre-list and in-transaction rows.
+func filterSubscriptions(snapshot []db.UserSubscription, keep func(db.UserSubscription) bool) []db.UserSubscription {
+	out := make([]db.UserSubscription, 0, len(snapshot))
 	for _, row := range snapshot {
 		if keep(row) {
 			out = append(out, row)
@@ -225,7 +255,7 @@ func filterSubscriptions(snapshot []db.ListUserSubscriptionsForSyncRow, keep fun
 	return out
 }
 
-func isStandardfeed(row db.ListUserSubscriptionsForSyncRow) bool { return row.Kind == "standardfeed" }
+func isStandardfeed(row db.UserSubscription) bool { return row.Kind == "standardfeed" }
 
 // A row whose kind predates the column reads as rss, so the rss pass claims everything the standardfeed pass does not.
-func isRSS(row db.ListUserSubscriptionsForSyncRow) bool { return !isStandardfeed(row) }
+func isRSS(row db.UserSubscription) bool { return !isStandardfeed(row) }

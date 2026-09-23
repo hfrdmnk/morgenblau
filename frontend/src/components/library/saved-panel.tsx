@@ -16,7 +16,6 @@ import {
 } from '@/lib/library';
 import {
     readSavedCache,
-    writeCachedSaves,
     writeSavedCache,
 } from '@/lib/library-cache';
 
@@ -41,7 +40,6 @@ export function SavedPanel() {
     });
 
     useEffect(() => {
-        if (readSavedCache()) return;
         let cancelled = false;
         const load = async () => {
             try {
@@ -50,7 +48,11 @@ export function SavedPanel() {
                 setState({ kind: 'ok', saves });
                 writeSavedCache(saves);
             } catch {
-                if (!cancelled) setState({ kind: 'error' });
+                if (!cancelled) {
+                    setState((current) =>
+                        current.kind === 'ok' ? current : { kind: 'error' },
+                    );
+                }
             }
         };
         load();
@@ -58,11 +60,6 @@ export function SavedPanel() {
             cancelled = true;
         };
     }, []);
-
-    // Write-through keeps the cache in sync with in-place list edits without owning state itself.
-    useEffect(() => {
-        if (state.kind === 'ok') writeCachedSaves(state.saves);
-    }, [state]);
 
     const items = state.kind === 'ok' ? state.saves : EMPTY_SAVES;
 

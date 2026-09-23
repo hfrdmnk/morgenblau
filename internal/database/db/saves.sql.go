@@ -142,29 +142,20 @@ func (q *Queries) ListUserSaves(ctx context.Context, did string) ([]ListUserSave
 }
 
 const listUserSavesForSync = `-- name: ListUserSavesForSync :many
-SELECT did, rkey, at_uri, item_url, feed_url, created_at FROM user_saves WHERE did = ?
+SELECT did, rkey, at_uri, item_url, feed_url, created_at, updated_at FROM user_saves WHERE did = ?
 `
-
-type ListUserSavesForSyncRow struct {
-	Did       string  `json:"did"`
-	Rkey      string  `json:"rkey"`
-	AtUri     string  `json:"at_uri"`
-	ItemUrl   string  `json:"item_url"`
-	FeedUrl   *string `json:"feed_url"`
-	CreatedAt string  `json:"created_at"`
-}
 
 // Snapshot of a user's local save index, used by sync_user to diff against the
 // PDS and reconcile inserts/deletes.
-func (q *Queries) ListUserSavesForSync(ctx context.Context, did string) ([]ListUserSavesForSyncRow, error) {
+func (q *Queries) ListUserSavesForSync(ctx context.Context, did string) ([]UserSave, error) {
 	rows, err := q.db.QueryContext(ctx, listUserSavesForSync, did)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListUserSavesForSyncRow
+	var items []UserSave
 	for rows.Next() {
-		var i ListUserSavesForSyncRow
+		var i UserSave
 		if err := rows.Scan(
 			&i.Did,
 			&i.Rkey,
@@ -172,6 +163,7 @@ func (q *Queries) ListUserSavesForSync(ctx context.Context, did string) ([]ListU
 			&i.ItemUrl,
 			&i.FeedUrl,
 			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/atprepo"
@@ -65,6 +67,7 @@ func SubscriptionsCreateHandler(
 	pds atprepo.Writer,
 	disp FetchDispatcher,
 ) http.Handler {
+	clock := syntax.NewTIDClock(uint(rand.IntN(1024)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -160,38 +163,60 @@ func SubscriptionsCreateHandler(
 			)
 			if isStandard {
 				source = sourceUnion(kind, key, "")
-				// The existence record is the portable standard subscription.
-				spec := sidecarWriteSpec{
-					Existence:           map[string]any{"publication": key, "createdAt": now},
-					ExistenceCollection: syntax.NSID(standardfeed.CollectionSubscription),
-					ExistenceOp:         "/api/subscriptions: standard record create failed",
+				customized := item.Title != "" || item.Primary || len(tagList) > 0
+				var sidecar map[string]any
+				if customized {
+					sidecar = standardSidecar(source, now, item, tagList)
+					if err := lexicon.ValidateRecord(subscriptionCollection, sidecar); err != nil {
+						slog.Warn("/api/subscriptions: sidecar failed lexicon validation", "err", err)
+						writeError(w, http.StatusInternalServerError, codeInvalidRecord, "internal error")
+						return
+					}
 				}
-				// Lazy blue.morgen sidecar, only when metadata was customized; written second so a failure still leaves an adoptable standard record.
-				if item.Title != "" || item.Primary || len(tagList) > 0 {
-					sidecar := map[string]any{
-						"source":    source,
-						"createdAt": now,
-					}
-					if item.Title != "" {
-						sidecar["title"] = item.Title
-					}
-					if item.Primary {
-						sidecar["primary"] = true
-					}
-					if len(tagList) > 0 {
-						sidecar["tags"] = tagList
-					}
-					spec.Sidecar = sidecar
-					spec.SidecarCollection = syntax.NSID(subscriptionCollection)
-					spec.SidecarOp = "/api/subscriptions: sidecar create failed (standard record already on PDS; reconcile will adopt it)"
-				}
-				result, ok := writeSidecarPair(r.Context(), w, sess, pds, spec)
+				standardRecord, sidecarRecord, ok := preflightStandardSubscription(r.Context(), w, sess, pds, key)
 				if !ok {
 					return
 				}
-				ref = result.ExistenceRef
-				if result.SidecarRkey != "" {
-					sidecarRkey = &result.SidecarRkey
+				if standardRecord != nil {
+					ref = &atprepo.RecordRef{URI: standardRecord.URI, CID: standardRecord.CID}
+					if sidecarRecord != nil {
+						sidecarRkey = stringPtr(atprepo.RkeyFromATURI(sidecarRecord.URI))
+						item.Title, item.Primary, tagList = sidecarMetadata(sidecarRecord.Value)
+					} else if customized {
+						spec := sidecarWriteSpec{
+							Sidecar:           sidecar,
+							SidecarCollection: syntax.NSID(subscriptionCollection),
+							SidecarCreateRkey: syntax.RecordKey(clock.Next().String()),
+							SidecarOp:         "/api/subscriptions: standard sidecar create failed",
+						}
+						result, ok := writeSidecarPair(r.Context(), w, sess, pds, spec)
+						if !ok {
+							return
+						}
+						sidecarRkey = &result.SidecarRkey
+					}
+				} else {
+					// The existence record is the portable standard subscription. A customized pair is one PDS commit.
+					spec := sidecarWriteSpec{
+						Existence:           map[string]any{"publication": key, "createdAt": now},
+						ExistenceCollection: syntax.NSID(standardfeed.CollectionSubscription),
+						ExistenceRkey:       syntax.RecordKey(clock.Next().String()),
+						ExistenceOp:         "/api/subscriptions: standard record create failed",
+					}
+					if customized {
+						spec.Sidecar = sidecar
+						spec.SidecarCollection = syntax.NSID(subscriptionCollection)
+						spec.SidecarCreateRkey = syntax.RecordKey(clock.Next().String())
+						spec.SidecarOp = "/api/subscriptions: atomic standard subscription and sidecar write failed"
+					}
+					result, ok := writeSidecarPair(r.Context(), w, sess, pds, spec)
+					if !ok {
+						return
+					}
+					ref = result.ExistenceRef
+					if result.SidecarRkey != "" {
+						sidecarRkey = &result.SidecarRkey
+					}
 				}
 			} else {
 				// Title was resolver-prefilled client-side; the user may have overridden it before submit.
@@ -292,3 +317,89 @@ func SubscriptionsCreateHandler(
 		writeJSON(w, out)
 	})
 }
+
+func preflightStandardSubscription(ctx context.Context, w http.ResponseWriter, sess *oauth.ClientSession, pds atprepo.Writer, publication string) (*atprepo.ListedRecord, *atprepo.ListedRecord, bool) {
+	lister, ok := pds.(atprepo.Lister)
+	if !ok {
+		slog.Warn("/api/subscriptions: PDS writer cannot preflight Standardfeed records")
+		writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+		return nil, nil, false
+	}
+	standard, err := lister.ListRecords(ctx, sess, syntax.NSID(standardfeed.CollectionSubscription))
+	if err != nil {
+		slog.Warn("/api/subscriptions: standard record preflight failed", "err", err)
+		writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+		return nil, nil, false
+	}
+	sidecars, err := lister.ListRecords(ctx, sess, syntax.NSID(subscriptionCollection))
+	if err != nil {
+		slog.Warn("/api/subscriptions: sidecar preflight failed", "err", err)
+		writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+		return nil, nil, false
+	}
+	var existence *atprepo.ListedRecord
+	for i := range standard {
+		if standard[i].Value["publication"] != publication {
+			continue
+		}
+		rkey := atprepo.RkeyFromATURI(standard[i].URI)
+		if rkey == "" {
+			slog.Warn("/api/subscriptions: matching standard record had an invalid at-uri", "uri", standard[i].URI)
+			writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+			return nil, nil, false
+		}
+		if existence == nil || rkey < atprepo.RkeyFromATURI(existence.URI) {
+			existence = &standard[i]
+		}
+	}
+	var sidecar *atprepo.ListedRecord
+	for i := range sidecars {
+		source, ok := sidecars[i].Value["source"].(map[string]any)
+		if !ok || source["$type"] != "blue.morgen.feed.subscription#standardPublication" || source["publication"] != publication {
+			continue
+		}
+		rkey := atprepo.RkeyFromATURI(sidecars[i].URI)
+		if rkey == "" {
+			slog.Warn("/api/subscriptions: matching sidecar had an invalid at-uri", "uri", sidecars[i].URI)
+			writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+			return nil, nil, false
+		}
+		if sidecar == nil || rkey > atprepo.RkeyFromATURI(sidecar.URI) {
+			sidecar = &sidecars[i]
+		}
+	}
+	return existence, sidecar, true
+}
+
+func standardSidecar(source map[string]any, createdAt string, item addItem, tagList []string) map[string]any {
+	record := map[string]any{"source": source, "createdAt": createdAt}
+	if item.Title != "" {
+		record["title"] = item.Title
+	}
+	if item.Primary {
+		record["primary"] = true
+	}
+	if len(tagList) > 0 {
+		record["tags"] = tagList
+	}
+	return record
+}
+
+func sidecarMetadata(record map[string]any) (string, bool, []string) {
+	title, _ := record["title"].(string)
+	primary, _ := record["primary"].(bool)
+	var rawTags []string
+	switch values := record["tags"].(type) {
+	case []string:
+		rawTags = values
+	case []any:
+		for _, value := range values {
+			if tag, ok := value.(string); ok {
+				rawTags = append(rawTags, tag)
+			}
+		}
+	}
+	return title, primary, normalizeTags(rawTags)
+}
+
+func stringPtr(value string) *string { return &value }

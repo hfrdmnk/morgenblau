@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 import { Newspaper } from '@/components/digest-rows';
 import type { Entry } from '@/components/digest-rows';
@@ -9,7 +10,7 @@ import {
 } from '@/hooks/use-chrome-refresh';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useEntryNavigation } from '@/hooks/use-entry-navigation';
-import { useJobsPoll } from '@/hooks/use-jobs-poll';
+import { useJobCompletion } from '@/hooks/use-jobs-poll';
 import { api } from '@/lib/api';
 import {
     addDays,
@@ -19,12 +20,13 @@ import {
     startOfLocalDay,
 } from '@/lib/date';
 import { digestRequestPath } from '@/lib/digest';
+import { emitLibraryMutation } from '@/lib/library-events';
+import { toastMutationError } from '@/lib/mutation-toast';
 import { subscribeSubscriptionAdded } from '@/lib/subscription-events';
 
 type DigestResponse = {
     date: string;
     entries: Entry[];
-    hasActiveJob: boolean;
 };
 
 // Stable empty list so list navigation doesn't reset every render while loading.
@@ -32,7 +34,7 @@ const EMPTY_ENTRIES: Entry[] = [];
 
 type State =
     | { kind: 'loading' }
-    | { kind: 'ok'; entries: Entry[]; hasActiveJob: boolean }
+    | { kind: 'ok'; entries: Entry[] }
     | { kind: 'error' };
 
 export function Digest() {
@@ -44,6 +46,7 @@ export function Digest() {
     const [state, setState] = useState<State>({ kind: 'loading' });
     const [reloadTick, setReloadTick] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
+    const [manualJobId, setManualJobId] = useState<string | null>(null);
 
     // Clean up the URL once on mount if the date param was invalid or in the future; readDateFromURL already clamped it.
     useEffect(() => {
@@ -74,12 +77,9 @@ export function Digest() {
                 setState({
                     kind: 'ok',
                     entries: data.entries,
-                    hasActiveJob: data.hasActiveJob,
                 });
             } catch {
                 if (!cancelled) setState({ kind: 'error' });
-            } finally {
-                if (!cancelled) setRefreshing(false);
             }
         };
         load();
@@ -105,12 +105,32 @@ export function Digest() {
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
         try {
-            await api('/api/digest/refresh', { method: 'POST' });
-        } catch {
-            // The poll/reload below will surface fetch outcomes; ignore here.
+            const { jobId } = await api<{ jobId: string }>(
+                '/api/digest/refresh',
+                { method: 'POST' },
+            );
+            setManualJobId(jobId);
+        } catch (error) {
+            toastMutationError(error, "Couldn't start the refresh. Try again.");
+            setRefreshing(false);
         }
+    }, []);
+
+    const onManualComplete = useCallback((status: 'done' | 'failed' | 'unknown') => {
+        setManualJobId(null);
+        setRefreshing(false);
+        if (status === 'unknown') {
+            toast.error("Couldn't check the refresh. Try again in a moment.");
+            return;
+        }
+        if (status === 'failed') {
+            toast.error("Couldn't finish the refresh. Try again.");
+            return;
+        }
+        emitLibraryMutation();
         setReloadTick((tick) => tick + 1);
     }, []);
+    useJobCompletion(manualJobId, onManualComplete);
 
     useEffect(() => {
         return subscribeSubscriptionAdded(() => {
@@ -118,14 +138,8 @@ export function Digest() {
         });
     }, []);
 
-    const hasActiveJob = state.kind === 'ok' && state.hasActiveJob;
-    const onQuiet = useCallback(() => {
-        setReloadTick((tick) => tick + 1);
-    }, []);
-    useJobsPoll(hasActiveJob, onQuiet);
-
-    const isBusy = state.kind === 'loading' || refreshing || hasActiveJob;
-    useRegisterChromeRefresh(onRefresh, isBusy);
+    const isBusy = refreshing || manualJobId !== null;
+    useRegisterChromeRefresh(onRefresh, isBusy || state.kind === 'loading');
     useRegisterChromeCalendar({
         selected: selectedDate,
         today,
@@ -155,33 +169,26 @@ export function Digest() {
 
     return (
         <div className="mx-auto w-full max-w-2xl px-4 pt-10 pb-12 sm:px-6">
-                {isBusy ? (
-                    <DigestSkeleton />
-                ) : state.kind === 'error' ? (
-                    <EmptyMessage
-                        lead="Couldn't load the digest."
-                        detail="Try refreshing in a moment."
-                    />
-                ) : (
-                    <Newspaper
-                        entries={entries}
-                        date={selectedDate}
-                        today={today}
-                        entryFrom={entryFrom}
-                        nav={nav}
-                        emptyState={
-                            hasActiveJob
-                                ? {
-                                      lead: 'Brewing your first edition…',
-                                      detail: "This won't take long.",
-                                  }
-                                : {
-                                      lead: 'Nothing new this morning.',
-                                      detail: 'Enjoy your coffee.',
-                                  }
-                        }
-                    />
-                )}
+            {state.kind === 'loading' ? (
+                <DigestSkeleton />
+            ) : state.kind === 'error' ? (
+                <EmptyMessage
+                    lead="Couldn't load the digest."
+                    detail="Try refreshing in a moment."
+                />
+            ) : (
+                <Newspaper
+                    entries={entries}
+                    date={selectedDate}
+                    today={today}
+                    entryFrom={entryFrom}
+                    nav={nav}
+                    emptyState={{
+                        lead: 'Nothing new this morning.',
+                        detail: 'Enjoy your coffee.',
+                    }}
+                />
+            )}
         </div>
     );
 }

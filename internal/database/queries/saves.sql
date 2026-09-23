@@ -37,7 +37,7 @@ ORDER BY s.created_at DESC, s.rkey DESC;
 -- name: ListUserSavesForSync :many
 -- Snapshot of a user's local save index, used by sync_user to diff against the
 -- PDS and reconcile inserts/deletes.
-SELECT did, rkey, at_uri, item_url, feed_url, created_at FROM user_saves WHERE did = ?;
+SELECT did, rkey, at_uri, item_url, feed_url, created_at, updated_at FROM user_saves WHERE did = ?;
 
 -- name: DeleteUserSave :exec
 DELETE FROM user_saves WHERE did = ? AND rkey = ?;

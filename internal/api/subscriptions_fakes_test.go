@@ -184,24 +184,32 @@ func (f *fakeFinder) Resolve(_ context.Context, _ string) ([]feedfinder.Candidat
 // pdsWrite captures one CreateRecord call: which collection got which record.
 type pdsWrite struct {
 	collection string
+	rkey       string
 	record     map[string]any
 }
 
 type fakePDS struct {
-	mu          sync.Mutex
-	creates     int
-	puts        int
-	lastRec     map[string]any
-	lastPut     map[string]any
-	lastPutRkey string
-	created     []pdsWrite
-	deleted     []string                          // "collection/rkey", in call order
-	listed      map[string][]atprepo.ListedRecord // canned ListRecords result per collection
-	listErr     error
-	listCalls   int
-	createErr   map[string]error // per-collection CreateRecord failure
-	deleteErr   error            // DeleteRecord failure, applied to every call
-	putErr      error            // PutRecord failure, applied to every call
+	mu                  sync.Mutex
+	creates             int
+	applyCalls          int
+	rkeySeq             int
+	puts                int
+	lastRec             map[string]any
+	lastPut             map[string]any
+	lastPutRkey         string
+	created             []pdsWrite
+	applied             []pdsWrite
+	deleted             []string                          // "collection/rkey", in call order
+	listed              map[string][]atprepo.ListedRecord // canned ListRecords result per collection
+	listErr             error
+	listCalls           int
+	createErr           map[string]error // per-collection CreateRecord failure
+	applyErr            error            // ApplyWrites failure
+	applyAfterCommitErr error            // ApplyWrites transport failure after records have been committed
+	getErr              error
+	getCalls            int
+	deleteErr           error // DeleteRecord failure, applied to every call
+	putErr              error // PutRecord failure, applied to every call
 }
 
 func (p *fakePDS) CreateRecord(_ context.Context, sess *oauth.ClientSession, collection syntax.NSID, record map[string]any) (*atprepo.RecordRef, error) {
@@ -211,13 +219,51 @@ func (p *fakePDS) CreateRecord(_ context.Context, sess *oauth.ClientSession, col
 		return nil, err
 	}
 	p.creates++
+	p.rkeySeq++
 	p.lastRec = record
-	p.created = append(p.created, pdsWrite{collection: collection.String(), record: record})
-	rkey := "3la" + strconv.Itoa(p.creates)
+	rkey := "3la" + strconv.Itoa(p.rkeySeq)
+	p.created = append(p.created, pdsWrite{collection: collection.String(), rkey: rkey, record: record})
+	p.storeListed(sess.Data.AccountDID.String(), collection.String(), rkey, record)
 	return &atprepo.RecordRef{
 		URI: "at://" + sess.Data.AccountDID.String() + "/" + collection.String() + "/" + rkey,
 		CID: "bafyreiabc",
 	}, nil
+}
+
+func (p *fakePDS) ApplyWrites(_ context.Context, sess *oauth.ClientSession, writes []atprepo.RecordWrite) ([]*atprepo.RecordRef, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.applyCalls++
+	if p.applyErr != nil {
+		return nil, p.applyErr
+	}
+	refs := make([]*atprepo.RecordRef, 0, len(writes))
+	for _, write := range writes {
+		p.rkeySeq++
+		rkey := write.Rkey.String()
+		if rkey == "" {
+			rkey = "3la" + strconv.Itoa(p.rkeySeq)
+		}
+		p.applied = append(p.applied, pdsWrite{collection: write.Collection.String(), rkey: rkey, record: write.Record})
+		p.lastRec = write.Record
+		p.storeListed(sess.Data.AccountDID.String(), write.Collection.String(), rkey, write.Record)
+		refs = append(refs, &atprepo.RecordRef{
+			URI: "at://" + sess.Data.AccountDID.String() + "/" + write.Collection.String() + "/" + rkey,
+			CID: "bafyreiabc",
+		})
+	}
+	if p.applyAfterCommitErr != nil {
+		return nil, p.applyAfterCommitErr
+	}
+	return refs, nil
+}
+
+func (p *fakePDS) storeListed(did, collection, rkey string, record map[string]any) {
+	if p.listed == nil {
+		p.listed = map[string][]atprepo.ListedRecord{}
+	}
+	uri := "at://" + did + "/" + collection + "/" + rkey
+	p.listed[collection] = append(p.listed[collection], atprepo.ListedRecord{URI: uri, CID: "bafyreiabc", Value: record})
 }
 
 func (p *fakePDS) PutRecord(_ context.Context, _ *oauth.ClientSession, _ syntax.NSID, rkey string, record map[string]any) (*atprepo.RecordRef, error) {
@@ -250,6 +296,21 @@ func (p *fakePDS) ListRecords(_ context.Context, _ *oauth.ClientSession, collect
 		return nil, p.listErr
 	}
 	return p.listed[collection.String()], nil
+}
+
+func (p *fakePDS) GetRecord(_ context.Context, _ *oauth.ClientSession, collection syntax.NSID, rkey syntax.RecordKey) (*atprepo.ListedRecord, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.getCalls++
+	if p.getErr != nil {
+		return nil, p.getErr
+	}
+	for _, record := range p.listed[collection.String()] {
+		if atprepo.RkeyFromATURI(record.URI) == rkey.String() {
+			return &record, nil
+		}
+	}
+	return nil, sql.ErrNoRows
 }
 
 type fakeDispatcher struct {

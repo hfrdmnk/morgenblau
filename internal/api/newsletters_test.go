@@ -27,6 +27,8 @@ type fakeNewsletterService struct {
 	err            error
 	moveTarget     newsletter.MoveTarget
 	deletedSaveID  string
+	savedDID       string
+	savedMessageID string
 	digestStart    time.Time
 	digestEnd      time.Time
 }
@@ -76,7 +78,9 @@ func (f *fakeNewsletterService) MoveMessage(_ context.Context, _ string, _ strin
 	return f.source, f.err
 }
 
-func (f *fakeNewsletterService) SaveMessage(context.Context, string, string) (newsletter.Save, error) {
+func (f *fakeNewsletterService) SaveMessage(_ context.Context, did, messageID string) (newsletter.Save, error) {
+	f.savedDID = did
+	f.savedMessageID = messageID
 	return f.save, f.err
 }
 
@@ -304,8 +308,11 @@ func TestNewsletterSave_CreateAndDeleteStayPrivate(t *testing.T) {
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/newsletter-saves", strings.NewReader(`{"messageId":"message-1"}`)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	create.ServeHTTP(rr, req)
-	if rr.Code != http.StatusCreated || rr.Body.String() != "{\"id\":\"save-1\"}\n" {
+	if rr.Code != http.StatusCreated || rr.Body.String() != "{\"id\":\"save-1\"}\n" || rr.Header().Get("Cache-Control") != "private, no-store" {
 		t.Fatalf("create status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if svc.savedDID != "did:plc:alice" || svc.savedMessageID != "message-1" {
+		t.Fatalf("saved DID/message = %q/%q", svc.savedDID, svc.savedMessageID)
 	}
 
 	remove := NewsletterSaveDeleteHandler(svc)

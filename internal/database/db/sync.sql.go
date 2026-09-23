@@ -64,30 +64,20 @@ func (q *Queries) ListFeedURLsForUser(ctx context.Context, did string) ([]string
 }
 
 const listUserSubscriptionsForSync = `-- name: ListUserSubscriptionsForSync :many
-SELECT did, rkey, at_uri, feed_url, kind, sidecar_rkey, title
+SELECT did, rkey, at_uri, feed_url, kind, sidecar_rkey, title, is_primary, tags, created_at, updated_at
 FROM user_subscriptions
 WHERE did = ?
 `
 
-type ListUserSubscriptionsForSyncRow struct {
-	Did         string  `json:"did"`
-	Rkey        string  `json:"rkey"`
-	AtUri       string  `json:"at_uri"`
-	FeedUrl     string  `json:"feed_url"`
-	Kind        string  `json:"kind"`
-	SidecarRkey *string `json:"sidecar_rkey"`
-	Title       *string `json:"title"`
-}
-
-func (q *Queries) ListUserSubscriptionsForSync(ctx context.Context, did string) ([]ListUserSubscriptionsForSyncRow, error) {
+func (q *Queries) ListUserSubscriptionsForSync(ctx context.Context, did string) ([]UserSubscription, error) {
 	rows, err := q.db.QueryContext(ctx, listUserSubscriptionsForSync, did)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListUserSubscriptionsForSyncRow
+	var items []UserSubscription
 	for rows.Next() {
-		var i ListUserSubscriptionsForSyncRow
+		var i UserSubscription
 		if err := rows.Scan(
 			&i.Did,
 			&i.Rkey,
@@ -96,6 +86,10 @@ func (q *Queries) ListUserSubscriptionsForSync(ctx context.Context, did string) 
 			&i.Kind,
 			&i.SidecarRkey,
 			&i.Title,
+			&i.IsPrimary,
+			&i.Tags,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

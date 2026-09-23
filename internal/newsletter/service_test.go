@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -204,6 +204,51 @@ func TestOwnerCannotReadOrMutateAnotherOwnersNewsletter(t *testing.T) {
 	}
 }
 
+func TestNewsletterRowsRequireMatchingOwnerRelationships(t *testing.T) {
+	service, _, writer := newTestService(t)
+	ctx := context.Background()
+	if _, err := service.CreateAddress(ctx, "did:plc:alice"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateAddress(ctx, "did:plc:bob"); err != nil {
+		t.Fatal(err)
+	}
+	bobAddress, err := service.Address(ctx, "did:plc:bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceID := seedSource(t, writer, "did:plc:alice", "source-a", SourceActive)
+	messageID := seedMessage(t, writer, "did:plc:alice", sourceID, "message-a", "dedupe-a")
+	now := testNow.Format(time.RFC3339Nano)
+
+	_, err = writer.Exec(`INSERT INTO newsletter_sources
+		(id, did, source_key, identity_kind, title, sender_address, created_at, updated_at)
+		VALUES ('source-unowned', 'did:plc:carol', 'source-unowned', 'manual', 'Unowned', '', ?, ?)`, now, now)
+	if err == nil {
+		t.Fatal("source insert succeeded without an owner address")
+	}
+
+	_, err = writer.Exec(`INSERT INTO newsletter_messages
+		(id, did, source_id, entry_slug, dedupe_key, sender_address, received_at, created_at, updated_at)
+		VALUES ('message-cross-owner', 'did:plc:bob', ?, 'message-cross-owner', 'cross-owner', '', ?, ?, ?)`, sourceID, now, now, now)
+	if err == nil {
+		t.Fatal("message insert succeeded with another owner's source")
+	}
+
+	_, err = writer.Exec(`INSERT INTO newsletter_saves (id, did, message_id, created_at)
+		VALUES ('save-cross-owner', 'did:plc:bob', ?, ?)`, messageID, now)
+	if err == nil {
+		t.Fatal("save insert succeeded for another owner's message")
+	}
+
+	_, err = writer.Exec(`INSERT INTO newsletter_receipts
+		(id, did, envelope_from, recipient, recipient_local_part, received_at, raw_mime, reserved_bytes, created_at)
+		VALUES ('receipt-cross-owner', 'did:plc:alice', '', ?, ?, ?, X'01', 1, ?)`, bobAddress, strings.Split(bobAddress, "@")[0], now, now)
+	if err == nil {
+		t.Fatal("receipt insert succeeded for another owner's inbound address")
+	}
+}
+
 func TestMoveMessageToNewSourceDoesNotChangeDeliveryDedupe(t *testing.T) {
 	service, reader, writer := newTestService(t)
 	ctx := context.Background()
@@ -282,6 +327,7 @@ func newTestService(t *testing.T) (*Service, *sql.DB, *sql.DB) {
 func newTestServiceWithConfig(t *testing.T, cfg Config) (*Service, *sql.DB, *sql.DB) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "newsletter.db")
+	applyNewsletterTestMigrations(t, path)
 	dsn := "file:" + path + "?_pragma=foreign_keys(on)&_pragma=busy_timeout(5000)"
 	writer, err := sql.Open("sqlite", dsn+"&_txlock=immediate")
 	if err != nil {
@@ -293,25 +339,35 @@ func newTestServiceWithConfig(t *testing.T, cfg Config) (*Service, *sql.DB, *sql
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { reader.Close(); writer.Close() })
-	migration, err := os.ReadFile(filepath.Join("..", "database", "migrations", "20260920000000_newsletters.sql"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	up := strings.Split(string(migration), "-- +goose Down")[0]
-	up = strings.ReplaceAll(up, "-- +goose Up", "")
-	up = strings.ReplaceAll(up, "-- +goose StatementBegin", "")
-	up = strings.ReplaceAll(up, "-- +goose StatementEnd", "")
-	if _, err := writer.Exec(up); err != nil {
-		t.Fatalf("migration: %v", err)
-	}
 	service := NewService(reader, writer, cfg)
 	service.now = func() time.Time { return testNow }
 	return service, reader, writer
 }
 
+func applyNewsletterTestMigrations(t *testing.T, databasePath string) {
+	t.Helper()
+	goosePath, err := exec.LookPath("goose")
+	if err != nil {
+		t.Fatal("goose CLI is required for newsletter storage tests; install github.com/pressly/goose/v3/cmd/goose@v3.27.1")
+	}
+	migrationDir, err := filepath.Abs(filepath.Join("..", "database", "migrations"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command(goosePath, "-dir", migrationDir, "sqlite3", databasePath, "up").CombinedOutput()
+	if err != nil {
+		t.Fatalf("goose migration: %v\n%s", err, output)
+	}
+}
+
 func seedSource(t *testing.T, writer *sql.DB, did, id string, status SourceStatus) string {
 	t.Helper()
 	now := testNow.Format(time.RFC3339Nano)
+	localPart := "seed-" + strings.NewReplacer(":", "-").Replace(did)
+	if _, err := writer.Exec(`INSERT INTO newsletter_addresses (did, local_part, created_at)
+		VALUES (?, ?, ?) ON CONFLICT (did) DO NOTHING`, did, localPart, now); err != nil {
+		t.Fatal(err)
+	}
 	_, err := writer.Exec(`INSERT INTO newsletter_sources
 		(id, did, source_key, identity_kind, identity_value, title, sender_address, status, created_at, updated_at)
 		VALUES (?, ?, ?, 'from', ?, ?, 'sender@example.com', ?, ?, ?)`, id, did, "from:"+id, id+"@example.com", id, status, now, now)

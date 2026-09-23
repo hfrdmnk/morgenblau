@@ -15,6 +15,7 @@ import (
 type JobSource interface {
 	Get(id string, did syntax.DID) (*jobs.Job, error)
 	ActiveForUser(did syntax.DID) *jobs.Job
+	LatestSyncForUser(did syntax.DID) *jobs.Job
 }
 
 // JobsGetHandler returns lifecycle status for the given job id; 404 for both unknown and cross-user so a probe can't tell them apart.
@@ -51,6 +52,17 @@ func JobsActiveHandler(src JobSource) http.Handler {
 			return
 		}
 		writeJSON(w, src.ActiveForUser(sess.Data.AccountDID))
+	})
+}
+
+// JobsLatestHandler returns the owner's active sync or last unresolved failure so Sources can show when its local index may be stale.
+func JobsLatestHandler(src JobSource) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sess, ok := requireSession(w, r)
+		if !ok {
+			return
+		}
+		writeJSON(w, src.LatestSyncForUser(sess.Data.AccountDID))
 	})
 }
 

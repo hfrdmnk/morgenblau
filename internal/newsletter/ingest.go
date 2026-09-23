@@ -23,8 +23,9 @@ const (
 )
 
 type deliveryRecipient struct {
-	DID     string
-	Address string
+	DID       string
+	Address   string
+	LocalPart string
 }
 
 func (s *Service) resolveRecipient(ctx context.Context, address string) (deliveryRecipient, error) {
@@ -37,7 +38,7 @@ func (s *Service) resolveRecipient(ctx context.Context, address string) (deliver
 	if err != nil {
 		return deliveryRecipient{}, publicDBError(err)
 	}
-	return deliveryRecipient{DID: row.Did, Address: row.LocalPart + "@" + s.domain}, nil
+	return deliveryRecipient{DID: row.Did, Address: row.LocalPart + "@" + s.domain, LocalPart: row.LocalPart}, nil
 }
 
 func (s *Service) acceptReceipts(ctx context.Context, envelopeFrom string, recipients []deliveryRecipient, raw []byte) error {
@@ -48,6 +49,15 @@ func (s *Service) acceptReceipts(ctx context.Context, envelopeFrom string, recip
 	seen := make(map[string]struct{}, len(recipients))
 	unique := make([]deliveryRecipient, 0, len(recipients))
 	for _, recipient := range recipients {
+		parts := strings.Split(recipient.Address, "@")
+		if len(parts) != 2 || parts[0] == "" || !strings.EqualFold(parts[1], s.domain) {
+			return ErrInvalid
+		}
+		localPart := strings.ToLower(parts[0])
+		if recipient.LocalPart != "" && recipient.LocalPart != localPart {
+			return ErrInvalid
+		}
+		recipient.LocalPart = localPart
 		if _, ok := seen[recipient.DID]; ok {
 			continue
 		}
@@ -79,7 +89,8 @@ func (s *Service) acceptReceipts(ctx context.Context, envelopeFrom string, recip
 		for _, recipient := range unique {
 			if err := q.CreateNewsletterReceipt(ctx, db.CreateNewsletterReceiptParams{
 				ID: ulid.Make().String(), Did: recipient.DID, EnvelopeFrom: envelopeFrom,
-				Recipient: recipient.Address, ReceivedAt: now, RawMime: raw, ReservedBytes: reservation, CreatedAt: now,
+				Recipient: recipient.Address, RecipientLocalPart: recipient.LocalPart,
+				ReceivedAt: now, RawMime: raw, ReservedBytes: reservation, CreatedAt: now,
 			}); err != nil {
 				return err
 			}
