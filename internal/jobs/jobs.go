@@ -29,7 +29,7 @@ const (
 	KindFetchOneFeed Kind = "fetch_one_feed"
 )
 
-// Trigger is metadata-only telemetry; the work the job does is identical.
+// Trigger records why the job was requested.
 type Trigger string
 
 const (
@@ -60,11 +60,13 @@ var ErrForbidden = errors.New("jobs: forbidden")
 
 // Tracker is the in-memory job map. Concurrency-safe.
 type Tracker struct {
-	mu        sync.Mutex
-	jobs      map[string]*Job
-	retention time.Duration
-	now       func() time.Time
-	entropy   *ulid.MonotonicEntropy
+	mu           sync.Mutex
+	jobs         map[string]*Job
+	latestSync   map[string]*Job
+	syncFailures map[string]*Job
+	retention    time.Duration
+	now          func() time.Time
+	entropy      *ulid.MonotonicEntropy
 }
 
 // New builds a tracker with the default retention window.
@@ -75,10 +77,12 @@ func New() *Tracker {
 // NewWithOptions exposes retention + clock for tests.
 func NewWithOptions(retention time.Duration, now func() time.Time) *Tracker {
 	return &Tracker{
-		jobs:      make(map[string]*Job),
-		retention: retention,
-		now:       now,
-		entropy:   ulid.Monotonic(rand.Reader, 0),
+		jobs:         make(map[string]*Job),
+		latestSync:   make(map[string]*Job),
+		syncFailures: make(map[string]*Job),
+		retention:    retention,
+		now:          now,
+		entropy:      ulid.Monotonic(rand.Reader, 0),
 	}
 }
 
@@ -96,6 +100,7 @@ func (t *Tracker) Create(kind Kind, userDID syntax.DID, trigger Trigger) *Job {
 		StartedAt: t.now(),
 	}
 	t.jobs[id] = j
+	t.trackSyncLocked(j)
 	return j
 }
 
@@ -126,6 +131,7 @@ func (t *Tracker) CreateOrReturnExisting(kind Kind, userDID syntax.DID, trigger 
 		StartedAt: t.now(),
 	}
 	t.jobs[id] = j
+	t.trackSyncLocked(j)
 	return cloneJob(j), false
 }
 
@@ -135,6 +141,8 @@ func (t *Tracker) SetRunning(id string) {
 	defer t.mu.Unlock()
 	if j, ok := t.jobs[id]; ok {
 		j.Status = StatusRunning
+		j.FinishedAt = time.Time{}
+		t.trackSyncLocked(j)
 	}
 }
 
@@ -153,8 +161,40 @@ func (t *Tracker) transition(id string, s Status) {
 	defer t.mu.Unlock()
 	if j, ok := t.jobs[id]; ok {
 		j.Status = s
-		j.FinishedAt = t.now()
+		if s == StatusDone || s == StatusFailed {
+			j.FinishedAt = t.now()
+		} else {
+			j.FinishedAt = time.Time{}
+		}
+		t.trackSyncLocked(j)
 	}
+}
+
+func (t *Tracker) trackSyncLocked(j *Job) {
+	if j.Kind != KindSyncUser {
+		return
+	}
+	did := j.UserDID
+	if jobIsNewer(j, t.latestSync[did]) {
+		t.latestSync[did] = j
+	}
+	switch j.Status {
+	case StatusFailed:
+		if jobIsNewer(j, t.syncFailures[did]) {
+			t.syncFailures[did] = j
+		}
+	case StatusDone:
+		if failed := t.syncFailures[did]; failed != nil && jobIsNewer(j, failed) {
+			delete(t.syncFailures, did)
+		}
+	}
+}
+
+func jobIsNewer(job, current *Job) bool {
+	if current == nil || job.StartedAt.After(current.StartedAt) {
+		return true
+	}
+	return job.StartedAt.Equal(current.StartedAt) && job.ID > current.ID
 }
 
 // Get returns the job for id and verifies ownership against userDID.
@@ -195,6 +235,24 @@ func (t *Tracker) ActiveForUser(userDID syntax.DID) *Job {
 	return cloneJob(best)
 }
 
+// LatestSyncForUser prioritizes an active retry, then retains unresolved failures across normal job GC.
+func (t *Tracker) LatestSyncForUser(userDID syntax.DID) *Job {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.gcLocked()
+	did := userDID.String()
+	if latest := t.latestSync[did]; latest != nil && (latest.Status == StatusPending || latest.Status == StatusRunning) {
+		return cloneJob(latest)
+	}
+	if failed := t.syncFailures[did]; failed != nil {
+		return cloneJob(failed)
+	}
+	if latest := t.latestSync[did]; latest != nil {
+		return cloneJob(latest)
+	}
+	return nil
+}
+
 // GC sweeps finished jobs older than the retention window; exposed separately for direct test invocation.
 func (t *Tracker) GC() {
 	t.mu.Lock()
@@ -210,6 +268,9 @@ func (t *Tracker) gcLocked() {
 		}
 		if j.FinishedAt.Before(cutoff) {
 			delete(t.jobs, id)
+			if t.latestSync[j.UserDID] == j {
+				delete(t.latestSync, j.UserDID)
+			}
 		}
 	}
 }

@@ -11,7 +11,7 @@ import (
 func TestSyncUser_ReconcileSaves_InsertsAndDeletes(t *testing.T) {
 	store := newFakeStore()
 	// A local save the PDS no longer has → should be deleted.
-	store.saves["did:plc:alice"] = map[string]db.ListUserSavesForSyncRow{
+	store.saves["did:plc:alice"] = map[string]db.UserSave{
 		"goneA": {Did: "did:plc:alice", Rkey: "goneA", AtUri: "at://x/s/goneA", ItemUrl: "https://item/old"},
 	}
 	feed := "https://feed/new"

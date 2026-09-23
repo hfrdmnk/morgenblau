@@ -15,8 +15,8 @@ ON CONFLICT (did) DO NOTHING;
 
 -- name: CreateNewsletterReceipt :exec
 INSERT INTO newsletter_receipts (
-    id, did, envelope_from, recipient, received_at, raw_mime, reserved_bytes, created_at
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8);
+    id, did, envelope_from, recipient, recipient_local_part, received_at, raw_mime, reserved_bytes, created_at
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);
 
 -- name: GetNextNewsletterReceipt :one
 SELECT id, did, envelope_from, recipient, received_at, raw_mime,

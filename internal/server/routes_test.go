@@ -32,6 +32,14 @@ func TestRemovedAPIRoutesReturnNotFound(t *testing.T) {
 	}
 }
 
+func TestJobsLatestRouteIsRegistered(t *testing.T) {
+	rr := httptest.NewRecorder()
+	(&Server{}).routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/jobs/latest", nil))
+	if rr.Code == http.StatusNotFound || rr.Code == http.StatusMethodNotAllowed {
+		t.Fatalf("GET /api/jobs/latest is not registered: status = %d", rr.Code)
+	}
+}
+
 func TestNewsletterRoutesAreRegistered(t *testing.T) {
 	routes := (&Server{newsletters: &newsletter.Service{}}).routes()
 	requests := []struct {

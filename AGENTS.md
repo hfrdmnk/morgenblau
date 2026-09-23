@@ -8,6 +8,8 @@ A calm content platform powered by RSS and ATProto — daily digests instead of 
 
 [SPEC.md](./SPEC.md) is the source of truth for product vision, content model, and guardrails. All code must follow the spec.
 
+[LAWS.md](./LAWS.md) states the repo-wide invariants. Check it before changing their owning paths.
+
 ## Workflow
 
 Write all Go code with Red-Green-TDD. Leverage Go's phenomenal testing suite.

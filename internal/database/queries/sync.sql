@@ -1,5 +1,5 @@
 -- name: ListUserSubscriptionsForSync :many
-SELECT did, rkey, at_uri, feed_url, kind, sidecar_rkey, title
+SELECT did, rkey, at_uri, feed_url, kind, sidecar_rkey, title, is_primary, tags, created_at, updated_at
 FROM user_subscriptions
 WHERE did = ?;
 

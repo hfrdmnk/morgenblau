@@ -24,11 +24,6 @@ export function writeSavedCache(saves: Save[]): void {
     saved = { saves, fetchedAt: Date.now() };
 }
 
-export function writeCachedSaves(saves: Save[]): void {
-    if (!saved) return;
-    saved.saves = saves;
-}
-
 function clearSavedCache(): void {
     saved = undefined;
 }

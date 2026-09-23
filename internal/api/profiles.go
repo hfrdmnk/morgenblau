@@ -17,6 +17,10 @@ type ProfileSource interface {
 	Get(ctx context.Context, did syntax.DID) (profiles.Profile, error)
 }
 
+type ProfileSyncStarter interface {
+	StartLoginRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error)
+}
+
 // meResponse is the session user's profile plus session-health flags for calm prompting.
 type meResponse struct {
 	profiles.Profile
@@ -25,11 +29,16 @@ type meResponse struct {
 }
 
 // MeProfileHandler returns the session user's profile plus needsReauth; cache-first, because every hard page load blocks on this call and a PDS round-trip would stall the shell.
-func MeProfileHandler(src ProfileSource) http.Handler {
+func MeProfileHandler(src ProfileSource, starters ...ProfileSyncStarter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
 			return
+		}
+		if len(starters) > 0 && starters[0] != nil {
+			if _, err := starters[0].StartLoginRefresh(r.Context(), sess.Data.AccountDID, sess.Data.SessionID); err != nil {
+				slog.Warn("/api/profiles/me: sync dispatch failed", "did", sess.Data.AccountDID, "err", err)
+			}
 		}
 		p, err := src.Get(r.Context(), sess.Data.AccountDID)
 		if err != nil {

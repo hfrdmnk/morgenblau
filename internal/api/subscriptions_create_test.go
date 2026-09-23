@@ -54,6 +54,25 @@ func TestSubscriptionsCreate_HappyPath_FullChoiceA(t *testing.T) {
 	}
 }
 
+func TestSubscriptionsCreate_StandardfeedRejectsInvalidSidecarBeforePDSWrite(t *testing.T) {
+	idx := newFakeIndex()
+	pds := &fakePDS{}
+	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{})
+	body, err := json.Marshal(addRequest{Subscriptions: []addItem{{Publication: testPublication, Title: strings.Repeat("a", 129)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(string(body))), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 for invalid record", rr.Code)
+	}
+	if pds.creates != 0 || pds.applyCalls != 0 {
+		t.Fatalf("PDS writes = creates:%d applyWrites:%d, want none", pds.creates, pds.applyCalls)
+	}
+}
+
 func TestSubscriptionsCreate_DedupeGuard_Idempotent(t *testing.T) {
 	idx := newFakeIndex()
 	feed := "https://example.test/feed.xml"
@@ -193,13 +212,13 @@ func TestSubscriptionsCreate_Standardfeed_DefaultsCreateOnlyStandardRecord(t *te
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
 	// Exactly one PDS write (the portable standard record); no sidecar since the picker didn't customize anything.
-	if pds.creates != 1 {
-		t.Fatalf("PDS creates = %d, want 1 (got %+v)", pds.creates, pds.created)
+	if pds.applyCalls != 1 || pds.creates != 0 || len(pds.applied) != 1 {
+		t.Fatalf("PDS applyWrites=%d creates=%v writes=%+v, want one existence write", pds.applyCalls, pds.creates, pds.applied)
 	}
-	if pds.created[0].collection != standardSubCollection {
-		t.Errorf("collection = %q, want %s", pds.created[0].collection, standardSubCollection)
+	if pds.applied[0].collection != standardSubCollection {
+		t.Errorf("collection = %q, want %s", pds.applied[0].collection, standardSubCollection)
 	}
-	rec := pds.created[0].record
+	rec := pds.applied[0].record
 	if rec["publication"] != testPublication {
 		t.Errorf("record.publication = %v", rec["publication"])
 	}
@@ -231,8 +250,8 @@ func TestSubscriptionsCreate_Standardfeed_DefaultsCreateOnlyStandardRecord(t *te
 	if row.Kind != "standardfeed" {
 		t.Errorf("row kind = %q", row.Kind)
 	}
-	if row.Rkey != "3la1" {
-		t.Errorf("row rkey = %q, want the standard record rkey 3la1", row.Rkey)
+	if row.Rkey != pds.applied[0].rkey {
+		t.Errorf("row rkey = %q, want the standard record rkey %s", row.Rkey, pds.applied[0].rkey)
 	}
 	if row.SidecarRkey != nil {
 		t.Errorf("row sidecar_rkey = %v, want nil", *row.SidecarRkey)
@@ -254,12 +273,149 @@ func TestSubscriptionsCreate_Standardfeed_DefaultsCreateOnlyStandardRecord(t *te
 	if wire.Kind != "standardfeed" || wire.Publication != testPublication || wire.FeedURL != testPublication {
 		t.Errorf("wire = %+v", wire)
 	}
-	if wire.URI != "at://did:plc:alice/"+standardSubCollection+"/3la1" {
+	if wire.URI != "at://did:plc:alice/"+standardSubCollection+"/"+pds.applied[0].rkey {
 		t.Errorf("wire uri = %q", wire.URI)
 	}
 }
 
-func TestSubscriptionsCreate_Standardfeed_CustomMetadata_SidecarSecond(t *testing.T) {
+func TestSubscriptionsCreate_Standardfeed_CustomMetadata_AdoptsBarePDSExistence(t *testing.T) {
+	idx := newFakeIndex()
+	pds := &fakePDS{listed: map[string][]atprepo.ListedRecord{
+		standardSubCollection: {
+			{URI: "at://did:plc:alice/" + standardSubCollection + "/3old", CID: "bafy-old", Value: map[string]any{"publication": testPublication}},
+		},
+	}}
+	disp := &fakeDispatcher{}
+	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
+
+	body := `{"subscriptions":[{"publication":"` + testPublication + `","title":"My Name","primary":true,"tags":["News"]}]}`
+	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.applyCalls != 1 || pds.creates != 0 || len(pds.applied) != 1 || pds.applied[0].collection != "blue.morgen.feed.subscription" {
+		t.Fatalf("PDS applyWrites=%d writes=%v, want only an applyWrites sidecar create for the existing bare subscription", pds.applyCalls, pds.applied)
+	}
+	if pds.applied[0].record["title"] != "My Name" || pds.applied[0].record["primary"] != true {
+		t.Errorf("created sidecar metadata = %v, want requested metadata", pds.applied[0].record)
+	}
+	if tags, ok := pds.applied[0].record["tags"].([]string); !ok || len(tags) != 1 || tags[0] != "News" {
+		t.Errorf("created sidecar tags = %v, want [News]", pds.applied[0].record["tags"])
+	}
+	row, err := idx.GetUserSubscriptionByFeedURL(context.Background(), db.GetUserSubscriptionByFeedURLParams{Did: "did:plc:alice", FeedUrl: testPublication})
+	if err != nil {
+		t.Fatalf("row lookup: %v", err)
+	}
+	if row.Rkey != "3old" || row.Title == nil || *row.Title != "My Name" || row.SidecarRkey == nil || *row.SidecarRkey != pds.applied[0].rkey {
+		t.Errorf("adopted row = %+v", row)
+	}
+}
+
+func TestSubscriptionsCreate_Standardfeed_PreflightFailureDoesNotWrite(t *testing.T) {
+	idx := newFakeIndex()
+	pds := &fakePDS{listErr: errors.New("pds down")}
+	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{})
+
+	body := `{"subscriptions":[{"publication":"` + testPublication + `"}]}`
+	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502; body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.creates != 0 || pds.applyCalls != 0 {
+		t.Errorf("PDS writes after failed preflight: creates=%d applyWrites=%d", pds.creates, pds.applyCalls)
+	}
+}
+
+func TestSubscriptionsCreate_Standardfeed_CustomMetadata_AdoptsPriorAtomicPair(t *testing.T) {
+	pds := &fakePDS{listed: map[string][]atprepo.ListedRecord{
+		standardSubCollection: {
+			{URI: "at://did:plc:alice/" + standardSubCollection + "/3old", CID: "bafy-old", Value: map[string]any{"publication": testPublication, "createdAt": "2026-09-23T10:00:00Z"}},
+		},
+		"blue.morgen.feed.subscription": {
+			{URI: "at://did:plc:alice/blue.morgen.feed.subscription/3side", CID: "bafy-side", Value: map[string]any{
+				"source":    map[string]any{"$type": "blue.morgen.feed.subscription#standardPublication", "publication": testPublication},
+				"createdAt": "2026-09-23T10:00:00Z", "title": "My Name", "primary": true, "tags": []any{"News"},
+			}},
+		},
+	}}
+	idx := newFakeIndex()
+	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{})
+
+	body := `{"subscriptions":[{"publication":"` + testPublication + `","title":"My Name","primary":true,"tags":["News"]}]}`
+	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.creates != 0 || pds.applyCalls != 0 {
+		t.Errorf("PDS writes = creates:%d applyWrites:%d, want none when adopting existing pair", pds.creates, pds.applyCalls)
+	}
+	row, err := idx.GetUserSubscriptionByFeedURL(context.Background(), db.GetUserSubscriptionByFeedURLParams{Did: "did:plc:alice", FeedUrl: testPublication})
+	if err != nil {
+		t.Fatalf("row lookup: %v", err)
+	}
+	if row.Rkey != "3old" || row.SidecarRkey == nil || *row.SidecarRkey != "3side" || row.Title == nil || *row.Title != "My Name" || row.IsPrimary != 1 {
+		t.Errorf("adopted row = %+v", row)
+	}
+}
+
+func TestSubscriptionsCreate_Standardfeed_AmbiguousCommitFreshRetryAdoptsPair(t *testing.T) {
+	idx := newFakeIndex()
+	pds := &fakePDS{
+		applyAfterCommitErr: errors.New("connection lost after commit"),
+		getErr:              errors.New("readback unavailable"),
+	}
+	body := `{"subscriptions":[{"publication":"` + testPublication + `","title":"My Name","primary":true,"tags":["News"]}]}`
+	disp := &fakeDispatcher{}
+	first := SubscriptionsCreateHandler(idx, idx, pds, disp)
+	firstResp := httptest.NewRecorder()
+	firstReq := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	first.ServeHTTP(firstResp, firstReq)
+
+	if firstResp.Code != http.StatusBadGateway {
+		t.Fatalf("first status = %d, want 502; body = %s", firstResp.Code, firstResp.Body.String())
+	}
+	if !strings.Contains(strings.ToLower(firstResp.Body.String()), "confirm") {
+		t.Errorf("first response = %q, want outcome could not be confirmed", firstResp.Body.String())
+	}
+	if len(idx.rows["did:plc:alice"]) != 0 {
+		t.Fatalf("local rows after unresolved response = %v, want none", idx.rows["did:plc:alice"])
+	}
+	if len(pds.listed[standardSubCollection]) != 1 || len(pds.listed["blue.morgen.feed.subscription"]) != 1 {
+		t.Fatalf("ambiguous commit did not persist the pair: %+v", pds.listed)
+	}
+
+	// A new HTTP request has no local row to dedupe against. PDS preflight must adopt the committed pair.
+	pds.getErr = nil
+	second := SubscriptionsCreateHandler(idx, idx, pds, disp)
+	secondResp := httptest.NewRecorder()
+	secondReq := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-2")
+	second.ServeHTTP(secondResp, secondReq)
+
+	if secondResp.Code != http.StatusOK {
+		t.Fatalf("retry status = %d, want 200; body = %s", secondResp.Code, secondResp.Body.String())
+	}
+	if pds.applyCalls != 1 || pds.creates != 0 {
+		t.Errorf("PDS writes after retry = applyWrites:%d creates:%d, want only original ambiguous pair", pds.applyCalls, pds.creates)
+	}
+	row, err := idx.GetUserSubscriptionByFeedURL(context.Background(), db.GetUserSubscriptionByFeedURLParams{Did: "did:plc:alice", FeedUrl: testPublication})
+	if err != nil {
+		t.Fatalf("row lookup after retry: %v", err)
+	}
+	if row.Rkey != pds.applied[0].rkey || row.SidecarRkey == nil || *row.SidecarRkey != pds.applied[1].rkey || row.Title == nil || *row.Title != "My Name" {
+		t.Errorf("mirrored row = %+v, want the committed TID pair and requested metadata", row)
+	}
+}
+
+func TestSubscriptionsCreate_Standardfeed_CustomMetadata_AtomicApplyWrites(t *testing.T) {
 	idx := newFakeIndex()
 	pds := &fakePDS{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{})
@@ -272,23 +428,31 @@ func TestSubscriptionsCreate_Standardfeed_CustomMetadata_SidecarSecond(t *testin
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
-	if pds.creates != 2 {
-		t.Fatalf("PDS creates = %d, want 2 (standard + sidecar)", pds.creates)
+	if pds.applyCalls != 1 || pds.creates != 0 {
+		t.Fatalf("PDS applyWrites calls=%d creates=%d, want one atomic write and no separate creates", pds.applyCalls, pds.creates)
 	}
-	// Order pins the failure contract: the portable record lands first, so a sidecar failure still leaves an adoptable subscription.
-	if pds.created[0].collection != standardSubCollection {
-		t.Errorf("first write collection = %q, want standard record first", pds.created[0].collection)
+	if len(pds.applied) != 2 {
+		t.Fatalf("atomic writes = %v, want standard record and sidecar", pds.applied)
 	}
-	if pds.created[1].collection != "blue.morgen.feed.subscription" {
-		t.Errorf("second write collection = %q, want blue.morgen sidecar", pds.created[1].collection)
+	if pds.applied[0].collection != standardSubCollection {
+		t.Errorf("first write collection = %q, want standard record first", pds.applied[0].collection)
 	}
-	sidecar := pds.created[1].record
+	if pds.applied[1].collection != "blue.morgen.feed.subscription" {
+		t.Errorf("second write collection = %q, want blue.morgen sidecar", pds.applied[1].collection)
+	}
+	if pds.applied[0].record["publication"] != testPublication {
+		t.Errorf("existence record = %v", pds.applied[0].record)
+	}
+	sidecar := pds.applied[1].record
 	source, ok := sidecar["source"].(map[string]any)
 	if !ok || source["$type"] != "blue.morgen.feed.subscription#standardPublication" || source["publication"] != testPublication {
 		t.Errorf("sidecar source = %v", sidecar["source"])
 	}
 	if sidecar["title"] != "My Name" || sidecar["primary"] != true {
 		t.Errorf("sidecar metadata = %v", sidecar)
+	}
+	if tags, ok := sidecar["tags"].([]string); !ok || len(tags) != 1 || tags[0] != "News" {
+		t.Errorf("sidecar tags = %v (%T), want [News]", sidecar["tags"], sidecar["tags"])
 	}
 
 	row, err := idx.GetUserSubscriptionByFeedURL(context.Background(), db.GetUserSubscriptionByFeedURLParams{
@@ -297,14 +461,36 @@ func TestSubscriptionsCreate_Standardfeed_CustomMetadata_SidecarSecond(t *testin
 	if err != nil {
 		t.Fatalf("row lookup: %v", err)
 	}
-	if row.Rkey != "3la1" {
-		t.Errorf("row rkey = %q, want standard rkey 3la1", row.Rkey)
+	if row.Rkey != pds.applied[0].rkey {
+		t.Errorf("row rkey = %q, want standard rkey %s", row.Rkey, pds.applied[0].rkey)
 	}
-	if row.SidecarRkey == nil || *row.SidecarRkey != "3la2" {
-		t.Errorf("row sidecar_rkey = %v, want 3la2", row.SidecarRkey)
+	if row.SidecarRkey == nil || *row.SidecarRkey != pds.applied[1].rkey {
+		t.Errorf("row sidecar_rkey = %v, want %s", row.SidecarRkey, pds.applied[1].rkey)
 	}
 	if row.Title == nil || *row.Title != "My Name" {
 		t.Errorf("row title = %v", row.Title)
+	}
+}
+
+func TestSubscriptionsCreate_Standardfeed_CustomMetadata_AtomicFailureLeavesNoBareRecord(t *testing.T) {
+	idx := newFakeIndex()
+	pds := &fakePDS{applyErr: errors.New("pds down")}
+	disp := &fakeDispatcher{}
+	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
+
+	body := `{"subscriptions":[{"publication":"` + testPublication + `","title":"My Name"}]}`
+	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502; body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.applyCalls != 1 || len(pds.applied) != 0 || pds.creates != 0 {
+		t.Errorf("applyWrites calls=%d applied=%v creates=%d, want failed atomic request with no records", pds.applyCalls, pds.applied, pds.creates)
+	}
+	if len(idx.rows["did:plc:alice"]) != 0 || len(idx.feedParams) != 0 || len(disp.dispatched) != 0 {
+		t.Errorf("local mutation after failed PDS write: rows=%v feeds=%v dispatched=%v", idx.rows, idx.feedParams, disp.dispatched)
 	}
 }
 
@@ -386,11 +572,11 @@ func TestSubscriptionsCreate_MixedBatch_BothKinds(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
-	if pds.creates != 2 {
-		t.Fatalf("PDS creates = %d, want 2", pds.creates)
+	if pds.creates != 1 || pds.applyCalls != 1 {
+		t.Fatalf("PDS creates = %d, applyWrites=%d, want RSS create + Standardfeed applyWrites", pds.creates, pds.applyCalls)
 	}
-	if pds.created[0].collection != "blue.morgen.feed.subscription" || pds.created[1].collection != standardSubCollection {
-		t.Errorf("collections = %q, %q", pds.created[0].collection, pds.created[1].collection)
+	if pds.created[0].collection != "blue.morgen.feed.subscription" || pds.applied[0].collection != standardSubCollection {
+		t.Errorf("collections = RSS:%q Standardfeed:%q", pds.created[0].collection, pds.applied[0].collection)
 	}
 	var got addResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {

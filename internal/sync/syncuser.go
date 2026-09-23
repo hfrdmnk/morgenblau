@@ -3,22 +3,19 @@ package sync
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
-	"golang.org/x/sync/errgroup"
-
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database"
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/jobs"
 )
-
-// SPEC <feed-sources>: repeat trigger within this window reuses the running job id.
-const guardWindow = 5 * time.Minute
 
 // Engine runs the dual-track sync for one user, coalesced by the in-flight guard.
 type Engine struct {
@@ -41,6 +38,16 @@ type Engine struct {
 
 	parentCtx context.Context
 	wg        *sync.WaitGroup
+	runMu     sync.Mutex
+	active    map[string]*userRun
+}
+
+type userRun struct {
+	id            string
+	did           syntax.DID
+	sessionID     string
+	passSessionID string
+	rerun         bool
 }
 
 // WithLocker installs the session locker so each run refreshes its access token eagerly under lock; nil skips the refresh.
@@ -73,6 +80,7 @@ func NewEngine(
 		pds:       pds,
 		now:       time.Now,
 		parentCtx: context.Background(),
+		active:    make(map[string]*userRun),
 	}
 	e.runTx = func(ctx context.Context, fn func(SyncStore) error) error {
 		return fn(e.store)
@@ -96,10 +104,21 @@ func (e *Engine) WithTxRunner(w *sql.DB) *Engine {
 
 // SyncUser starts the dual-track refresh for (did, sessionID); the in-flight guard coalesces a repeat trigger into the existing job id.
 func (e *Engine) SyncUser(ctx context.Context, did syntax.DID, sessionID string, trigger jobs.Trigger) (string, error) {
-	j, existed := e.jobs.CreateOrReturnExisting(jobs.KindSyncUser, did, trigger, guardWindow)
-	if existed {
-		return j.ID, nil
+	e.runMu.Lock()
+	if active := e.active[did.String()]; active != nil {
+		sessionChanged := active.sessionID != sessionID
+		if sessionChanged {
+			active.sessionID = sessionID
+		}
+		if active.passSessionID != "" && (trigger == jobs.TriggerManual || sessionChanged && active.passSessionID != sessionID) {
+			active.rerun = true
+		}
+		e.runMu.Unlock()
+		return active.id, nil
 	}
+	j := e.jobs.Create(jobs.KindSyncUser, did, trigger)
+	run := &userRun{id: j.ID, did: did, sessionID: sessionID}
+	e.active[did.String()] = run
 	if e.wg != nil {
 		e.wg.Add(1)
 	}
@@ -107,29 +126,45 @@ func (e *Engine) SyncUser(ctx context.Context, did syntax.DID, sessionID string,
 		if e.wg != nil {
 			defer e.wg.Done()
 		}
-		e.run(j.ID, did, sessionID)
+		e.run(run)
 	}()
+	e.runMu.Unlock()
 	return j.ID, nil
 }
 
-func (e *Engine) run(id string, did syntax.DID, sessionID string) {
-	e.jobs.SetRunning(id)
-	bg, cancel := context.WithTimeout(e.parentCtx, 5*time.Minute)
-	defer cancel()
+func (e *Engine) run(run *userRun) {
+	for {
+		e.runMu.Lock()
+		sessionID := run.sessionID
+		run.passSessionID = sessionID
+		e.runMu.Unlock()
 
-	sess, err := e.resumeAndRefresh(bg, did, sessionID)
-	if err != nil {
-		slog.Warn("sync_user: resume failed", "did", did, "err", err)
-		e.jobs.SetFailed(id)
+		e.jobs.SetRunning(run.id)
+		bg, cancel := context.WithTimeout(e.parentCtx, 5*time.Minute)
+		sess, err := e.resumeAndRefresh(bg, run.did, sessionID)
+		if err != nil {
+			slog.Warn("sync_user: resume failed", "did", run.did, "err", err)
+		} else if err = e.runDualTrack(bg, run.did, sess); err != nil {
+			slog.Warn("sync_user: failed", "did", run.did, "err", err)
+		}
+		cancel()
+
+		e.runMu.Lock()
+		if run.rerun && e.parentCtx.Err() == nil {
+			run.rerun = false
+			run.passSessionID = ""
+			e.runMu.Unlock()
+			continue
+		}
+		if err != nil {
+			e.jobs.SetFailed(run.id)
+		} else {
+			e.jobs.SetDone(run.id)
+		}
+		delete(e.active, run.did.String())
+		e.runMu.Unlock()
 		return
 	}
-
-	if err := e.runDualTrack(bg, did, sess); err != nil {
-		slog.Warn("sync_user: failed", "did", did, "err", err)
-		e.jobs.SetFailed(id)
-		return
-	}
-	e.jobs.SetDone(id)
 }
 
 // resumeAndRefresh resumes and refreshes under one continuous lock hold: resuming outside
@@ -155,6 +190,7 @@ func (e *Engine) resumeAndRefresh(ctx context.Context, did syntax.DID, sessionID
 // runDualTrack is unexported-but-callable so tests can drive it directly, without the goroutine wrapping.
 func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *oauth.ClientSession) error {
 	// Snapshot Tier-1 BEFORE reconcile so Phase 1B doesn't wait on 1A.
+	snapshotAt := e.now().UTC()
 	snapshot, err := e.store.ListUserSubscriptionsForSync(ctx, did.String())
 	if err != nil {
 		return err
@@ -170,33 +206,41 @@ func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *oauth.C
 		addedFeedURLs []string
 	)
 
-	g, gctx := errgroup.WithContext(ctx)
-
 	// Phase 1A: PDS reconcile.
-	g.Go(func() error {
-		return e.reconcileTier1(gctx, did, sess, snapshot, func(url string) {
+	var wg sync.WaitGroup
+	errC := make(chan error, 2)
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		if err := e.reconcileTier1(ctx, did, sess, snapshot, snapshotAt, func(url string) {
 			addedMu.Lock()
 			addedFeedURLs = append(addedFeedURLs, url)
 			addedMu.Unlock()
-		})
-	})
+		}); err != nil {
+			errC <- fmt.Errorf("subscriptions reconcile: %w", err)
+		}
+	}()
 
 	// Phase 1B: Local-known fan-out fetch.
-	g.Go(func() error {
-		fetchAll(gctx, snapURLs, e.fetcher)
-		return nil
-	})
+	go func() {
+		defer wg.Done()
+		fetchAll(ctx, snapURLs, e.fetcher)
+	}()
 
-	// Phase 1C: saves reconcile, independent and best-effort; a hiccup here must never fail the primary refresh.
-	g.Go(func() error {
-		if err := e.reconcileSaves(gctx, did, sess); err != nil {
+	// Phase 1C: saves reconcile, independent of subscriptions and fetches.
+	go func() {
+		defer wg.Done()
+		if err := e.reconcileSaves(ctx, did, sess); err != nil {
 			slog.Warn("sync_user: saves reconcile failed", "did", did, "err", err)
+			errC <- fmt.Errorf("saves reconcile: %w", err)
 		}
-		return nil
-	})
+	}()
 
-	if err := g.Wait(); err != nil {
-		return err
+	wg.Wait()
+	close(errC)
+	var reconcileErrs []error
+	for err := range errC {
+		reconcileErrs = append(reconcileErrs, err)
 	}
 
 	// Phase 2: top-up, fetch newly added URLs that 1B didn't already cover.
@@ -213,7 +257,7 @@ func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *oauth.C
 	}
 	addedMu.Unlock()
 	fetchAll(ctx, topUp, e.fetcher)
-	return nil
+	return errors.Join(reconcileErrs...)
 }
 
 func fetchAll(ctx context.Context, urls []string, f FeedFetcher) {

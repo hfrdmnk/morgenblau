@@ -109,6 +109,8 @@ Stopping a Newsletter moves it to **Stopped newsletters**, where it can be re-en
 
 Newsletter data is scoped to its owner and must never enter the shared feed-content cache. The existing public lexicons remain unchanged for this release.
 
+Owner matching is enforced by both the private service and relational constraints. A newsletter save uses the private path even when its message has a public web-version URL.
+
 </newsletter-privacy>
 
 ---
@@ -147,7 +149,11 @@ Keep the existing Morgenblau permission-set lexicon unchanged. Standardfeed subs
 
 Mutations validate against the existing lexicon, write to the PDS, then mirror locally. A failed mirror must not report an already committed PDS write as a failed mutation; `mirrorOrRepair` in `internal/api/mirror.go` schedules reconciliation instead.
 
+An authenticated app entry starts a coalesced reconciliation, including for an existing session. It does not force the current page to refresh; navigation reads the committed local state. A `sync_user` job is done only after subscription and save reconciliation have both committed. Feed fetch and sidecar cleanup failures can retry separately.
+
 **Standardfeed subscriptions:** `site.standard.graph.subscription` is the existence authority. The Morgenblau subscription record is a lazy metadata sidecar for title, tags, and primary status. Subscribing creates the standard record; a metadata edit may create the sidecar. Reconciliation honors subscriptions made in other apps and cleans up orphaned or duplicate subscription sidecars. The policy lives in `internal/sync/reconcile_subscriptions.go` and `internal/sync/reconcile_sidecar.go`.
+
+Creating a customized Standardfeed subscription commits its existence record and metadata sidecar in one PDS transaction. Failure cannot leave an existence record that lost the requested metadata.
 
 **Shared upstream cache:** RSS sources are keyed by canonical feed URL; Standardfeed sources by publication AT-URI. Multiple user subscriptions can reference one source and its entries. RSS polling follows HTTP cache semantics. Native Standardfeed ingestion reconciles publisher documents, including upstream deletions; RSS entries persist because RSS has no equivalent deletion signal. The pipelines live in `internal/sync/`.
 

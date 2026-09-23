@@ -76,17 +76,18 @@ type NewsletterMessage struct {
 }
 
 type NewsletterReceipt struct {
-	ID            string  `json:"id"`
-	Did           string  `json:"did"`
-	EnvelopeFrom  string  `json:"envelope_from"`
-	Recipient     string  `json:"recipient"`
-	ReceivedAt    string  `json:"received_at"`
-	RawMime       []byte  `json:"raw_mime"`
-	ReservedBytes int64   `json:"reserved_bytes"`
-	Attempts      int64   `json:"attempts"`
-	LastError     *string `json:"last_error"`
-	NextAttemptAt *string `json:"next_attempt_at"`
-	CreatedAt     string  `json:"created_at"`
+	ID                 string  `json:"id"`
+	Did                string  `json:"did"`
+	EnvelopeFrom       string  `json:"envelope_from"`
+	Recipient          string  `json:"recipient"`
+	RecipientLocalPart string  `json:"recipient_local_part"`
+	ReceivedAt         string  `json:"received_at"`
+	RawMime            []byte  `json:"raw_mime"`
+	ReservedBytes      int64   `json:"reserved_bytes"`
+	Attempts           int64   `json:"attempts"`
+	LastError          *string `json:"last_error"`
+	NextAttemptAt      *string `json:"next_attempt_at"`
+	CreatedAt          string  `json:"created_at"`
 }
 
 type NewsletterSafe struct {

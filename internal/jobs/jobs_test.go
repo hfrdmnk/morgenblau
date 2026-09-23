@@ -193,3 +193,29 @@ func TestCreateOrReturnExisting_ExpiredJobsNotReturned(t *testing.T) {
 		t.Errorf("expired job re-used id %s", j1.ID)
 	}
 }
+
+func TestLatestSyncFailureSurvivesGCUntilSuccessfulSync(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	tr := NewWithOptions(50*time.Millisecond, func() time.Time { return now })
+	alice := didFor(t, "did:plc:alice")
+	failed := tr.Create(KindSyncUser, alice, TriggerManual)
+	tr.SetRunning(failed.ID)
+	tr.SetFailed(failed.ID)
+
+	now = now.Add(time.Second)
+	tr.GC()
+	if got := tr.LatestSyncForUser(alice); got == nil || got.ID != failed.ID || got.Status != StatusFailed {
+		t.Fatalf("latest sync after GC = %+v, want unresolved failure %q", got, failed.ID)
+	}
+
+	next := tr.Create(KindSyncUser, alice, TriggerLogin)
+	tr.SetRunning(next.ID)
+	if got := tr.LatestSyncForUser(alice); got == nil || got.ID != next.ID || got.Status != StatusRunning {
+		t.Fatalf("latest sync during retry = %+v, want active retry", got)
+	}
+
+	tr.SetDone(next.ID)
+	if got := tr.LatestSyncForUser(alice); got == nil || got.ID != next.ID || got.Status != StatusDone {
+		t.Fatalf("latest sync after success = %+v, want successful job %q", got, next.ID)
+	}
+}

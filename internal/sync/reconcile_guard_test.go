@@ -39,67 +39,95 @@ func TestCreatedAfterSnapshot(t *testing.T) {
 	}
 }
 
-// reconcileGuardCase asserts one pass wires createdAtOf; the guard's own semantics belong to
-// TestCreatedAfterSnapshot and TestReconcileCollection_GuardSparesRowsNewerThanTheSnapshot.
-// The two subscription passes are absent: their snapshot precedes the PDS listing, so an in-flight row is never a delete candidate; they also select no created_at to guard on.
-type reconcileGuardCase struct {
-	name    string
-	seed    func(s *fakeStore, createdAt string)
-	run     func(e *Engine) error
-	deletes func(s *fakeStore) []string
-}
-
-var reconcileGuardCases = []reconcileGuardCase{
-	{
-		name: "saves",
-		seed: func(s *fakeStore, createdAt string) {
-			s.saves[guardDID] = map[string]db.ListUserSavesForSyncRow{
-				"3inflight": {Did: guardDID, Rkey: "3inflight", AtUri: "at://" + guardDID + "/blue.morgen.feed.save/3inflight", ItemUrl: "https://example.test/post", CreatedAt: createdAt},
-			}
-		},
-		run: func(e *Engine) error {
-			return e.reconcileSaves(context.Background(), mustDID(guardDID), newSession(guardDID))
-		},
-		deletes: func(s *fakeStore) []string { return s.saveDeletes },
-	},
-}
-
-// A row written in-app after the PDS listing was taken is absent from that listing without having been deleted remotely; reconcile must not mistake it for a remote delete.
-func TestReconcile_RowCreatedAfterSnapshot_SurvivesDeletePass(t *testing.T) {
-	rows := []struct {
+func TestUpdatedAfterSnapshot(t *testing.T) {
+	cases := []struct {
 		name      string
-		createdAt string
-		wantGone  bool
+		updatedAt string
+		want      bool
 	}{
-		{"created after the snapshot", "2026-07-20T12:00:01Z", false},
-		{"created before the snapshot", "2026-07-20T11:00:00Z", true},
+		{"after snapshot", "2026-07-20T12:00:01Z", true},
+		{"same second as snapshot", "2026-07-20T12:00:00Z", false},
+		{"before snapshot", "2026-07-20T11:59:59Z", false},
+		{"offset resolving after snapshot", "2026-07-20T14:00:05+02:00", true},
+		{"invalid", "not-a-timestamp", false},
 	}
-	for _, rc := range reconcileGuardCases {
-		t.Run(rc.name, func(t *testing.T) {
-			for _, row := range rows {
-				t.Run(row.name, func(t *testing.T) {
-					store := newFakeStore()
-					rc.seed(store, row.createdAt)
-					// Empty lister: the local row is absent from the PDS listing either way, only created_at decides.
-					eng := NewEngine(jobs.New(), store, &fakeLister{}, &countingFetcher{}, nil, nil)
-					eng.now = func() time.Time { return guardSnapshotAt }
-
-					if err := rc.run(eng); err != nil {
-						t.Fatal(err)
-					}
-
-					deletes := rc.deletes(store)
-					if row.wantGone {
-						if len(deletes) != 1 || deletes[0] != "3inflight" {
-							t.Errorf("deletes = %v, want [3inflight]", deletes)
-						}
-						return
-					}
-					if len(deletes) != 0 {
-						t.Errorf("deletes = %v, want none: the row was created after the snapshot", deletes)
-					}
-				})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := updatedAfterSnapshot(tc.updatedAt, guardSnapshotAt); got != tc.want {
+				t.Errorf("updatedAfterSnapshot(%q, %s) = %v, want %v", tc.updatedAt, guardSnapshotAt.Format(time.RFC3339), got, tc.want)
 			}
 		})
 	}
 }
+
+func TestReconcile_StaleSubscriptionListingPreservesSameSecondMirrorUpdate(t *testing.T) {
+	for _, staleListing := range []struct {
+		name string
+		rows []PDSSubscription
+	}{
+		{name: "remote record missing", rows: nil},
+		{name: "remote metadata is stale", rows: []PDSSubscription{{URI: "at://" + guardDID + "/blue.morgen.feed.subscription/3sub", Kind: "rss", Rkey: "3sub", FeedURL: "https://example.com/feed", Title: "Old"}}},
+	} {
+		t.Run(staleListing.name, func(t *testing.T) {
+			store := newFakeStore()
+			store.rows[guardDID] = map[string]db.UserSubscription{
+				"3sub": {Did: guardDID, Rkey: "3sub", AtUri: "at://" + guardDID + "/blue.morgen.feed.subscription/3sub", FeedUrl: "https://example.com/feed", Kind: "rss", Title: strPtr("Old"), UpdatedAt: "2026-07-20T11:59:59Z"},
+			}
+			lister := &fakeLister{subs: staleListing.rows}
+			lister.beforeSubs = func() {
+				store.mu.Lock()
+				defer store.mu.Unlock()
+				row := store.rows[guardDID]["3sub"]
+				row.Title = strPtr("New local title")
+				row.UpdatedAt = guardSnapshotAt.Format(time.RFC3339)
+				store.rows[guardDID]["3sub"] = row
+			}
+			eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
+			eng.now = func() time.Time { return guardSnapshotAt }
+			baseline, err := store.ListUserSubscriptionsForSync(context.Background(), guardDID)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if err := eng.reconcileTier1(context.Background(), mustDID(guardDID), newSession(guardDID), baseline, guardSnapshotAt, func(string) {}); err != nil {
+				t.Fatal(err)
+			}
+			row := store.rows[guardDID]["3sub"]
+			if row.Title == nil || *row.Title != "New local title" {
+				t.Fatalf("local title = %v, want the concurrent mirror value", row.Title)
+			}
+			if len(store.deletes) != 0 {
+				t.Errorf("deletes = %v, want none", store.deletes)
+			}
+			if staleListing.rows != nil && store.upserts != 0 {
+				t.Errorf("reconcile upserts = %d, want none for the stale rkey", store.upserts)
+			}
+		})
+	}
+}
+
+func TestReconcile_StaleSaveListingPreservesSameSecondMirrorInsert(t *testing.T) {
+	store := newFakeStore()
+	lister := &fakeLister{}
+	lister.beforeSaves = func() {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		store.saves[guardDID] = map[string]db.UserSave{
+			"3save": {Did: guardDID, Rkey: "3save", AtUri: "at://" + guardDID + "/blue.morgen.feed.save/3save", ItemUrl: "https://example.com/post", CreatedAt: "2026-07-20T12:00:00Z", UpdatedAt: guardSnapshotAt.Format(time.RFC3339)},
+		}
+	}
+	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
+	eng.now = func() time.Time { return guardSnapshotAt }
+
+	if err := eng.reconcileSaves(context.Background(), mustDID(guardDID), newSession(guardDID)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := store.saves[guardDID]["3save"]; !ok {
+		t.Fatal("same-second local mirror insert was deleted by the stale listing")
+	}
+	if len(store.saveDeletes) != 0 {
+		t.Errorf("save deletes = %v, want none", store.saveDeletes)
+	}
+}
+
+func strPtr(s string) *string { return &s }

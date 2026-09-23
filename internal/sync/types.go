@@ -50,11 +50,11 @@ type PDSSave struct {
 
 // SyncStore is the slice of *db.Queries SyncUser depends on, kept narrow so the orchestrator's full surface stays hideable behind one interface.
 type SyncStore interface {
-	ListUserSubscriptionsForSync(ctx context.Context, did string) ([]db.ListUserSubscriptionsForSyncRow, error)
+	ListUserSubscriptionsForSync(ctx context.Context, did string) ([]db.UserSubscription, error)
 	UpsertUserSubscription(ctx context.Context, arg db.UpsertUserSubscriptionParams) error
 	DeleteUserSubscription(ctx context.Context, arg db.DeleteUserSubscriptionParams) error
 	UpsertFeed(ctx context.Context, arg db.UpsertFeedParams) error
-	ListUserSavesForSync(ctx context.Context, did string) ([]db.ListUserSavesForSyncRow, error)
+	ListUserSavesForSync(ctx context.Context, did string) ([]db.UserSave, error)
 	UpsertUserSave(ctx context.Context, arg db.UpsertUserSaveParams) error
 	DeleteUserSave(ctx context.Context, arg db.DeleteUserSaveParams) error
 }

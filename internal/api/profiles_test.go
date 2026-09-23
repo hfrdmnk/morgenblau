@@ -20,6 +20,20 @@ type fakeProfileSource struct {
 	getCalls atomic.Int64
 }
 
+type recordingProfileSync struct {
+	did   syntax.DID
+	sid   string
+	calls int
+	err   error
+}
+
+func (s *recordingProfileSync) StartLoginRefresh(_ context.Context, did syntax.DID, sessionID string) (string, error) {
+	s.did = did
+	s.sid = sessionID
+	s.calls++
+	return "sync-1", s.err
+}
+
 func (f *fakeProfileSource) Get(_ context.Context, did syntax.DID) (profiles.Profile, error) {
 	f.getCalls.Add(1)
 	if f.err != nil {
@@ -58,6 +72,32 @@ func TestMeProfile_HappyPath(t *testing.T) {
 	}
 	if !got.NeedsReauth {
 		t.Error("NeedsReauth = false without standard subscription scope")
+	}
+}
+
+func TestMeProfile_TriggersBackgroundSyncForExistingSession(t *testing.T) {
+	did, _ := syntax.ParseDID("did:plc:alice")
+	source := &fakeProfileSource{profiles: map[syntax.DID]profiles.Profile{did: {DID: did.String()}}}
+	starter := &recordingProfileSync{}
+	rr := httptest.NewRecorder()
+	MeProfileHandler(source, starter).ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), did.String(), "sid-1"))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if starter.calls != 1 || starter.did != did || starter.sid != "sid-1" {
+		t.Errorf("sync dispatch = calls:%d did:%s sid:%q", starter.calls, starter.did, starter.sid)
+	}
+}
+
+func TestMeProfile_SyncDispatchFailureDoesNotFailEntry(t *testing.T) {
+	did, _ := syntax.ParseDID("did:plc:alice")
+	source := &fakeProfileSource{profiles: map[syntax.DID]profiles.Profile{did: {DID: did.String()}}}
+	starter := &recordingProfileSync{err: fmt.Errorf("dispatch failed")}
+	rr := httptest.NewRecorder()
+	MeProfileHandler(source, starter).ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), did.String(), "sid-1"))
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rr.Code)
 	}
 }
 

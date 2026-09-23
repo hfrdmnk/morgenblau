@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/smtp"
-	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -113,23 +113,25 @@ iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAA
 
 func openNewsletterIntegrationDB(t *testing.T) *database.DB {
 	t.Helper()
-	t.Setenv("DB_PATH", filepath.Join(t.TempDir(), "newsletter-integration.db"))
+	databasePath := filepath.Join(t.TempDir(), "newsletter-integration.db")
+	t.Setenv("DB_PATH", databasePath)
+	goosePath, err := exec.LookPath("goose")
+	if err != nil {
+		t.Fatal("goose CLI is required for newsletter integration tests; install github.com/pressly/goose/v3/cmd/goose@v3.27.1")
+	}
+	migrationDir, err := filepath.Abs(filepath.Join("..", "database", "migrations"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command(goosePath, "-dir", migrationDir, "sqlite3", databasePath, "up").CombinedOutput()
+	if err != nil {
+		t.Fatalf("goose migration: %v\n%s", err, output)
+	}
 	dbs, err := database.Open()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = dbs.Close() })
-	migration, err := os.ReadFile(filepath.Join("..", "database", "migrations", "20260920000000_newsletters.sql"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	up := strings.Split(string(migration), "-- +goose Down")[0]
-	up = strings.ReplaceAll(up, "-- +goose Up", "")
-	up = strings.ReplaceAll(up, "-- +goose StatementBegin", "")
-	up = strings.ReplaceAll(up, "-- +goose StatementEnd", "")
-	if _, err := dbs.Writer.ExecContext(context.Background(), up); err != nil {
-		t.Fatalf("migration: %v", err)
-	}
 	return dbs
 }
 

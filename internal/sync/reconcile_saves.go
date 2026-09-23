@@ -12,8 +12,12 @@ import (
 
 // reconcileSaves has no Tier-2 join and no fetch to trigger; saves are leaf bookmarks.
 func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *oauth.ClientSession) error {
-	// Taken before the listing so any row created while the round-trip is in flight is newer than the snapshot.
 	snapshotAt := e.now().UTC()
+	didStr := did.String()
+	baseline, err := e.store.ListUserSavesForSync(ctx, didStr)
+	if err != nil {
+		return err
+	}
 
 	// Network first: the writer connection must never be held across a PDS round-trip.
 	remote, err := e.lister.ListSaves(ctx, sess)
@@ -22,7 +26,6 @@ func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *oauth
 	}
 
 	now := e.now().UTC().Format(time.RFC3339)
-	didStr := did.String()
 
 	desired := make([]desiredRow, 0, len(remote))
 	for _, r := range remote {
@@ -41,17 +44,25 @@ func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *oauth
 		})
 	}
 
-	return reconcileCollection(ctx, e.runTx, reconcilePass[db.ListUserSavesForSyncRow]{
-		collection: "saves",
-		snapshotAt: snapshotAt,
-		snapshot: func(ctx context.Context, q SyncStore) ([]db.ListUserSavesForSyncRow, error) {
+	return reconcileCollection(ctx, e.runTx, reconcilePass[db.UserSave]{
+		collection:           "saves",
+		snapshotAt:           snapshotAt,
+		baseline:             baseline,
+		guardLocalChanges:    true,
+		updatedAtOf:          func(row db.UserSave) string { return row.UpdatedAt },
+		changedSinceSnapshot: saveChangedSinceSnapshot,
+		snapshot: func(ctx context.Context, q SyncStore) ([]db.UserSave, error) {
 			return q.ListUserSavesForSync(ctx, didStr)
 		},
-		rkeyOf:      func(row db.ListUserSavesForSyncRow) string { return row.Rkey },
-		createdAtOf: func(row db.ListUserSavesForSyncRow) string { return row.CreatedAt },
-		desired:     desired,
+		rkeyOf:  func(row db.UserSave) string { return row.Rkey },
+		desired: desired,
 		deleteRow: func(ctx context.Context, q SyncStore, rkey string) error {
 			return q.DeleteUserSave(ctx, db.DeleteUserSaveParams{Did: didStr, Rkey: rkey})
 		},
 	})
+}
+
+func saveChangedSinceSnapshot(current, baseline db.UserSave) bool {
+	return current.AtUri != baseline.AtUri || current.ItemUrl != baseline.ItemUrl || current.CreatedAt != baseline.CreatedAt ||
+		current.UpdatedAt != baseline.UpdatedAt || optionalStringChanged(current.FeedUrl, baseline.FeedUrl)
 }

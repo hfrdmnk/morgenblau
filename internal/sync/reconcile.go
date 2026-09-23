@@ -27,10 +27,17 @@ type reconcilePass[L any] struct {
 	// snapshot reads the local side inside the tx; its failure rolls the whole pass back rather than deleting against a partial view.
 	snapshot func(ctx context.Context, q SyncStore) ([]L, error)
 
+	baseline          []L
+	guardLocalChanges bool
+
 	rkeyOf func(L) string
 
 	// createdAtOf feeds the in-flight guard; nil where the snapshot query carries no created_at column.
 	createdAtOf func(L) string
+
+	updatedAtOf func(L) string
+
+	changedSinceSnapshot func(current, baseline L) bool
 
 	desired []desiredRow
 
@@ -53,11 +60,38 @@ func reconcileCollection[L any](ctx context.Context, runTx txRunner, p reconcile
 		if err != nil {
 			return err
 		}
+		changedDuringListing := make(map[string]struct{})
+		deletedDuringListing := make(map[string]struct{})
+		if p.guardLocalChanges {
+			baselineByRkey := make(map[string]L, len(p.baseline))
+			for _, row := range p.baseline {
+				baselineByRkey[p.rkeyOf(row)] = row
+			}
+			currentByRkey := make(map[string]L, len(local))
+			for _, row := range local {
+				rkey := p.rkeyOf(row)
+				currentByRkey[rkey] = row
+				baseline, existed := baselineByRkey[rkey]
+				if !existed || (p.changedSinceSnapshot != nil && p.changedSinceSnapshot(row, baseline)) ||
+					(p.updatedAtOf != nil && updatedAfterSnapshot(p.updatedAtOf(row), p.snapshotAt)) {
+					changedDuringListing[rkey] = struct{}{}
+				}
+			}
+			for rkey := range baselineByRkey {
+				if _, exists := currentByRkey[rkey]; !exists {
+					deletedDuringListing[rkey] = struct{}{}
+				}
+			}
+		}
 
-		deleteStale := func(fatal bool) error {
+		deleteStale := func() error {
 			for _, row := range local {
 				rkey := p.rkeyOf(row)
 				if _, alive := keep[rkey]; alive {
+					continue
+				}
+				if _, fresh := changedDuringListing[rkey]; fresh {
+					slog.Debug("reconcile: delete skipped, local row changed during the PDS listing", "collection", p.collection, "rkey", rkey)
 					continue
 				}
 				if p.createdAtOf != nil && createdAfterSnapshot(p.createdAtOf(row), p.snapshotAt) {
@@ -65,35 +99,38 @@ func reconcileCollection[L any](ctx context.Context, runTx txRunner, p reconcile
 					continue
 				}
 				if err := p.deleteRow(ctx, q, rkey); err != nil {
-					if fatal {
-						return fmt.Errorf("reconcile %s delete %q: %w", p.collection, rkey, err)
-					}
-					slog.Warn("reconcile: delete failed", "collection", p.collection, "rkey", rkey, "err", err)
+					return fmt.Errorf("reconcile %s delete %q: %w", p.collection, rkey, err)
 				}
 			}
 			return nil
 		}
-		upsertDesired := func(fatal bool) error {
+		upsertDesired := func() error {
 			for _, d := range p.desired {
+				if _, deleted := deletedDuringListing[d.rkey]; deleted {
+					slog.Debug("reconcile: upsert skipped, local row was deleted during the PDS listing", "collection", p.collection, "rkey", d.rkey)
+					continue
+				}
+				if _, fresh := changedDuringListing[d.rkey]; fresh {
+					slog.Debug("reconcile: upsert skipped, local row changed during the PDS listing", "collection", p.collection, "rkey", d.rkey)
+					continue
+				}
 				if err := d.write(ctx, q); err != nil {
-					if fatal {
-						return fmt.Errorf("reconcile %s upsert %q: %w", p.collection, d.rkey, err)
-					}
-					slog.Warn("reconcile: upsert failed", "collection", p.collection, "rkey", d.rkey, "err", err)
+					return fmt.Errorf("reconcile %s upsert %q: %w", p.collection, d.rkey, err)
 				}
 			}
 			return nil
 		}
 
 		if p.deleteFirst {
-			if err := deleteStale(true); err != nil {
+			if err := deleteStale(); err != nil {
 				return err
 			}
-			return upsertDesired(true)
+			return upsertDesired()
 		}
-		_ = upsertDesired(false)
-		_ = deleteStale(false)
-		return nil
+		if err := upsertDesired(); err != nil {
+			return err
+		}
+		return deleteStale()
 	})
 }
 

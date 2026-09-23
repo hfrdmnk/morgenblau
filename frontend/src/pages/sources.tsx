@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { shortTimeAgo } from '@/lib/date';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { useAuthedMe } from '@/hooks/use-authed-me';
 import { useListNavKeyboard } from '@/hooks/use-list-nav-keyboard';
 import {
     useListNavigation,
@@ -113,11 +114,21 @@ const FREQUENCY_LABEL: Record<Frequency, string> = {
 // Stable empty list so list navigation doesn't reset every render while loading.
 const EMPTY_SOURCES: Source[] = [];
 const EMPTY_NEWSLETTERS: NewsletterSources = { active: [], stopped: [] };
+type SyncStatus = 'pending' | 'running' | 'done' | 'failed';
+
+async function latestSyncStatus(): Promise<SyncStatus | null> {
+    const job = await api<{ status: SyncStatus } | null>('/api/jobs/latest');
+    return job?.status ?? null;
+}
+
+function syncIsRunning(status: SyncStatus | null): boolean {
+    return status === 'pending' || status === 'running';
+}
 
 export function Sources() {
     useDocumentTitle('Sources');
     const [, navigate] = useLocation();
-    const { state, setState, setHasPendingJobs } = useSourcesData();
+    const { state, setState, setHasPendingJobs, syncFailed } = useSourcesData();
     const view = useMemo(() => sourceView(state), [state]);
     const navItems = useMemo(
         () => sourceNavItems(view.records, view.newsletters),
@@ -142,14 +153,33 @@ export function Sources() {
             onPatch={feedMutations.onPatch}
             onDelete={feedMutations.onDelete}
             onNewsletterPatch={onNewsletterPatch}
+            syncFailed={syncFailed}
         />
     );
 }
 
 function useSourcesData() {
+    const did = useAuthedMe()?.did;
     const [state, setState] = useState<State>({ kind: 'loading' });
     const [reloadTick, setReloadTick] = useState(0);
     const [hasPendingJobs, setHasPendingJobs] = useState(false);
+    const [syncFailed, setSyncFailed] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const check = async () => {
+            const status = await latestSyncStatus().catch(() => null);
+            if (cancelled) return;
+            setSyncFailed(status === 'failed');
+            if (syncIsRunning(status)) timer = setTimeout(check, 1500);
+        };
+        check();
+        return () => {
+            cancelled = true;
+            if (timer) clearTimeout(timer);
+        };
+    }, [did]);
 
     useEffect(() => {
         let cancelled = false;
@@ -200,7 +230,7 @@ function useSourcesData() {
     }, []);
     useJobsPoll(hasPendingJobs, onJobsQuiet);
 
-    return { state, setState, setHasPendingJobs };
+    return { state, setState, setHasPendingJobs, syncFailed };
 }
 
 function mergeSourceResults(
@@ -399,6 +429,7 @@ function SourcesPage({
     onPatch,
     onDelete,
     onNewsletterPatch,
+    syncFailed,
 }: {
     state: State;
     view: SourceView;
@@ -406,6 +437,7 @@ function SourcesPage({
     onPatch: (rkey: string, patch: SourcePatch) => Promise<boolean>;
     onDelete: (rkey: string) => Promise<boolean>;
     onNewsletterPatch: (id: string, patch: SourcePatch) => Promise<boolean>;
+    syncFailed: boolean;
 }) {
     if (state.kind === 'loading') return <SourcesMessage>Loading…</SourcesMessage>;
     if (state.kind === 'error') {
@@ -419,6 +451,7 @@ function SourcesPage({
             onPatch={onPatch}
             onDelete={onDelete}
             onNewsletterPatch={onNewsletterPatch}
+            syncFailed={syncFailed}
         />
     );
 }
@@ -429,22 +462,27 @@ function LoadedSources({
     onPatch,
     onDelete,
     onNewsletterPatch,
+    syncFailed,
 }: {
     view: SourceView;
     nav: ListNavigation;
     onPatch: (rkey: string, patch: SourcePatch) => Promise<boolean>;
     onDelete: (rkey: string) => Promise<boolean>;
     onNewsletterPatch: (id: string, patch: SourcePatch) => Promise<boolean>;
+    syncFailed: boolean;
 }) {
     const newsletterCount =
         view.newsletters.active.length + view.newsletters.stopped.length;
-    if (hasNoSources(view, newsletterCount)) {
+    if (hasNoSources(view, newsletterCount) && !syncFailed) {
         return <SourcesMessage>No sources yet — paste a URL to add one.</SourcesMessage>;
     }
 
     return (
         <main className="mx-auto max-w-2xl px-6 py-8">
             <SourcesMasthead count={view.records.length + newsletterCount} />
+            <LoadWarning failed={syncFailed}>
+                Some sources or saves may be out of date. Refresh the Digest to retry.
+            </LoadWarning>
             <LoadWarning failed={view.feedsError}>Couldn’t load feeds.</LoadWarning>
             <LoadWarning failed={view.newslettersError}>
                 Couldn’t load newsletters.

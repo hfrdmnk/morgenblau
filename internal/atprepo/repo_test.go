@@ -103,6 +103,172 @@ func TestPutRecord_PostsCorrectBody(t *testing.T) {
 	assertRepoWriteBody(t, got, "did:plc:example", "blue.morgen.feed.subscription", "3la", "https://example.com/feed.xml")
 }
 
+func TestApplyWrites_PostsCreateOperationsAndReturnsRefs(t *testing.T) {
+	var got map[string]any
+	srv := repoServer(t, "com.atproto.repo.applyWrites", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]any{
+				{"$type": "com.atproto.repo.applyWrites#createResult", "uri": "at://did:plc:example/site.standard.graph.subscription/3a", "cid": "bafy-a"},
+				{"$type": "com.atproto.repo.applyWrites#createResult", "uri": "at://did:plc:example/blue.morgen.feed.subscription/3b", "cid": "bafy-b"},
+			},
+		})
+	})
+	defer srv.Close()
+
+	refs, err := (SessionWriter{}).ApplyWrites(context.Background(), newTestSession(t, srv), []RecordWrite{
+		{Collection: syntax.NSID("site.standard.graph.subscription"), Rkey: syntax.RecordKey("3a"), Record: map[string]any{"publication": "at://pub/example"}},
+		{Collection: syntax.NSID("blue.morgen.feed.subscription"), Rkey: syntax.RecordKey("3b"), Record: map[string]any{"title": "Example"}},
+	})
+	if err != nil {
+		t.Fatalf("ApplyWrites: %v", err)
+	}
+	if got["repo"] != "did:plc:example" {
+		t.Errorf("repo = %v", got["repo"])
+	}
+	writes, ok := got["writes"].([]any)
+	if !ok || len(writes) != 2 {
+		t.Fatalf("writes = %#v, want two operations", got["writes"])
+	}
+	wantCollections := []string{"site.standard.graph.subscription", "blue.morgen.feed.subscription"}
+	for i, value := range writes {
+		write, ok := value.(map[string]any)
+		if !ok {
+			t.Fatalf("writes[%d] = %#v", i, value)
+		}
+		if write["$type"] != "com.atproto.repo.applyWrites#create" || write["collection"] != wantCollections[i] {
+			t.Errorf("writes[%d] = %v", i, write)
+		}
+		if _, ok := write["value"].(map[string]any); !ok {
+			t.Errorf("writes[%d].value = %T, want record object", i, write["value"])
+		}
+	}
+	if len(refs) != 2 || refs[0].URI != "at://did:plc:example/site.standard.graph.subscription/3a" || refs[1].CID != "bafy-b" {
+		t.Errorf("refs = %+v", refs)
+	}
+}
+
+func TestApplyWrites_SendsClientChosenRecordKeys(t *testing.T) {
+	var got map[string]any
+	srv := repoServer(t, "com.atproto.repo.applyWrites", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": []map[string]any{
+			{"$type": "com.atproto.repo.applyWrites#createResult", "uri": "at://did:plc:example/site.standard.graph.subscription/3exist", "cid": "bafy-a"},
+			{"$type": "com.atproto.repo.applyWrites#createResult", "uri": "at://did:plc:example/blue.morgen.feed.subscription/3side", "cid": "bafy-b"},
+		}})
+	})
+	defer srv.Close()
+
+	_, err := (SessionWriter{}).ApplyWrites(context.Background(), newTestSession(t, srv), []RecordWrite{
+		{Collection: syntax.NSID("site.standard.graph.subscription"), Rkey: syntax.RecordKey("3exist"), Record: map[string]any{"publication": "at://pub/example"}},
+		{Collection: syntax.NSID("blue.morgen.feed.subscription"), Rkey: syntax.RecordKey("3side"), Record: map[string]any{"title": "Example"}},
+	})
+	if err != nil {
+		t.Fatalf("ApplyWrites: %v", err)
+	}
+	writes, ok := got["writes"].([]any)
+	if !ok || len(writes) != 2 {
+		t.Fatalf("writes = %#v, want two operations", got["writes"])
+	}
+	for i, want := range []string{"3exist", "3side"} {
+		write, ok := writes[i].(map[string]any)
+		if !ok || write["rkey"] != want {
+			t.Errorf("writes[%d] = %v, want rkey %q", i, writes[i], want)
+		}
+	}
+}
+
+func TestApplyWrites_MissingResultsUsesClientChosenRecordKeys(t *testing.T) {
+	srv := repoServer(t, "com.atproto.repo.applyWrites", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"commit": map[string]any{"cid": "bafy-commit", "rev": "3rev"}})
+	})
+	defer srv.Close()
+
+	refs, err := (SessionWriter{}).ApplyWrites(context.Background(), newTestSession(t, srv), []RecordWrite{
+		{Collection: syntax.NSID("site.standard.graph.subscription"), Rkey: syntax.RecordKey("3exist"), Record: map[string]any{"publication": "at://pub/example"}},
+		{Collection: syntax.NSID("blue.morgen.feed.subscription"), Rkey: syntax.RecordKey("3side"), Record: map[string]any{"title": "Example"}},
+	})
+	if err != nil {
+		t.Fatalf("ApplyWrites: %v", err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("refs = %+v, want two synthetic record refs", refs)
+	}
+	if refs[0].URI != "at://did:plc:example/site.standard.graph.subscription/3exist" || refs[1].URI != "at://did:plc:example/blue.morgen.feed.subscription/3side" {
+		t.Errorf("refs = %+v", refs)
+	}
+	if refs[0].CID != "" || refs[1].CID != "" {
+		t.Errorf("CIDs = %q, %q, want empty when applyWrites omits results", refs[0].CID, refs[1].CID)
+	}
+}
+
+func TestApplyWrites_PropagatesUpstreamError(t *testing.T) {
+	srv := repoServer(t, "com.atproto.repo.applyWrites", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"InvalidRequest","message":"bad writes"}`))
+	})
+	defer srv.Close()
+
+	_, err := (SessionWriter{}).ApplyWrites(context.Background(), newTestSession(t, srv), []RecordWrite{
+		{Collection: syntax.NSID("site.standard.graph.subscription"), Rkey: syntax.RecordKey("3err"), Record: map[string]any{"publication": "at://pub/example"}},
+	})
+	if err == nil {
+		t.Fatal("expected upstream error")
+	}
+	if !strings.Contains(err.Error(), "400") && !strings.Contains(err.Error(), "bad writes") {
+		t.Fatalf("error = %v, want status detail", err)
+	}
+}
+
+func TestApplyWrites_UsesClientChosenKeysForIncompleteResults(t *testing.T) {
+	srv := repoServer(t, "com.atproto.repo.applyWrites", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": []map[string]any{
+			{"$type": "com.atproto.repo.applyWrites#createResult", "uri": "at://did:plc:example/site.standard.graph.subscription/3a", "cid": "bafy-a"},
+		}})
+	})
+	defer srv.Close()
+
+	_, err := (SessionWriter{}).ApplyWrites(context.Background(), newTestSession(t, srv), []RecordWrite{
+		{Collection: syntax.NSID("site.standard.graph.subscription"), Rkey: syntax.RecordKey("3a"), Record: map[string]any{"publication": "at://pub/example"}},
+		{Collection: syntax.NSID("blue.morgen.feed.subscription"), Rkey: syntax.RecordKey("3b"), Record: map[string]any{"title": "Example"}},
+	})
+	if err != nil {
+		t.Fatalf("ApplyWrites: %v", err)
+	}
+}
+
+func TestGetRecord_ReadsOneRecord(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/xrpc/com.atproto.repo.getRecord" {
+			t.Errorf("request = %s %s", r.Method, r.URL.Path)
+		}
+		for key, want := range map[string]string{"repo": "did:plc:example", "collection": "blue.morgen.feed.subscription", "rkey": "3side"} {
+			if got := r.URL.Query().Get(key); got != want {
+				t.Errorf("query %s = %q, want %q", key, got, want)
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"uri":   "at://did:plc:example/blue.morgen.feed.subscription/3side",
+			"cid":   "bafy-side",
+			"value": map[string]any{"title": "Example"},
+		})
+	}))
+	defer srv.Close()
+
+	record, err := (SessionWriter{}).GetRecord(context.Background(), newTestSession(t, srv), syntax.NSID("blue.morgen.feed.subscription"), syntax.RecordKey("3side"))
+	if err != nil {
+		t.Fatalf("GetRecord: %v", err)
+	}
+	if record.URI != "at://did:plc:example/blue.morgen.feed.subscription/3side" || record.CID != "bafy-side" || record.Value["title"] != "Example" {
+		t.Errorf("record = %+v", record)
+	}
+}
+
 func TestDeleteRecord_PostsCorrectBody(t *testing.T) {
 	var got map[string]any
 	srv := repoServer(t, "com.atproto.repo.deleteRecord", func(w http.ResponseWriter, r *http.Request) {

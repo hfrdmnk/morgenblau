@@ -28,7 +28,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /oauth/login", handler.LoginHandler(s.oauthApp))
 	mux.Handle("GET /oauth/callback", handler.CallbackHandler(s.oauthApp, s.sealer, s.sync))
 	mux.Handle("POST /oauth/logout", handler.LogoutHandler(s.oauthApp, s.sealer, s.store))
-	mux.Handle("GET /api/profiles/me", api.MeProfileHandler(s.profiles))
+	mux.Handle("GET /api/profiles/me", api.MeProfileHandler(s.profiles, s.sync))
 
 	pdsWriter := atprepo.SessionWriter{}
 	// POST/PATCH/DELETE routes below make PDS writes; auth.holdsSessionLock must match this set.
@@ -72,6 +72,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("DELETE /api/saves/{rkey}", api.SavesDeleteHandler(s.qr, s.qw, pdsWriter, s.sync))
 
 	mux.Handle("GET /api/jobs/active", api.JobsActiveHandler(s.jobs))
+	mux.Handle("GET /api/jobs/latest", api.JobsLatestHandler(s.jobs))
 	mux.Handle("GET /api/jobs/{id}", api.JobsGetHandler(s.jobs))
 	mux.Handle("GET /api/digest", digest)
 	mux.Handle("POST /api/digest/refresh", api.DigestRefreshHandler(s.sync))
