@@ -52,6 +52,27 @@ In `APP_ENV=local`, the Go server reverse-proxies `/` to the Vite dev server (HM
 
 `make run` starts Go + Vite without `mprocs` if you'd rather use your own terminal layout.
 
+### Inbound newsletters
+
+Inbound email stays disabled when `NEWSLETTER_DOMAIN` and `SMTP_LISTEN_ADDR` are empty. To exercise it locally, set a private test domain and an unprivileged listen address such as `:2525`. The HTTP server and SMTP receiver run in the same process and use the same SQLite database.
+
+STARTTLS is configured with either `SMTP_TLS_CERT_FILE` plus `SMTP_TLS_KEY_FILE`, or the base64 PEM environment variables documented in `.env.example`. `SMTP_HOSTNAME` is the SMTP banner and MX target hostname; it defaults to `NEWSLETTER_DOMAIN`. Production startup verifies the certificate's validity period and SAN against that hostname.
+
+For a local plaintext receiver, add these values to `.env`, start the normal app, sign in, and copy your private address from the Newsletters screen:
+
+```sh
+NEWSLETTER_DOMAIN=newsletter.localhost
+SMTP_LISTEN_ADDR=127.0.0.1:2525
+```
+
+Send the built-in MIME fixture to that copied address. It includes HTML, one embedded CID image, and one remote image placeholder for checking the consent flow:
+
+```sh
+go run ./cmd/send-newsletter -to '<your-copied-address>'
+```
+
+To exercise forwarded or unusual mail, pass an existing message with `-eml ./message.eml`. The sender defaults to `127.0.0.1:2525` and never contacts an external SMTP server unless `-smtp` is explicitly changed.
+
 ## OAuth
 
 Local dev uses a **loopback client**: `client_id` is `http://localhost`, callback is `http://127.0.0.1:8000/oauth/callback`, and the AS skips the client-metadata fetch entirely. Leave `BLUESKY_CLIENT_ID` and `BLUESKY_REDIRECT` empty in `.env` and sign in straight from `http://127.0.0.1:8000` — no tunnel, no public hostname.
@@ -86,6 +107,56 @@ make test                           # go test ./... -v
 ```
 
 `build` and `build-linux` both run the frontend build first (`bun run build` in `frontend/`) and embed the resulting `frontend/dist/` into the binary via `//go:embed`. The deploy binary is fully self-contained — `scp main-linux-amd64` to the VPS, set env vars, and run.
+
+## Container deployment
+
+The committed `Dockerfile` builds the frontend, embeds it in the Go binary, and runs pending goose migrations before each start. Persist `/data` and set `DB_PATH=/data/morgenblau.db`. A local SMTP mapping uses an unprivileged container port:
+
+```sh
+docker build -t morgenblau .
+docker run --rm \
+  -p 8000:8000 -p 25:2525 \
+  -v morgenblau-data:/data \
+  --env-file .env \
+  morgenblau
+```
+
+`fly.toml` is a deployment template. Replace its app name and newsletter domain, then create one volume and keep exactly one Machine because SQLite is local to that volume:
+
+```sh
+fly apps create <app-name>
+fly volumes create morgenblau_data --region zrh --size 1 --app <app-name>
+fly ips allocate-v4 --app <app-name>
+fly secrets set --app <app-name> \
+  SESSION_COOKIE_KEY='<base64-key>' \
+  SESSION_STORE_KEYS='<base64-key>' \
+  BLUESKY_OAUTH_PRIVATE_KEY='<base64-key>' \
+  BLUESKY_CLIENT_ID='https://<app-host>/oauth-client-metadata.json' \
+  BLUESKY_REDIRECT='https://<app-host>/oauth/callback'
+```
+
+The dedicated IPv4 is required for raw SMTP on port 25. Point `SMTP_HOSTNAME` at that address and make it the MX target for `NEWSLETTER_DOMAIN`. The Fly TCP service has no TLS handler because the application must negotiate SMTP STARTTLS itself.
+
+Provision a certificate for `SMTP_HOSTNAME` with Certbot and your DNS provider's DNS-01 plugin. Upload it as secrets before accepting mail:
+
+```sh
+export FLY_APP=<app-name>
+export RENEWED_LINEAGE=/etc/letsencrypt/live/<newsletter-domain>
+sh scripts/update-fly-smtp-cert.sh
+fly deploy --app <app-name>
+fly scale count 1 --app <app-name>
+```
+
+Use the same script as Certbot's deploy hook for renewal:
+
+```sh
+FLY_APP=<app-name> certbot renew \
+  --deploy-hook 'sh /absolute/path/to/morgenblau/scripts/update-fly-smtp-cert.sh'
+```
+
+`fly secrets set` restarts the Machine with the renewed certificate. The persistent `/data` volume survives that restart.
+
+The receiver temporarily rejects mail with SMTP 451 before storage fills. The internal high-water limits in `internal/newsletter/ingest.go` reserve 64 MiB for pending receipts and cap stored newsletter data at 256 MiB per owner and 768 MiB globally.
 
 ## Git & PRs
 

@@ -2,44 +2,50 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/jobs"
+	"morgenblau/internal/newsletter"
 )
 
 // DigestReader is the slice of *db.Queries the digest handler depends on.
 type DigestReader interface {
 	ListDigestForUser(ctx context.Context, arg db.ListDigestForUserParams) ([]db.ListDigestForUserRow, error)
-	ListAllEntriesForUser(ctx context.Context, did string) ([]db.ListAllEntriesForUserRow, error)
 }
 
 // EntryWire is the on-the-wire entry shape; Body is pre-sanitized HTML the frontend trusts as-is.
-// SavedState stays nil here (only the entry detail handler sets it) to avoid N+1 lookups on the digest list.
 type EntryWire struct {
-	ID          int64       `json:"id"`
-	EntrySlug   string      `json:"entrySlug"`
-	Title       *string     `json:"title"`
-	URL         string      `json:"url"`
-	ContentType string      `json:"contentType"`
-	PublishedAt string      `json:"publishedAt"`
-	Source      SourceMeta  `json:"source"`
-	Body        *string     `json:"body"`
-	Metadata    *string     `json:"metadata,omitempty"`
-	SavedState  *SavedState `json:"savedState"`
+	ID          any                    `json:"id"`
+	EntrySlug   string                 `json:"entrySlug"`
+	Title       *string                `json:"title"`
+	URL         *string                `json:"url,omitempty"`
+	ContentType string                 `json:"contentType"`
+	PublishedAt string                 `json:"publishedAt"`
+	Source      SourceMeta             `json:"source"`
+	Body        *string                `json:"body"`
+	Metadata    *string                `json:"metadata,omitempty"`
+	Newsletter  *NewsletterMessageMeta `json:"newsletter,omitempty"`
+	SavedState  *SavedState            `json:"savedState"`
 }
 
 // SavedState mirrors the frontend's view; Rkey is what the client DELETEs on un-save.
 type SavedState struct {
-	Rkey string `json:"rkey"`
+	Kind string `json:"kind,omitempty"`
+	ID   string `json:"id,omitempty"`
+	Rkey string `json:"rkey,omitempty"`
 }
 
 type SourceMeta struct {
-	FeedURL    string  `json:"feedUrl"`
+	Kind       string  `json:"kind,omitempty"`
+	ID         string  `json:"id,omitempty"`
+	FeedURL    string  `json:"feedUrl,omitempty"`
 	Title      *string `json:"title"`
 	SiteURL    *string `json:"siteUrl"`
 	FaviconURL *string `json:"faviconUrl"`
@@ -59,8 +65,12 @@ type JobsActiveProbe interface {
 	ActiveForUser(did syntax.DID) *jobs.Job
 }
 
-// DigestHandler returns entries for ?date=YYYY-MM-DD (default: today UTC), joined across the user's Tier-1 subscriptions.
-func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe) http.Handler {
+type newsletterDigestReader interface {
+	ListDigestMessages(context.Context, string, time.Time, time.Time) ([]newsletter.Message, error)
+}
+
+// DigestHandler returns entries for the requested browser-local calendar day, joined across the user's Tier-1 subscriptions.
+func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe, privateReaders ...newsletterDigestReader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -70,46 +80,44 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe) http.Handler {
 		dateStr := r.URL.Query().Get("date")
 		did := sess.Data.AccountDID.String()
 
-		var entries []EntryWire
-		var responseDate string
+		responseDate, day, next, err := digestDayBounds(dateStr, r.URL.Query().Get("timezone"), time.Now())
+		if err != nil {
+			writeError(w, http.StatusBadRequest, codeInvalidRequest, err.Error())
+			return
+		}
+		rows, err := reader.ListDigestForUser(r.Context(), db.ListDigestForUserParams{
+			Did:           did,
+			PublishedAt:   day.Format(time.RFC3339),
+			PublishedAt_2: next.Format(time.RFC3339),
+		})
+		if err != nil {
+			slog.Warn("/api/digest: list failed", "err", err)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
+			return
+		}
+		entries := make([]EntryWire, 0, len(rows))
+		for _, row := range rows {
+			entries = append(entries, digestRowToWire(row))
+		}
 
-		if dateStr == "" {
-			// TODO: missing ?date returns all entries unbounded for debugging; default to today and drop this branch + ListAllEntriesForUser before v1.
-			rows, err := reader.ListAllEntriesForUser(r.Context(), did)
+		if len(privateReaders) > 0 && privateReaders[0] != nil {
+			privateResponse(w)
+			messages, err := privateReaders[0].ListDigestMessages(r.Context(), did, day, next)
 			if err != nil {
-				slog.Warn("/api/digest: list-all failed", "err", err)
-				writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
+				writeNewsletterError(w, err)
 				return
 			}
-			entries = make([]EntryWire, 0, len(rows))
-			for _, row := range rows {
-				entries = append(entries, allEntriesRowToWire(row))
+			for _, message := range messages {
+				entries = append(entries, newsletterMessageToWire(message))
 			}
-			responseDate = time.Now().UTC().Format("2006-01-02")
-		} else {
-			parsed, err := time.Parse("2006-01-02", dateStr)
-			if err != nil {
-				writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid date (want YYYY-MM-DD)")
-				return
-			}
-			day := parsed.UTC()
-			next := day.Add(24 * time.Hour)
-
-			rows, err := reader.ListDigestForUser(r.Context(), db.ListDigestForUserParams{
-				Did:           did,
-				PublishedAt:   day.Format(time.RFC3339),
-				PublishedAt_2: next.Format(time.RFC3339),
+			sort.SliceStable(entries, func(i, j int) bool {
+				left, leftErr := time.Parse(time.RFC3339, entries[i].PublishedAt)
+				right, rightErr := time.Parse(time.RFC3339, entries[j].PublishedAt)
+				if leftErr != nil || rightErr != nil {
+					return false
+				}
+				return left.After(right)
 			})
-			if err != nil {
-				slog.Warn("/api/digest: list failed", "err", err)
-				writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
-				return
-			}
-			entries = make([]EntryWire, 0, len(rows))
-			for _, row := range rows {
-				entries = append(entries, digestRowToWire(row))
-			}
-			responseDate = day.Format("2006-01-02")
 		}
 
 		hasActive := false
@@ -123,6 +131,25 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe) http.Handler {
 			HasActiveJob: hasActive,
 		})
 	})
+}
+
+func digestDayBounds(dateStr, timezone string, now time.Time) (string, time.Time, time.Time, error) {
+	loc := time.UTC
+	if timezone != "" {
+		var err error
+		loc, err = time.LoadLocation(timezone)
+		if err != nil {
+			return "", time.Time{}, time.Time{}, fmt.Errorf("invalid timezone")
+		}
+	}
+	if dateStr == "" {
+		dateStr = now.In(loc).Format("2006-01-02")
+	}
+	day, err := time.ParseInLocation("2006-01-02", dateStr, loc)
+	if err != nil {
+		return "", time.Time{}, time.Time{}, fmt.Errorf("invalid date (want YYYY-MM-DD)")
+	}
+	return dateStr, day.UTC(), day.AddDate(0, 0, 1).UTC(), nil
 }
 
 // entryListFields is the shared field set behind the entry-list row-to-wire mappers, since the three list queries differ only in filter, not shape.
@@ -143,35 +170,18 @@ type entryListFields struct {
 }
 
 func entryListRowToWire(f entryListFields) EntryWire {
+	entryURL := f.Url
 	return EntryWire{
 		ID:          f.ID,
 		EntrySlug:   f.EntrySlug,
 		Title:       f.Title,
-		URL:         f.Url,
+		URL:         &entryURL,
 		ContentType: f.ContentType,
 		PublishedAt: f.PublishedAt,
 		Source:      buildSourceMeta(f.FeedUrl, displayTitle(f.FeedTitle, f.CatalogTitle), f.FeedSiteUrl, f.FeedIconUrl),
 		Body:        f.ContentHtml,
 		Metadata:    f.Metadata,
 	}
-}
-
-func allEntriesRowToWire(row db.ListAllEntriesForUserRow) EntryWire {
-	return entryListRowToWire(entryListFields{
-		ID:           row.ID,
-		EntrySlug:    row.EntrySlug,
-		Title:        row.Title,
-		Url:          row.Url,
-		ContentType:  row.ContentType,
-		PublishedAt:  row.PublishedAt,
-		FeedUrl:      row.FeedUrl,
-		FeedTitle:    row.FeedTitle,
-		CatalogTitle: row.CatalogTitle,
-		FeedSiteUrl:  row.FeedSiteUrl,
-		FeedIconUrl:  row.FeedIconUrl,
-		ContentHtml:  row.ContentHtml,
-		Metadata:     row.Metadata,
-	})
 }
 
 func digestRowToWire(row db.ListDigestForUserRow) EntryWire {

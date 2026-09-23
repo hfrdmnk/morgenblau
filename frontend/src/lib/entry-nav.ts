@@ -10,7 +10,9 @@ export function entryActivation(
     from?: EntryFrom,
 ): EntryActivation | null {
     const opensInReader =
-        entry.contentType === 'blogpost' || entry.contentType === 'video';
+        entry.contentType === 'blogpost' ||
+        entry.contentType === 'newsletter' ||
+        entry.contentType === 'video';
     if (opensInReader) {
         return { href: entryHref(entry.entrySlug, from), external: false };
     }

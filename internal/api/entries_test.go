@@ -124,8 +124,8 @@ func TestEntry_HappyPath(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.ID != 42 {
-		t.Errorf("ID = %d", got.ID)
+	if got.ID != float64(42) {
+		t.Errorf("ID = %v", got.ID)
 	}
 	if got.Source.Title == nil || *got.Source.Title != "Example Source" {
 		t.Errorf("Source.Title = %v, want Example Source", got.Source.Title)
@@ -201,6 +201,31 @@ func TestEntry_SavedState_NotSaved_Nil(t *testing.T) {
 	}
 	if got.SavedState != nil {
 		t.Errorf("savedState = %+v, want nil", got.SavedState)
+	}
+}
+
+func TestEntry_NewsletterMessageUsesPrivateReaderPath(t *testing.T) {
+	feedReader := &fakeEntryReader{getErr: errors.New("feed reader should not be called")}
+	newsletters := &fakeNewsletterService{message: newsletterMessageFixture()}
+	mux := http.NewServeMux()
+	mux.Handle("GET /api/entries/{slug}", EntryHandler(feedReader, newsletters))
+
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/entries/letter-1", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if rr.Header().Get("Cache-Control") != "private, no-store" {
+		t.Errorf("Cache-Control = %q", rr.Header().Get("Cache-Control"))
+	}
+	var got EntryWire
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ContentType != "newsletter" || got.Newsletter == nil || got.Newsletter.MessageID != "message-1" {
+		t.Errorf("entry = %+v", got)
 	}
 }
 

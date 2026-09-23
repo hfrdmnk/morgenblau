@@ -1,0 +1,47 @@
+app = "replace-with-your-morgenblau-app"
+primary_region = "zrh"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  APP_ENV = "production"
+  PORT = "8000"
+  DB_PATH = "/data/morgenblau.db"
+  FETCH_INTERVAL_MINUTES = "30"
+  NEWSLETTER_DOMAIN = "newsletter.example.com"
+  SMTP_HOSTNAME = "newsletter.example.com"
+  SMTP_LISTEN_ADDR = ":2525"
+
+[[mounts]]
+  source = "morgenblau_data"
+  destination = "/data"
+  initial_size = "1gb"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8000
+  auto_stop_machines = "off"
+  auto_start_machines = false
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 2525
+  auto_stop_machines = "off"
+  auto_start_machines = false
+
+  [[services.ports]]
+    port = 25
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

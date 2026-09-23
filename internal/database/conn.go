@@ -30,7 +30,7 @@ func Open() (*DB, error) {
 		return nil, fmt.Errorf("create db dir: %w", err)
 	}
 	base := fmt.Sprintf(
-		"file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)&_pragma=synchronous(normal)",
+		"file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)&_pragma=synchronous(full)",
 		path,
 	)
 

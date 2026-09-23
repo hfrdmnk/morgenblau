@@ -1,8 +1,15 @@
 import { SpinnerIcon } from '@proicons/react';
 import type { FormEvent, KeyboardEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+    AnimatePresence,
+    motion,
+    MotionConfig,
+    useReducedMotion,
+} from 'motion/react';
 
 import { FeedCandidateList } from '@/components/sources/feed-candidate-list';
+import { NewsletterAddress } from '@/components/newsletters/newsletter-address';
 import { ApiError, api } from '@/lib/api';
 import { candidateKey, type FeedCandidate } from '@/lib/candidates';
 import { InputError } from '@/components/input-error';
@@ -16,13 +23,13 @@ import { Button } from '@/components/ui/button';
 import {
     Dialog,
     DialogContent,
-    DialogDescription,
     DialogFooter,
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
 import { youtubeShortsFreeFeedUrl } from '@/lib/youtube';
 
 // feedUrl is the catalog key: feed URL for rss subscriptions, publication at-uri for ATProto.
@@ -54,6 +61,8 @@ type Props = {
     open: boolean;
     onOpenChange: (open: boolean) => void;
 };
+
+const MotionDialogContent = motion.create(DialogContent);
 
 function toItem(candidate: FeedCandidate): SubscriptionItem {
     return {
@@ -122,10 +131,21 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
     );
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     const [userTags, setUserTags] = useState<string[]>([]);
+    const [newsletterAlternativeVisible, setNewsletterAlternativeVisible] =
+        useState(true);
+    const reduceMotion = useReducedMotion();
 
     const firstCheckboxRef = useRef<HTMLInputElement>(null);
     const firstTitleInputRef = useRef<HTMLInputElement>(null);
     const previousCandidatesRef = useRef<FeedCandidate[] | null>(null);
+
+    const showNewsletterAlternative = useCallback(() => {
+        setNewsletterAlternativeVisible(true);
+    }, []);
+
+    const hideNewsletterAlternative = useCallback(() => {
+        setNewsletterAlternativeVisible(false);
+    }, []);
 
     const resetState = useCallback(() => {
         discoverAbortRef.current?.abort();
@@ -139,7 +159,8 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
         setSubmitting(false);
         setSubmitError(undefined);
         setFieldErrors({});
-    }, []);
+        showNewsletterAlternative();
+    }, [showNewsletterAlternative]);
 
     const handleOpenChangeComplete = (nextOpen: boolean) => {
         if (nextOpen) {
@@ -150,6 +171,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
     };
 
     const onUrlChange = (next: string) => {
+        showNewsletterAlternative();
         setUrl(next);
 
         if (candidates !== null) {
@@ -177,6 +199,9 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                 '/api/subscriptions/resolve',
                 { method: 'POST', body: { url }, signal: abort.signal },
             );
+            if (result.candidates.length > 0) {
+                hideNewsletterAlternative();
+            }
             setCandidates(result.candidates);
             setExistingSubscriptions(result.existingSubscriptions);
 
@@ -208,7 +233,7 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
             }
             setDiscovering(false);
         }
-    }, [url]);
+    }, [hideNewsletterAlternative, url]);
 
     const onUrlKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
         if (event.key !== 'Enter' || event.nativeEvent.isComposing) {
@@ -484,25 +509,41 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
     const topLevelError = fieldErrors.subscriptions ?? submitError;
 
     return (
-        <Dialog
-            open={open}
-            onOpenChange={onOpenChange}
-            onOpenChangeComplete={handleOpenChangeComplete}
-        >
-            <DialogContent className="max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
-                <DialogHeader>
-                    <DialogTitle>Add a source</DialogTitle>
-                    <DialogDescription>
-                        Paste a website, RSS feed, or YouTube channel.
-                    </DialogDescription>
-                </DialogHeader>
-
-                <form
-                    onSubmit={submit}
-                    noValidate
-                    className="flex min-h-0 min-w-0 flex-col gap-5"
+        <MotionConfig reducedMotion="user">
+            <Dialog
+                open={open}
+                onOpenChange={onOpenChange}
+                onOpenChangeComplete={handleOpenChangeComplete}
+            >
+                <MotionDialogContent
+                    layout={!reduceMotion}
+                    layoutRoot
+                    transition={{
+                        layout: {
+                            type: 'tween',
+                            duration: 0.27,
+                            ease: [0.25, 1, 0.5, 1],
+                        },
+                    }}
+                    style={{ borderRadius: 12 }}
+                    className="max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
                 >
+                    <motion.div layout={reduceMotion ? false : 'position'}>
+                        <DialogHeader>
+                            <DialogTitle>Add a source</DialogTitle>
+                        </DialogHeader>
+                    </motion.div>
+
+                    <motion.form
+                        layout={reduceMotion ? false : 'position'}
+                        onSubmit={submit}
+                        noValidate
+                        className="flex min-h-0 min-w-0 flex-col gap-5"
+                    >
                     <div className="space-y-2">
+                        <h2 className="text-base font-medium tracking-tight">
+                            Web
+                        </h2>
                         <Label htmlFor="source-url" className="sr-only">
                             URL
                         </Label>
@@ -548,10 +589,6 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                         {discoverError && (
                             <InputError message={discoverError} />
                         )}
-                        <p className="text-sm font-light text-muted-foreground">
-                            Your sources are currently all public.
-                            (Selective private sources are coming.)
-                        </p>
                     </div>
 
                     {hasCandidates && (
@@ -580,6 +617,43 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                             </div>
                         </>
                     )}
+
+                    <AnimatePresence initial={false} mode="popLayout">
+                        {newsletterAlternativeVisible && (
+                            <motion.div
+                                key="newsletter-alternative"
+                                className="space-y-5"
+                                exit={{ opacity: 0, pointerEvents: 'none' }}
+                                transition={{
+                                    duration: 0.18,
+                                    ease: [0.19, 1, 0.22, 1],
+                                }}
+                            >
+                                <div
+                                    className="flex items-center gap-3"
+                                    role="separator"
+                                    aria-label="or"
+                                >
+                                    <Separator
+                                        aria-hidden
+                                        className="flex-1"
+                                    />
+                                    <span className="text-caption text-muted-foreground">
+                                        or
+                                    </span>
+                                    <Separator
+                                        aria-hidden
+                                        className="flex-1"
+                                    />
+                                </div>
+
+                                <NewsletterAddress
+                                    open={open}
+                                    onSetup={() => onOpenChange(false)}
+                                />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
                     {hasCandidates &&
                         subscriptions.map((item, index) => {
@@ -641,8 +715,9 @@ export function AddSourceDialog({ open, onOpenChange }: Props) {
                             )}
                         </Button>
                     </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
+                    </motion.form>
+                </MotionDialogContent>
+            </Dialog>
+        </MotionConfig>
     );
 }

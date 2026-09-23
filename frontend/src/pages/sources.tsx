@@ -1,5 +1,6 @@
 import {
     HourglassIcon,
+    MailIcon,
     MoonIcon,
     PencilIcon,
     PulseIcon,
@@ -29,13 +30,29 @@ import { Separator } from '@/components/ui/separator';
 import { shortTimeAgo } from '@/lib/date';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useListNavKeyboard } from '@/hooks/use-list-nav-keyboard';
-import { useListNavigation } from '@/hooks/use-list-navigation';
+import {
+    useListNavigation,
+    type ListNavigation,
+} from '@/hooks/use-list-navigation';
 import {
     subscribeSubscriptionAdded,
     type AddedSubscription,
 } from '@/lib/subscription-events';
 import { mergeTagSuggestions } from '@/lib/tags';
 import { useJobsPoll } from '@/hooks/use-jobs-poll';
+import {
+    emitNewsletterMutation,
+    enableNewsletter,
+    fetchNewsletters,
+    patchNewsletter,
+    stopNewsletter,
+    subscribeNewsletterMutation,
+    type NewsletterPatch,
+    type NewsletterSource,
+    type NewsletterSources,
+} from '@/lib/newsletters';
+import { newsletterSourceHref } from '@/lib/paths';
+import { NewsletterSourceActions } from '@/components/newsletters/source-actions';
 
 type Frequency =
     | 'new'
@@ -70,8 +87,18 @@ type Source = {
 
 type State =
     | { kind: 'loading' }
-    | { kind: 'ok'; records: Source[] }
+    | {
+          kind: 'ok';
+          records: Source[];
+          newsletters: NewsletterSources;
+          feedsError: boolean;
+          newslettersError: boolean;
+      }
     | { kind: 'error' };
+
+type SourceNavItem =
+    | { kind: 'feed'; source: Source }
+    | { kind: 'newsletter'; source: NewsletterSource };
 
 const FREQUENCY_LABEL: Record<Frequency, string> = {
     new: 'New',
@@ -85,23 +112,56 @@ const FREQUENCY_LABEL: Record<Frequency, string> = {
 
 // Stable empty list so list navigation doesn't reset every render while loading.
 const EMPTY_SOURCES: Source[] = [];
+const EMPTY_NEWSLETTERS: NewsletterSources = { active: [], stopped: [] };
 
 export function Sources() {
     useDocumentTitle('Sources');
     const [, navigate] = useLocation();
+    const { state, setState, setHasPendingJobs } = useSourcesData();
+    const view = useMemo(() => sourceView(state), [state]);
+    const navItems = useMemo(
+        () => sourceNavItems(view.records, view.newsletters),
+        [view],
+    );
+    const onOpen = useCallback(
+        (item: SourceNavItem) => {
+            navigate(sourceNavHref(item));
+        },
+        [navigate],
+    );
+    const nav = useListNavigation(navItems, onOpen);
+    useListNavKeyboard(nav);
+    const feedMutations = useFeedMutations(setState, setHasPendingJobs);
+    const onNewsletterPatch = useNewsletterPatch(setState);
+
+    return (
+        <SourcesPage
+            state={state}
+            view={view}
+            nav={nav}
+            onPatch={feedMutations.onPatch}
+            onDelete={feedMutations.onDelete}
+            onNewsletterPatch={onNewsletterPatch}
+        />
+    );
+}
+
+function useSourcesData() {
     const [state, setState] = useState<State>({ kind: 'loading' });
     const [reloadTick, setReloadTick] = useState(0);
     const [hasPendingJobs, setHasPendingJobs] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
-        api<Source[]>('/api/subscriptions')
-            .then((records) => {
-                if (!cancelled) setState({ kind: 'ok', records });
-            })
-            .catch(() => {
-                if (!cancelled) setState({ kind: 'error' });
-            });
+        Promise.allSettled([
+            api<Source[]>('/api/subscriptions'),
+            fetchNewsletters(),
+        ]).then(([feedsResult, newslettersResult]) => {
+            if (cancelled) return;
+            setState((current) =>
+                mergeSourceResults(current, feedsResult, newslettersResult),
+            );
+        });
         return () => {
             cancelled = true;
         };
@@ -115,7 +175,10 @@ export function Sources() {
                 for (const added of event.records) {
                     byRkey.set(added.rkey, addedToSource(added));
                 }
-                return { kind: 'ok', records: Array.from(byRkey.values()) };
+                return {
+                    ...cur,
+                    records: Array.from(byRkey.values()),
+                };
             });
             if (event.jobIds.length > 0) {
                 setHasPendingJobs(true);
@@ -123,43 +186,98 @@ export function Sources() {
         });
     }, []);
 
+    useEffect(
+        () =>
+            subscribeNewsletterMutation(() =>
+                setReloadTick((tick) => tick + 1),
+            ),
+        [],
+    );
+
     const onJobsQuiet = useCallback(() => {
         setHasPendingJobs(false);
         setReloadTick((tick) => tick + 1);
     }, []);
     useJobsPoll(hasPendingJobs, onJobsQuiet);
 
-    // Tag suggestions for the edit dialog: distinct tags already in use, deduped case-insensitively.
-    const tagSuggestions = useMemo(
-        () =>
-            state.kind === 'ok'
-                ? mergeTagSuggestions(
-                      state.records.flatMap((record) => record.tags ?? []),
-                  )
-                : [],
-        [state],
-    );
+    return { state, setState, setHasPendingJobs };
+}
 
-    const sortedRecords = useMemo(
-        () =>
-            state.kind === 'ok'
-                ? state.records.toSorted((a, b) =>
-                      displayLabel(a).localeCompare(displayLabel(b)),
-                  )
-                : EMPTY_SOURCES,
-        [state],
-    );
+function mergeSourceResults(
+    current: State,
+    feeds: PromiseSettledResult<Source[]>,
+    newsletters: PromiseSettledResult<NewsletterSources>,
+): State {
+    if (feeds.status === 'rejected' && newsletters.status === 'rejected') {
+        return { kind: 'error' };
+    }
+    const previous = current.kind === 'ok' ? current : emptySourceView();
+    return {
+        kind: 'ok',
+        records: settledValue(feeds, previous.records),
+        newsletters: settledValue(newsletters, previous.newsletters),
+        feedsError: feeds.status === 'rejected',
+        newslettersError: newsletters.status === 'rejected',
+    };
+}
 
-    const listRef = useRef<HTMLDivElement>(null);
-    const onOpen = useCallback(
-        (s: Source) => {
-            navigate(sourceHref(s.rkey));
-        },
-        [navigate],
-    );
-    const nav = useListNavigation(sortedRecords, onOpen);
-    useListNavKeyboard(nav);
+function settledValue<T>(result: PromiseSettledResult<T>, fallback: T): T {
+    if (result.status === 'fulfilled') return result.value;
+    return fallback;
+}
 
+function emptySourceView() {
+    return {
+        records: EMPTY_SOURCES,
+        newsletters: EMPTY_NEWSLETTERS,
+        feedsError: false,
+        newslettersError: false,
+    };
+}
+
+function sourceView(state: State) {
+    if (state.kind === 'ok') {
+        return {
+            ...state,
+            records: state.records.toSorted((a, b) =>
+                displayLabel(a).localeCompare(displayLabel(b)),
+            ),
+            tagSuggestions: mergeTagSuggestions(
+                state.records.flatMap((record) => record.tags ?? []),
+                state.newsletters.active.flatMap((source) => source.tags),
+                state.newsletters.stopped.flatMap((source) => source.tags),
+            ),
+        };
+    }
+    return { ...emptySourceView(), tagSuggestions: [] };
+}
+
+function sourceNavItems(
+    records: Source[],
+    newsletters: NewsletterSources,
+): SourceNavItem[] {
+    return [
+        ...records.map((source) => ({ kind: 'feed' as const, source })),
+        ...newsletters.active.map((source) => ({
+            kind: 'newsletter' as const,
+            source,
+        })),
+        ...newsletters.stopped.map((source) => ({
+            kind: 'newsletter' as const,
+            source,
+        })),
+    ];
+}
+
+function sourceNavHref(item: SourceNavItem): string {
+    if (item.kind === 'feed') return sourceHref(item.source.rkey);
+    return newsletterSourceHref(item.source.id);
+}
+
+function useFeedMutations(
+    setState: React.Dispatch<React.SetStateAction<State>>,
+    setHasPendingJobs: React.Dispatch<React.SetStateAction<boolean>>,
+) {
     const onPatch = async (rkey: string, patch: SourcePatch) => {
         try {
             await api(`/api/subscriptions/${rkey}`, {
@@ -170,31 +288,7 @@ export function Sources() {
             toastMutationError(err, "Couldn't save your changes. Try again.");
             return false;
         }
-        const feedPatch = patch.feedUrl ? { feedUrl: patch.feedUrl } : {};
-        setState((cur) => {
-            if (cur.kind !== 'ok') return cur;
-            return {
-                ...cur,
-                records: cur.records.map((r) =>
-                    r.rkey === rkey
-                        ? {
-                            ...r,
-                            title: patch.title,
-                            primary: patch.primary,
-                            tags: patch.tags,
-                            ...feedPatch,
-                            value: {
-                                ...r.value,
-                                title: patch.title,
-                                primary: patch.primary,
-                                tags: patch.tags,
-                                ...feedPatch,
-                            },
-                        }
-                        : r,
-                ),
-            };
-        });
+        setState((current) => patchFeedState(current, rkey, patch));
         // Re-pointing the feed dispatched a fetch; poll until it lands so the row picks up new entries and cadence.
         if (patch.feedUrl) setHasPendingJobs(true);
         return true;
@@ -207,83 +301,276 @@ export function Sources() {
             toastMutationError(err, "Couldn't remove this source. Try again.");
             return false;
         }
-        setState((cur) =>
-            cur.kind === 'ok'
-                ? { ...cur, records: cur.records.filter((r) => r.rkey !== rkey) }
-                : cur,
-        );
+        setState((current) => removeFeed(current, rkey));
         return true;
     };
 
-    if (state.kind === 'loading') {
-        return (
-            <main className="mx-auto max-w-2xl px-6 py-8">
-                <p className="text-sm font-light text-muted-foreground">
-                    Loading…
-                </p>
-            </main>
-        );
-    }
+    return { onPatch, onDelete };
+}
+
+function patchFeedState(state: State, rkey: string, patch: SourcePatch): State {
+    if (state.kind !== 'ok') return state;
+    return {
+        ...state,
+        records: state.records.map((source) => patchFeed(source, rkey, patch)),
+    };
+}
+
+function patchFeed(source: Source, rkey: string, patch: SourcePatch): Source {
+    if (source.rkey !== rkey) return source;
+    const feedPatch = patch.feedUrl ? { feedUrl: patch.feedUrl } : {};
+    return {
+        ...source,
+        title: patch.title,
+        primary: patch.primary,
+        tags: patch.tags,
+        ...feedPatch,
+        value: {
+            ...source.value,
+            title: patch.title,
+            primary: patch.primary,
+            tags: patch.tags,
+            ...feedPatch,
+        },
+    };
+}
+
+function removeFeed(state: State, rkey: string): State {
+    if (state.kind !== 'ok') return state;
+    return {
+        ...state,
+        records: state.records.filter((source) => source.rkey !== rkey),
+    };
+}
+
+function useNewsletterPatch(
+    setState: React.Dispatch<React.SetStateAction<State>>,
+) {
+    return async (
+        id: string,
+        patch: SourcePatch,
+    ): Promise<boolean> => {
+        const newsletterPatch: NewsletterPatch = {
+            title: patch.title,
+            primary: patch.primary,
+            tags: patch.tags,
+        };
+        try {
+            const updated = await patchNewsletter(id, newsletterPatch);
+            setState((current) => replaceNewsletter(current, updated));
+            emitNewsletterMutation();
+            return true;
+        } catch (error) {
+            toastMutationError(error, "Couldn't save your changes. Try again.");
+            return false;
+        }
+    };
+}
+
+function replaceNewsletter(state: State, updated: NewsletterSource): State {
+    if (state.kind !== 'ok') return state;
+    return {
+        ...state,
+        newsletters: {
+            active: state.newsletters.active.map((source) =>
+                updatedNewsletter(source, updated),
+            ),
+            stopped: state.newsletters.stopped.map((source) =>
+                updatedNewsletter(source, updated),
+            ),
+        },
+    };
+}
+
+function updatedNewsletter(
+    source: NewsletterSource,
+    updated: NewsletterSource,
+): NewsletterSource {
+    if (source.id === updated.id) return updated;
+    return source;
+}
+
+type SourceView = ReturnType<typeof sourceView>;
+
+function SourcesPage({
+    state,
+    view,
+    nav,
+    onPatch,
+    onDelete,
+    onNewsletterPatch,
+}: {
+    state: State;
+    view: SourceView;
+    nav: ListNavigation;
+    onPatch: (rkey: string, patch: SourcePatch) => Promise<boolean>;
+    onDelete: (rkey: string) => Promise<boolean>;
+    onNewsletterPatch: (id: string, patch: SourcePatch) => Promise<boolean>;
+}) {
+    if (state.kind === 'loading') return <SourcesMessage>Loading…</SourcesMessage>;
     if (state.kind === 'error') {
-        return (
-            <main className="mx-auto max-w-2xl px-6 py-8">
-                <p className="text-sm font-light text-muted-foreground">
-                    Couldn’t load your sources.
-                </p>
-            </main>
-        );
+        return <SourcesMessage>Couldn’t load your sources.</SourcesMessage>;
     }
-    if (state.records.length === 0) {
-        return (
-            <main className="mx-auto max-w-2xl px-6 py-8">
-                <p className="text-sm font-light text-muted-foreground">
-                    No sources yet — paste a URL to add one.
-                </p>
-            </main>
-        );
+
+    return (
+        <LoadedSources
+            view={view}
+            nav={nav}
+            onPatch={onPatch}
+            onDelete={onDelete}
+            onNewsletterPatch={onNewsletterPatch}
+        />
+    );
+}
+
+function LoadedSources({
+    view,
+    nav,
+    onPatch,
+    onDelete,
+    onNewsletterPatch,
+}: {
+    view: SourceView;
+    nav: ListNavigation;
+    onPatch: (rkey: string, patch: SourcePatch) => Promise<boolean>;
+    onDelete: (rkey: string) => Promise<boolean>;
+    onNewsletterPatch: (id: string, patch: SourcePatch) => Promise<boolean>;
+}) {
+    const newsletterCount =
+        view.newsletters.active.length + view.newsletters.stopped.length;
+    if (hasNoSources(view, newsletterCount)) {
+        return <SourcesMessage>No sources yet — paste a URL to add one.</SourcesMessage>;
     }
 
     return (
         <main className="mx-auto max-w-2xl px-6 py-8">
-            <div className="overflow-hidden rounded-xl bg-card shadow-card">
-                <SourcesMasthead count={sortedRecords.length} />
-                <div
-                    aria-hidden
-                    className="mx-6 border-t border-border"
+            <SourcesMasthead count={view.records.length + newsletterCount} />
+            <LoadWarning failed={view.feedsError}>Couldn’t load feeds.</LoadWarning>
+            <LoadWarning failed={view.newslettersError}>
+                Couldn’t load newsletters.
+            </LoadWarning>
+            <div className="mt-6 flex flex-col gap-6">
+                <FeedSection
+                    sources={view.records}
+                    nav={nav}
+                    onPatch={onPatch}
+                    onDelete={onDelete}
+                    tagSuggestions={view.tagSuggestions}
                 />
-                <div
-                    ref={listRef}
-                    className="relative"
-                    onMouseLeave={nav.clearPointer}
-                >
-                    <ListHighlight
-                        containerRef={listRef}
-                        active={nav.active}
-                        scrollKey={nav.scrollKey}
-                    />
-                    <ul className="relative z-10 flex flex-col">
-                        {sortedRecords.map((r, i) => (
-                            <Fragment key={r.rkey}>
-                                {i > 0 ? (
-                                    <li
-                                        aria-hidden
-                                        className="mx-6 border-t border-border"
-                                    />
-                                ) : null}
-                                <SourceRow
-                                    source={r}
-                                    index={i}
-                                    onActivate={nav.setActive}
-                                    onPatch={onPatch}
-                                    onDelete={onDelete}
-                                    tagSuggestions={tagSuggestions}
-                                />
-                            </Fragment>
-                        ))}
-                    </ul>
-                </div>
+                <OptionalNewsletterSection
+                    title="Newsletters"
+                    sources={view.newsletters.active}
+                    navOffset={view.records.length}
+                    nav={nav}
+                    onPatch={onNewsletterPatch}
+                    tagSuggestions={view.tagSuggestions}
+                />
+                <OptionalNewsletterSection
+                    title="Stopped newsletters"
+                    sources={view.newsletters.stopped}
+                    navOffset={
+                        view.records.length + view.newsletters.active.length
+                    }
+                    nav={nav}
+                    onPatch={onNewsletterPatch}
+                    tagSuggestions={view.tagSuggestions}
+                />
             </div>
         </main>
+    );
+}
+
+function hasNoSources(view: SourceView, newsletterCount: number): boolean {
+    return (
+        view.records.length === 0 &&
+        newsletterCount === 0 &&
+        !view.feedsError &&
+        !view.newslettersError
+    );
+}
+
+function SourcesMessage({ children }: { children: React.ReactNode }) {
+    return (
+        <main className="mx-auto max-w-2xl px-6 py-8">
+            <p className="text-sm font-light text-muted-foreground">{children}</p>
+        </main>
+    );
+}
+
+function LoadWarning({
+    failed,
+    children,
+}: {
+    failed: boolean;
+    children: React.ReactNode;
+}) {
+    if (!failed) return null;
+    return (
+        <p className="mt-4 text-label text-muted-foreground" role="status">
+            {children}
+        </p>
+    );
+}
+
+function FeedSection({
+    sources,
+    nav,
+    onPatch,
+    onDelete,
+    tagSuggestions,
+}: {
+    sources: Source[];
+    nav: ListNavigation;
+    onPatch: (rkey: string, patch: SourcePatch) => Promise<boolean>;
+    onDelete: (rkey: string) => Promise<boolean>;
+    tagSuggestions: string[];
+}) {
+    if (sources.length === 0) return null;
+    return (
+        <SourceSection title="Feeds" count={sources.length}>
+            <FeedList
+                sources={sources}
+                navOffset={0}
+                active={nav.active}
+                scrollKey={nav.scrollKey}
+                onActivate={nav.setActive}
+                onMouseLeave={nav.clearPointer}
+                onPatch={onPatch}
+                onDelete={onDelete}
+                tagSuggestions={tagSuggestions}
+            />
+        </SourceSection>
+    );
+}
+
+function OptionalNewsletterSection({
+    title,
+    sources,
+    navOffset,
+    nav,
+    onPatch,
+    tagSuggestions,
+}: {
+    title: string;
+    sources: NewsletterSource[];
+    navOffset: number;
+    nav: ListNavigation;
+    onPatch: (id: string, patch: SourcePatch) => Promise<boolean>;
+    tagSuggestions: string[];
+}) {
+    if (sources.length === 0) return null;
+    return (
+        <NewsletterSection
+            title={title}
+            sources={sources}
+            navOffset={navOffset}
+            active={nav.active}
+            scrollKey={nav.scrollKey}
+            onActivate={nav.setActive}
+            onMouseLeave={nav.clearPointer}
+            onPatch={onPatch}
+            tagSuggestions={tagSuggestions}
+        />
     );
 }
 
@@ -291,17 +578,249 @@ function SourcesMasthead({ count }: { count: number }) {
     const noun = count === 1 ? 'source' : 'sources';
 
     return (
-        <div className="flex flex-col gap-1 px-6 pt-6 pb-5">
+        <div className="flex flex-col gap-1">
             <p className="text-sm font-light text-muted-foreground">
                 Your publication
             </p>
             <div className="flex items-baseline justify-between gap-4">
-                <h2 className="text-xl font-medium">Sources</h2>
+                <h1 className="text-title">Sources</h1>
                 <p className="shrink-0 text-sm text-muted-foreground">
                     {count} {noun}
                 </p>
             </div>
         </div>
+    );
+}
+
+function SourceSection({
+    title,
+    count,
+    children,
+}: {
+    title: string;
+    count: number;
+    children: React.ReactNode;
+}) {
+    return (
+        <section className="overflow-hidden rounded-xl bg-card shadow-card">
+            <div className="flex items-baseline justify-between gap-4 px-6 pt-6 pb-5">
+                <h2 className="text-title">{title}</h2>
+                <p className="text-label text-muted-foreground">{count}</p>
+            </div>
+            <div aria-hidden className="mx-6 border-t border-border" />
+            {children}
+        </section>
+    );
+}
+
+type ListSectionProps = {
+    navOffset: number;
+    active: number | null;
+    scrollKey: number;
+    onActivate: (index: number) => void;
+    onMouseLeave: () => void;
+};
+
+function FeedList({
+    sources,
+    navOffset,
+    active,
+    scrollKey,
+    onActivate,
+    onMouseLeave,
+    onPatch,
+    onDelete,
+    tagSuggestions,
+}: ListSectionProps & {
+    sources: Source[];
+    onPatch: (rkey: string, patch: SourcePatch) => Promise<boolean>;
+    onDelete: (rkey: string) => Promise<boolean>;
+    tagSuggestions: string[];
+}) {
+    const listRef = useRef<HTMLDivElement>(null);
+    const localActive =
+        active !== null && active >= navOffset && active < navOffset + sources.length
+            ? active - navOffset
+            : null;
+
+    return (
+        <div ref={listRef} className="relative" onMouseLeave={onMouseLeave}>
+            <ListHighlight
+                containerRef={listRef}
+                active={localActive}
+                scrollKey={scrollKey}
+            />
+            <ul className="relative z-10 flex flex-col">
+                {sources.map((source, index) => (
+                    <Fragment key={source.rkey}>
+                        {index > 0 ? (
+                            <li
+                                aria-hidden
+                                className="mx-6 border-t border-border"
+                            />
+                        ) : null}
+                        <SourceRow
+                            source={source}
+                            index={navOffset + index}
+                            onActivate={onActivate}
+                            onPatch={onPatch}
+                            onDelete={onDelete}
+                            tagSuggestions={tagSuggestions}
+                        />
+                    </Fragment>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+function NewsletterSection({
+    title,
+    sources,
+    navOffset,
+    active,
+    scrollKey,
+    onActivate,
+    onMouseLeave,
+    onPatch,
+    tagSuggestions,
+}: ListSectionProps & {
+    title: string;
+    sources: NewsletterSource[];
+    onPatch: (id: string, patch: SourcePatch) => Promise<boolean>;
+    tagSuggestions: string[];
+}) {
+    const listRef = useRef<HTMLDivElement>(null);
+    const localActive =
+        active !== null && active >= navOffset && active < navOffset + sources.length
+            ? active - navOffset
+            : null;
+
+    return (
+        <SourceSection title={title} count={sources.length}>
+            <div
+                ref={listRef}
+                className="relative"
+                onMouseLeave={onMouseLeave}
+            >
+                <ListHighlight
+                    containerRef={listRef}
+                    active={localActive}
+                    scrollKey={scrollKey}
+                />
+                <ul className="relative z-10 flex flex-col">
+                    {sources.map((source, index) => (
+                        <Fragment key={source.id}>
+                            {index > 0 ? (
+                                <li
+                                    aria-hidden
+                                    className="mx-6 border-t border-border"
+                                />
+                            ) : null}
+                            <NewsletterRow
+                                source={source}
+                                index={navOffset + index}
+                                onActivate={onActivate}
+                                onPatch={onPatch}
+                                tagSuggestions={tagSuggestions}
+                            />
+                        </Fragment>
+                    ))}
+                </ul>
+            </div>
+        </SourceSection>
+    );
+}
+
+function NewsletterRow({
+    source,
+    index,
+    onActivate,
+    onPatch,
+    tagSuggestions,
+}: {
+    source: NewsletterSource;
+    index: number;
+    onActivate: (index: number) => void;
+    onPatch: (id: string, patch: SourcePatch) => Promise<boolean>;
+    tagSuggestions: string[];
+}) {
+    const [editing, setEditing] = useState(false);
+
+    const onStop = async () => {
+        try {
+            await stopNewsletter(source.id);
+            emitNewsletterMutation();
+            return true;
+        } catch (error) {
+            toastMutationError(error, "Couldn't stop this newsletter. Try again.");
+            return false;
+        }
+    };
+
+    const onEnable = async () => {
+        try {
+            await enableNewsletter(source.id);
+            emitNewsletterMutation();
+        } catch (error) {
+            toastMutationError(error, "Couldn't re-enable this newsletter. Try again.");
+        }
+    };
+
+    return (
+        <>
+            <li
+                data-nav-row=""
+                onMouseEnter={() => onActivate(index)}
+                className="relative flex items-start justify-between gap-3 px-5 py-4 transition-colors duration-200 ease-out has-[a:focus-visible]:outline-1 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-solid has-[a:focus-visible]:outline-ring"
+            >
+                <Link
+                    href={newsletterSourceHref(source.id)}
+                    aria-label={source.title}
+                    className="absolute inset-0 outline-none"
+                />
+                <div className="pointer-events-none min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 text-caption text-muted-foreground">
+                        <MailIcon className="size-3.5 shrink-0" />
+                        <span className="truncate">
+                            {source.senderName || source.senderAddress}
+                        </span>
+                    </div>
+                    <h3 className="mt-0.5 truncate text-heading">
+                        {source.title}
+                    </h3>
+                    <div className="mt-2 flex items-center gap-3 text-caption text-muted-foreground">
+                        <span className="inline-flex items-center gap-1">
+                            <PulseIcon className="size-3.5" />
+                            {FREQUENCY_LABEL[source.frequency]}
+                        </span>
+                        {source.lastReceivedAt ? (
+                            <span className="inline-flex items-center gap-1">
+                                <HourglassIcon className="size-3.5" />
+                                {shortTimeAgo(source.lastReceivedAt)}
+                            </span>
+                        ) : null}
+                    </div>
+                </div>
+                <div className="relative z-10 flex shrink-0 items-center gap-1">
+                    <NewsletterSourceActions
+                        status={source.status}
+                        onEdit={() => setEditing(true)}
+                        onStop={onStop}
+                        onEnable={onEnable}
+                    />
+                </div>
+            </li>
+            <EditSourceDialog
+                open={editing}
+                onOpenChange={setEditing}
+                initialTitle={source.title}
+                initialPrimary={source.primary}
+                initialTags={source.tags}
+                tagSuggestions={tagSuggestions}
+                onSave={(patch) => onPatch(source.id, patch)}
+            />
+        </>
     );
 }
 
@@ -452,4 +971,3 @@ function SourceRow({
         </>
     );
 }
-

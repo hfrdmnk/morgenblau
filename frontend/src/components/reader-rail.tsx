@@ -1,4 +1,5 @@
 import {
+    ArrowMoveIcon,
     BookmarkIcon,
     OpenIcon,
     SparkleIcon,
@@ -20,6 +21,7 @@ type ReaderRailProps = {
     sourceUrl: string | null;
     extractedToggle?: ExtractedToggle;
     save?: SaveControl;
+    move?: { onClick: () => void };
     showProgress?: boolean;
 };
 
@@ -30,6 +32,7 @@ export function ReaderRail({
     sourceUrl,
     extractedToggle,
     save,
+    move,
     showProgress = true,
 }: ReaderRailProps) {
     const progress = useScrollProgress(showProgress);
@@ -45,6 +48,7 @@ export function ReaderRail({
                         sourceUrl={sourceUrl}
                         extractedToggle={extractedToggle}
                         save={save}
+                        move={move}
                     />
                     {showProgress ? (
                         <ScrollProgressTrack
@@ -70,6 +74,7 @@ export function ReaderRail({
                         sourceUrl={sourceUrl}
                         extractedToggle={extractedToggle}
                         save={save}
+                        move={move}
                     />
                 </div>
             </aside>
@@ -81,34 +86,66 @@ function RailIcons({
     sourceUrl,
     extractedToggle,
     save,
+    move,
 }: {
     sourceUrl: string | null;
     extractedToggle?: ExtractedToggle;
     save?: SaveControl;
+    move?: { onClick: () => void };
 }) {
-    const safeSource = safeHref(sourceUrl);
-
     return (
         <>
-            {save ? <SaveRailButton {...save} /> : null}
-            {extractedToggle ? (
-                <ExtractedToggleIcon
-                    state={extractedToggle.state}
-                    onClick={extractedToggle.onClick}
-                />
-            ) : null}
-            {safeSource ? (
-                <a
-                    href={safeSource}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Open original article"
-                    className="inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
-                >
-                    <OpenIcon className="size-[1.125rem]" />
-                </a>
-            ) : null}
+            <OptionalSaveButton save={save} />
+            <MoveRailButton move={move} />
+            <OptionalExtractedToggle toggle={extractedToggle} />
+            <OpenOriginalButton sourceUrl={sourceUrl} />
         </>
+    );
+}
+
+function OptionalSaveButton({ save }: { save?: SaveControl }) {
+    return save ? <SaveRailButton {...save} /> : null;
+}
+
+function MoveRailButton({ move }: { move?: { onClick: () => void } }) {
+    if (!move) return null;
+    return (
+        <button
+            type="button"
+            onClick={move.onClick}
+            aria-label="Move to another newsletter"
+            className={cn(
+                RAIL_BUTTON_BASE,
+                'text-muted-foreground hover:text-foreground',
+            )}
+        >
+            <ArrowMoveIcon className="size-[1.125rem]" />
+        </button>
+    );
+}
+
+function OptionalExtractedToggle({
+    toggle,
+}: {
+    toggle?: ExtractedToggle;
+}) {
+    if (!toggle) return null;
+    return <ExtractedToggleIcon state={toggle.state} onClick={toggle.onClick} />;
+}
+
+function OpenOriginalButton({ sourceUrl }: { sourceUrl: string | null }) {
+    const href = safeHref(sourceUrl);
+    if (!href) return null;
+    return (
+        <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open original article"
+            className="inline-flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-200 ease-out outline-none hover:text-foreground focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
+        >
+            <OpenIcon className="size-[1.125rem]" />
+        </a>
     );
 }
 

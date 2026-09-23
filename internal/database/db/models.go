@@ -36,6 +36,85 @@ type FeedEntry struct {
 	RecordCid     *string `json:"record_cid"`
 }
 
+type NewsletterAddress struct {
+	Did       string `json:"did"`
+	LocalPart string `json:"local_part"`
+	CreatedAt string `json:"created_at"`
+}
+
+type NewsletterInlineAsset struct {
+	Token       string `json:"token"`
+	MessageID   string `json:"message_id"`
+	ContentID   string `json:"content_id"`
+	MediaType   string `json:"media_type"`
+	Data        []byte `json:"data"`
+	ContentHash string `json:"content_hash"`
+	CreatedAt   string `json:"created_at"`
+}
+
+type NewsletterMessage struct {
+	ID                     string  `json:"id"`
+	Did                    string  `json:"did"`
+	SourceID               string  `json:"source_id"`
+	EntrySlug              string  `json:"entry_slug"`
+	DedupeKey              string  `json:"dedupe_key"`
+	MessageID              *string `json:"message_id"`
+	Title                  *string `json:"title"`
+	SenderName             *string `json:"sender_name"`
+	SenderAddress          string  `json:"sender_address"`
+	SentAt                 *string `json:"sent_at"`
+	ReceivedAt             string  `json:"received_at"`
+	BodyHtmlBlocked        *string `json:"body_html_blocked"`
+	BodyHtmlRemote         *string `json:"body_html_remote"`
+	BodyText               *string `json:"body_text"`
+	HasBlockedRemoteImages int64   `json:"has_blocked_remote_images"`
+	RemoteImagesAllowed    int64   `json:"remote_images_allowed"`
+	AttachmentSummary      *string `json:"attachment_summary"`
+	StorageBytes           int64   `json:"storage_bytes"`
+	CreatedAt              string  `json:"created_at"`
+	UpdatedAt              string  `json:"updated_at"`
+}
+
+type NewsletterReceipt struct {
+	ID            string  `json:"id"`
+	Did           string  `json:"did"`
+	EnvelopeFrom  string  `json:"envelope_from"`
+	Recipient     string  `json:"recipient"`
+	ReceivedAt    string  `json:"received_at"`
+	RawMime       []byte  `json:"raw_mime"`
+	ReservedBytes int64   `json:"reserved_bytes"`
+	Attempts      int64   `json:"attempts"`
+	LastError     *string `json:"last_error"`
+	NextAttemptAt *string `json:"next_attempt_at"`
+	CreatedAt     string  `json:"created_at"`
+}
+
+type NewsletterSafe struct {
+	ID        string `json:"id"`
+	Did       string `json:"did"`
+	MessageID string `json:"message_id"`
+	CreatedAt string `json:"created_at"`
+}
+
+type NewsletterSource struct {
+	ID              string  `json:"id"`
+	Did             string  `json:"did"`
+	SourceKey       string  `json:"source_key"`
+	IdentityKind    string  `json:"identity_kind"`
+	IdentityValue   *string `json:"identity_value"`
+	Title           string  `json:"title"`
+	SenderName      *string `json:"sender_name"`
+	SenderAddress   string  `json:"sender_address"`
+	Status          string  `json:"status"`
+	AcceptAfter     *string `json:"accept_after"`
+	IsPrimary       int64   `json:"is_primary"`
+	Tags            string  `json:"tags"`
+	FirstReceivedAt *string `json:"first_received_at"`
+	LastReceivedAt  *string `json:"last_received_at"`
+	CreatedAt       string  `json:"created_at"`
+	UpdatedAt       string  `json:"updated_at"`
+}
+
 type OauthAuthRequest struct {
 	State     string `json:"state"`
 	Data      []byte `json:"data"`

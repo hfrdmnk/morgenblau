@@ -97,3 +97,16 @@ func TestWithTx_ReaderSeesCommit(t *testing.T) {
 		t.Errorf("reader pool didn't see committed row: %v", urls)
 	}
 }
+
+func TestOpenUsesFullSynchronousDurability(t *testing.T) {
+	dbs := openTestDB(t)
+	for name, connection := range map[string]*sql.DB{"writer": dbs.Writer, "reader": dbs.Reader} {
+		var mode int
+		if err := connection.QueryRow("PRAGMA synchronous").Scan(&mode); err != nil {
+			t.Fatalf("%s synchronous pragma: %v", name, err)
+		}
+		if mode != 2 {
+			t.Fatalf("%s synchronous pragma = %d, want FULL (2)", name, mode)
+		}
+	}
+}

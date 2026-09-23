@@ -1,0 +1,13 @@
+.git
+.github
+.env
+.DS_Store
+.scratch
+data
+node_modules
+frontend/node_modules
+frontend/dist
+main
+main-*
+tmp
+*.log

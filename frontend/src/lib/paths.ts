@@ -4,17 +4,25 @@ export const PATHS = {
     digest: '/digest',
     library: '/library',
     sources: '/sources',
+    settings: '/settings',
     entry: '/entry',
     oauthLogin: '/oauth/login',
     oauthLogout: '/oauth/logout',
 } as const;
 
-export type EntryFrom = { date?: string; sourceRkey?: string };
+export type EntryFrom = {
+    date?: string;
+    sourceRkey?: string;
+    newsletterSourceId?: string;
+};
 
 export function entryHref(slug: string, from?: EntryFrom): string {
     const base = `${PATHS.entry}/${slug}`;
     if (from?.sourceRkey) {
         return `${base}?fromSource=${encodeURIComponent(from.sourceRkey)}`;
+    }
+    if (from?.newsletterSourceId) {
+        return `${base}?fromNewsletter=${encodeURIComponent(from.newsletterSourceId)}`;
     }
     if (from?.date) {
         return `${base}?from=${encodeURIComponent(from.date)}`;
@@ -28,4 +36,8 @@ export function digestHref(date?: string): string {
 
 export function sourceHref(rkey: string): string {
     return `${PATHS.sources}/${rkey}`;
+}
+
+export function newsletterSourceHref(id: string): string {
+    return `${PATHS.sources}/newsletters/${encodeURIComponent(id)}`;
 }

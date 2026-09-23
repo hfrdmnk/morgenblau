@@ -1,4 +1,9 @@
-import { AddIcon, ArrowExportIcon, ArrowSyncIcon } from '@proicons/react';
+import {
+    AddIcon,
+    ArrowExportIcon,
+    ArrowSyncIcon,
+    SettingsIcon,
+} from '@proicons/react';
 import { Link, useLocation } from 'wouter';
 
 import { useAuthedMe } from '@/hooks/use-authed-me';
@@ -130,6 +135,12 @@ export function AppChrome({ onAddSourceClick }: Props) {
                     <DropdownMenuContent align="end" className="w-56">
                         <UserHeader me={me} />
                         <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                            render={<Link href={PATHS.settings} />}
+                        >
+                            <SettingsIcon />
+                            Settings
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                             render={
                                 <form
