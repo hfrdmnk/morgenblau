@@ -18,5 +18,18 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'lucide-react',
+              message: 'Replace Lucide icons with local Basicons SVGs.',
+            },
+          ],
+        },
+      ],
+    },
   },
 ])

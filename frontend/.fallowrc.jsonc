@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-  // Dev-only tool loaded from index.html, which fallow doesn't scan.
-  "ignoreDependencies": ["react-grab"],
+  // Runtime dependencies for shadcn-generated components are intentional before the first component is added.
+  "ignoreDependencies": ["react-grab", "@base-ui/react", "class-variance-authority", "lucide-react"],
   "overrides": [
     {
       // shadcn base-nova components ship their full API surface; unwired subcomponents are intentional
