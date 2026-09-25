@@ -160,6 +160,6 @@ The receiver temporarily rejects mail with SMTP 451 before storage fills. The in
 
 ## Git & PRs
 
-[GitHub](https://github.com/hfrdmnk/morgenblau) is the source of truth; [Tangled](https://tangled.org/dominikhofer.me/morgenblau) is a read-only mirror. Open pull requests on GitHub.
+[GitHub](https://github.com/hfrdmnk/morgenblau) is the source of truth; [Tangled](https://tangled.org/dominikhofer.me/morgenblau) is a read-only mirror.
 
-Local pushes reach both forges through `origin`. After merging a pull request in GitHub, run `scripts/sync-tangled.sh` to update Tangled's `main` branch.
+Pushes to GitHub's `main` automatically sync to Tangled through `.github/workflows/sync-tangled.yml`. Run `scripts/sync-tangled.sh` to retry the mirror manually.

@@ -1,0 +1,42 @@
+name: Sync Tangled
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-tangled-main
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Sync main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Configure Tangled SSH
+        env:
+          TANGLED_SSH_KEY: ${{ secrets.TANGLED_SSH_KEY }}
+        run: |
+          test -n "$TANGLED_SSH_KEY"
+          install -d -m 0700 "$HOME/.ssh"
+          printf '%s\n' "$TANGLED_SSH_KEY" > "$HOME/.ssh/tangled"
+          chmod 0600 "$HOME/.ssh/tangled"
+          ssh-keyscan -t ed25519 tangled.org > "$HOME/.ssh/known_hosts" 2>/dev/null
+          ssh-keygen -lf "$HOME/.ssh/known_hosts" | awk '{print $2}' | grep -Fxq 'SHA256:fLyp6ivr5HqmGI8yJiPYstTiJa2AXF/RAa9kF/ur1xo'
+
+      - name: Push main to Tangled
+        env:
+          GIT_SSH_COMMAND: ssh -i ~/.ssh/tangled -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
+        run: git push --force git@tangled.org:dominikhofer.me/morgenblau HEAD:refs/heads/main
