@@ -60,3 +60,6 @@ pnpm-lock.yaml
 
 # Scratch
 .scratch/
+
+# Amp runtime
+.amp/portals/*

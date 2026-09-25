@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+bin_dir="$HOME/.local/bin"
+tool_dir="$HOME/.local/share/morgenblau"
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$tmp_dir"' EXIT
+
+mkdir -p "$bin_dir" "$tool_dir"
+export PATH="$bin_dir:$PATH"
+cd "$repo_root"
+
+run_step() {
+	local label="$1"
+	shift
+	local started=$SECONDS
+	printf '[setup] %s...\n' "$label"
+	"$@"
+	printf '[setup] %s completed in %ss\n' "$label" "$((SECONDS - started))"
+}
+
+install_go() {
+	local version arch archive install_dir
+	version="$(awk '$1 == "go" { print $2; exit }' go.mod)"
+	case "$(uname -m)" in
+		x86_64) arch=amd64 ;;
+		aarch64) arch=arm64 ;;
+		*) printf 'unsupported architecture: %s\n' "$(uname -m)" >&2; return 1 ;;
+	esac
+	install_dir="$tool_dir/go-$version"
+
+	if [[ ! -x "$install_dir/bin/go" ]] || [[ "$($install_dir/bin/go env GOVERSION)" != "go$version" ]]; then
+		rm -rf "$install_dir"
+		archive="$tmp_dir/go.tar.gz"
+		curl -fsSL "https://go.dev/dl/go${version}.linux-${arch}.tar.gz" -o "$archive"
+		tar -xzf "$archive" -C "$tmp_dir"
+		mv "$tmp_dir/go" "$install_dir"
+	fi
+
+	ln -sfn "$install_dir/bin/go" "$bin_dir/go"
+	ln -sfn "$install_dir/bin/gofmt" "$bin_dir/gofmt"
+}
+
+install_bun() {
+	local version arch archive extracted
+	version="$(sed -n 's/.*"packageManager": "bun@\([^"]*\)".*/\1/p' frontend/package.json)"
+	case "$(uname -m)" in
+		x86_64) arch=x64 ;;
+		aarch64) arch=aarch64 ;;
+		*) printf 'unsupported architecture: %s\n' "$(uname -m)" >&2; return 1 ;;
+	esac
+
+	if ! command -v bun >/dev/null || [[ "$(bun --version)" != "$version" ]]; then
+		archive="$tmp_dir/bun.zip"
+		curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${version}/bun-linux-${arch}.zip" -o "$archive"
+		unzip -q "$archive" -d "$tmp_dir/bun"
+		extracted="$(find "$tmp_dir/bun" -type f -name bun -print -quit)"
+		install -m 0755 "$extracted" "$bin_dir/bun"
+	fi
+
+	ln -sfn bun "$bin_dir/bunx"
+}
+
+install_dev_tools() {
+	local air_version=v1.67.4
+	local goose_version=v3.27.1
+	local sqlc_version=v1.31.1
+	local mprocs_version=v0.9.6
+	local archive air_arch goose_arch sqlc_arch mprocs_arch
+	case "$(uname -m)" in
+		x86_64)
+			air_arch=amd64
+			goose_arch=x86_64
+			sqlc_arch=amd64
+			mprocs_arch=x86_64
+			;;
+		aarch64)
+			air_arch=arm64
+			goose_arch=arm64
+			sqlc_arch=arm64
+			mprocs_arch=aarch64
+			;;
+		*) printf 'unsupported architecture: %s\n' "$(uname -m)" >&2; return 1 ;;
+	esac
+
+	if ! command -v air >/dev/null || ! air -v 2>&1 | grep -Fq "${air_version#v}"; then
+		curl -fsSL "https://github.com/air-verse/air/releases/download/${air_version}/air_${air_version#v}_linux_${air_arch}" -o "$tmp_dir/air"
+		install -m 0755 "$tmp_dir/air" "$bin_dir/air"
+	fi
+
+	if ! command -v goose >/dev/null || ! goose --version 2>&1 | grep -Fq "${goose_version#v}"; then
+		curl -fsSL "https://github.com/pressly/goose/releases/download/${goose_version}/goose_linux_${goose_arch}" -o "$tmp_dir/goose"
+		install -m 0755 "$tmp_dir/goose" "$bin_dir/goose"
+	fi
+
+	if ! command -v sqlc >/dev/null || ! sqlc version 2>&1 | grep -Fq "${sqlc_version#v}"; then
+		archive="$tmp_dir/sqlc.tar.gz"
+		curl -fsSL "https://downloads.sqlc.dev/sqlc_${sqlc_version#v}_linux_${sqlc_arch}.tar.gz" -o "$archive"
+		tar -xzf "$archive" -C "$tmp_dir"
+		install -m 0755 "$tmp_dir/sqlc" "$bin_dir/sqlc"
+	fi
+
+	if ! command -v mprocs >/dev/null || ! mprocs --version 2>&1 | grep -Fq "${mprocs_version#v}"; then
+		archive="$tmp_dir/mprocs.tar.gz"
+		curl -fsSL "https://github.com/pvolok/dekit/releases/download/${mprocs_version}/mprocs-${mprocs_version#v}-linux-${mprocs_arch}-musl.tar.gz" -o "$archive"
+		tar -xzf "$archive" -C "$tmp_dir"
+		install -m 0755 "$tmp_dir/mprocs" "$bin_dir/mprocs"
+	fi
+}
+
+install_dependencies() {
+	go mod download
+	bun install --cwd ./frontend --frozen-lockfile
+	bun run --cwd ./frontend build
+}
+
+prepare_local_state() {
+	[[ -f .env ]] || cp -- .env.example .env
+	mkdir -p data
+	set -a
+	# shellcheck disable=SC1091
+	. ./.env
+	set +a
+	goose -dir internal/database/migrations sqlite3 "${DB_PATH:-./data/morgenblau.db}" up
+	git config core.hooksPath .githooks
+}
+
+run_step 'installing Go' install_go
+run_step 'installing Bun' install_bun
+run_step 'installing development tools' install_dev_tools
+run_step 'installing project dependencies' install_dependencies
+run_step 'preparing local state' prepare_local_state
+
+printf '[setup] ready\n'
