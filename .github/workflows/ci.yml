@@ -14,31 +14,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  fallow:
-    name: Fallow audit
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.11
-
-      - name: Install frontend dependencies
-        run: bun install --cwd ./frontend --frozen-lockfile
-
-      - name: Audit introduced frontend findings
-        env:
-          FALLOW_BASE: ${{ github.event.pull_request.base.sha }}
-        run: cd frontend && ./node_modules/.bin/fallow audit --base "$FALLOW_BASE" --gate new-only --quiet
-
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -47,12 +22,17 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Check Go formatting
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
 
       - name: Install Goose for migration tests
         run: |
@@ -88,3 +68,8 @@ jobs:
           GOOS: linux
           GOARCH: amd64
         run: go build -ldflags="-s -w" -o /tmp/morgenblau ./cmd/api
+
+      - name: Audit introduced frontend findings
+        env:
+          FALLOW_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: cd frontend && ./node_modules/.bin/fallow audit --base "$FALLOW_BASE" --gate new-only --quiet

@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
   // Runtime dependencies for shadcn-generated components are intentional before the first component is added.
-  "ignoreDependencies": ["react-grab", "@base-ui/react", "class-variance-authority", "lucide-react"],
+  "ignoreDependencies": ["react-grab", "@base-ui/react", "class-variance-authority", "lucide-react", "shadcn"],
   "overrides": [
     {
       // shadcn base-nova components ship their full API surface; unwired subcomponents are intentional
