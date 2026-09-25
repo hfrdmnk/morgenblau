@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+mkdir -p "$repo_root/data"
+
+if [[ -n "${SSH:-}" ]]; then
+	mkdir -p "$HOME/.ssh"
+	chmod 0700 "$HOME/.ssh"
+	printf '%s\n' "$SSH" > "$HOME/.ssh/tangled"
+	chmod 0600 "$HOME/.ssh/tangled"
+fi
