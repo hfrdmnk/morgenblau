@@ -34,11 +34,9 @@ export default defineConfig(({ mode }) => {
           ],
         },
         workbox: {
-          // Offline support covers the app shell only; user data stays network-only.
-          navigateFallbackDenylist: [
-            /^\/(?:api(?:\/|$)|oauth(?:[-/]|$))/,
-            /^\/about$/,
-          ],
+          // Document requests must reach the server for session redirects.
+          globIgnores: ['**/index.html'],
+          navigateFallback: null,
         },
       }),
     ],
