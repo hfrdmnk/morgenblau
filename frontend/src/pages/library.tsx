@@ -1,12 +1,5 @@
-import { SavedPanel } from '@/components/library/saved-panel';
-import { useDocumentTitle } from '@/hooks/use-document-title';
+import { Placeholder } from '@/components/placeholder';
 
 export function Library() {
-    useDocumentTitle('Library');
-
-    return (
-        <div className="mx-auto w-full max-w-2xl px-4 pt-10 pb-12 sm:px-6">
-            <SavedPanel />
-        </div>
-    );
+    return <Placeholder label="Library" />;
 }
