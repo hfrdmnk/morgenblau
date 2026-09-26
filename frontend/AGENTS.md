@@ -11,7 +11,7 @@ paths:
 - Shadcn is configured with the **base-vega** style and Base UI primitives from `@base-ui/react`.
 - Basicons is the only icon source. Use local React SVG markup copied from Basicons, never its runtime embed script.
 - `components.json` uses `lucide` so shadcn installs resolve. Immediately replace every installed Lucide icon with its Basicons equivalent. No `lucide-react` imports may remain in application code.
-- Design language: invoke the `morgenblau-designer` skill before any visual work; brand truths live in BRAND.md.
+- Brand direction lives in `BRAND.md`; visual tokens live in `src/index.css`. Use a relevant animation skill before motion work.
 
 ## Adding shadcn components
 

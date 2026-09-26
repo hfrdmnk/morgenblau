@@ -44,7 +44,7 @@ Use the project's existing testing patterns. Tests should survive internal refac
 
 Load additional guidance only for the work at hand:
 
-- **UI:** `frontend/AGENTS.md` and `morgenblau-designer` before visual work. For motion, use a relevant animation skill.
+- **UI:** `BRAND.md` and `frontend/AGENTS.md` before visual work. For motion, use a relevant animation skill.
 - **Storage:** `internal/database/AGENTS.md`. Edit SQL sources and regenerate through `make sqlc`; do not hand-edit generated Go. Verify migrations on a disposable database, including Down, without resetting the user's database.
 - **ATProto:** the matching protocol skill required by root `AGENTS.md`. Resolve the installed skill by name; if required guidance is unavailable, report the gap before dependent protocol changes.
 - **Ownership and synchronization:** the relevant sections of `SPEC.md` and the implementation they point to. Preserve the distinction between PDS-authoritative records, the shared upstream cache, and private newsletter data.

@@ -1,38 +1,30 @@
 # Morgenblau
 
-This is the feeling we want to work towards. It is not a set of metaphors to repeat in the product. The UI design language lives in the `morgenblau-designer` skill.
+Morgenblau is a personal daily web newspaper. It gathers sources someone chooses into finite days, creating time to read without an infinite feed or pressure to catch up.
 
-## The idea
+## Character
 
-Morgenblau is your personal daily web-newspaper.
+The product is calm, clear, and deliberate. It should feel connected to the world without demanding attention. Hierarchy comes primarily from whitespace and tonal contrast, keeping content comfortable to scan and read.
 
-It collects the sources you care about into finite days instead of an endless feed. There are no unread counts and no pressure to catch up. You curate what belongs in your newspaper.
+Newspaper describes the product model, not a visual costume. Avoid paper textures, ornamental rules, old printing effects, and nostalgic newspaper styling. Do not call a day or digest an edition.
 
-The newspaper is what Morgenblau shows. Sources are what someone curates. A source can be a publication, a blog, a newsletter, a video channel, or a social account.
+## Visual direction
 
-## The feeling
+The interface is a quiet, tonal field built from Stone neutrals. It uses little elevation, few borders, and no decorative chrome. Ordinary actions remain neutral. The three vivid colors identify the primary product modes: atmosphere blue for Digest, sunrise orange for Sources, and aurora violet for Library. Their lighter companions exist only as gradient endpoints.
 
-Imagine sitting in a cabin by the shore, looking at the ocean, and opening Morgenblau. You are connected to the world, but have a quiet moment to yourself.
-
-The cabin and the ocean are an internal reference. They should not become literal motifs in the product.
-
-Morning is also a feeling, not a time of day. It means a fresh start, a calm head, and taking time for yourself. Morgenblau should feel this way in the evening too.
+Geist is the only product typeface. The major-second scale and the visual tokens live in [`frontend/src/index.css`](frontend/src/index.css); components choose size and weight independently.
 
 ## Art direction
 
-The world around the product can be full of light, color, nature, and movement. The product itself stays clear and composed.
+Brand imagery can be richer than the interface. It draws from nature, light, and atmosphere, then abstracts those references through broad color fields, soft focus, restrained grain, and implied motion. The result should preserve the mood of a real place without relying on literal scenery or polished landscape photography.
 
-We like nature seen through motion and light: motion blur, shallow focus, grain, unusual crops, and rich color. It should feel like a real moment rather than polished landscape photography. Nature can be present without showing a cabin, an ocean, or a sunrise.
-
-The interface should feel digital, minimal, and precise. It can sit against something soft and alive. Content stays easy to read, but the product should not become sterile.
-
-Avoid nostalgic newspaper styling. No paper textures, old printing effects, ornamental rules, or other references to historical newspapers.
+[`hfrdmnk/abstract-studio`](https://github.com/hfrdmnk/abstract-studio) owns the image-generation treatment. This document owns its role in the brand, not its implementation.
 
 ## Language
 
 Use **newspaper** for the finite daily collection.
 
-Use **curate** and **curation** for choosing sources. Do not call people editors. Avoid **edition**.
+Use **curate** and **curation** for choosing sources. Do not call people editors. Never use **edition** for product concepts.
 
 The voice is calm, direct, and human. No urgency, no exclamation marks, no emoji, and no language about being behind. Never use unread counts or progress to pressure people.
 
