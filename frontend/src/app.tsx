@@ -17,9 +17,8 @@ const Source = lazy(() => import('@/pages/source').then((m) => ({ default: m.Sou
 const Sources = lazy(() => import('@/pages/sources').then((m) => ({ default: m.Sources })));
 const Settings = lazy(() => import('@/pages/settings').then((m) => ({ default: m.Settings })));
 const Welcome = lazy(() => import('@/pages/welcome').then((m) => ({ default: m.Welcome })));
-const DEV_STYLEGUIDE_PATH = '/styleguide';
-const Styleguide = import.meta.env.DEV
-    ? lazy(() => import('@/pages/styleguide').then((m) => ({ default: m.Styleguide })))
+const DevRoutes = import.meta.env.DEV
+    ? lazy(() => import('@/dev/routes').then((m) => ({ default: m.DevRoutes })))
     : null;
 
 type PageDef = { path: string; Component: ComponentType };
@@ -53,11 +52,7 @@ export default function App() {
                     <Route path={`${PATHS.entry}/:slug`}>
                         <Entry />
                     </Route>
-                    {Styleguide ? (
-                        <Route path={DEV_STYLEGUIDE_PATH}>
-                            <Styleguide />
-                        </Route>
-                    ) : null}
+                    {DevRoutes ? <DevRoutes /> : null}
                     <Route path={CHROME_PATTERN}>
                         <Switch>
                             {CHROME_PAGES.map(({ path, Component }) => (

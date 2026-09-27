@@ -81,7 +81,7 @@
 :root {
     color-scheme: light;
     --background: oklch(0.97 0.001 106.424);
-    --foreground: oklch(0.268 0.007 34.298);
+    --foreground: oklch(0.216 0.006 56.043);
     --card: oklch(0.97 0.001 106.424);
     --card-foreground: oklch(0.268 0.007 34.298);
     --popover: oklch(1 0 0);
