@@ -16,8 +16,13 @@ import (
 
 func (s *Server) RegisterRoutes() http.Handler {
 	mux := s.routes()
-	gate := auth.New(s.oauthApp, s.store, s.sealer)
+	gate := auth.New(s.sessions, s.store, s.sealer)
 	root := http.NewServeMux()
+	var devLogin http.Handler = http.NotFoundHandler()
+	if os.Getenv("APP_ENV") == "local" && s.sessions.DevEnabled() {
+		devLogin = handler.DevLoginHandler(s.sessions, s.sealer, s.sync)
+	}
+	root.Handle("/dev/login", devLogin)
 	if os.Getenv("APP_ENV") == "local" {
 		root.Handle("/dev/", spaHandler())
 	} else {
@@ -35,7 +40,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("/oauth-jwks.json", handler.JWKSHandler(s.oauthCfg))
 	mux.Handle("POST /oauth/login", handler.LoginHandler(s.oauthApp))
 	mux.Handle("GET /oauth/callback", handler.CallbackHandler(s.oauthApp, s.sealer, s.sync))
-	mux.Handle("POST /oauth/logout", handler.LogoutHandler(s.oauthApp, s.sealer, s.store))
+	mux.Handle("POST /oauth/logout", handler.LogoutHandler(s.sessions, s.sealer, s.store))
 	mux.Handle("GET /api/profiles/me", api.MeProfileHandler(s.profiles, s.sync))
 
 	pdsWriter := atprepo.SessionWriter{}

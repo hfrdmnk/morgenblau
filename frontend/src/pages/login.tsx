@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { api } from '@/lib/api';
 import { PATHS } from '@/lib/paths';
 
 export function Login() {
@@ -43,7 +45,53 @@ export function Login() {
                         Continue
                     </Button>
                 </form>
+                {import.meta.env.DEV && <DevelopmentLogin />}
             </div>
         </main>
+    );
+}
+
+function DevelopmentLogin() {
+    const [enabled, setEnabled] = useState(false);
+    const [pending, setPending] = useState(false);
+    const [error, setError] = useState(false);
+
+    useEffect(() => {
+        const controller = new AbortController();
+        void api<{ enabled: boolean }>('/dev/login', { signal: controller.signal })
+            .then((result) => setEnabled(result.enabled))
+            .catch(() => {});
+        return () => controller.abort();
+    }, []);
+
+    async function login() {
+        setPending(true);
+        setError(false);
+        try {
+            await api('/dev/login', { method: 'POST' });
+            window.location.assign(PATHS.digest);
+        } catch {
+            setError(true);
+            setPending(false);
+        }
+    }
+
+    if (!enabled) return null;
+
+    return (
+        <aside className="space-y-3 rounded-xl bg-muted p-4" aria-label="Development login">
+            <p className="text-sm font-medium">Development account</p>
+            <p className="text-sm text-muted-foreground">
+                Uses the server’s configured account. Changes write to its real PDS.
+            </p>
+            <Button className="w-full" disabled={pending} onClick={login}>
+                {pending ? 'Signing in…' : 'Log me in'}
+            </Button>
+            {error && (
+                <p role="alert" className="text-sm text-destructive">
+                    Could not sign in. Check the server credentials and try again.
+                </p>
+            )}
+        </aside>
     );
 }

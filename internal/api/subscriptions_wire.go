@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
+	"morgenblau/internal/session"
 
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/lexicon"
@@ -48,7 +48,7 @@ func derefStr(s *string) string {
 }
 
 // requireStandardWrite gates standard subscription writes on the session's scope; older sessions get a 403 the frontend turns into a re-auth prompt.
-func requireStandardWrite(w http.ResponseWriter, sess *oauth.ClientSession) bool {
+func requireStandardWrite(w http.ResponseWriter, sess *session.Session) bool {
 	if scopes.HasStandardSubscriptionWrite(sess) {
 		return true
 	}

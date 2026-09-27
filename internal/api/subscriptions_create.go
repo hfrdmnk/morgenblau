@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"morgenblau/internal/session"
 
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
@@ -318,7 +318,7 @@ func SubscriptionsCreateHandler(
 	})
 }
 
-func preflightStandardSubscription(ctx context.Context, w http.ResponseWriter, sess *oauth.ClientSession, pds atprepo.Writer, publication string) (*atprepo.ListedRecord, *atprepo.ListedRecord, bool) {
+func preflightStandardSubscription(ctx context.Context, w http.ResponseWriter, sess *session.Session, pds atprepo.Writer, publication string) (*atprepo.ListedRecord, *atprepo.ListedRecord, bool) {
 	lister, ok := pds.(atprepo.Lister)
 	if !ok {
 		slog.Warn("/api/subscriptions: PDS writer cannot preflight Standardfeed records")

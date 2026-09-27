@@ -9,15 +9,14 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/oauth/cookie"
+	"morgenblau/internal/session"
 )
 
-// Resumer is the slice of *oauth.ClientApp the middleware depends on.
 type Resumer interface {
-	ResumeSession(ctx context.Context, did syntax.DID, sessionID string) (*oauth.ClientSession, error)
+	ResumeSession(ctx context.Context, did syntax.DID, sessionID string) (*session.Session, error)
 }
 
 // SessionLocker serialises the refresh cycle for a single (did, sid); indigo doesn't coalesce refreshes, so concurrent expired-session requests can boot a valid user.
@@ -42,7 +41,7 @@ func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer) Middlewar
 			}
 
 			// Resume failures (missing, garbage, tampered, dead row) collapse to unauthed; dead-row also clears the cookie so retries don't loop forever.
-			var sess *oauth.ClientSession
+			var sess *session.Session
 			didStr, sid, ok := sealer.Get(r)
 			if ok {
 				if did, err := syntax.ParseDID(didStr); err == nil {
@@ -111,7 +110,7 @@ func holdsSessionLock(r *http.Request) bool {
 		strings.HasPrefix(p, "/api/saves")
 }
 
-func serve(next http.Handler, w http.ResponseWriter, r *http.Request, sess *oauth.ClientSession) {
+func serve(next http.Handler, w http.ResponseWriter, r *http.Request, sess *session.Session) {
 	if sess != nil {
 		next.ServeHTTP(w, r.WithContext(WithSession(r.Context(), sess)))
 		return
@@ -162,12 +161,12 @@ func isInfra(path string) bool {
 type contextKey struct{}
 
 // WithSession returns a context carrying sess; exported so tests can inject a session without going through the middleware.
-func WithSession(ctx context.Context, sess *oauth.ClientSession) context.Context {
+func WithSession(ctx context.Context, sess *session.Session) context.Context {
 	return context.WithValue(ctx, contextKey{}, sess)
 }
 
 // SessionFromContext returns the injected session, nil if absent (shouldn't happen on a gated path behind the middleware).
-func SessionFromContext(ctx context.Context) *oauth.ClientSession {
-	v, _ := ctx.Value(contextKey{}).(*oauth.ClientSession)
+func SessionFromContext(ctx context.Context) *session.Session {
+	v, _ := ctx.Value(contextKey{}).(*session.Session)
 	return v
 }

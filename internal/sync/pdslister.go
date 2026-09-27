@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"morgenblau/internal/session"
 
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/lexicon"
@@ -39,11 +39,11 @@ type listRecordsClient interface {
 	Get(ctx context.Context, endpoint syntax.NSID, params map[string]any, out any) error
 }
 
-func (SessionPDSLister) ListSubscriptions(ctx context.Context, sess *oauth.ClientSession) ([]PDSSubscription, error) {
+func (SessionPDSLister) ListSubscriptions(ctx context.Context, sess *session.Session) ([]PDSSubscription, error) {
 	return pageSubscriptions(ctx, sess.APIClient(), sess.Data.AccountDID.String())
 }
 
-func (SessionPDSLister) ListStandardSubscriptions(ctx context.Context, sess *oauth.ClientSession) ([]PDSStandardSubscription, error) {
+func (SessionPDSLister) ListStandardSubscriptions(ctx context.Context, sess *session.Session) ([]PDSStandardSubscription, error) {
 	records, err := pageRecords(ctx, sess.APIClient(), sess.Data.AccountDID.String(), standardSubscriptionCollection)
 	if err != nil {
 		return nil, err
@@ -66,7 +66,7 @@ func (SessionPDSLister) ListStandardSubscriptions(ctx context.Context, sess *oau
 	return out, nil
 }
 
-func (SessionPDSLister) ListSaves(ctx context.Context, sess *oauth.ClientSession) ([]PDSSave, error) {
+func (SessionPDSLister) ListSaves(ctx context.Context, sess *session.Session) ([]PDSSave, error) {
 	records, err := pageRecords(ctx, sess.APIClient(), sess.Data.AccountDID.String(), saveCollection)
 	if err != nil {
 		return nil, err

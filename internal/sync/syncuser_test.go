@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"morgenblau/internal/session"
 
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/jobs"
@@ -191,7 +191,7 @@ type fakeLister struct {
 	standardCalls atomic.Int32
 }
 
-func (f *fakeLister) ListSubscriptions(_ context.Context, _ *oauth.ClientSession) ([]PDSSubscription, error) {
+func (f *fakeLister) ListSubscriptions(_ context.Context, _ *session.Session) ([]PDSSubscription, error) {
 	atomic.AddInt32(&f.calls, 1)
 	if f.delay > 0 {
 		time.Sleep(f.delay)
@@ -202,7 +202,7 @@ func (f *fakeLister) ListSubscriptions(_ context.Context, _ *oauth.ClientSession
 	return f.subs, f.subsErr
 }
 
-func (f *fakeLister) ListSaves(_ context.Context, _ *oauth.ClientSession) ([]PDSSave, error) {
+func (f *fakeLister) ListSaves(_ context.Context, _ *session.Session) ([]PDSSave, error) {
 	f.savesCalls.Add(1)
 	if f.beforeSaves != nil {
 		f.beforeSaves()
@@ -210,7 +210,7 @@ func (f *fakeLister) ListSaves(_ context.Context, _ *oauth.ClientSession) ([]PDS
 	return f.saves, f.savesErr
 }
 
-func (f *fakeLister) ListStandardSubscriptions(_ context.Context, _ *oauth.ClientSession) ([]PDSStandardSubscription, error) {
+func (f *fakeLister) ListStandardSubscriptions(_ context.Context, _ *session.Session) ([]PDSStandardSubscription, error) {
 	f.standardCalls.Add(1)
 	return f.standardSubs, f.standardErr
 }
@@ -239,10 +239,10 @@ func (f *countingFetcher) seen() []string {
 	return out
 }
 
-func newSession(did string) *oauth.ClientSession {
+func newSession(did string) *session.Session {
 	d, _ := syntax.ParseDID(did)
-	return &oauth.ClientSession{
-		Data: &oauth.ClientSessionData{AccountDID: d, SessionID: "sid-1"},
+	return &session.Session{
+		Data: &session.Data{AccountDID: d, SessionID: "sid-1"},
 	}
 }
 
@@ -493,7 +493,7 @@ type blockingPDSLister struct {
 	secondWait    chan struct{}
 }
 
-func (l *blockingPDSLister) ListSubscriptions(context.Context, *oauth.ClientSession) ([]PDSSubscription, error) {
+func (l *blockingPDSLister) ListSubscriptions(context.Context, *session.Session) ([]PDSSubscription, error) {
 	switch l.calls.Add(1) {
 	case 1:
 		close(l.firstStarted)
@@ -505,19 +505,19 @@ func (l *blockingPDSLister) ListSubscriptions(context.Context, *oauth.ClientSess
 	return nil, nil
 }
 
-func (*blockingPDSLister) ListStandardSubscriptions(context.Context, *oauth.ClientSession) ([]PDSStandardSubscription, error) {
+func (*blockingPDSLister) ListStandardSubscriptions(context.Context, *session.Session) ([]PDSStandardSubscription, error) {
 	return nil, nil
 }
 
-func (*blockingPDSLister) ListSaves(context.Context, *oauth.ClientSession) ([]PDSSave, error) {
+func (*blockingPDSLister) ListSaves(context.Context, *session.Session) ([]PDSSave, error) {
 	return nil, nil
 }
 
 type sessionIDResumer struct{ sessions chan string }
 
-func (r *sessionIDResumer) ResumeSession(_ context.Context, did syntax.DID, sessionID string) (*oauth.ClientSession, error) {
+func (r *sessionIDResumer) ResumeSession(_ context.Context, did syntax.DID, sessionID string) (*session.Session, error) {
 	r.sessions <- sessionID
-	return &oauth.ClientSession{Data: &oauth.ClientSessionData{AccountDID: did, SessionID: sessionID}}, nil
+	return &session.Session{Data: &session.Data{AccountDID: did, SessionID: sessionID}}, nil
 }
 
 func TestSyncUser_ManualRefreshDuringAutomaticRunWaitsForLaterPass(t *testing.T) {
@@ -717,14 +717,14 @@ type recordingResumer struct {
 	err          error
 }
 
-func (r *recordingResumer) ResumeSession(_ context.Context, did syntax.DID, sid string) (*oauth.ClientSession, error) {
+func (r *recordingResumer) ResumeSession(_ context.Context, did syntax.DID, sid string) (*session.Session, error) {
 	if r.locker != nil {
 		r.heldAtResume = r.locker.heldNow.Load()
 	}
 	if r.err != nil {
 		return nil, r.err
 	}
-	return &oauth.ClientSession{Data: &oauth.ClientSessionData{AccountDID: did, SessionID: sid}}, nil
+	return &session.Session{Data: &session.Data{AccountDID: did, SessionID: sid}}, nil
 }
 
 // A resume outside the lock lets the request path rotate the refresh token before the engine refreshes, so the eager refresh would no-op on a stale token.
@@ -735,7 +735,7 @@ func TestEngine_ResumeAndRefresh_SharesOneLockHold(t *testing.T) {
 
 	var refreshCalls int
 	var heldAtRefresh bool
-	eng.refreshSession = func(context.Context, *oauth.ClientSession) error {
+	eng.refreshSession = func(context.Context, *session.Session) error {
 		refreshCalls++
 		heldAtRefresh = locker.heldNow.Load()
 		return nil
@@ -769,7 +769,7 @@ func TestEngine_ResumeAndRefresh_NilLockerSkipsRefresh(t *testing.T) {
 	res := &recordingResumer{}
 	eng := NewEngine(jobs.New(), newFakeStore(), &fakeLister{}, &countingFetcher{}, res, nil)
 	refreshed := false
-	eng.refreshSession = func(context.Context, *oauth.ClientSession) error {
+	eng.refreshSession = func(context.Context, *session.Session) error {
 		refreshed = true
 		return nil
 	}
@@ -786,7 +786,7 @@ func TestEngine_ResumeAndRefresh_ResumeErrorPropagatesAndSkipsRefresh(t *testing
 	res := &recordingResumer{locker: locker, err: errors.New("session not found")}
 	eng := NewEngine(jobs.New(), newFakeStore(), &fakeLister{}, &countingFetcher{}, res, nil).WithLocker(locker)
 	refreshed := false
-	eng.refreshSession = func(context.Context, *oauth.ClientSession) error {
+	eng.refreshSession = func(context.Context, *session.Session) error {
 		refreshed = true
 		return nil
 	}
@@ -803,8 +803,8 @@ func TestEngine_ResumeAndRefresh_ResumeErrorPropagatesAndSkipsRefresh(t *testing
 
 type nopResumer struct{}
 
-func (nopResumer) ResumeSession(_ context.Context, did syntax.DID, sid string) (*oauth.ClientSession, error) {
-	return &oauth.ClientSession{Data: &oauth.ClientSessionData{AccountDID: did, SessionID: sid}}, nil
+func (nopResumer) ResumeSession(_ context.Context, did syntax.DID, sid string) (*session.Session, error) {
+	return &session.Session{Data: &session.Data{AccountDID: did, SessionID: sid}}, nil
 }
 
 func mustDID(s string) syntax.DID {

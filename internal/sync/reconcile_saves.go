@@ -4,14 +4,14 @@ import (
 	"context"
 	"time"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"morgenblau/internal/session"
 
 	"morgenblau/internal/database/db"
 )
 
 // reconcileSaves has no Tier-2 join and no fetch to trigger; saves are leaf bookmarks.
-func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *oauth.ClientSession) error {
+func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *session.Session) error {
 	snapshotAt := e.now().UTC()
 	didStr := did.String()
 	baseline, err := e.store.ListUserSavesForSync(ctx, didStr)

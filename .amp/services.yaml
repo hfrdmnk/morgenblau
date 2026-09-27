@@ -1,0 +1,17 @@
+services:
+  vite:
+    command: bun run dev --port "$PORT"
+    cwd: frontend
+    port: 5173
+    health: /
+  app:
+    command: go run ./cmd/api
+    port: 8000
+    env:
+      APP_ENV: local
+      DEV_LOGIN_ENABLED: "true"
+    health: /api/health
+    portal:
+      url: /login
+      title: Morgenblau
+      description: Use Log me in to access the configured development account. Actions write to its real PDS.

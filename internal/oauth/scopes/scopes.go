@@ -5,15 +5,19 @@ package scopes
 import (
 	"slices"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
+	"morgenblau/internal/session"
 )
 
 const StandardSubscription = "repo:site.standard.graph.subscription"
 
 // HasStandardSubscriptionWrite reports whether the grant covers the standard subscription collection.
-func HasStandardSubscriptionWrite(sess *oauth.ClientSession) bool {
+func HasStandardSubscriptionWrite(sess *session.Session) bool {
 	if sess == nil || sess.Data == nil {
 		return false
+	}
+	// Password sessions have PDS-enforced authority rather than OAuth grants.
+	if sess.IsPassword() {
+		return true
 	}
 	return slices.Contains(sess.Data.Scopes, StandardSubscription)
 }

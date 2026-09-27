@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
+	"morgenblau/internal/session"
 
 	"morgenblau/internal/middleware/auth"
 )
@@ -68,7 +68,7 @@ func writeJSONStatus(w http.ResponseWriter, status int, v any) {
 }
 
 // requireSession fetches the session the auth middleware injects; a nil session means the middleware was bypassed (a wiring bug, not a client error).
-func requireSession(w http.ResponseWriter, r *http.Request) (*oauth.ClientSession, bool) {
+func requireSession(w http.ResponseWriter, r *http.Request) (*session.Session, bool) {
 	sess := auth.SessionFromContext(r.Context())
 	if sess == nil || sess.Data == nil {
 		slog.Error("requireSession: no session in context (middleware bypassed?)", "path", r.URL.Path)

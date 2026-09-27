@@ -6,7 +6,35 @@ import (
 	"testing"
 
 	"morgenblau/internal/newsletter"
+	"morgenblau/internal/session"
 )
+
+func TestDevLoginRouteRequiresLocalOptIn(t *testing.T) {
+	for _, env := range []string{"local", "production"} {
+		for _, enabled := range []bool{false, true} {
+			t.Setenv("APP_ENV", env)
+			var cfg *session.DevConfig
+			if enabled {
+				cfg = &session.DevConfig{}
+			}
+			srv := &Server{sessions: session.NewManager(nil, cfg, nil)}
+			for _, method := range []string{"GET", "POST"} {
+				if env == "local" && enabled && method == "POST" {
+					continue
+				}
+				rr := httptest.NewRecorder()
+				srv.RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(method, "/dev/login", nil))
+				want := 404
+				if env == "local" && enabled {
+					want = 200
+				}
+				if rr.Code != want {
+					t.Fatalf("env=%s enabled=%v method=%s: got %d want %d", env, enabled, method, rr.Code, want)
+				}
+			}
+		}
+	}
+}
 
 func TestDevRoutesArePublicInLocalEnvironment(t *testing.T) {
 	vite := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -83,8 +83,12 @@ func CallbackHandler(app ClientApp, sealer *cookie.Sealer, starter LoginSyncStar
 	})
 }
 
+type LogoutClient interface {
+	Logout(context.Context, syntax.DID, string) error
+}
+
 // LogoutHandler revokes at the AS (best-effort), deletes the session, clears the cookie, and redirects to /login.
-func LogoutHandler(app ClientApp, sealer *cookie.Sealer, locker SessionLocker) http.Handler {
+func LogoutHandler(app LogoutClient, sealer *cookie.Sealer, locker SessionLocker) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

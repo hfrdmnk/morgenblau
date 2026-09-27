@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"morgenblau/internal/session"
 
 	"morgenblau/internal/atprepo"
 )
@@ -15,12 +15,12 @@ import (
 // sweepLister is the PDS surface sweepDuplicates needs: list to find matches, delete to remove them.
 type sweepLister interface {
 	atprepo.Lister
-	DeleteRecord(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID, rkey string) error
+	DeleteRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey string) error
 }
 
 // sweepDuplicates deletes every record in collection where field(rec) == want, writing the 502 itself on the first failure; a surviving duplicate would resurrect the deleted state on the next reconcile.
 func sweepDuplicates(
-	ctx context.Context, w http.ResponseWriter, sess *oauth.ClientSession, pds sweepLister,
+	ctx context.Context, w http.ResponseWriter, sess *session.Session, pds sweepLister,
 	op string, collection syntax.NSID, field func(atprepo.ListedRecord) string, want string,
 ) bool {
 	records, err := pds.ListRecords(ctx, sess, collection)
@@ -71,7 +71,7 @@ type sidecarWriteResult struct {
 }
 
 // writeSidecarPair creates records with known rkeys in one PDS commit.
-func writeSidecarPair(ctx context.Context, w http.ResponseWriter, sess *oauth.ClientSession, pds atprepo.Writer, spec sidecarWriteSpec) (sidecarWriteResult, bool) {
+func writeSidecarPair(ctx context.Context, w http.ResponseWriter, sess *session.Session, pds atprepo.Writer, spec sidecarWriteSpec) (sidecarWriteResult, bool) {
 	var out sidecarWriteResult
 	if spec.Existence != nil && spec.Sidecar != nil && spec.SidecarRkey == "" && (spec.ExistenceRkey == "" || spec.SidecarCreateRkey == "") {
 		slog.Warn(spec.SidecarOp, "err", "atomic record creation requires client-chosen rkeys")
@@ -143,7 +143,7 @@ func writeSidecarPair(ctx context.Context, w http.ResponseWriter, sess *oauth.Cl
 	return out, true
 }
 
-func completeAtomicRefs(sess *oauth.ClientSession, writes []atprepo.RecordWrite, refs []*atprepo.RecordRef) []*atprepo.RecordRef {
+func completeAtomicRefs(sess *session.Session, writes []atprepo.RecordWrite, refs []*atprepo.RecordRef) []*atprepo.RecordRef {
 	out := make([]*atprepo.RecordRef, len(writes))
 	for i, write := range writes {
 		uri := "at://" + sess.Data.AccountDID.String() + "/" + write.Collection.String() + "/" + write.Rkey.String()
@@ -155,7 +155,7 @@ func completeAtomicRefs(sess *oauth.ClientSession, writes []atprepo.RecordWrite,
 	return out
 }
 
-func confirmAtomicWrites(ctx context.Context, sess *oauth.ClientSession, pds atprepo.Writer, writes []atprepo.RecordWrite) ([]*atprepo.RecordRef, bool) {
+func confirmAtomicWrites(ctx context.Context, sess *session.Session, pds atprepo.Writer, writes []atprepo.RecordWrite) ([]*atprepo.RecordRef, bool) {
 	getter, ok := pds.(atprepo.RecordGetter)
 	if !ok {
 		return nil, false

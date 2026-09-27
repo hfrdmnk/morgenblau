@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"morgenblau/internal/session"
 
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
@@ -22,15 +22,15 @@ type fakeRecordWriter struct {
 	failures map[string]int
 }
 
-func (f *fakeRecordWriter) CreateRecord(context.Context, *oauth.ClientSession, syntax.NSID, map[string]any) (*atprepo.RecordRef, error) {
+func (f *fakeRecordWriter) CreateRecord(context.Context, *session.Session, syntax.NSID, map[string]any) (*atprepo.RecordRef, error) {
 	return nil, errors.New("reconcile must never create records")
 }
 
-func (f *fakeRecordWriter) PutRecord(context.Context, *oauth.ClientSession, syntax.NSID, string, map[string]any) (*atprepo.RecordRef, error) {
+func (f *fakeRecordWriter) PutRecord(context.Context, *session.Session, syntax.NSID, string, map[string]any) (*atprepo.RecordRef, error) {
 	return nil, errors.New("reconcile must never put records")
 }
 
-func (f *fakeRecordWriter) DeleteRecord(_ context.Context, _ *oauth.ClientSession, collection syntax.NSID, rkey string) error {
+func (f *fakeRecordWriter) DeleteRecord(_ context.Context, _ *session.Session, collection syntax.NSID, rkey string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.attempts = append(f.attempts, collection.String()+"/"+rkey)

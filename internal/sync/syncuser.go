@@ -9,12 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database"
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/jobs"
+	"morgenblau/internal/session"
 )
 
 // Engine runs the dual-track sync for one user, coalesced by the in-flight guard.
@@ -29,7 +29,7 @@ type Engine struct {
 	now     func() time.Time
 
 	// refreshSession is a seam so the resume-and-refresh-under-one-lock guarantee is testable without a live AS.
-	refreshSession func(ctx context.Context, sess *oauth.ClientSession) error
+	refreshSession func(ctx context.Context, sess *session.Session) error
 
 	// runTx wraps one reconcile pass's writes in a transaction (no-op default; WithTxRunner
 	// installs the real one). Deadlock rule: the closure must never touch a non-tx writer
@@ -85,9 +85,8 @@ func NewEngine(
 	e.runTx = func(ctx context.Context, fn func(SyncStore) error) error {
 		return fn(e.store)
 	}
-	e.refreshSession = func(ctx context.Context, sess *oauth.ClientSession) error {
-		_, err := sess.RefreshTokens(ctx)
-		return err
+	e.refreshSession = func(ctx context.Context, sess *session.Session) error {
+		return sess.RefreshTokens(ctx)
 	}
 	return e
 }
@@ -170,7 +169,7 @@ func (e *Engine) run(run *userRun) {
 // resumeAndRefresh resumes and refreshes under one continuous lock hold: resuming outside
 // the lock would let the request path rotate the refresh token first, so the eager refresh
 // would silently no-op on a stale token. Resume failure fails the run; refresh failure is best-effort.
-func (e *Engine) resumeAndRefresh(ctx context.Context, did syntax.DID, sessionID string) (*oauth.ClientSession, error) {
+func (e *Engine) resumeAndRefresh(ctx context.Context, did syntax.DID, sessionID string) (*session.Session, error) {
 	if e.locker != nil {
 		unlock := e.locker.LockSession(did, sessionID)
 		defer unlock()
@@ -188,7 +187,7 @@ func (e *Engine) resumeAndRefresh(ctx context.Context, did syntax.DID, sessionID
 }
 
 // runDualTrack is unexported-but-callable so tests can drive it directly, without the goroutine wrapping.
-func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *oauth.ClientSession) error {
+func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *session.Session) error {
 	// Snapshot Tier-1 BEFORE reconcile so Phase 1B doesn't wait on 1A.
 	snapshotAt := e.now().UTC()
 	snapshot, err := e.store.ListUserSubscriptionsForSync(ctx, did.String())

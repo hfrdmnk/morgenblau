@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"morgenblau/internal/session"
 
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/tags"
@@ -17,7 +17,7 @@ import (
 func (e *Engine) reconcileTier1(
 	ctx context.Context,
 	did syntax.DID,
-	sess *oauth.ClientSession,
+	sess *session.Session,
 	snapshot []db.UserSubscription,
 	snapshotAt time.Time,
 	onAdded func(feedURL string),
@@ -112,7 +112,7 @@ func (e *Engine) reconcileRSS(
 func (e *Engine) reconcileStandardfeed(
 	ctx context.Context,
 	did syntax.DID,
-	sess *oauth.ClientSession,
+	sess *session.Session,
 	snapshot []db.UserSubscription,
 	snapshotAt time.Time,
 	morgen []PDSSubscription,

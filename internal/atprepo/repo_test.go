@@ -11,9 +11,11 @@ import (
 	"github.com/bluesky-social/indigo/atproto/atcrypto"
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+
+	"morgenblau/internal/session"
 )
 
-func newTestSession(t *testing.T, srv *httptest.Server) *oauth.ClientSession {
+func newTestSession(t *testing.T, srv *httptest.Server) *session.Session {
 	t.Helper()
 	did, err := syntax.ParseDID("did:plc:example")
 	if err != nil {
@@ -23,7 +25,7 @@ func newTestSession(t *testing.T, srv *httptest.Server) *oauth.ClientSession {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &oauth.ClientSession{
+	return session.WrapOAuth(&oauth.ClientSession{
 		Client: srv.Client(),
 		Config: &oauth.ClientConfig{},
 		Data: &oauth.ClientSessionData{
@@ -40,7 +42,7 @@ func newTestSession(t *testing.T, srv *httptest.Server) *oauth.ClientSession {
 			AuthServerRevocationEndpoint: srv.URL + "/oauth/revoke",
 		},
 		DPoPPrivateKey: priv,
-	}
+	})
 }
 
 func TestRkeyFromATURI(t *testing.T) {

@@ -63,3 +63,4 @@ pnpm-lock.yaml
 
 # Amp runtime
 .amp/portals/*
+.amp/in/

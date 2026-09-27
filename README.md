@@ -79,6 +79,14 @@ Local dev uses a **loopback client**: `client_id` is `http://localhost`, callbac
 
 For prod, set both env vars to your public URLs and serve `oauth-client-metadata.json` + `oauth-jwks.json` from that origin.
 
+### Independent development login
+
+For a private orb, use a dedicated development account instead of the loopback callback. Set `DEV_LOGIN_ENABLED=true` with `APP_ENV=local` and provide `ATPROTO_HANDLE`, `ATPROTO_PASSWORD` (prefer an app password), and the HTTPS `ATPROTO_PDS` origin through server-side secrets or your ignored `.env`. The login page then shows **Log me in**. This account has real PDS read/write access; keep the portal private to trusted collaborators.
+
+In Amp, `amp orb services ensure` starts the services declared in `.amp/services.yaml`, which opts into this shortcut. The account credentials must already be configured in the orb environment. Open the returned Morgenblau portal link.
+
+Agents can `POST /dev/login` on the Go server and retain the returned cookie in their own cookie jar. Success is `204`; `GET /dev/login` reports availability. Both return `404` when disabled. An HTTP client's cookie does not sign in your browser: use the button there. `internal/session/` owns token refresh and logout. Password tokens stay in memory, so sign in again after restarting the server.
+
 ### Scopes
 
 The retained OAuth scopes are configured in `.env.example` and checked in `internal/oauth/scopes/`. Standardfeed subscription writes require their own grant. Sessions without it still work for RSS, but a Standardfeed write prompts a fresh sign-in. The existing Morgenblau permission set stays unchanged for lexicon compatibility; sharing and following have no runtime feature in v1.

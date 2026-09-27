@@ -3,8 +3,8 @@ package sync
 import (
 	"context"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"morgenblau/internal/session"
 
 	"morgenblau/internal/atprepo"
 )
@@ -40,7 +40,7 @@ func newestSidecarByKey[K comparable, S any](sidecars []S, keyOf func(S) K, rkey
 func sidecarCleanup[K comparable, S any, R any](
 	ctx context.Context,
 	pds atprepo.Writer,
-	sess *oauth.ClientSession,
+	sess *session.Session,
 	collection syntax.NSID,
 	sidecars []S,
 	keyOf func(S) K,

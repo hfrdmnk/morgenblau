@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"morgenblau/internal/session"
 )
 
 // RkeyFromATURI extracts the rkey segment from an at-uri like at://did:plc:alice/blue.morgen.feed.subscription/3la123.
@@ -34,19 +34,19 @@ type RecordWrite struct {
 
 // Writer is the slice of PDS operations the subscription endpoints use; production wires SessionWriter, tests inject a fake.
 type Writer interface {
-	CreateRecord(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID, record map[string]any) (*RecordRef, error)
-	PutRecord(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID, rkey string, record map[string]any) (*RecordRef, error)
-	DeleteRecord(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID, rkey string) error
+	CreateRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, record map[string]any) (*RecordRef, error)
+	PutRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey string, record map[string]any) (*RecordRef, error)
+	DeleteRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey string) error
 }
 
 // AtomicWriter applies creates in one repo commit.
 type AtomicWriter interface {
-	ApplyWrites(ctx context.Context, sess *oauth.ClientSession, writes []RecordWrite) ([]*RecordRef, error)
+	ApplyWrites(ctx context.Context, sess *session.Session, writes []RecordWrite) ([]*RecordRef, error)
 }
 
 // RecordGetter fetches one record from the session user's repo.
 type RecordGetter interface {
-	GetRecord(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID, rkey syntax.RecordKey) (*ListedRecord, error)
+	GetRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey syntax.RecordKey) (*ListedRecord, error)
 }
 
 // ListedRecord is one record returned by ListRecords, value left undecoded.
@@ -58,7 +58,7 @@ type ListedRecord struct {
 
 // Lister pages a collection in the session user's own repo; kept separate from Writer so existing fakes don't grow an unused method.
 type Lister interface {
-	ListRecords(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID) ([]ListedRecord, error)
+	ListRecords(ctx context.Context, sess *session.Session, collection syntax.NSID) ([]ListedRecord, error)
 }
 
 // SessionWriter calls the session's authenticated APIClient.
@@ -105,7 +105,7 @@ type applyWritesResult struct {
 	CID  string `json:"cid"`
 }
 
-func (SessionWriter) CreateRecord(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID, record map[string]any) (*RecordRef, error) {
+func (SessionWriter) CreateRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, record map[string]any) (*RecordRef, error) {
 	body := createRecordBody{
 		Repo:       sess.Data.AccountDID.String(),
 		Collection: collection.String(),
@@ -118,7 +118,7 @@ func (SessionWriter) CreateRecord(ctx context.Context, sess *oauth.ClientSession
 	return &out, nil
 }
 
-func (SessionWriter) ApplyWrites(ctx context.Context, sess *oauth.ClientSession, writes []RecordWrite) ([]*RecordRef, error) {
+func (SessionWriter) ApplyWrites(ctx context.Context, sess *session.Session, writes []RecordWrite) ([]*RecordRef, error) {
 	if len(writes) == 0 {
 		return nil, fmt.Errorf("applyWrites requires at least one write")
 	}
@@ -158,7 +158,7 @@ func (SessionWriter) ApplyWrites(ctx context.Context, sess *oauth.ClientSession,
 	return refs, nil
 }
 
-func (SessionWriter) GetRecord(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID, rkey syntax.RecordKey) (*ListedRecord, error) {
+func (SessionWriter) GetRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey syntax.RecordKey) (*ListedRecord, error) {
 	params := map[string]any{
 		"repo":       sess.Data.AccountDID.String(),
 		"collection": collection.String(),
@@ -171,7 +171,7 @@ func (SessionWriter) GetRecord(ctx context.Context, sess *oauth.ClientSession, c
 	return &out, nil
 }
 
-func (SessionWriter) PutRecord(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID, rkey string, record map[string]any) (*RecordRef, error) {
+func (SessionWriter) PutRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey string, record map[string]any) (*RecordRef, error) {
 	body := putRecordBody{
 		Repo:       sess.Data.AccountDID.String(),
 		Collection: collection.String(),
@@ -191,7 +191,7 @@ type listRecordsResponse struct {
 }
 
 // ListRecords pages com.atproto.repo.listRecords over the session user's own repo, terminating only on an empty cursor: an empty page with a cursor still set is a valid continuation, and stopping early would truncate the snapshot.
-func (SessionWriter) ListRecords(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID) ([]ListedRecord, error) {
+func (SessionWriter) ListRecords(ctx context.Context, sess *session.Session, collection syntax.NSID) ([]ListedRecord, error) {
 	var (
 		out    []ListedRecord
 		cursor string
@@ -217,7 +217,7 @@ func (SessionWriter) ListRecords(ctx context.Context, sess *oauth.ClientSession,
 	}
 }
 
-func (SessionWriter) DeleteRecord(ctx context.Context, sess *oauth.ClientSession, collection syntax.NSID, rkey string) error {
+func (SessionWriter) DeleteRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey string) error {
 	body := deleteRecordBody{
 		Repo:       sess.Data.AccountDID.String(),
 		Collection: collection.String(),

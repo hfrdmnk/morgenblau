@@ -3,17 +3,22 @@ package scopes
 import (
 	"testing"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
+	"github.com/bluesky-social/indigo/atproto/atclient"
+	"github.com/bluesky-social/indigo/atproto/syntax"
+
+	"morgenblau/internal/session"
 )
 
-func sessionWith(scopes []string) *oauth.ClientSession {
-	return &oauth.ClientSession{Data: &oauth.ClientSessionData{Scopes: scopes}}
+func sessionWith(scopes []string) *session.Session {
+	return &session.Session{Data: &session.Data{Scopes: scopes}}
 }
 
 func TestHasStandardSubscriptionWrite(t *testing.T) {
+	did := syntax.DID("did:plc:abcdefghijklmnopqrstuvwx")
+	password := session.NewPassword(&atclient.APIClient{AccountDID: &did, Auth: &atclient.PasswordAuth{}}, "dev-example")
 	cases := []struct {
 		name string
-		sess *oauth.ClientSession
+		sess *session.Session
 		want bool
 	}{
 		{"subscription grant", sessionWith([]string{"atproto", "include:blue.morgen.access", StandardSubscription}), true},
@@ -22,7 +27,8 @@ func TestHasStandardSubscriptionWrite(t *testing.T) {
 		{"nil scopes", sessionWith(nil), false},
 		{"empty string elements", sessionWith([]string{"", ""}), false},
 		{"nil session", nil, false},
-		{"nil data", &oauth.ClientSession{}, false},
+		{"nil data", &session.Session{}, false},
+		{"password authority", password, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"morgenblau/internal/session"
 
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
@@ -212,7 +212,7 @@ type fakePDS struct {
 	putErr              error // PutRecord failure, applied to every call
 }
 
-func (p *fakePDS) CreateRecord(_ context.Context, sess *oauth.ClientSession, collection syntax.NSID, record map[string]any) (*atprepo.RecordRef, error) {
+func (p *fakePDS) CreateRecord(_ context.Context, sess *session.Session, collection syntax.NSID, record map[string]any) (*atprepo.RecordRef, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if err := p.createErr[collection.String()]; err != nil {
@@ -230,7 +230,7 @@ func (p *fakePDS) CreateRecord(_ context.Context, sess *oauth.ClientSession, col
 	}, nil
 }
 
-func (p *fakePDS) ApplyWrites(_ context.Context, sess *oauth.ClientSession, writes []atprepo.RecordWrite) ([]*atprepo.RecordRef, error) {
+func (p *fakePDS) ApplyWrites(_ context.Context, sess *session.Session, writes []atprepo.RecordWrite) ([]*atprepo.RecordRef, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.applyCalls++
@@ -266,7 +266,7 @@ func (p *fakePDS) storeListed(did, collection, rkey string, record map[string]an
 	p.listed[collection] = append(p.listed[collection], atprepo.ListedRecord{URI: uri, CID: "bafyreiabc", Value: record})
 }
 
-func (p *fakePDS) PutRecord(_ context.Context, _ *oauth.ClientSession, _ syntax.NSID, rkey string, record map[string]any) (*atprepo.RecordRef, error) {
+func (p *fakePDS) PutRecord(_ context.Context, _ *session.Session, _ syntax.NSID, rkey string, record map[string]any) (*atprepo.RecordRef, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.putErr != nil {
@@ -278,7 +278,7 @@ func (p *fakePDS) PutRecord(_ context.Context, _ *oauth.ClientSession, _ syntax.
 	return &atprepo.RecordRef{URI: "at://x/c/" + rkey, CID: "bafy"}, nil
 }
 
-func (p *fakePDS) DeleteRecord(_ context.Context, _ *oauth.ClientSession, collection syntax.NSID, rkey string) error {
+func (p *fakePDS) DeleteRecord(_ context.Context, _ *session.Session, collection syntax.NSID, rkey string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.deleteErr != nil {
@@ -288,7 +288,7 @@ func (p *fakePDS) DeleteRecord(_ context.Context, _ *oauth.ClientSession, collec
 	return nil
 }
 
-func (p *fakePDS) ListRecords(_ context.Context, _ *oauth.ClientSession, collection syntax.NSID) ([]atprepo.ListedRecord, error) {
+func (p *fakePDS) ListRecords(_ context.Context, _ *session.Session, collection syntax.NSID) ([]atprepo.ListedRecord, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.listCalls++
@@ -298,7 +298,7 @@ func (p *fakePDS) ListRecords(_ context.Context, _ *oauth.ClientSession, collect
 	return p.listed[collection.String()], nil
 }
 
-func (p *fakePDS) GetRecord(_ context.Context, _ *oauth.ClientSession, collection syntax.NSID, rkey syntax.RecordKey) (*atprepo.ListedRecord, error) {
+func (p *fakePDS) GetRecord(_ context.Context, _ *session.Session, collection syntax.NSID, rkey syntax.RecordKey) (*atprepo.ListedRecord, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.getCalls++

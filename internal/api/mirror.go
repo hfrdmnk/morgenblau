@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"morgenblau/internal/session"
 )
 
 // RepairDispatcher kicks a sync_user reconcile for one user; handlers reach for it when a local mirror write diverges from the PDS.
@@ -15,7 +15,7 @@ type RepairDispatcher interface {
 
 // mirrorOrRepair runs a local mirror write and never propagates its error: the PDS write it follows already succeeded, so
 // the response is committed and the only remedy left is a reconcile from the PDS, which is the source of truth.
-func mirrorOrRepair(ctx context.Context, disp RepairDispatcher, sess *oauth.ClientSession, op string, write func() error) {
+func mirrorOrRepair(ctx context.Context, disp RepairDispatcher, sess *session.Session, op string, write func() error) {
 	err := write()
 	if err == nil {
 		return

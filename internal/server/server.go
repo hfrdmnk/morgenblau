@@ -32,6 +32,7 @@ import (
 	"morgenblau/internal/oauth/store"
 	"morgenblau/internal/safehttp"
 	"morgenblau/internal/secret"
+	"morgenblau/internal/session"
 	"morgenblau/internal/standardfeed"
 	internalsync "morgenblau/internal/sync"
 )
@@ -44,6 +45,7 @@ type Server struct {
 	qw          *dbqueries.Queries
 	oauthCfg    *config.Config
 	oauthApp    *oauth.ClientApp
+	sessions    *session.Manager
 	store       *store.Store
 	sealer      *cookie.Sealer
 	profiles    *profiles.Cache
@@ -110,6 +112,12 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	safeClient := safehttp.NewClient(30*time.Second, 5)
 	identityDir := atidentity.Guarded(safeClient)
 	oauthApp := newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
+	devConfig, err := session.LoadDevConfig(os.Getenv)
+	if err != nil {
+		_ = db.Close()
+		return nil, nil, err
+	}
+	sessions := session.NewManager(oauthApp, devConfig, safeClient)
 
 	gcCtx, gcCancel := context.WithCancel(context.Background())
 	go runAuthRequestGC(gcCtx, st)
@@ -123,7 +131,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	finder := feedfinder.New(safeClient).WithStandardResolver(stdClient)
 	stdPipeline := internalsync.NewStandardfeedPipeline(stdClient, qw).WithTxRunner(db.Writer)
 	router := internalsync.NewSourceRouter(pipeline, stdPipeline)
-	engine := internalsync.NewEngine(tracker, qw, internalsync.SessionPDSLister{}, router, oauthApp, atprepo.SessionWriter{}).WithLocker(st).WithTxRunner(db.Writer)
+	engine := internalsync.NewEngine(tracker, qw, internalsync.SessionPDSLister{}, router, sessions, atprepo.SessionWriter{}).WithLocker(st).WithTxRunner(db.Writer)
 	orchestrator := internalsync.New(tracker, router, engine)
 	newsletterService := newsletter.NewService(db.Reader, db.Writer, newsletter.Config{Domain: effectiveNewsletterDomain(newsletterCfg)})
 
@@ -163,6 +171,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		qw:          qw,
 		oauthCfg:    oauthCfg,
 		oauthApp:    oauthApp,
+		sessions:    sessions,
 		store:       st,
 		sealer:      sealer,
 		profiles:    profileCache,

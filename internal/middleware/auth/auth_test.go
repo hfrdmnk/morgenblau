@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"morgenblau/internal/session"
 
 	"morgenblau/internal/oauth/cookie"
 )
@@ -49,11 +49,11 @@ type noopLocker struct{}
 func (noopLocker) LockSession(syntax.DID, string) func() { return func() {} }
 
 type fakeResumer struct {
-	sessions map[string]*oauth.ClientSession
+	sessions map[string]*session.Session
 	err      error
 }
 
-func (f *fakeResumer) ResumeSession(_ context.Context, did syntax.DID, sid string) (*oauth.ClientSession, error) {
+func (f *fakeResumer) ResumeSession(_ context.Context, did syntax.DID, sid string) (*session.Session, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -99,8 +99,8 @@ func setSession(t *testing.T, sealer *cookie.Sealer, resumer *fakeResumer, did, 
 		t.Fatal("sealer.Set produced no cookies")
 	}
 	parsed, _ := syntax.ParseDID(did)
-	resumer.sessions[did+"|"+sid] = &oauth.ClientSession{
-		Data: &oauth.ClientSessionData{AccountDID: parsed, SessionID: sid},
+	resumer.sessions[did+"|"+sid] = &session.Session{
+		Data: &session.Data{AccountDID: parsed, SessionID: sid},
 	}
 	return cookies[0]
 }
@@ -157,7 +157,7 @@ func TestMiddleware_Table(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			sealer := newSealer(t)
-			resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
+			resumer := &fakeResumer{sessions: map[string]*session.Session{}}
 			next := &passthroughNext{}
 			m := New(resumer, noopLocker{}, sealer)
 
@@ -198,7 +198,7 @@ func (b *bodyReader) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func TestMiddleware_CapsAPIBodySize(t *testing.T) {
 	sealer := newSealer(t)
-	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
+	resumer := &fakeResumer{sessions: map[string]*session.Session{}}
 	cookie := setSession(t, sealer, resumer, "did:plc:alice", "sid-1")
 	m := New(resumer, noopLocker{}, sealer)
 
@@ -229,7 +229,7 @@ func TestMiddleware_CapsAPIBodySize(t *testing.T) {
 
 func TestMiddleware_InjectsSessionIntoContext(t *testing.T) {
 	sealer := newSealer(t)
-	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
+	resumer := &fakeResumer{sessions: map[string]*session.Session{}}
 	cookie := setSession(t, sealer, resumer, "did:plc:alice", "sid-1")
 
 	next := &passthroughNext{}
@@ -253,7 +253,7 @@ func TestMiddleware_InjectsSessionIntoContext(t *testing.T) {
 
 func TestMiddleware_InvalidCookie_TreatedAsUnauthed(t *testing.T) {
 	sealer := newSealer(t)
-	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
+	resumer := &fakeResumer{sessions: map[string]*session.Session{}}
 	next := &passthroughNext{}
 	m := New(resumer, noopLocker{}, sealer)
 
@@ -272,7 +272,7 @@ func TestMiddleware_InvalidCookie_TreatedAsUnauthed(t *testing.T) {
 
 func TestMiddleware_ResumeFailure_RedirectsAndClearsCookie(t *testing.T) {
 	sealer := newSealer(t)
-	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}, err: fmt.Errorf("dead session")}
+	resumer := &fakeResumer{sessions: map[string]*session.Session{}, err: fmt.Errorf("dead session")}
 	setRR := httptest.NewRecorder()
 	sealer.Set(setRR, "did:plc:alice", "sid-1")
 	cookies := setRR.Result().Cookies()
@@ -310,11 +310,11 @@ type blockingResumer struct {
 	inFlight         int32
 	maxInFlight      int32
 	release          chan struct{}
-	session          *oauth.ClientSession
+	session          *session.Session
 	totalInvocations int32
 }
 
-func (b *blockingResumer) ResumeSession(_ context.Context, _ syntax.DID, _ string) (*oauth.ClientSession, error) {
+func (b *blockingResumer) ResumeSession(_ context.Context, _ syntax.DID, _ string) (*session.Session, error) {
 	atomic.AddInt32(&b.totalInvocations, 1)
 	now := atomic.AddInt32(&b.inFlight, 1)
 	b.mu.Lock()
@@ -331,7 +331,7 @@ func (b *blockingResumer) ResumeSession(_ context.Context, _ syntax.DID, _ strin
 // overlap for the same session; otherwise both could refresh and one gets invalid_grant.
 func TestMiddleware_MutatingRequestsDoNotOverlapInNext(t *testing.T) {
 	sealer := newSealer(t)
-	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
+	resumer := &fakeResumer{sessions: map[string]*session.Session{}}
 	cookie := setSession(t, sealer, resumer, "did:plc:alice", "sid-1")
 	m := New(resumer, newMemoryLocker(), sealer)
 
@@ -367,7 +367,7 @@ func TestMiddleware_MutatingRequestsDoNotOverlapInNext(t *testing.T) {
 // Read-only requests take no lock, so they never queue behind a slow mutating request for the same session.
 func TestMiddleware_GETNotBlockedBySlowMutating(t *testing.T) {
 	sealer := newSealer(t)
-	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}}
+	resumer := &fakeResumer{sessions: map[string]*session.Session{}}
 	cookie := setSession(t, sealer, resumer, "did:plc:alice", "sid-1")
 	m := New(resumer, newMemoryLocker(), sealer)
 
@@ -412,7 +412,7 @@ func TestMiddleware_LockSerializesMutatingResume(t *testing.T) {
 	did, _ := syntax.ParseDID("did:plc:alice")
 	resumer := &blockingResumer{
 		release: make(chan struct{}),
-		session: &oauth.ClientSession{Data: &oauth.ClientSessionData{AccountDID: did, SessionID: "sid-1"}},
+		session: &session.Session{Data: &session.Data{AccountDID: did, SessionID: "sid-1"}},
 	}
 	locker := newMemoryLocker()
 	m := New(resumer, locker, sealer)
@@ -463,7 +463,7 @@ func TestMiddleware_LockSerializesMutatingResume(t *testing.T) {
 // A transient (ctx.Canceled / DeadlineExceeded) error must leave the cookie intact so the next request can retry.
 func TestMiddleware_TransientErrorKeepsCookie(t *testing.T) {
 	sealer := newSealer(t)
-	resumer := &fakeResumer{sessions: map[string]*oauth.ClientSession{}, err: context.Canceled}
+	resumer := &fakeResumer{sessions: map[string]*session.Session{}, err: context.Canceled}
 	setRR := httptest.NewRecorder()
 	sealer.Set(setRR, "did:plc:alice", "sid-1")
 	cookies := setRR.Result().Cookies()

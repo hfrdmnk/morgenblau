@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"morgenblau/internal/session"
 
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
@@ -800,18 +800,18 @@ func TestSubscriptionsCreate_InvalidRecord_500_NoWrite(t *testing.T) {
 
 type failingPDS struct{}
 
-func (failingPDS) CreateRecord(_ context.Context, _ *oauth.ClientSession, _ syntax.NSID, _ map[string]any) (*atprepo.RecordRef, error) {
+func (failingPDS) CreateRecord(_ context.Context, _ *session.Session, _ syntax.NSID, _ map[string]any) (*atprepo.RecordRef, error) {
 	return nil, errors.New("pds down")
 }
 
-func (failingPDS) PutRecord(_ context.Context, _ *oauth.ClientSession, _ syntax.NSID, _ string, _ map[string]any) (*atprepo.RecordRef, error) {
+func (failingPDS) PutRecord(_ context.Context, _ *session.Session, _ syntax.NSID, _ string, _ map[string]any) (*atprepo.RecordRef, error) {
 	return nil, errors.New("pds down")
 }
 
-func (failingPDS) DeleteRecord(_ context.Context, _ *oauth.ClientSession, _ syntax.NSID, _ string) error {
+func (failingPDS) DeleteRecord(_ context.Context, _ *session.Session, _ syntax.NSID, _ string) error {
 	return errors.New("pds down")
 }
 
-func (failingPDS) ListRecords(_ context.Context, _ *oauth.ClientSession, _ syntax.NSID) ([]atprepo.ListedRecord, error) {
+func (failingPDS) ListRecords(_ context.Context, _ *session.Session, _ syntax.NSID) ([]atprepo.ListedRecord, error) {
 	return nil, errors.New("pds down")
 }

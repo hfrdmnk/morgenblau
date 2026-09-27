@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"morgenblau/internal/session"
 
 	"morgenblau/internal/atprepo"
 )
@@ -19,9 +19,9 @@ const (
 	sidecarCollection   = "blue.morgen.test.sidecar"
 )
 
-func sweepTestSession() *oauth.ClientSession {
+func sweepTestSession() *session.Session {
 	d, _ := syntax.ParseDID("did:plc:alice")
-	return &oauth.ClientSession{Data: &oauth.ClientSessionData{AccountDID: d, SessionID: "sid-1"}}
+	return &session.Session{Data: &session.Data{AccountDID: d, SessionID: "sid-1"}}
 }
 
 func TestSweepDuplicates_DeletesAllMatches(t *testing.T) {
