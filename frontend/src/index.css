@@ -101,7 +101,7 @@
     --success-foreground: oklch(0.985 0.001 106.423);
     --border: oklch(0.869 0.005 56.366);
     --input: oklch(0.923 0.003 48.717);
-    --ring: oklch(0.268 0.007 34.298);
+    --ring: var(--border);
     --chart-1: oklch(0.869 0.005 56.366);
     --chart-2: oklch(0.553 0.013 58.071);
     --chart-3: oklch(0.444 0.011 73.639);
@@ -150,7 +150,7 @@
     --success-foreground: oklch(0.147 0.004 49.25);
     --border: oklch(0.374 0.01 67.558);
     --input: oklch(0.216 0.006 56.043);
-    --ring: oklch(0.923 0.003 48.717);
+    --ring: var(--border);
     --chart-1: oklch(0.869 0.005 56.366);
     --chart-2: oklch(0.553 0.013 58.071);
     --chart-3: oklch(0.444 0.011 73.639);
@@ -186,8 +186,13 @@
     }
 
     :focus-visible {
-        outline: 2px solid var(--ring);
-        outline-offset: 2px;
+        outline: 1px solid var(--ring);
+        outline-offset: 1px;
+    }
+
+    [data-slot='input']:focus-visible,
+    [data-slot='textarea']:focus-visible {
+        outline-offset: -1px;
     }
 }
 

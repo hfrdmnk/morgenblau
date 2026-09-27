@@ -199,7 +199,7 @@ function ButtonSpecimens() {
                         </Button>
                         <Button
                             size="sm"
-                            className="outline-2 outline-offset-2 outline-ring"
+                            className="outline-1 outline-offset-1 outline-ring"
                         >
                             Focus
                         </Button>
@@ -220,7 +220,7 @@ function ButtonSpecimens() {
                         <Button
                             size="sm"
                             variant="secondary"
-                            className="outline-2 outline-offset-2 outline-ring"
+                            className="outline-1 outline-offset-1 outline-ring"
                         >
                             Focus
                         </Button>
@@ -246,7 +246,7 @@ function FormSpecimens() {
             <Field label="Focus demonstration">
                 <Input
                     defaultValue="Selected field"
-                    className="outline-2 outline-offset-2 outline-ring"
+                    className="-outline-offset-1 outline-1 outline-ring"
                 />
             </Field>
             <Field label="Disabled">
@@ -419,7 +419,7 @@ export function Styleguide() {
                     <Section
                         id="controls"
                         title="Buttons, icon buttons, links, and badges"
-                        description="Primary controls invert the canvas. Secondary controls use a soft neutral fill. All focus rings remain neutral and external."
+                        description="Primary controls invert the canvas. Secondary controls use a soft neutral fill. Focus rings remain neutral."
                     >
                         <ThemePair>
                             <ButtonSpecimens />
@@ -464,7 +464,7 @@ export function Styleguide() {
                     <Section
                         id="forms"
                         title="Inputs and textareas"
-                        description="Fields are borderless tonal areas. Validation uses semantic color without replacing the external focus ring."
+                        description="Fields are borderless tonal areas. Focus and validation use a one-pixel border treatment."
                     >
                         <ThemePair>
                             <FormSpecimens />
