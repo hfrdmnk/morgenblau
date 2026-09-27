@@ -83,7 +83,7 @@ func CallbackHandler(app ClientApp, sealer *cookie.Sealer, starter LoginSyncStar
 	})
 }
 
-// LogoutHandler revokes at the AS (best-effort), deletes the session, clears the cookie, and redirects to / (an authed /login redirect would just bounce back).
+// LogoutHandler revokes at the AS (best-effort), deletes the session, clears the cookie, and redirects to /login.
 func LogoutHandler(app ClientApp, sealer *cookie.Sealer, locker SessionLocker) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -105,6 +105,6 @@ func LogoutHandler(app ClientApp, sealer *cookie.Sealer, locker SessionLocker) h
 			}
 		}
 		sealer.Clear(w)
-		http.Redirect(w, r, "/", http.StatusFound)
+		http.Redirect(w, r, "/login", http.StatusFound)
 	})
 }

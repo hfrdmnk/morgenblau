@@ -5,18 +5,20 @@ import { Route, Router, Switch } from 'wouter';
 import { Placeholder } from '@/components/placeholder';
 import { useAppLocation } from '@/hooks/use-app-location';
 import { PATHS } from '@/lib/paths';
+import { Login } from '@/pages/login';
 
+const AppShell = lazy(() =>
+    import('@/layouts/app-shell').then((m) => ({ default: m.AppShell })),
+);
 const Digest = lazy(() => import('@/pages/digest').then((m) => ({ default: m.Digest })));
 const Entry = lazy(() => import('@/pages/entry').then((m) => ({ default: m.Entry })));
 const Library = lazy(() => import('@/pages/library').then((m) => ({ default: m.Library })));
 const NewsletterSource = lazy(() =>
     import('@/pages/newsletter-source').then((m) => ({ default: m.NewsletterSourcePage })),
 );
-const Login = lazy(() => import('@/pages/login').then((m) => ({ default: m.Login })));
 const Source = lazy(() => import('@/pages/source').then((m) => ({ default: m.Source })));
 const Sources = lazy(() => import('@/pages/sources').then((m) => ({ default: m.Sources })));
 const Settings = lazy(() => import('@/pages/settings').then((m) => ({ default: m.Settings })));
-const Welcome = lazy(() => import('@/pages/welcome').then((m) => ({ default: m.Welcome })));
 const DevRoutes = import.meta.env.DEV
     ? lazy(() => import('@/dev/routes').then((m) => ({ default: m.DevRoutes })))
     : null;
@@ -24,7 +26,6 @@ const DevRoutes = import.meta.env.DEV
 type PageDef = { path: string; Component: ComponentType };
 
 const CHROME_PAGES: PageDef[] = [
-    { path: PATHS.digest, Component: Digest },
     { path: PATHS.library, Component: Library },
     { path: PATHS.sources, Component: Sources },
     { path: PATHS.settings, Component: Settings },
@@ -43,16 +44,22 @@ export default function App() {
         <Router hook={useAppLocation}>
             <Suspense fallback={<Placeholder label="Loading" />}>
                 <Switch>
-                    <Route path={PATHS.welcome}>
-                        <Welcome />
-                    </Route>
                     <Route path={PATHS.login}>
                         <Login />
                     </Route>
                     <Route path={`${PATHS.entry}/:slug`}>
                         <Entry />
                     </Route>
-                    {DevRoutes ? <DevRoutes /> : null}
+                    {DevRoutes ? (
+                        <Route path="/dev/styleguide">
+                            <DevRoutes />
+                        </Route>
+                    ) : null}
+                    <Route path={PATHS.digest}>
+                        <AppShell>
+                            <Digest />
+                        </AppShell>
+                    </Route>
                     <Route path={CHROME_PATTERN}>
                         <Switch>
                             {CHROME_PAGES.map(({ path, Component }) => (

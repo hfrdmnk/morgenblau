@@ -45,6 +45,7 @@ Install CLIs once: `go install github.com/pressly/goose/v3/cmd/goose@latest && g
 
 - **GitHub is the source of truth, Tangled is a read-only mirror.** Ship to GitHub's `main`; `.github/workflows/sync-tangled.yml` force-syncs accepted pushes to Tangled.
 - `scripts/sync-tangled.sh` is the manual recovery path when the mirror workflow needs to be retried outside GitHub.
+- Never bypass repository Git hooks with `--no-verify` unless the user explicitly approves it for that invocation. Investigate and resolve hook failures instead.
 
 ## ATProto Skills
 

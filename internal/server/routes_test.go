@@ -8,6 +8,37 @@ import (
 	"morgenblau/internal/newsletter"
 )
 
+func TestDevRoutesArePublicInLocalEnvironment(t *testing.T) {
+	vite := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("styleguide"))
+	}))
+	t.Cleanup(vite.Close)
+	t.Setenv("APP_ENV", "local")
+	t.Setenv("VITE_URL", vite.URL)
+
+	rr := httptest.NewRecorder()
+	(&Server{}).RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/dev/styleguide", nil))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if rr.Body.String() != "styleguide" {
+		t.Fatalf("body = %q, want styleguide", rr.Body.String())
+	}
+}
+
+func TestDevRoutesAreNotServedOutsideLocalEnvironment(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+
+	rr := httptest.NewRecorder()
+	(&Server{}).RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/dev/styleguide", nil))
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rr.Code)
+	}
+}
+
 func TestRemovedAPIRoutesReturnNotFound(t *testing.T) {
 	routes := (&Server{}).routes()
 	paths := []string{

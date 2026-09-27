@@ -47,6 +47,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '127.0.0.1',
+      allowedHosts: process.env.AMP_ORB ? true : undefined,
       proxy: {
         '/api': `http://localhost:${apiPort}`,
       },

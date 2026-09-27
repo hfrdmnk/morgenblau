@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"morgenblau/internal/api"
@@ -16,7 +17,14 @@ import (
 func (s *Server) RegisterRoutes() http.Handler {
 	mux := s.routes()
 	gate := auth.New(s.oauthApp, s.store, s.sealer)
-	return s.corsMiddleware(gate(mux))
+	root := http.NewServeMux()
+	if os.Getenv("APP_ENV") == "local" {
+		root.Handle("/dev/", spaHandler())
+	} else {
+		root.HandleFunc("/dev/", http.NotFound)
+	}
+	root.Handle("/", gate(mux))
+	return s.corsMiddleware(root)
 }
 
 func (s *Server) routes() *http.ServeMux {

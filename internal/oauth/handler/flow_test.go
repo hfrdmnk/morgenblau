@@ -192,7 +192,7 @@ func TestCallback_ProcessError_400_NoCookie(t *testing.T) {
 	}
 }
 
-func TestLogout_ClearsCookie_RedirectsToRoot(t *testing.T) {
+func TestLogout_ClearsCookie_RedirectsToLogin(t *testing.T) {
 	app := &fakeApp{}
 	sealer := newSealer(t)
 	h := LogoutHandler(app, sealer, nil)
@@ -212,7 +212,7 @@ func TestLogout_ClearsCookie_RedirectsToRoot(t *testing.T) {
 	if rr.Code != http.StatusFound {
 		t.Fatalf("status = %d", rr.Code)
 	}
-	if loc := rr.Header().Get("Location"); loc != "/" {
+	if loc := rr.Header().Get("Location"); loc != "/login" {
 		t.Errorf("Location = %q", loc)
 	}
 	if app.logoutDID.String() != "did:plc:abc" {

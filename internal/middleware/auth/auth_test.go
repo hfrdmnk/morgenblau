@@ -126,11 +126,11 @@ func TestMiddleware_Table(t *testing.T) {
 		{name: "static asset", path: "/assets/index-abc.js", method: "GET", wantCode: 200, wantNext: true},
 		{name: "favicon", path: "/favicon.svg", method: "GET", wantCode: 200, wantNext: true},
 
-		{name: "root unauthed", path: "/", method: "GET", wantCode: 200, wantNext: true},
+		{name: "root unauthed", path: "/", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
 		{name: "login unauthed", path: "/login", method: "GET", wantCode: 200, wantNext: true},
 
-		{name: "root authed", path: "/", method: "GET", authed: true, wantCode: 302, wantNext: false, wantLoc: "/digest"},
-		{name: "login authed", path: "/login", method: "GET", authed: true, wantCode: 302, wantNext: false, wantLoc: "/digest"},
+		{name: "root authed", path: "/", method: "GET", authed: true, wantCode: 200, wantNext: true},
+		{name: "login authed", path: "/login", method: "GET", authed: true, wantCode: 302, wantNext: false, wantLoc: "/"},
 
 		{name: "digest unauthed", path: "/digest", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
 		{name: "sources unauthed", path: "/sources", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
