@@ -43,7 +43,6 @@
     "fallow": "^3.3.0",
     "globals": "^17.6.0",
     "react-doctor": "^0.7.4",
-    "react-grab": "^0.1.48",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",
