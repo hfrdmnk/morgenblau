@@ -121,11 +121,57 @@ function CheckIcon(props: IconProps) {
     );
 }
 
+function ChevronDownIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M5 9L12 16L19 9"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.5"
+            />
+        </svg>
+    );
+}
+
+function DigestIcon(props: IconProps) {
+    return (
+        <svg
+            aria-hidden="true"
+            focusable="false"
+            viewBox="-8.68 -10 52 52"
+            {...props}
+        >
+            <path
+                d="M29.914 38.75C26.183 40.82 21.889 42 17.32 42 12.75 42 8.459 40.82 4.726 38.75H29.914ZM39.841 29C38.425 31.447 36.622 33.641 34.516 35.5H0.124C-1.982 33.641-3.784 31.447-5.199 29H39.841ZM17.32-10C31.68-10 43.32 1.64 43.32 16 43.32 18.244 43.036 20.422 42.501 22.5H-7.861C-8.396 20.422-8.68 18.244-8.68 16-8.68 1.64 2.961-10 17.32-10Z"
+                fill="currentColor"
+            />
+        </svg>
+    );
+}
+
+function PlusIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M12 5V19M5 12H19"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeWidth="1.5"
+            />
+        </svg>
+    );
+}
+
 export {
     AlertIcon,
     ArrowRightIcon,
     CheckIcon,
+    ChevronDownIcon,
+    DigestIcon,
     ExternalLinkIcon,
     InboxIcon,
     LoadingIcon,
+    PlusIcon,
 };

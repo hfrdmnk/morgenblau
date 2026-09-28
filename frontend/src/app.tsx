@@ -4,13 +4,11 @@ import { Route, Router, Switch } from 'wouter';
 
 import { Placeholder } from '@/components/placeholder';
 import { useAppLocation } from '@/hooks/use-app-location';
+import { AppShell } from '@/layouts/app-shell';
 import { PATHS } from '@/lib/paths';
+import { Digest } from '@/pages/digest';
 import { Login } from '@/pages/login';
 
-const AppShell = lazy(() =>
-    import('@/layouts/app-shell').then((m) => ({ default: m.AppShell })),
-);
-const Digest = lazy(() => import('@/pages/digest').then((m) => ({ default: m.Digest })));
 const Entry = lazy(() => import('@/pages/entry').then((m) => ({ default: m.Entry })));
 const Library = lazy(() => import('@/pages/library').then((m) => ({ default: m.Library })));
 const NewsletterSource = lazy(() =>
