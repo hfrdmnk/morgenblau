@@ -4,6 +4,8 @@ export const PATHS = {
     library: '/library',
     sources: '/sources',
     settings: '/settings',
+    import: '/settings/import',
+    export: '/settings/export',
     entry: '/entry',
     oauthLogin: '/oauth/login',
     oauthLogout: '/oauth/logout',

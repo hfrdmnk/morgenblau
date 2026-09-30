@@ -64,6 +64,57 @@ func TestRkeyFromATURI(t *testing.T) {
 	}
 }
 
+func TestConditionalRecordWrites(t *testing.T) {
+	pds, ok := any(SessionWriter{}).(interface {
+		CreateRecordIfCommit(context.Context, *session.Session, syntax.NSID, map[string]any, string) (*RecordRef, error)
+		PutRecordIfCID(context.Context, *session.Session, syntax.NSID, string, map[string]any, string) (*RecordRef, error)
+		GetLatestCommit(context.Context, *session.Session) (string, error)
+	})
+	if !ok {
+		t.Fatal("SessionWriter lacks conditional writes")
+	}
+	var bodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/xrpc/com.atproto.sync.getLatestCommit" {
+			if r.URL.Query().Get("did") != "did:plc:example" {
+				t.Error("wrong repo head DID")
+			}
+			_, _ = w.Write([]byte(`{"cid":"head-cid","rev":"3la"}`))
+			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		bodies = append(bodies, body)
+		_ = json.NewEncoder(w).Encode(RecordRef{URI: "at://did:plc:example/blue.morgen.feed.subscription/3la", CID: "new-cid"})
+	}))
+	defer srv.Close()
+	sess := newTestSession(t, srv)
+	ctx := context.Background()
+	head, err := pds.GetLatestCommit(ctx, sess)
+	if err != nil || head != "head-cid" {
+		t.Fatalf("head=%q err=%v", head, err)
+	}
+	collection := syntax.NSID("blue.morgen.feed.subscription")
+	if _, err := pds.CreateRecordIfCommit(ctx, sess, collection, map[string]any{"title": "Example"}, head); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pds.PutRecordIfCID(ctx, sess, collection, "3la", map[string]any{"title": "Updated"}, "old-cid"); err != nil {
+		t.Fatal(err)
+	}
+	if len(bodies) != 2 || bodies[0]["swapCommit"] != "head-cid" || bodies[1]["swapRecord"] != "old-cid" || bodies[1]["rkey"] != "3la" {
+		t.Fatalf("missing write preconditions: %+v", bodies)
+	}
+	if _, err := pds.CreateRecordIfCommit(ctx, sess, collection, nil, ""); err == nil {
+		t.Fatal("empty commit must not become an unconditional create")
+	}
+	if _, err := pds.PutRecordIfCID(ctx, sess, collection, "3la", nil, ""); err == nil {
+		t.Fatal("empty CID must not become an unconditional update")
+	}
+}
+
 func TestCreateRecord_PostsCorrectBody(t *testing.T) {
 	var got map[string]any
 	srv := repoServer(t, "com.atproto.repo.createRecord", func(w http.ResponseWriter, r *http.Request) {

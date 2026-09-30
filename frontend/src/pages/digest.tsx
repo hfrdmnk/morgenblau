@@ -1,7 +1,7 @@
 import { Link as RouterLink } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
-import { AccountMenu } from '@/components/account-menu';
+import { AccountMenu, AccountMenuSkeleton } from '@/components/account-menu';
 import { ChevronDownIcon, DigestIcon, PlusIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { useAppProfile } from '@/hooks/use-app-profile';
@@ -114,7 +114,7 @@ function DateOption({
             aria-current={selected ? 'date' : undefined}
             aria-label={fullDate.format(date)}
             className={cn(
-                'w-5 rounded-sm text-center text-sm transition-colors duration-(--motion-duration-fast) hover:text-foreground',
+                'flex w-5 flex-col items-center rounded-sm text-center text-sm transition-colors duration-(--motion-duration-fast) hover:text-foreground',
                 {
                     'text-primary': selected,
                     'text-subtle-foreground': !selected,
@@ -205,7 +205,7 @@ function DigestItem({ date, entry }: { date: string; entry: DigestEntry }) {
 
 function ProfileAvatar({ profile }: { profile: ReturnType<typeof useAppProfile> }) {
     if (profile.kind === 'loading') {
-        return <span aria-label="Loading profile" className="size-8 animate-pulse rounded-full bg-muted" />;
+        return <AccountMenuSkeleton />;
     }
     if (profile.kind === 'error') {
         return <span aria-label="Profile unavailable" className="size-8 rounded-full bg-muted" />;

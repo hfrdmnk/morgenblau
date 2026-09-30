@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'wouter';
 
+import { DownloadIcon, UploadIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import {
     Popover,
@@ -38,11 +40,20 @@ function ProfileAvatar({ profile }: { profile: AppProfile }) {
     );
 }
 
+export function AccountMenuSkeleton() {
+    return (
+        <span aria-label="Loading account" className="flex size-10 shrink-0 items-center justify-center">
+            <span className="size-8 rounded-full bg-secondary" />
+        </span>
+    );
+}
+
 export function AccountMenu({ profile }: { profile: AppProfile }) {
     const accountName = profile.displayName?.trim() || `@${profile.handle}`;
+    const [open, setOpen] = useState(false);
 
     return (
-        <Popover>
+        <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger
                 render={
                     <Button
@@ -62,6 +73,24 @@ export function AccountMenu({ profile }: { profile: AppProfile }) {
                         @{profile.handle}
                     </PopoverDescription>
                 </PopoverHeader>
+                <nav aria-label="Account" className="-mx-2">
+                    <Link
+                        href={PATHS.import}
+                        className="flex min-h-10 items-center gap-3 rounded-md px-2 text-sm hover:bg-secondary/50"
+                        onClick={() => setOpen(false)}
+                    >
+                        <UploadIcon className="size-4" />
+                        Import
+                    </Link>
+                    <Link
+                        href={PATHS.export}
+                        className="flex min-h-10 items-center gap-3 rounded-md px-2 text-sm hover:bg-secondary/50"
+                        onClick={() => setOpen(false)}
+                    >
+                        <DownloadIcon className="size-4" />
+                        Export
+                    </Link>
+                </nav>
                 <form method="POST" action={PATHS.oauthLogout}>
                     <Button type="submit" variant="secondary" className="w-full">
                         Log out

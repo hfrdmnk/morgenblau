@@ -164,14 +164,44 @@ function PlusIcon(props: IconProps) {
     );
 }
 
+function UploadIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M12 21V7M12 7L6 13M12 7L18 13M3 3H21"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
+function DownloadIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M12 3V17M12 17L6 11M12 17L18 11M3 21H21"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
 export {
     AlertIcon,
     ArrowRightIcon,
     CheckIcon,
     ChevronDownIcon,
     DigestIcon,
+    DownloadIcon,
     ExternalLinkIcon,
     InboxIcon,
     LoadingIcon,
     PlusIcon,
+    UploadIcon,
 };

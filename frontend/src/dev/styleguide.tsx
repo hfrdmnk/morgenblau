@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from 'react';
+import { toast } from 'sonner';
 
 import {
     ArrowRightIcon,
@@ -497,6 +498,14 @@ export function Styleguide() {
                             <p className="text-sm text-muted-foreground">
                                 Uses Base UI positioning and focus management.
                             </p>
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                            <Button variant="secondary" onClick={() => toast.success('Import complete', { description: '16 added, 0 updated, 0 already up to date.' })}>
+                                Show success toast
+                            </Button>
+                            <Button variant="secondary" onClick={() => toast.error('Could not import sources', { description: 'Please try again.' })}>
+                                Show error toast
+                            </Button>
                         </div>
                     </Section>
 
