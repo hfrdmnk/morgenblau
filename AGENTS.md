@@ -13,7 +13,7 @@ A calm content platform powered by RSS and ATProto — daily digests instead of 
 ## Workflow
 
 Write all Go code with Red-Green-TDD. Leverage Go's phenomenal testing suite.
-Don't try to navigate the app in the browser yourself. I will always check myself and give you feedback.
+Prove behavior on the running app yourself with the `verify-morgenblau` skill. I do the final visual check and give you feedback.
 
 ## Comments
 

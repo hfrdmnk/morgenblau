@@ -1,0 +1,368 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Drive an isolated Morgenblau instance and keep the evidence.
+# Every subcommand takes the run's slug; evidence lands in .scratch/verify/<date>-<slug>/.
+USAGE='usage: verify <command> [args]
+
+  doctor                          check this machine can verify; exit 0 ok, 3 anonymous only, 1 fail
+  up <slug> [--fetch-minutes N]   start an isolated instance (own ports, fresh DB, own Vite); prints its state
+                                  --fetch-minutes turns on the global feed refresher (default off)
+  login <slug>                    sign the run cookie jar in as the dev account, wait for sync, record the PDS baseline
+  api <slug> <METHOD> <path> [--data JSON] [--out NAME] [--anon]
+                                  call the instance; prints the body, status on stderr; --out keeps NAME.json + NAME.status
+  inspect <slug> [--out NAME]     JSON snapshot of the run DB (counts, subscriptions, saves, newsletter rows)
+  mail <slug> [send-newsletter flags]
+                                  send the MIME fixture (or -eml FILE) to the instance SMTP receiver, e.g. -to ADDRESS
+  foreign <slug>                  arrange a second reader (placeholder DID) with a newsletter address; prints {did,address}
+  browser <slug> <playwright-cli command> [args]
+                                  drive a browser session named after the slug; a /path expands to the instance URL
+  down <slug> [--dry-run]         delete PDS records the run added, close the browser, stop what up started, drop the DB
+  stale [--dry-run]               run down for every run whose processes are still alive
+  status                          list runs and whether their processes are alive
+
+The instance runs the working tree: a Go binary built by up, a Vite dev server on a spare port,
+APP_ENV=local, FETCH_INTERVAL_MINUTES=0 unless asked, newsletter SMTP on 127.0.0.1 for newsletter.localhost.
+It never touches ./data/morgenblau.db or a server the user already runs.'
+
+PLAYWRIGHT_CLI="@playwright/cli@0.1.22"
+NEWSLETTER_DOMAIN="newsletter.localhost"
+
+ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+cd "$ROOT"
+VERIFY_ROOT="$ROOT/.scratch/verify"
+
+die() { printf 'verify: %s\n' "$1" >&2; exit "${2:-1}"; }
+say() { printf '%s\n' "$1" >&2; }
+
+# Reads KEY from the process env, then .env; the server's godotenv load follows the same precedence.
+env_value() {
+    local key="$1"
+    if [ -n "${!key-}" ]; then printf '%s' "${!key}"; return; fi
+    [ -f "$ROOT/.env" ] || return 0
+    sed -n "s/^$key=//p" "$ROOT/.env" | tail -1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
+}
+
+dev_login_configured() {
+    local pds
+    pds="$(env_value ATPROTO_PDS)"
+    [ -n "$(env_value ATPROTO_HANDLE)" ] && [ -n "$(env_value ATPROTO_PASSWORD)" ] && [[ "$pds" == https://* ]]
+}
+
+port_free() { ! lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
+
+free_port() {
+    local port="$1"
+    while ! port_free "$port"; do port=$((port + 1)); done
+    printf '%s' "$port"
+}
+
+alive() { [ -n "${1-}" ] && [ "$1" != null ] && kill -0 "$1" 2>/dev/null; }
+
+kill_tree() {
+    local pid="$1" child
+    for child in $(pgrep -P "$pid" 2>/dev/null); do kill_tree "$child"; done
+    kill "$pid" 2>/dev/null || true
+}
+
+run_dir() {
+    local slug="$1" match
+    [[ "$slug" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "slug '$slug' must be lowercase letters, digits and dashes."
+    match="$(ls -d "$VERIFY_ROOT"/*-"$slug" 2>/dev/null | sort | tail -1 || true)"
+    [ -n "$match" ] && [ -f "$match/run/state.json" ] || die "no run for slug '$slug'; start one with: verify up $slug"
+    printf '%s' "$match"
+}
+
+state() { jq -r "$2" "$1/run/state.json"; }
+
+set_state() {
+    local dir="$1" filter="$2" tmp
+    tmp="$(mktemp)"
+    jq "$filter" "$dir/run/state.json" >"$tmp" && mv "$tmp" "$dir/run/state.json"
+}
+
+doctor() {
+    local status=0 key tool
+    ok() { printf '  ok    %s\n' "$1"; }
+    bad() { printf '  FAIL  %s\n' "$1"; status=1; }
+
+    for tool in go goose bun jq sqlite3 curl lsof; do
+        if command -v "$tool" >/dev/null; then ok "$tool on PATH"; else bad "$tool missing (see README.md Prerequisites)"; fi
+    done
+    if [ -d frontend/node_modules ]; then ok "frontend/node_modules present"; else bad "frontend dependencies missing; run: bun install --cwd ./frontend"; fi
+    if [ -f .env ]; then ok ".env present"; else bad ".env missing; copy .env.example and fill the keys it documents"; fi
+
+    for key in SESSION_COOKIE_KEY SESSION_STORE_KEYS BLUESKY_OAUTH_PRIVATE_KEY; do
+        if [ -n "$(env_value "$key")" ]; then ok "$key set"; else bad "$key empty; the server refuses to start without it"; fi
+    done
+    if git check-ignore -q .scratch/verify; then ok ".scratch/verify is gitignored"; else bad ".scratch/verify is not gitignored"; fi
+    if bunx "$PLAYWRIGHT_CLI" --version >/dev/null 2>&1; then ok "playwright-cli ($PLAYWRIGHT_CLI) resolves"; else bad "bunx $PLAYWRIGHT_CLI failed (needs network once)"; fi
+    ok "instances force APP_ENV=local, a fresh DB under .scratch/verify, SMTP on 127.0.0.1 only"
+
+    printf 'env keys read: SESSION_COOKIE_KEY SESSION_STORE_KEYS BLUESKY_OAUTH_PRIVATE_KEY ATPROTO_HANDLE ATPROTO_PASSWORD ATPROTO_PDS (values never printed)\n'
+    [ "$status" = 0 ] || { printf 'doctor: FAIL\n'; return 1; }
+
+    if dev_login_configured; then
+        ok "dev account configured (ATPROTO_HANDLE, ATPROTO_PASSWORD, https ATPROTO_PDS)"
+        printf 'doctor: ok\n'
+    else
+        printf '  BLOCKED  dev account missing: ATPROTO_HANDLE, ATPROTO_PASSWORD and an https ATPROTO_PDS must be set in .env or the environment\n'
+        printf 'doctor: anonymous only (signed-in surfaces are blocked)\n'
+        return 3
+    fi
+}
+
+up() {
+    local slug="$1" fetch="${2:-0}" dir run http smtp vite dev=false server_pid vite_pid i
+    [[ "$fetch" =~ ^[0-9]+$ ]] || die "--fetch-minutes takes a whole number of minutes"
+    [[ "$slug" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "slug '$slug' must be lowercase letters, digits and dashes."
+    dir="$VERIFY_ROOT/$(date +%F)-$slug"
+    run="$dir/run"
+    if [ -f "$run/state.json" ] && [ "$(state "$dir" .status)" = up ]; then
+        die "run '$slug' is already up at $(state "$dir" .base_url); run: verify down $slug"
+    fi
+    mkdir -p "$run"
+    dev_login_configured && dev=true
+
+    http="$(free_port 8100)"; smtp="$(free_port 2600)"; vite="$(free_port 5180)"
+
+    goose -dir internal/database/migrations sqlite3 "$run/morgenblau.db" up >"$run/migrate.log" 2>&1 \
+        || die "migrations failed; see $run/migrate.log"
+    go build -o "$run/morgenblau" ./cmd/api >"$run/build.log" 2>&1 || die "go build failed; see $run/build.log"
+
+    (cd frontend && exec ./node_modules/.bin/vite --port "$vite" --strictPort) >"$dir/vite.log" 2>&1 &
+    vite_pid=$!
+
+    PORT="$http" DB_PATH="$run/morgenblau.db" APP_ENV=local FETCH_INTERVAL_MINUTES="$fetch" \
+        VITE_URL="http://127.0.0.1:$vite" DEV_LOGIN_ENABLED="$dev" \
+        NEWSLETTER_DOMAIN="$NEWSLETTER_DOMAIN" SMTP_HOSTNAME="$NEWSLETTER_DOMAIN" SMTP_LISTEN_ADDR="127.0.0.1:$smtp" \
+        SMTP_TLS_CERT_FILE= SMTP_TLS_KEY_FILE= SMTP_TLS_CERT_B64= SMTP_TLS_KEY_B64= \
+        "$run/morgenblau" >"$dir/server.log" 2>&1 &
+    server_pid=$!
+
+    jq -n --arg slug "$slug" --arg dir "$dir" --arg base "http://127.0.0.1:$http" \
+        --argjson http "$http" --argjson smtp "$smtp" --argjson vite "$vite" \
+        --argjson server_pid "$server_pid" --argjson vite_pid "$vite_pid" --argjson dev "$dev" \
+        --arg domain "$NEWSLETTER_DOMAIN" --arg started "$(date -u +%FT%TZ)" \
+        '{slug:$slug, dir:$dir, status:"up", base_url:$base, http_port:$http, smtp:("127.0.0.1:"+($smtp|tostring)),
+          vite_url:("http://127.0.0.1:"+($vite|tostring)), newsletter_domain:$domain, dev_login:$dev,
+          logged_in:false, pids:{server:$server_pid, vite:$vite_pid}, started_at:$started}' >"$run/state.json"
+
+    for i in $(seq 1 60); do
+        if curl -fsS "http://127.0.0.1:$http/api/health" 2>/dev/null | grep -q '"up"' \
+            && curl -fsS -o /dev/null "http://127.0.0.1:$vite/" 2>/dev/null; then
+            jq . "$run/state.json"
+            return 0
+        fi
+        alive "$server_pid" || { down_run "$dir" false; die "server exited; see $dir/server.log"; }
+        alive "$vite_pid" || { down_run "$dir" false; die "vite exited; see $dir/vite.log"; }
+        sleep 1
+    done
+    down_run "$dir" false
+    die "instance not healthy after 60s; see $dir/server.log and $dir/vite.log"
+}
+
+call() {
+    local dir="$1" method="$2" path="$3" data="${4-}" anon="${5-false}" body_file="$6" args
+    args=(-sS -X "$method" -o "$body_file" -w '%{http_code}')
+    [ "$anon" = true ] || args+=(-b "$dir/run/cookies.txt" -c "$dir/run/cookies.txt")
+    [ -z "$data" ] || args+=(-H 'content-type: application/json' --data "$data")
+    curl "${args[@]}" "$(state "$dir" .base_url)$path"
+}
+
+# Rkeys of the dev account's PDS-backed subscriptions and URL saves, as the instance lists them.
+pds_records() {
+    local dir="$1" subs saves
+    subs="$(mktemp)"; saves="$(mktemp)"
+    call "$dir" GET /api/subscriptions "" false "$subs" >/dev/null
+    call "$dir" GET /api/saves "" false "$saves" >/dev/null
+    jq -cn --slurpfile s "$subs" --slurpfile v "$saves" '{
+        subscriptions: ([$s[0] | .. | objects | select(has("rkey") and has("feedUrl") and (has("itemUrl") | not)) | .rkey] | unique),
+        saves: ([$v[0] | .. | objects | select(has("rkey") and has("itemUrl")) | .rkey] | unique)}'
+    rm -f "$subs" "$saves"
+}
+
+wait_for_jobs() {
+    local dir="$1" body i count
+    body="$(mktemp)"
+    for i in $(seq 1 120); do
+        call "$dir" GET /api/jobs/active "" false "$body" >/dev/null
+        count="$(jq 'if type == "array" then length elif . == null then 0 else 1 end' "$body")"
+        [ "$count" = 0 ] && { rm -f "$body"; return 0; }
+        sleep 1
+    done
+    rm -f "$body"
+    die "sync jobs still active after 120s; inspect: verify api <slug> GET /api/jobs/active"
+}
+
+login() {
+    local dir="$1" status body
+    [ "$(state "$dir" .dev_login)" = true ] || die "this run has no dev account (doctor reports anonymous only); signed-in surfaces are blocked." 3
+    body="$(mktemp)"
+    status="$(call "$dir" POST /dev/login "" false "$body")"
+    [ "$status" = 204 ] || die "POST /dev/login returned $status: $(cat "$body"); check the dev account credentials."
+    rm -f "$body"
+    wait_for_jobs "$dir"
+    pds_records "$dir" >"$dir/run/pds-baseline.json"
+    set_state "$dir" '.logged_in = true'
+    jq -n --slurpfile b "$dir/run/pds-baseline.json" '{logged_in:true, pds_baseline:{subscriptions:($b[0].subscriptions|length), saves:($b[0].saves|length)}}'
+}
+
+api() {
+    local dir="$1" method="$2" path="$3" data="" out="" anon=false body status
+    shift 3
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --data) data="$2"; shift 2 ;;
+            --out) out="$2"; shift 2 ;;
+            --anon) anon=true; shift ;;
+            *) die "unknown api option $1" ;;
+        esac
+    done
+    [[ "$path" == /* ]] || die "path must start with /"
+    body="$(mktemp)"
+    status="$(call "$dir" "$method" "$path" "$data" "$anon" "$body")"
+    if [ -n "$out" ]; then
+        cp "$body" "$dir/$out.json"
+        printf '%s\n' "$status" >"$dir/$out.status"
+    fi
+    cat "$body"; printf '\n'
+    rm -f "$body"
+    say "status: $status"
+}
+
+inspect() {
+    local dir="$1" out="${2-}" db json
+    db="$dir/run/morgenblau.db"
+    [ -f "$db" ] || die "run DB is gone (the run is down)"
+    q() { local rows; rows="$(sqlite3 -readonly -json "$db" "$1")"; printf '%s' "${rows:-[]}"; }
+    json="$(jq -n \
+        --argjson counts "$(q "SELECT 'feeds' t, count(*) n FROM feeds UNION ALL SELECT 'feed_entries', count(*) FROM feed_entries UNION ALL SELECT 'user_subscriptions', count(*) FROM user_subscriptions UNION ALL SELECT 'user_saves', count(*) FROM user_saves UNION ALL SELECT 'newsletter_addresses', count(*) FROM newsletter_addresses UNION ALL SELECT 'newsletter_sources', count(*) FROM newsletter_sources UNION ALL SELECT 'newsletter_receipts', count(*) FROM newsletter_receipts UNION ALL SELECT 'newsletter_messages', count(*) FROM newsletter_messages UNION ALL SELECT 'newsletter_saves', count(*) FROM newsletter_saves UNION ALL SELECT 'oauth_sessions', count(*) FROM oauth_sessions")" \
+        --argjson subs "$(q 'SELECT did, rkey, feed_url, kind, title, is_primary FROM user_subscriptions ORDER BY created_at')" \
+        --argjson saves "$(q 'SELECT did, rkey, item_url, feed_url FROM user_saves ORDER BY created_at')" \
+        --argjson addresses "$(q 'SELECT did, local_part FROM newsletter_addresses ORDER BY created_at')" \
+        --argjson sources "$(q 'SELECT id, did, title, status, is_primary FROM newsletter_sources ORDER BY created_at')" \
+        --argjson receipts "$(q 'SELECT id, did, recipient, attempts, last_error FROM newsletter_receipts ORDER BY created_at')" \
+        --argjson messages "$(q 'SELECT id, did, source_id, entry_slug, title, has_blocked_remote_images, remote_images_allowed FROM newsletter_messages ORDER BY received_at')" \
+        '{counts: ($counts | map({(.t): .n}) | add), user_subscriptions: $subs, user_saves: $saves,
+          newsletter_addresses: $addresses, newsletter_sources: $sources, newsletter_receipts: $receipts, newsletter_messages: $messages}')"
+    [ -z "$out" ] || printf '%s\n' "$json" >"$dir/$out.json"
+    printf '%s\n' "$json"
+}
+
+mail() {
+    local dir="$1"
+    shift
+    [ "$(state "$dir" .status)" = up ] || die "run is down"
+    go run ./cmd/send-newsletter -smtp "$(state "$dir" .smtp)" "$@" 2>&1 | tee -a "$dir/mail.log"
+}
+
+random_base32() { head -c 1024 /dev/urandom | LC_ALL=C tr -dc 'a-z2-7' | cut -c "1-$1"; }
+
+foreign() {
+    local dir="$1" did local_part now
+    did="did:plc:$(random_base32 24)"
+    local_part="verifyforeign$(random_base32 19)"
+    now="$(date -u +%Y-%m-%dT%H:%M:%S.000000000Z)"
+    sqlite3 -cmd '.timeout 5000' "$dir/run/morgenblau.db" \
+        "INSERT INTO newsletter_addresses (did, local_part, created_at) VALUES ('$did', '$local_part', '$now')"
+    set_state "$dir" ".foreign = {did: \"$did\", address: \"$local_part@$NEWSLETTER_DOMAIN\"}"
+    state "$dir" .foreign
+}
+
+browser() {
+    local dir="$1" base arg args=()
+    shift
+    base="$(state "$dir" .base_url)"
+    [ $# -gt 0 ] || die "browser needs a playwright-cli command; see: bunx $PLAYWRIGHT_CLI --help"
+    case "$1" in
+        open|goto|tab-new)
+            args+=("$1"); shift
+            for arg in "$@"; do
+                case "$arg" in
+                    /*) args+=("$base$arg") ;;
+                    about:blank|"$base"|"$base"/*|-*) args+=("$arg") ;;
+                    *://*) die "browser only opens this run's instance ($base); pass a /path." ;;
+                    *) args+=("$arg") ;;
+                esac
+            done ;;
+        *) args=("$@") ;;
+    esac
+    (cd "$dir" && bunx "$PLAYWRIGHT_CLI" -s="$(state "$dir" .slug)" "${args[@]}")
+}
+
+cleanup_pds() {
+    local dir="$1" dry="$2" current rkey kind status body
+    [ -f "$dir/run/pds-baseline.json" ] || return 0
+    alive "$(state "$dir" .pids.server)" || { say "server not running; PDS records this run added cannot be removed here"; return 0; }
+    current="$(pds_records "$dir")"
+    body="$(mktemp)"
+    for kind in subscriptions saves; do
+        for rkey in $(jq -rn --argjson now "$current" --slurpfile base "$dir/run/pds-baseline.json" \
+            "(\$now.$kind - \$base[0].$kind)[]"); do
+            if [ "$dry" = true ]; then
+                say "would delete $kind/$rkey from the dev account PDS"
+            else
+                status="$(call "$dir" DELETE "/api/$kind/$rkey" "" false "$body")"
+                say "deleted $kind/$rkey: $status"
+                printf '%s %s/%s\n' "$status" "$kind" "$rkey" >>"$dir/cleanup.log"
+            fi
+        done
+    done
+    rm -f "$body"
+}
+
+down_run() {
+    local dir="$1" dry="$2" pid slug
+    slug="$(state "$dir" .slug)"
+    if [ "$(state "$dir" .logged_in)" = true ]; then cleanup_pds "$dir" "$dry"; fi
+    if [ "$dry" = true ]; then
+        say "would stop server $(state "$dir" .pids.server) and vite $(state "$dir" .pids.vite), close browser session $slug"
+        return 0
+    fi
+    (cd "$dir" && bunx "$PLAYWRIGHT_CLI" -s="$slug" close >/dev/null 2>&1) || true
+    for pid in "$(state "$dir" .pids.server)" "$(state "$dir" .pids.vite)"; do
+        if alive "$pid"; then kill_tree "$pid"; fi
+    done
+    rm -f "$dir"/run/morgenblau.db* "$dir/run/cookies.txt" "$dir/run/morgenblau"
+    set_state "$dir" '.status = "down" | .logged_in = false'
+    say "down: $slug; evidence kept in $dir"
+}
+
+stale() {
+    local dry="${1-false}" state_file dir
+    for state_file in "$VERIFY_ROOT"/*/run/state.json; do
+        [ -f "$state_file" ] || continue
+        dir="$(dirname "$(dirname "$state_file")")"
+        [ "$(state "$dir" .status)" = up ] || continue
+        down_run "$dir" "$dry"
+    done
+}
+
+status() {
+    local state_file dir
+    for state_file in "$VERIFY_ROOT"/*/run/state.json; do
+        [ -f "$state_file" ] || continue
+        dir="$(dirname "$(dirname "$state_file")")"
+        jq -c --arg alive "$(alive "$(state "$dir" .pids.server)" && echo yes || echo no)" \
+            '{slug, status, base_url, logged_in, server_alive: $alive, dir}' "$state_file"
+    done
+}
+
+cmd="${1-help}"
+[ $# -gt 0 ] && shift
+case "$cmd" in
+    doctor) doctor ;;
+    up) { [ $# -eq 1 ] || { [ $# -eq 3 ] && [ "$2" = --fetch-minutes ]; }; } || die "usage: verify up <slug> [--fetch-minutes N]"; up "$1" "${3-}" ;;
+    login) [ $# -eq 1 ] || die "usage: verify login <slug>"; login "$(run_dir "$1")" ;;
+    api) [ $# -ge 3 ] || die "usage: verify api <slug> <METHOD> <path> [--data JSON] [--out NAME] [--anon]"; d="$(run_dir "$1")"; shift; api "$d" "$@" ;;
+    inspect) [ $# -ge 1 ] || die "usage: verify inspect <slug> [--out NAME]"; d="$(run_dir "$1")"; inspect "$d" "$([ "${2-}" = --out ] && echo "${3-}")" ;;
+    mail) [ $# -ge 1 ] || die "usage: verify mail <slug> -to ADDRESS [-eml FILE]"; d="$(run_dir "$1")"; shift; mail "$d" "$@" ;;
+    foreign) [ $# -eq 1 ] || die "usage: verify foreign <slug>"; foreign "$(run_dir "$1")" ;;
+    browser) [ $# -ge 1 ] || die "usage: verify browser <slug> <command> [args]"; d="$(run_dir "$1")"; shift; browser "$d" "$@" ;;
+    down) [ $# -ge 1 ] || die "usage: verify down <slug> [--dry-run]"; down_run "$(run_dir "$1")" "$([ "${2-}" = --dry-run ] && echo true || echo false)" ;;
+    stale) stale "$([ "${1-}" = --dry-run ] && echo true || echo false)" ;;
+    status) status ;;
+    help|-h|--help) printf '%s\n' "$USAGE" ;;
+    *) printf '%s\n' "$USAGE" >&2; exit 1 ;;
+esac
