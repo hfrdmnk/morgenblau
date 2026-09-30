@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
+import { AppHeader } from '@/components/app-header';
 import { ErrorState } from '@/components/status-state';
 import { Button } from '@/components/ui/button';
 import { api, ApiError } from '@/lib/api';
@@ -51,14 +52,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         return () => controller.abort();
     }, [attempt]);
 
-    if (state.kind === 'loading') {
-        return (
-            <AppProfileContext.Provider value={state}>
-                {children}
-            </AppProfileContext.Provider>
-        );
-    }
-
     if (state.kind === 'error') {
         return (
             <main className="grid min-h-dvh place-items-center">
@@ -83,7 +76,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     return (
         <AppProfileContext.Provider value={state}>
-            {children}
+            <div className="min-h-dvh bg-background">
+                <AppHeader />
+                {children}
+            </div>
         </AppProfileContext.Provider>
     );
 }

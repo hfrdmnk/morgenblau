@@ -151,6 +151,33 @@ function DigestIcon(props: IconProps) {
     );
 }
 
+function SourcesIcon(props: IconProps) {
+    return (
+        <svg
+            aria-hidden="true"
+            focusable="false"
+            viewBox="-9.811 76.475 18.504 16.025"
+            {...props}
+        >
+            <path
+                d="M4.756 85.727L0.865 92.418H-9.768L-0.56 76.588 4.756 85.727ZM7.212 89.948L5.776 92.418H3.32L5.984 87.838 7.212 89.948ZM8.649 92.418H7.004L7.826 91.004 8.649 92.418Z"
+                fill="currentColor"
+            />
+        </svg>
+    );
+}
+
+function LibraryIcon(props: IconProps) {
+    return (
+        <svg aria-hidden="true" focusable="false" viewBox="-4.68 106 48 48" {...props}>
+            <path
+                d="M22.784 154.25H-4.93V105.75H22.784V154.25ZM36.641 154.25H29.713V105.75H36.641V154.25ZM43.57 154.25H40.106V105.75H43.57V154.25Z"
+                fill="currentColor"
+            />
+        </svg>
+    );
+}
+
 function PlusIcon(props: IconProps) {
     return (
         <svg {...iconProps} {...props}>
@@ -201,7 +228,9 @@ export {
     DownloadIcon,
     ExternalLinkIcon,
     InboxIcon,
+    LibraryIcon,
     LoadingIcon,
     PlusIcon,
+    SourcesIcon,
     UploadIcon,
 };
