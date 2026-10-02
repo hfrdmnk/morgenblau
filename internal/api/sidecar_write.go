@@ -10,44 +10,54 @@ import (
 	"morgenblau/internal/session"
 
 	"morgenblau/internal/atprepo"
+	"morgenblau/internal/standardfeed"
 )
 
-// sweepLister is the PDS surface sweepDuplicates needs: list to find matches, delete to remove them.
-type sweepLister interface {
-	atprepo.Lister
-	DeleteRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey string) error
-}
-
-// sweepDuplicates deletes every record in collection where field(rec) == want, writing the 502 itself on the first failure; a surviving duplicate would resurrect the deleted state on the next reconcile.
-func sweepDuplicates(
-	ctx context.Context, w http.ResponseWriter, sess *session.Session, pds sweepLister,
-	op string, collection syntax.NSID, field func(atprepo.ListedRecord) string, want string,
-) bool {
-	records, err := pds.ListRecords(ctx, sess, collection)
+// deleteStandardSubscription deletes every existence record for the publication, duplicates included since one would resurrect it on reconcile, and the sidecar in one applyWrites commit.
+func deleteStandardSubscription(ctx context.Context, w http.ResponseWriter, sess *session.Session, pds atprepo.Lister, publication, sidecarRkey string) bool {
+	const op = "/api/subscriptions DELETE: standard subscription"
+	var writes []atprepo.RecordWrite
+	existence, err := pds.ListRecords(ctx, sess, syntax.NSID(standardfeed.CollectionSubscription))
 	if err != nil {
 		slog.Warn(op+": list failed", "err", err)
 		writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
 		return false
 	}
-	for _, rec := range records {
-		if field(rec) != want {
-			continue
+	for _, rec := range existence {
+		if rec.Value["publication"] == publication {
+			writes = append(writes, atprepo.RecordWrite{Collection: syntax.NSID(standardfeed.CollectionSubscription), Rkey: syntax.RecordKey(atprepo.RkeyFromATURI(rec.URI)), Delete: true})
 		}
-		if err := pds.DeleteRecord(ctx, sess, collection, atprepo.RkeyFromATURI(rec.URI)); err != nil {
-			slog.Warn(op+": delete failed", "uri", rec.URI, "err", err)
+	}
+	if sidecarRkey != "" {
+		// A delete of a record the PDS no longer holds would fail the whole commit, so only a listed sidecar joins it.
+		sidecars, err := pds.ListRecords(ctx, sess, syntax.NSID(subscriptionCollection))
+		if err != nil {
+			slog.Warn(op+": sidecar list failed", "err", err)
 			writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
 			return false
 		}
+		for _, rec := range sidecars {
+			if atprepo.RkeyFromATURI(rec.URI) == sidecarRkey {
+				writes = append(writes, atprepo.RecordWrite{Collection: syntax.NSID(subscriptionCollection), Rkey: syntax.RecordKey(sidecarRkey), Delete: true})
+				break
+			}
+		}
+	}
+	if len(writes) == 0 {
+		return true
+	}
+	atomic, ok := pds.(atprepo.AtomicWriter)
+	if !ok {
+		slog.Warn(op, "err", "PDS writer does not support applyWrites")
+		writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+		return false
+	}
+	if _, err := atomic.ApplyWrites(ctx, sess, writes); err != nil {
+		slog.Warn(op+": delete failed", "err", err)
+		writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+		return false
 	}
 	return true
-}
-
-// stringField extracts one string field from a listed record's raw value, for use as sweepDuplicates' match key.
-func stringField(key string) func(atprepo.ListedRecord) string {
-	return func(rec atprepo.ListedRecord) string {
-		s, _ := rec.Value[key].(string)
-		return s
-	}
 }
 
 // sidecarWriteSpec describes one PDS mutation: optional existence record, optional lazy sidecar; a non-empty SidecarRkey puts instead of creating, so one spec covers every caller without mode flags.

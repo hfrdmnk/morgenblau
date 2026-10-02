@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -14,7 +15,6 @@ import (
 )
 
 const (
-	sweepCollection     = "blue.morgen.test.sweep"
 	existenceCollection = "blue.morgen.test.existence"
 	sidecarCollection   = "blue.morgen.test.sidecar"
 )
@@ -24,86 +24,79 @@ func sweepTestSession() *session.Session {
 	return &session.Session{Data: &session.Data{AccountDID: d, SessionID: "sid-1"}}
 }
 
-func TestSweepDuplicates_DeletesAllMatches(t *testing.T) {
-	pds := &fakePDS{listed: map[string][]atprepo.ListedRecord{
-		sweepCollection: {
-			{URI: "at://did:plc:alice/" + sweepCollection + "/3a", Value: map[string]any{"subject": "want"}},
-			{URI: "at://did:plc:alice/" + sweepCollection + "/3b", Value: map[string]any{"subject": "want"}},
-			{URI: "at://did:plc:alice/" + sweepCollection + "/3c", Value: map[string]any{"subject": "other"}},
+// --- deleteStandardSubscription ---
+
+func standardDeletePDS() *fakePDS {
+	return &fakePDS{listed: map[string][]atprepo.ListedRecord{
+		standardSubCollection: {
+			{URI: "at://did:plc:alice/" + standardSubCollection + "/3a", Value: map[string]any{"publication": testPublication}},
+			{URI: "at://did:plc:alice/" + standardSubCollection + "/3b", Value: map[string]any{"publication": testPublication}},
+			{URI: "at://did:plc:alice/" + standardSubCollection + "/3c", Value: map[string]any{"publication": "at://did:plc:other/site.standard.publication/3x"}},
+		},
+		subscriptionCollection: {
+			{URI: "at://did:plc:alice/" + subscriptionCollection + "/3side", Value: map[string]any{}},
 		},
 	}}
-	rr := httptest.NewRecorder()
-	ok := sweepDuplicates(context.Background(), rr, sweepTestSession(), pds, "test op", syntax.NSID(sweepCollection), stringField("subject"), "want")
+}
 
-	if !ok {
-		t.Fatalf("sweepDuplicates returned false, want true; body = %s", rr.Body.String())
+func TestDeleteStandardSubscription_RemovesDuplicatesAndSidecarInOneCommit(t *testing.T) {
+	pds := standardDeletePDS()
+	rr := httptest.NewRecorder()
+	if !deleteStandardSubscription(context.Background(), rr, sweepTestSession(), pds, testPublication, "3side") {
+		t.Fatalf("returned false; body = %s", rr.Body.String())
 	}
-	want := []string{sweepCollection + "/3a", sweepCollection + "/3b"}
-	if len(pds.deleted) != len(want) {
-		t.Fatalf("deleted = %v, want %v", pds.deleted, want)
-	}
-	for i := range want {
-		if pds.deleted[i] != want[i] {
-			t.Errorf("deleted[%d] = %q, want %q", i, pds.deleted[i], want[i])
-		}
+	want := []string{standardSubCollection + "/3a", standardSubCollection + "/3b", subscriptionCollection + "/3side"}
+	if pds.applyCalls != 1 || !slices.Equal(pds.appliedDeletes, want) || len(pds.deleted) != 0 {
+		t.Fatalf("applyWrites calls = %d, deletes = %v, single deletes = %v; want one commit deleting %v", pds.applyCalls, pds.appliedDeletes, pds.deleted, want)
 	}
 }
 
-func TestSweepDuplicates_ToleratesZeroMatches(t *testing.T) {
-	pds := &fakePDS{listed: map[string][]atprepo.ListedRecord{
-		sweepCollection: {
-			{URI: "at://did:plc:alice/" + sweepCollection + "/3c", Value: map[string]any{"subject": "other"}},
-		},
-	}}
+func TestDeleteStandardSubscription_SkipsASidecarThePDSNoLongerHolds(t *testing.T) {
+	pds := standardDeletePDS()
 	rr := httptest.NewRecorder()
-	ok := sweepDuplicates(context.Background(), rr, sweepTestSession(), pds, "test op", syntax.NSID(sweepCollection), stringField("subject"), "want")
-
-	if !ok {
-		t.Fatalf("sweepDuplicates returned false, want true; body = %s", rr.Body.String())
+	if !deleteStandardSubscription(context.Background(), rr, sweepTestSession(), pds, testPublication, "3gone") {
+		t.Fatalf("returned false; body = %s", rr.Body.String())
 	}
-	if len(pds.deleted) != 0 {
-		t.Errorf("deleted = %v, want none", pds.deleted)
+	want := []string{standardSubCollection + "/3a", standardSubCollection + "/3b"}
+	if !slices.Equal(pds.appliedDeletes, want) {
+		t.Fatalf("deletes = %v, want %v", pds.appliedDeletes, want)
 	}
 }
 
-func TestSweepDuplicates_ListError_Writes502(t *testing.T) {
+func TestDeleteStandardSubscription_FailedCommitDeletesNothing(t *testing.T) {
+	pds := standardDeletePDS()
+	pds.applyErr = errors.New("pds down")
+	rr := httptest.NewRecorder()
+	if deleteStandardSubscription(context.Background(), rr, sweepTestSession(), pds, testPublication, "3side") {
+		t.Fatal("returned true, want false when the commit fails")
+	}
+	if rr.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rr.Code)
+	}
+	if len(pds.listed[standardSubCollection]) != 3 || len(pds.listed[subscriptionCollection]) != 1 {
+		t.Errorf("listed = %v, want every record still present", pds.listed)
+	}
+}
+
+func TestDeleteStandardSubscription_ListError_Writes502(t *testing.T) {
 	pds := &fakePDS{listErr: errors.New("pds down")}
 	rr := httptest.NewRecorder()
-	ok := sweepDuplicates(context.Background(), rr, sweepTestSession(), pds, "test op", syntax.NSID(sweepCollection), stringField("subject"), "want")
-
-	if ok {
-		t.Fatal("sweepDuplicates returned true, want false on list error")
+	if deleteStandardSubscription(context.Background(), rr, sweepTestSession(), pds, testPublication, "3side") {
+		t.Fatal("returned true, want false on list error")
 	}
-	if rr.Code != http.StatusBadGateway {
-		t.Errorf("status = %d, want 502", rr.Code)
-	}
-	if len(pds.deleted) != 0 {
-		t.Errorf("deleted = %v, want none", pds.deleted)
+	if rr.Code != http.StatusBadGateway || pds.applyCalls != 0 {
+		t.Errorf("status = %d, applyWrites calls = %d; want 502 and no commit", rr.Code, pds.applyCalls)
 	}
 }
 
-func TestSweepDuplicates_DeleteError_StopsAndWrites502(t *testing.T) {
-	pds := &fakePDS{
-		listed: map[string][]atprepo.ListedRecord{
-			sweepCollection: {
-				{URI: "at://did:plc:alice/" + sweepCollection + "/3a", Value: map[string]any{"subject": "want"}},
-				{URI: "at://did:plc:alice/" + sweepCollection + "/3b", Value: map[string]any{"subject": "want"}},
-			},
-		},
-		deleteErr: errors.New("pds down"),
-	}
+func TestDeleteStandardSubscription_NothingLeftCommitsNothing(t *testing.T) {
+	pds := &fakePDS{}
 	rr := httptest.NewRecorder()
-	ok := sweepDuplicates(context.Background(), rr, sweepTestSession(), pds, "test op", syntax.NSID(sweepCollection), stringField("subject"), "want")
-
-	if ok {
-		t.Fatal("sweepDuplicates returned true, want false on delete error")
+	if !deleteStandardSubscription(context.Background(), rr, sweepTestSession(), pds, testPublication, "") {
+		t.Fatalf("returned false; body = %s", rr.Body.String())
 	}
-	if rr.Code != http.StatusBadGateway {
-		t.Errorf("status = %d, want 502", rr.Code)
-	}
-	// The first matching delete is attempted (and fails); the loop must not continue past it.
-	if len(pds.deleted) != 0 {
-		t.Errorf("deleted = %v, want none recorded since fakePDS.DeleteRecord fails before appending", pds.deleted)
+	if pds.applyCalls != 0 {
+		t.Errorf("applyWrites calls = %d, want 0", pds.applyCalls)
 	}
 }
 

@@ -199,6 +199,7 @@ type fakePDS struct {
 	lastPutRkey         string
 	created             []pdsWrite
 	applied             []pdsWrite
+	appliedDeletes      []string                          // "collection/rkey" deleted through ApplyWrites, in order
 	deleted             []string                          // "collection/rkey", in call order
 	listed              map[string][]atprepo.ListedRecord // canned ListRecords result per collection
 	listErr             error
@@ -239,6 +240,12 @@ func (p *fakePDS) ApplyWrites(_ context.Context, sess *session.Session, writes [
 	}
 	refs := make([]*atprepo.RecordRef, 0, len(writes))
 	for _, write := range writes {
+		if write.Delete {
+			p.appliedDeletes = append(p.appliedDeletes, write.Collection.String()+"/"+write.Rkey.String())
+			p.dropListed(write.Collection.String(), write.Rkey.String())
+			refs = append(refs, &atprepo.RecordRef{URI: "at://" + sess.Data.AccountDID.String() + "/" + write.Collection.String() + "/" + write.Rkey.String()})
+			continue
+		}
 		p.rkeySeq++
 		rkey := write.Rkey.String()
 		if rkey == "" {
@@ -264,6 +271,19 @@ func (p *fakePDS) storeListed(did, collection, rkey string, record map[string]an
 	}
 	uri := "at://" + did + "/" + collection + "/" + rkey
 	p.listed[collection] = append(p.listed[collection], atprepo.ListedRecord{URI: uri, CID: "bafyreiabc", Value: record})
+}
+
+func (p *fakePDS) dropListed(collection, rkey string) {
+	if p.listed == nil {
+		return
+	}
+	kept := p.listed[collection][:0:0]
+	for _, record := range p.listed[collection] {
+		if atprepo.RkeyFromATURI(record.URI) != rkey {
+			kept = append(kept, record)
+		}
+	}
+	p.listed[collection] = kept
 }
 
 func (p *fakePDS) PutRecord(_ context.Context, _ *session.Session, _ syntax.NSID, rkey string, record map[string]any) (*atprepo.RecordRef, error) {

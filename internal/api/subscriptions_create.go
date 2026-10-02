@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -23,23 +22,14 @@ import (
 
 // --- POST /api/subscriptions ---
 
+// addRequest is one source, so a failure never follows a committed sibling: feedUrl (rss) or publication (standardfeed); for standardfeed, empty title/primary/tags mean no sidecar.
 type addRequest struct {
-	Subscriptions []addItem `json:"subscriptions"`
-}
-
-// addItem carries either feedUrl (rss) or publication (standardfeed), exactly one; for standardfeed, empty title/primary/tags mean no sidecar record.
-type addItem struct {
 	FeedURL     string   `json:"feedUrl"`
 	Publication string   `json:"publication"`
 	Title       string   `json:"title"`
 	SiteURL     string   `json:"siteUrl"`
 	Primary     bool     `json:"primary"`
 	Tags        []string `json:"tags"`
-}
-
-type addResponse struct {
-	Records []SubscriptionWire `json:"records"`
-	JobIDs  []string           `json:"jobIds"`
 }
 
 // IndexReader is the read slice of *db.Queries, narrow enough for handler tests to stub without sqlite.
@@ -60,7 +50,7 @@ type FetchDispatcher interface {
 	StartFetchOneFeed(did syntax.DID, feedURL string) string
 }
 
-// SubscriptionsCreateHandler dedupes, writes to PDS, upserts Tier-2 then Tier-1, then dispatches fetch_one_feed.
+// SubscriptionsCreateHandler dedupes, makes one PDS commit, mirrors Tier-2 then Tier-1, then dispatches fetch_one_feed.
 func SubscriptionsCreateHandler(
 	reader IndexReader,
 	writer IndexWriter,
@@ -73,249 +63,215 @@ func SubscriptionsCreateHandler(
 		if !ok {
 			return
 		}
-		var body addRequest
-		if !decodeJSON(w, r, &body) {
+		var item addRequest
+		if !decodeJSON(w, r, &item) {
 			return
 		}
-		fieldErrors := make(map[string]string)
-		hasStandard := false
-		for i, item := range body.Subscriptions {
-			feedURL := strings.TrimSpace(item.FeedURL)
-			publication := strings.TrimSpace(item.Publication)
-			switch {
-			case feedURL == "" && publication == "":
-				fieldErrors["subscriptions."+strconv.Itoa(i)+".feedUrl"] = "Feed URL is required"
-			case feedURL != "" && publication != "":
-				fieldErrors["subscriptions."+strconv.Itoa(i)+".publication"] = "feedUrl and publication are mutually exclusive"
-			case publication != "":
-				if _, err := syntax.ParseATURI(publication); err != nil {
-					fieldErrors["subscriptions."+strconv.Itoa(i)+".publication"] = "publication must be an at:// URI"
-				}
-				hasStandard = true
-			}
-		}
-		if len(fieldErrors) > 0 {
-			writeFieldErrors(w, fieldErrors)
+		item.FeedURL = strings.TrimSpace(item.FeedURL)
+		item.Publication = strings.TrimSpace(item.Publication)
+		switch {
+		case item.FeedURL == "" && item.Publication == "":
+			writeFieldErrors(w, map[string]string{"feedUrl": "Feed URL is required"})
 			return
-		}
-		if len(body.Subscriptions) == 0 {
-			writeError(w, http.StatusBadRequest, codeInvalidRequest, "no subscriptions submitted")
+		case item.FeedURL != "" && item.Publication != "":
+			writeFieldErrors(w, map[string]string{"publication": "feedUrl and publication are mutually exclusive"})
 			return
-		}
-		// Gate the whole batch before any write: a mid-batch 403 would leave earlier items created and later ones dropped.
-		if hasStandard && !requireStandardWrite(w, sess) {
-			return
-		}
-		// Belt and suspenders: an rss feed and a publication for the same site in one batch is the double-subscribe the picker already guards against.
-		kindByKey := make(map[string]string, len(body.Subscriptions))
-		for _, item := range body.Subscriptions {
-			var key, kind string
-			if strings.TrimSpace(item.Publication) != "" {
-				key, kind = siblingKey(item.SiteURL), "standardfeed"
-			} else {
-				key, kind = rssSiblingKey(item.SiteURL, item.FeedURL), "rss"
-			}
-			if key == "" {
-				continue
-			}
-			if prev, ok := kindByKey[key]; ok && prev != kind {
-				writeError(w, http.StatusConflict, codeConflict, "Pick either the RSS feed or the ATProto publication for a site, not both")
+		case item.Publication != "":
+			if _, err := syntax.ParseATURI(item.Publication); err != nil {
+				writeFieldErrors(w, map[string]string{"publication": "publication must be an at:// URI"})
 				return
 			}
-			kindByKey[key] = kind
+		}
+		isStandard := item.Publication != ""
+		if isStandard && !requireStandardWrite(w, sess) {
+			return
 		}
 
-		out := addResponse{Records: make([]SubscriptionWire, 0, len(body.Subscriptions)), JobIDs: []string{}}
 		now := time.Now().UTC().Format(time.RFC3339)
 		didStr := sess.Data.AccountDID.String()
+		// The catalog key (feed URL for rss, publication at-uri for standardfeed) keys Tier-2, Tier-1, dedupe, and the fetch job.
+		key := item.FeedURL
+		kind := "rss"
+		if isStandard {
+			key = item.Publication
+			kind = "standardfeed"
+		}
 
-		for _, item := range body.Subscriptions {
-			item.FeedURL = strings.TrimSpace(item.FeedURL)
-			item.Publication = strings.TrimSpace(item.Publication)
-			isStandard := item.Publication != ""
-			// The catalog key (feed URL for rss, publication at-uri for standardfeed) keys Tier-2, Tier-1, dedupe, and the fetch job.
-			key := item.FeedURL
-			kind := "rss"
-			if isStandard {
-				key = item.Publication
-				kind = "standardfeed"
-			}
+		// Step 1: dedupe guard.
+		if row, err := reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
+			Did:     didStr,
+			FeedUrl: key,
+		}); err == nil {
+			writeJSON(w, subscriptionResponse{SubscriptionWire: rowToWire(row)})
+			return
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			slog.Warn("/api/subscriptions: dedupe probe failed", "err", err)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
+			return
+		}
 
-			// Step 1: dedupe guard.
-			if row, err := reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
-				Did:     didStr,
-				FeedUrl: key,
-			}); err == nil {
-				out.Records = append(out.Records, rowToWire(row))
-				continue
-			} else if !errors.Is(err, sql.ErrNoRows) {
-				slog.Warn("/api/subscriptions: dedupe probe failed", "err", err)
-				writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
-				return
-			}
-
-			// Step 2: PDS write(s).
-			tagList := normalizeTags(item.Tags)
-			var (
-				ref         *atprepo.RecordRef
-				sidecarRkey *string
-				source      map[string]any
-			)
-			if isStandard {
-				source = sourceUnion(kind, key, "")
-				customized := item.Title != "" || item.Primary || len(tagList) > 0
-				var sidecar map[string]any
-				if customized {
-					sidecar = standardSidecar(source, now, item, tagList)
-					if err := lexicon.ValidateRecord(subscriptionCollection, sidecar); err != nil {
-						slog.Warn("/api/subscriptions: sidecar failed lexicon validation", "err", err)
-						writeError(w, http.StatusInternalServerError, codeInvalidRecord, "internal error")
-						return
-					}
-				}
-				standardRecord, sidecarRecord, ok := preflightStandardSubscription(r.Context(), w, sess, pds, key)
-				if !ok {
-					return
-				}
-				if standardRecord != nil {
-					ref = &atprepo.RecordRef{URI: standardRecord.URI, CID: standardRecord.CID}
-					if sidecarRecord != nil {
-						sidecarRkey = stringPtr(atprepo.RkeyFromATURI(sidecarRecord.URI))
-						item.Title, item.Primary, tagList = sidecarMetadata(sidecarRecord.Value)
-					} else if customized {
-						spec := sidecarWriteSpec{
-							Sidecar:           sidecar,
-							SidecarCollection: syntax.NSID(subscriptionCollection),
-							SidecarCreateRkey: syntax.RecordKey(clock.Next().String()),
-							SidecarOp:         "/api/subscriptions: standard sidecar create failed",
-						}
-						result, ok := writeSidecarPair(r.Context(), w, sess, pds, spec)
-						if !ok {
-							return
-						}
-						sidecarRkey = &result.SidecarRkey
-					}
-				} else {
-					// The existence record is the portable standard subscription. A customized pair is one PDS commit.
-					spec := sidecarWriteSpec{
-						Existence:           map[string]any{"publication": key, "createdAt": now},
-						ExistenceCollection: syntax.NSID(standardfeed.CollectionSubscription),
-						ExistenceRkey:       syntax.RecordKey(clock.Next().String()),
-						ExistenceOp:         "/api/subscriptions: standard record create failed",
-					}
-					if customized {
-						spec.Sidecar = sidecar
-						spec.SidecarCollection = syntax.NSID(subscriptionCollection)
-						spec.SidecarCreateRkey = syntax.RecordKey(clock.Next().String())
-						spec.SidecarOp = "/api/subscriptions: atomic standard subscription and sidecar write failed"
-					}
-					result, ok := writeSidecarPair(r.Context(), w, sess, pds, spec)
-					if !ok {
-						return
-					}
-					ref = result.ExistenceRef
-					if result.SidecarRkey != "" {
-						sidecarRkey = &result.SidecarRkey
-					}
-				}
-			} else {
-				// Title was resolver-prefilled client-side; the user may have overridden it before submit.
-				source = sourceUnion(kind, key, item.SiteURL)
-				record := map[string]any{
-					"source":    source,
-					"createdAt": now,
-				}
-				if item.Title != "" {
-					record["title"] = item.Title
-				}
-				if item.Primary {
-					record["primary"] = true
-				}
-				if len(tagList) > 0 {
-					record["tags"] = tagList
-				}
-				if err := lexicon.ValidateRecord(subscriptionCollection, record); err != nil {
-					slog.Warn("/api/subscriptions: record failed lexicon validation", "err", err)
+		// Step 2: validate, then the request's one PDS commit; an already present pair commits nothing and is only mirrored.
+		tagList := normalizeTags(item.Tags)
+		var (
+			commit func() (createdSubscription, bool)
+			source map[string]any
+		)
+		if isStandard {
+			source = sourceUnion(kind, key, "")
+			customized := item.Title != "" || item.Primary || len(tagList) > 0
+			var sidecar map[string]any
+			if customized {
+				sidecar = standardSidecar(source, now, item, tagList)
+				if err := lexicon.ValidateRecord(subscriptionCollection, sidecar); err != nil {
+					slog.Warn("/api/subscriptions: sidecar failed lexicon validation", "err", err)
 					writeError(w, http.StatusInternalServerError, codeInvalidRecord, "internal error")
 					return
 				}
-				var err error
-				ref, err = pds.CreateRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), record)
-				if err != nil {
-					slog.Warn("/api/subscriptions: PDS create failed", "err", err)
-					writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
-					return
-				}
 			}
-			rkey := atprepo.RkeyFromATURI(ref.URI)
-
-			// Step 3: Tier-2 catalog upsert. Title stays nil; feeds.title is the cached publication name, owned by the fetch pipeline.
-			titlePtr := nilIfEmpty(item.Title)
-			siteURLPtr := nilIfEmpty(item.SiteURL)
-			mirrorOrRepair(r.Context(), disp, sess, "/api/subscriptions: Tier-2 upsert", func() error {
-				return writer.UpsertFeed(r.Context(), db.UpsertFeedParams{
-					FeedUrl:   key,
-					Kind:      kind,
-					SiteUrl:   siteURLPtr,
-					CreatedAt: now,
-					UpdatedAt: now,
-				})
-			})
-
-			// Step 4: Tier-1 index upsert.
-			mirrorOrRepair(r.Context(), disp, sess, "/api/subscriptions: Tier-1 upsert", func() error {
-				return writer.UpsertUserSubscription(r.Context(), db.UpsertUserSubscriptionParams{
-					Did:         didStr,
-					Rkey:        rkey,
-					AtUri:       ref.URI,
-					FeedUrl:     key,
-					Kind:        kind,
-					SidecarRkey: sidecarRkey,
-					Title:       titlePtr,
-					IsPrimary:   boolToInt64(item.Primary),
-					Tags:        tags.Marshal(tagList),
-					CreatedAt:   now,
-					UpdatedAt:   now,
-				})
-			})
-
-			value := map[string]any{
+			standardRecord, sidecarRecord, ok := preflightStandardSubscription(r.Context(), w, sess, pds, key)
+			if !ok {
+				return
+			}
+			commit = func() (createdSubscription, bool) {
+				var out createdSubscription
+				if standardRecord != nil {
+					out.ref = &atprepo.RecordRef{URI: standardRecord.URI, CID: standardRecord.CID}
+					if sidecarRecord != nil {
+						out.sidecarRkey = stringPtr(atprepo.RkeyFromATURI(sidecarRecord.URI))
+						item.Title, item.Primary, tagList = sidecarMetadata(sidecarRecord.Value)
+						return out, true
+					}
+					if !customized {
+						return out, true
+					}
+					result, ok := writeSidecarPair(r.Context(), w, sess, pds, sidecarWriteSpec{
+						Sidecar:           sidecar,
+						SidecarCollection: syntax.NSID(subscriptionCollection),
+						SidecarCreateRkey: syntax.RecordKey(clock.Next().String()),
+						SidecarOp:         "/api/subscriptions: standard sidecar create failed",
+					})
+					out.sidecarRkey = &result.SidecarRkey
+					return out, ok
+				}
+				// The existence record is the portable standard subscription. A customized pair is one PDS commit.
+				spec := sidecarWriteSpec{
+					Existence:           map[string]any{"publication": key, "createdAt": now},
+					ExistenceCollection: syntax.NSID(standardfeed.CollectionSubscription),
+					ExistenceRkey:       syntax.RecordKey(clock.Next().String()),
+					ExistenceOp:         "/api/subscriptions: standard record create failed",
+				}
+				if customized {
+					spec.Sidecar = sidecar
+					spec.SidecarCollection = syntax.NSID(subscriptionCollection)
+					spec.SidecarCreateRkey = syntax.RecordKey(clock.Next().String())
+					spec.SidecarOp = "/api/subscriptions: atomic standard subscription and sidecar write failed"
+				}
+				result, ok := writeSidecarPair(r.Context(), w, sess, pds, spec)
+				out.ref = result.ExistenceRef
+				if result.SidecarRkey != "" {
+					out.sidecarRkey = &result.SidecarRkey
+				}
+				return out, ok
+			}
+		} else {
+			// Title was resolver-prefilled client-side; the user may have overridden it before submit.
+			source = sourceUnion(kind, key, item.SiteURL)
+			record := map[string]any{
 				"source":    source,
 				"createdAt": now,
 			}
 			if item.Title != "" {
-				value["title"] = item.Title
+				record["title"] = item.Title
 			}
 			if item.Primary {
-				value["primary"] = true
+				record["primary"] = true
 			}
 			if len(tagList) > 0 {
-				value["tags"] = tagList
+				record["tags"] = tagList
 			}
-			wire := SubscriptionWire{
-				URI:     ref.URI,
-				CID:     ref.CID,
-				Rkey:    rkey,
-				Kind:    kind,
-				FeedURL: key,
-				Title:   item.Title,
-				SiteURL: item.SiteURL,
-				Primary: item.Primary,
-				Tags:    tagList,
-				Value:   value,
+			if err := lexicon.ValidateRecord(subscriptionCollection, record); err != nil {
+				slog.Warn("/api/subscriptions: record failed lexicon validation", "err", err)
+				writeError(w, http.StatusInternalServerError, codeInvalidRecord, "internal error")
+				return
 			}
-			if isStandard {
-				wire.Publication = key
+			commit = func() (createdSubscription, bool) {
+				ref, err := pds.CreateRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), record)
+				if err != nil {
+					slog.Warn("/api/subscriptions: PDS create failed", "err", err)
+					writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+					return createdSubscription{}, false
+				}
+				return createdSubscription{ref: ref}, true
 			}
-			out.Records = append(out.Records, wire)
-
-			// Step 5: dispatch fetch_one_feed (async).
-			jobID := disp.StartFetchOneFeed(sess.Data.AccountDID, key)
-			out.JobIDs = append(out.JobIDs, jobID)
 		}
 
-		writeJSON(w, out)
+		// Step 3: Tier-2 catalog upsert, then Tier-1. Title stays nil on Tier-2; feeds.title is the cached publication name, owned by the fetch pipeline.
+		created, ok := commitThenMirror(r.Context(), disp, sess, "/api/subscriptions: mirror", commit, func(created createdSubscription) error {
+			if err := writer.UpsertFeed(r.Context(), db.UpsertFeedParams{
+				FeedUrl:   key,
+				Kind:      kind,
+				SiteUrl:   nilIfEmpty(item.SiteURL),
+				CreatedAt: now,
+				UpdatedAt: now,
+			}); err != nil {
+				return err
+			}
+			return writer.UpsertUserSubscription(r.Context(), db.UpsertUserSubscriptionParams{
+				Did:         didStr,
+				Rkey:        atprepo.RkeyFromATURI(created.ref.URI),
+				AtUri:       created.ref.URI,
+				FeedUrl:     key,
+				Kind:        kind,
+				SidecarRkey: created.sidecarRkey,
+				Title:       nilIfEmpty(item.Title),
+				IsPrimary:   boolToInt64(item.Primary),
+				Tags:        tags.Marshal(tagList),
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			})
+		})
+		if !ok {
+			return
+		}
+
+		value := map[string]any{
+			"source":    source,
+			"createdAt": now,
+		}
+		if item.Title != "" {
+			value["title"] = item.Title
+		}
+		if item.Primary {
+			value["primary"] = true
+		}
+		if len(tagList) > 0 {
+			value["tags"] = tagList
+		}
+		wire := SubscriptionWire{
+			URI:     created.ref.URI,
+			CID:     created.ref.CID,
+			Rkey:    atprepo.RkeyFromATURI(created.ref.URI),
+			Kind:    kind,
+			FeedURL: key,
+			Title:   item.Title,
+			SiteURL: item.SiteURL,
+			Primary: item.Primary,
+			Tags:    tagList,
+			Value:   value,
+		}
+		if isStandard {
+			wire.Publication = key
+		}
+
+		// Step 4: dispatch fetch_one_feed (async).
+		writeJSON(w, subscriptionResponse{SubscriptionWire: wire, JobID: disp.StartFetchOneFeed(sess.Data.AccountDID, key)})
 	})
+}
+
+// createdSubscription is what the create commit leaves on the PDS, for the mirror and the response.
+type createdSubscription struct {
+	ref         *atprepo.RecordRef
+	sidecarRkey *string
 }
 
 func preflightStandardSubscription(ctx context.Context, w http.ResponseWriter, sess *session.Session, pds atprepo.Writer, publication string) (*atprepo.ListedRecord, *atprepo.ListedRecord, bool) {
@@ -371,7 +327,7 @@ func preflightStandardSubscription(ctx context.Context, w http.ResponseWriter, s
 	return existence, sidecar, true
 }
 
-func standardSidecar(source map[string]any, createdAt string, item addItem, tagList []string) map[string]any {
+func standardSidecar(source map[string]any, createdAt string, item addRequest, tagList []string) map[string]any {
 	record := map[string]any{"source": source, "createdAt": createdAt}
 	if item.Title != "" {
 		record["title"] = item.Title

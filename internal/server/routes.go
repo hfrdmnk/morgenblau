@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"morgenblau/internal/api"
-	"morgenblau/internal/atprepo"
 	"morgenblau/internal/middleware/auth"
 	"morgenblau/internal/oauth/handler"
 )
@@ -47,19 +46,19 @@ func (s *Server) routes() *http.ServeMux {
 	}
 	mux.Handle("GET /api/profiles/me", api.MeProfileHandler(s.profiles, s.sync, addresses))
 
-	pdsWriter := atprepo.SessionWriter{}
-	// POST/PATCH/DELETE routes below make PDS writes; auth.holdsSessionLock must match this set.
+	// POST/PATCH/DELETE routes below reach the PDS (auth.holdsSessionLock must match); mutations commit once through gated, OPML import once per source.
+	gated := api.CommitGate{Repo: s.pds}
 	mux.Handle("GET /api/subscriptions", api.SubscriptionsListHandler(s.qr))
 	mux.Handle("POST /api/subscriptions/resolve", api.SubscriptionsResolveHandler(s.qr, s.feedfinder))
-	mux.Handle("POST /api/subscriptions", api.SubscriptionsCreateHandler(s.qr, s.qw, pdsWriter, s.sync))
-	mux.Handle("POST /api/subscriptions/import/prepare", api.SubscriptionsImportPrepareHandler(pdsWriter))
-	mux.Handle("POST /api/subscriptions/import", api.SubscriptionsImportHandler(s.db, pdsWriter, s.sync))
-	mux.Handle("POST /api/subscriptions/export", api.SubscriptionsExportHandler(pdsWriter))
+	mux.Handle("POST /api/subscriptions", api.OneCommitPerRequest(api.SubscriptionsCreateHandler(s.qr, s.qw, gated, s.sync)))
+	mux.Handle("POST /api/subscriptions/import/prepare", api.SubscriptionsImportPrepareHandler(s.pds))
+	mux.Handle("POST /api/subscriptions/import", api.SubscriptionsImportHandler(s.db, s.pds, s.sync))
+	mux.Handle("POST /api/subscriptions/export", api.SubscriptionsExportHandler(s.pds))
 	mux.Handle("GET /api/subscriptions/tags", api.SubscriptionsTagsHandler(s.qr))
 	mux.Handle("GET /api/subscriptions/{rkey}", api.SubscriptionGetHandler(s.qr))
 	mux.Handle("GET /api/subscriptions/{rkey}/entries", api.SubscriptionEntriesHandler(s.qr))
-	mux.Handle("PATCH /api/subscriptions/{rkey}", api.SubscriptionsPatchHandler(s.qr, s.qw, pdsWriter, s.sync))
-	mux.Handle("DELETE /api/subscriptions/{rkey}", api.SubscriptionsDeleteHandler(s.qr, s.qw, pdsWriter, s.sync))
+	mux.Handle("PATCH /api/subscriptions/{rkey}", api.OneCommitPerRequest(api.SubscriptionsPatchHandler(s.qr, s.qw, gated, s.sync)))
+	mux.Handle("DELETE /api/subscriptions/{rkey}", api.OneCommitPerRequest(api.SubscriptionsDeleteHandler(s.qr, s.qw, gated, s.sync)))
 
 	mux.Handle("GET /api/favicon", api.FaviconProxyHandler(s.qr, s.safeClient))
 
@@ -88,8 +87,8 @@ func (s *Server) routes() *http.ServeMux {
 		entry = api.EntryHandler(s.qr, s.newsletters)
 	}
 	mux.Handle("GET /api/saves", savesList)
-	mux.Handle("POST /api/saves", api.SavesCreateHandler(s.qr, s.qw, pdsWriter, s.sync))
-	mux.Handle("DELETE /api/saves/{rkey}", api.SavesDeleteHandler(s.qr, s.qw, pdsWriter, s.sync))
+	mux.Handle("POST /api/saves", api.OneCommitPerRequest(api.SavesCreateHandler(s.qr, s.qw, gated, s.sync)))
+	mux.Handle("DELETE /api/saves/{rkey}", api.OneCommitPerRequest(api.SavesDeleteHandler(s.qr, s.qw, gated, s.sync)))
 
 	mux.Handle("GET /api/jobs/active", api.JobsActiveHandler(s.jobs))
 	mux.Handle("GET /api/jobs/latest", api.JobsLatestHandler(s.jobs))

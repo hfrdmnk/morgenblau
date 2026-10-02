@@ -234,30 +234,33 @@ func writeImportSubscription(ctx context.Context, sess *session.Session, incomin
 		if err := lexicon.ValidateRecord(subscriptionCollection, record); err != nil {
 			return "", fmt.Errorf("Source metadata exceeds the subscription limits")
 		}
-		var err error
-		if found {
-			ref, err = pds.PutRecordIfCID(ctx, sess, syntax.NSID(subscriptionCollection), atprepo.RkeyFromATURI(old.URI), record, old.CID)
-		} else {
-			ref, err = pds.CreateRecordIfCommit(ctx, sess, syntax.NSID(subscriptionCollection), record, snapshot.head)
-		}
-		if err != nil {
-			if isImportConflict(err) {
-				return "", err
-			}
-			slog.Warn("subscription import: PDS write failed", "err", err)
-			return "", fmt.Errorf("Could not confirm the PDS write. Retry safely to check or finish this source.")
-		}
 	}
 	source, _ := rssImportSource(record)
 	primary, _ := record["primary"].(bool)
-	mirrorOrRepair(ctx, disp, sess, "subscription import: mirror", func() error {
+	var commitErr error
+	if _, ok := commitThenMirror(ctx, disp, sess, "subscription import: mirror", func() (*atprepo.RecordRef, bool) {
+		switch {
+		case status == "unchanged":
+		case found:
+			ref, commitErr = pds.PutRecordIfCID(ctx, sess, syntax.NSID(subscriptionCollection), atprepo.RkeyFromATURI(old.URI), record, old.CID)
+		default:
+			ref, commitErr = pds.CreateRecordIfCommit(ctx, sess, syntax.NSID(subscriptionCollection), record, snapshot.head)
+		}
+		return ref, commitErr == nil
+	}, func(ref *atprepo.RecordRef) error {
 		return writer.MirrorImportedSubscription(ctx, snapshot.local,
 			db.UpsertFeedParams{FeedUrl: source.FeedURL, Kind: "rss", SiteUrl: nilIfEmpty(source.SiteURL), CreatedAt: now, UpdatedAt: now},
 			db.UpsertUserSubscriptionParams{
 				Did: sess.Data.AccountDID.String(), Rkey: atprepo.RkeyFromATURI(ref.URI), AtUri: ref.URI,
 				FeedUrl: source.FeedURL, Kind: "rss", Title: nilIfEmpty(source.Title), IsPrimary: boolToInt64(primary), Tags: tags.Marshal(source.Tags), CreatedAt: recordString(record, "createdAt"), UpdatedAt: now,
 			})
-	})
+	}); !ok {
+		if isImportConflict(commitErr) {
+			return "", commitErr
+		}
+		slog.Warn("subscription import: PDS write failed", "err", commitErr)
+		return "", fmt.Errorf("Could not confirm the PDS write. Retry safely to check or finish this source.")
+	}
 	// A previous create may have committed without reaching its fetch dispatch.
 	disp.StartFetchOneFeed(sess.Data.AccountDID, source.FeedURL)
 	return status, nil

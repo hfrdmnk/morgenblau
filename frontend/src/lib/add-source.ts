@@ -65,14 +65,7 @@ export async function addSource(candidate: SourceCandidate) {
             : { feedUrl: candidate.feedUrl, title: candidate.title };
     const result = await api('/api/subscriptions', {
         method: 'POST',
-        body: {
-            subscriptions: [
-                {
-                    ...identity,
-                    siteUrl: candidate.siteUrl,
-                },
-            ],
-        },
+        body: { ...identity, siteUrl: candidate.siteUrl },
     });
     subscriptionChanges.dispatchEvent(new Event('change'));
     return result;

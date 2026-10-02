@@ -4,11 +4,18 @@ These are repo-wide invariants for changes to Morgenblau. [SPEC.md](SPEC.md) own
 
 ## 1. The reader's PDS owns public reading records
 
-Feed subscriptions and URL saves commit to the reader's PDS before their SQLite indexes change. Creating a customized Standardfeed subscription commits its existence record and metadata sidecar in one PDS transaction. A failed SQLite mirror cannot turn an already committed PDS write into a reported PDS failure; reconciliation catches up on the next authenticated app entry.
+Feed subscriptions and URL saves commit to the reader's PDS before their SQLite indexes change. Each mutation request makes at most one PDS commit, either one record or several records in one `applyWrites` transaction, so a reported failure always means nothing committed. A failed SQLite mirror cannot turn a committed PDS write into a reported failure; reconciliation catches up on the next authenticated app entry. OPML import is the bulk exception: it commits per source and reports each source's outcome.
 
-The write paths live in [`internal/api/`](internal/api/) and [`internal/atprepo/`](internal/atprepo/). [`mirrorOrRepair`](internal/api/mirror.go) owns the failed-mirror handoff. See the ownership rules in [SPEC.md](SPEC.md#data-ownership).
+The write paths live in [`internal/api/`](internal/api/) and [`internal/atprepo/`](internal/atprepo/). [`commitThenMirror`](internal/api/mirror.go) owns the commit-then-mirror order and the failed-mirror handoff; [`CommitGate`](internal/api/commit_gate.go) owns the one-commit budget that [`routes.go`](internal/server/routes.go) wires into every mutation route. See the ownership rules in [SPEC.md](SPEC.md#data-ownership).
 
-**Check by hand:** Trace a subscription or URL save from validation through its PDS call to `mirrorOrRepair`. For a customized Standardfeed subscription, verify that existence and sidecar are passed to one `applyWrites` request.
+**Enforced by:**
+
+- One commit per request: `CommitGate` refuses a request's second commit before it reaches the PDS, and refuses every commit on a route without `OneCommitPerRequest`. The `TestCommitGate_*` tests in [`commit_gate_test.go`](internal/api/commit_gate_test.go) pin that, and `TestPDSRoutesCommitAtMostOnceThenMirror` in [`pds_routes_test.go`](internal/server/pds_routes_test.go) drives every PDS route on the real mux against a counting PDS. `TestEveryPDSRouteIsDrivenByTheRouteChecks` fails when `routes.go` hands the PDS to a route the table does not drive.
+- Several records, one transaction: `TestSubscriptionsDelete_Standardfeed_RemovesDuplicatesAndSidecarInOneCommit` and `TestSubscriptionsDelete_Standardfeed_SidecarDeleteFailureLeavesEverything` in [`subscriptions_mutate_test.go`](internal/api/subscriptions_mutate_test.go), plus the atomic create tests in [`sidecar_write_test.go`](internal/api/sidecar_write_test.go). `POST /api/subscriptions` accepts one source per request (`TestSubscriptionsCreate_Validation`).
+- PDS first: `TestReadingIndexWritesRunOnlyAsCommitThenMirrorMirrors` in [`pds_first_test.go`](internal/api/pds_first_test.go) keeps every write to the reading index, derived from the SQL queries, inside a `commitThenMirror` mirror closure outside `internal/sync` and `internal/database`. `TestPDSRoutesLeaveSQLiteUntouchedWhenTheCommitFails` proves it per route.
+- Mirror failures stay committed: the `TestCommitThenMirror_*` tests in [`mirror_test.go`](internal/api/mirror_test.go) and `TestPDSRoutesReportACommittedWriteWhenTheMirrorFails`, which expects the route's success status and one repair dispatch per committed write.
+- Reconciliation on entry: `TestAuthenticatedEntryStartsReconciliation` drives `GET /api/profiles/me` through the real routes.
+- Bulk exception: the import row in the same route table gets a budget of one commit per source and must report each failed source.
 
 ## 2. A completed sync means the local reading index caught up
 

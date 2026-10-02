@@ -203,6 +203,44 @@ func TestApplyWrites_PostsCreateOperationsAndReturnsRefs(t *testing.T) {
 	}
 }
 
+func TestApplyWrites_PostsDeleteOperationsWithoutValues(t *testing.T) {
+	var got map[string]any
+	srv := repoServer(t, "com.atproto.repo.applyWrites", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": []map[string]any{
+			{"$type": "com.atproto.repo.applyWrites#deleteResult"},
+			{"$type": "com.atproto.repo.applyWrites#deleteResult"},
+		}})
+	})
+	defer srv.Close()
+
+	refs, err := (SessionWriter{}).ApplyWrites(context.Background(), newTestSession(t, srv), []RecordWrite{
+		{Collection: syntax.NSID("site.standard.graph.subscription"), Rkey: syntax.RecordKey("3a"), Delete: true},
+		{Collection: syntax.NSID("blue.morgen.feed.subscription"), Rkey: syntax.RecordKey("3b"), Delete: true},
+	})
+	if err != nil {
+		t.Fatalf("ApplyWrites: %v", err)
+	}
+	writes, ok := got["writes"].([]any)
+	if !ok || len(writes) != 2 {
+		t.Fatalf("writes = %#v, want two operations", got["writes"])
+	}
+	for i, want := range []string{"3a", "3b"} {
+		write, ok := writes[i].(map[string]any)
+		if !ok || write["$type"] != "com.atproto.repo.applyWrites#delete" || write["rkey"] != want {
+			t.Errorf("writes[%d] = %v, want a delete of %q", i, writes[i], want)
+		}
+		if _, hasValue := write["value"]; hasValue {
+			t.Errorf("writes[%d] carries a value; a delete must not", i)
+		}
+	}
+	if len(refs) != 2 || refs[1].URI != "at://did:plc:example/blue.morgen.feed.subscription/3b" || refs[1].CID != "" {
+		t.Errorf("refs = %+v, want URIs without CIDs for deletes", refs)
+	}
+}
+
 func TestApplyWrites_SendsClientChosenRecordKeys(t *testing.T) {
 	var got map[string]any
 	srv := repoServer(t, "com.atproto.repo.applyWrites", func(w http.ResponseWriter, r *http.Request) {

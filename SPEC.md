@@ -153,7 +153,7 @@ Keep the existing Morgenblau permission-set lexicon unchanged. Standardfeed subs
 
 **PDS-authoritative records:** existing feed subscriptions and URL-based saves belong to the user's PDS. Their SQLite rows are derived indexes, partitioned by user. Reconciliation lists the relevant PDS collections and applies changes locally. A concurrent local mirror write must survive a listing snapshot that predates it; see `internal/sync/reconcile_guard.go`.
 
-Mutations validate against the existing lexicon, write to the PDS, then mirror locally. A failed mirror must not report an already committed PDS write as a failed mutation; `mirrorOrRepair` in `internal/api/mirror.go` schedules reconciliation instead.
+Mutations validate against the existing lexicon, write to the PDS, then mirror locally. Each mutation request makes at most one PDS commit, either one record or several records in one `applyWrites` transaction, so a reported failure means nothing committed. A failed mirror must not report a committed PDS write as a failed mutation; `commitThenMirror` in `internal/api/mirror.go` schedules reconciliation instead. OPML import is the bulk exception: it commits per source and reports each source's outcome.
 
 An authenticated app entry starts a coalesced reconciliation, including for an existing session. It does not force the current page to refresh; navigation reads the committed local state. A `sync_user` job is done only after subscription and save reconciliation have both committed. Feed fetch and sidecar cleanup failures can retry separately.
 
