@@ -19,6 +19,7 @@ import (
 	gosmtp "github.com/emersion/go-smtp"
 
 	"morgenblau/internal/api"
+	"morgenblau/internal/atidentity"
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/cache/profiles"
 	"morgenblau/internal/database"
@@ -30,6 +31,7 @@ import (
 	"morgenblau/internal/oauth/config"
 	"morgenblau/internal/oauth/cookie"
 	"morgenblau/internal/oauth/handler"
+	"morgenblau/internal/oauth/localflow"
 	"morgenblau/internal/oauth/store"
 	"morgenblau/internal/safehttp"
 	"morgenblau/internal/secret"
@@ -129,13 +131,21 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		_ = db.Close()
 		return nil, nil, fmt.Errorf("load local network: %w", err)
 	}
+	safeClient := safehttp.NewClient(30*time.Second, 5)
+	identityDir := atidentity.Guarded(safeClient)
+	oauthApp := newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
+	var oauthFlow handler.ClientApp = oauthApp
 	if localNet != nil {
 		slog.Info("local PLC and PDS enabled", "plc", localNet.plc, "pds", localNet.pds)
+		safeClient = safehttp.NewClient(30*time.Second, 5, safehttp.WithAllowLoopbackPorts(localNet.ports...))
+		identityDir = atidentity.Local(safeClient, localNet.plc, localNet.pds)
+		oauthApp = newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
+		oauthFlow = localflow.App{ClientApp: oauthApp, PDS: localNet.pds}
 	}
-	safeClient := safehttp.NewClient(30*time.Second, 5, localNet.clientOptions()...)
-	identityDir := localNet.identityDirectory(safeClient)
-	oauthApp := newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
 	devConfig, err := session.LoadDevConfig(os.Getenv)
+	if err == nil {
+		err = checkDevPDS(devConfig, localNet)
+	}
 	if err != nil {
 		_ = db.Close()
 		return nil, nil, err
@@ -193,7 +203,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		qr:          qr,
 		qw:          qw,
 		oauthCfg:    oauthCfg,
-		oauthFlow:   localNet.oauthFlow(oauthApp),
+		oauthFlow:   oauthFlow,
 		sessions:    sessions,
 		store:       st,
 		sealer:      sealer,

@@ -10,13 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
-	"morgenblau/internal/oauth/handler"
-	"morgenblau/internal/oauth/localflow"
+	"morgenblau/internal/atidentity"
 	"morgenblau/internal/safehttp"
+	"morgenblau/internal/session"
 )
 
 func localEnv(values map[string]string) func(string) string {
@@ -52,7 +51,7 @@ func TestLoadLocalNetwork_RejectsAnythingButLoopbackHTTPOrigins(t *testing.T) {
 	}
 }
 
-// The local network's client and directory together must reach the throwaway PLC and PDS, and nothing else on loopback.
+// The client and directory NewServer builds from the local network must reach the throwaway PLC and PDS, and nothing else on loopback.
 func TestLocalNetwork_ResolvesLocalAccountsThroughTheSafeClient(t *testing.T) {
 	const did = "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"
 	pds := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -81,9 +80,9 @@ func TestLocalNetwork_ResolvesLocalAccountsThroughTheSafeClient(t *testing.T) {
 	if err != nil || n == nil {
 		t.Fatalf("loadLocalNetwork = %+v, %v", n, err)
 	}
-	client := safehttp.NewClient(5*time.Second, 5, n.clientOptions()...)
+	client := safehttp.NewClient(5*time.Second, 5, safehttp.WithAllowLoopbackPorts(n.ports...))
 
-	ident, err := n.identityDirectory(client).LookupHandle(context.Background(), "reader.test")
+	ident, err := atidentity.Local(client, n.plc, n.pds).LookupHandle(context.Background(), "reader.test")
 	if err != nil {
 		t.Fatalf("LookupHandle: %v", err)
 	}
@@ -95,36 +94,23 @@ func TestLocalNetwork_ResolvesLocalAccountsThroughTheSafeClient(t *testing.T) {
 	}
 }
 
-type recordingTransport struct{ hosts []string }
-
-func (r *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.hosts = append(r.hosts, req.URL.Host)
-	return nil, errors.New("recording transport")
-}
-
-func TestNoLocalNetwork_KeepsProductionDefaults(t *testing.T) {
-	var n *localNetwork
-	if opts := n.clientOptions(); len(opts) != 0 {
-		t.Errorf("clientOptions = %d options, want none", len(opts))
-	}
-	tr := &recordingTransport{}
-	_, _ = n.identityDirectory(&http.Client{Transport: tr}).LookupDID(context.Background(), "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa")
-	if len(tr.hosts) != 1 || tr.hosts[0] != "plc.directory" {
-		t.Errorf("did:plc lookup reached %v, want only plc.directory", tr.hosts)
-	}
-}
-
-func TestOAuthFlow_LocalNetworkStartsLocalAccountsItself(t *testing.T) {
-	cfg := oauth.NewLocalhostConfig("http://127.0.0.1:8123/oauth/callback", []string{"atproto"})
-	app := oauth.NewClientApp(&cfg, oauth.NewMemStore())
-
-	var none *localNetwork
-	if got := none.oauthFlow(app); got != handler.ClientApp(app) {
-		t.Errorf("without a local network oauthFlow = %T, want indigo's app", got)
-	}
-	n := &localNetwork{plc: "http://localhost:2700", pds: "http://localhost:2701"}
-	local, ok := n.oauthFlow(app).(localflow.App)
-	if !ok || local.ClientApp != app || local.PDS != n.pds {
-		t.Errorf("with a local network oauthFlow = %#v, want localflow.App for %s", n.oauthFlow(app), n.pds)
+// A loopback dev PDS is reachable only through the local network's port exception, so it must be that network's PDS.
+func TestCheckDevPDS(t *testing.T) {
+	local := &localNetwork{plc: "http://localhost:2700", pds: "http://localhost:2701", ports: []int{2700, 2701}}
+	for name, tc := range map[string]struct {
+		dev   *session.DevConfig
+		local *localNetwork
+		ok    bool
+	}{
+		"no dev login":             {ok: true},
+		"https PDS":                {dev: &session.DevConfig{PDS: "https://pds.example.com"}, ok: true},
+		"https PDS beside a run":   {dev: &session.DevConfig{PDS: "https://pds.example.com"}, local: local, ok: true},
+		"the run's PDS":            {dev: &session.DevConfig{PDS: "http://127.0.0.1:2701"}, local: local, ok: true},
+		"loopback without PLC_URL": {dev: &session.DevConfig{PDS: "http://localhost:2701"}},
+		"loopback on another port": {dev: &session.DevConfig{PDS: "http://localhost:2799"}, local: local},
+	} {
+		if err := checkDevPDS(tc.dev, tc.local); (err == nil) != tc.ok {
+			t.Errorf("%s: err = %v, want ok %v", name, err, tc.ok)
+		}
 	}
 }
