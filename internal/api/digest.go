@@ -120,10 +120,7 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe, privateReaders 
 			})
 		}
 
-		hasActive := false
-		if jobsSrc != nil && jobsSrc.ActiveForUser(sess.Data.AccountDID) != nil {
-			hasActive = true
-		}
+		hasActive := jobsSrc != nil && jobsSrc.ActiveForUser(sess.Data.AccountDID) != nil
 
 		writeJSON(w, DigestResponse{
 			Date:         responseDate,

@@ -49,7 +49,7 @@ func TestNewsletterDeclarationsNeverReachPDSOrSharedTableWrites(t *testing.T) {
 	}
 	for name, decl := range decls {
 		if decl.newsletter && decl.sink != "" {
-			t.Errorf("%s handles newsletter data and reaches %s", name, decl.sink)
+			t.Errorf("%s handles newsletter data and reaches %s; newsletter data stays out of the PDS and shared tables (law 3)", name, decl.sink)
 		}
 	}
 }

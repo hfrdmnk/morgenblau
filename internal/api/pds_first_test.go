@@ -48,7 +48,7 @@ func TestReadingIndexWritesRunOnlyAsCommitThenMirrorMirrors(t *testing.T) {
 				return err
 			}
 			for _, name := range indexWritesOutsideMirrors(file, writes, &mirrored) {
-				t.Errorf("%s: %s writes the reading index outside a commitThenMirror mirror", rel, name)
+				t.Errorf("%s: %s writes the reading index outside a commitThenMirror mirror; the PDS commits first and the index only mirrors it (law 1)", rel, name)
 			}
 			return nil
 		})

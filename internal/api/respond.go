@@ -22,6 +22,7 @@ const (
 	codeConflict        = "conflict"
 	codeUnprocessable   = "unprocessable"
 	codeInvalidRecord   = "invalid_record"
+	codeUnavailable     = "unavailable"
 )
 
 // errorEnvelope is the single error body shape: a stable machine `code` plus a human `message`.
@@ -33,6 +34,11 @@ type errorEnvelope struct {
 // writeError writes {"code","message"} at the given status.
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSONStatus(w, status, errorEnvelope{Code: code, Message: message})
+}
+
+// NotFound answers unrouted /api/ requests with the error envelope instead of ServeMux's plain-text 404.
+func NotFound(w http.ResponseWriter, _ *http.Request) {
+	writeError(w, http.StatusNotFound, codeNotFound, "not found")
 }
 
 // writeFieldErrors emits the 400 {"errors": {...}} shape the add-dialog form binds to.

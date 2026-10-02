@@ -165,12 +165,12 @@ func TestEveryPDSRouteIsDrivenByTheRouteChecks(t *testing.T) {
 	}
 	for pattern := range wired {
 		if !driven[pattern] {
-			t.Errorf("%s reaches the PDS but pdsRoutes never drives it", pattern)
+			t.Errorf("%s reaches the PDS but pdsRoutes never drives it; law 1's route checks cover only routes in that table", pattern)
 		}
 	}
 	for pattern := range driven {
 		if !wired[pattern] {
-			t.Errorf("pdsRoutes drives %s, which routes.go no longer hands the PDS", pattern)
+			t.Errorf("pdsRoutes drives %s, which routes.go no longer hands the PDS; drop the stale row so the table matches the real routes", pattern)
 		}
 	}
 	if len(wired) == 0 {
@@ -189,7 +189,7 @@ func TestPDSRoutesCommitAtMostOnceThenMirror(t *testing.T) {
 				t.Fatalf("status = %d, want %d; body = %s", rr.Code, route.wantStatus, rr.Body.String())
 			}
 			if got := env.pds.attempts(); got > route.maxCommits {
-				t.Errorf("PDS commits = %d, want at most %d", got, route.maxCommits)
+				t.Errorf("PDS commits = %d, want at most %d; one commit per request keeps a reported failure meaning nothing committed (law 1)", got, route.maxCommits)
 			}
 			if changed := env.snapshot(t) != before; changed != route.mirrors {
 				t.Errorf("SQLite changed = %v, want %v", changed, route.mirrors)
@@ -213,7 +213,7 @@ func TestPDSRoutesLeaveSQLiteUntouchedWhenTheCommitFails(t *testing.T) {
 			rr := env.serve(route)
 
 			if after := env.snapshot(t); after != before {
-				t.Errorf("SQLite changed after a failed commit:\nbefore %s\nafter  %s", before, after)
+				t.Errorf("SQLite changed after a failed commit; the index may only mirror a committed PDS write (law 1):\nbefore %s\nafter  %s", before, after)
 			}
 			if env.pds.attempts() > 0 && route.maxCommits == 1 && rr.Code < 400 {
 				t.Errorf("status = %d after the commit failed, want a reported failure", rr.Code)

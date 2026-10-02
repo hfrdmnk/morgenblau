@@ -3,7 +3,6 @@ package sync
 import (
 	"context"
 	"errors"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -12,7 +11,6 @@ import (
 )
 
 type blockingFetcher struct {
-	mu       sync.Mutex
 	calls    int32
 	ctxErrs  int32
 	release  chan struct{}

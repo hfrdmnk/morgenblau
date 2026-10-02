@@ -18,7 +18,7 @@ import (
 	"morgenblau/internal/newsletter"
 )
 
-const saveCollection = "blue.morgen.feed.save"
+const saveCollection = lexicon.Save
 
 // SaveWire is the on-the-wire save shape; GET /api/saves additionally joins entry title/slug/target when cached. Only POST carries a cid, since user_saves has no cid column.
 type SaveWire struct {

@@ -377,7 +377,7 @@ func writeNewsletterError(w http.ResponseWriter, err error) {
 	case errors.Is(err, newsletter.ErrInvalid):
 		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid request")
 	case errors.Is(err, newsletter.ErrUnavailable):
-		writeError(w, http.StatusServiceUnavailable, "unavailable", "newsletter ingestion is unavailable")
+		writeError(w, http.StatusServiceUnavailable, codeUnavailable, "newsletter ingestion is unavailable")
 	default:
 		slog.Warn("newsletter API", "err", err)
 		writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")

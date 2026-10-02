@@ -24,10 +24,10 @@ var allowedNewsletterImporters = []string{
 func TestNewsletterPackageCannotReachPDSOrFeedCache(t *testing.T) {
 	for _, dep := range goList(t, ".", "-deps", "-f", "{{.ImportPath}}") {
 		if strings.HasPrefix(dep, "morgenblau/") && !slices.Contains(allowedNewsletterInternalDeps, dep) {
-			t.Errorf("internal/newsletter depends on %s", dep)
+			t.Errorf("internal/newsletter depends on %s; newsletter storage may reach only the database, never the PDS, sync or feed cache (law 3)", dep)
 		}
 		if strings.HasPrefix(dep, "github.com/bluesky-social/indigo") {
-			t.Errorf("internal/newsletter depends on atproto package %s", dep)
+			t.Errorf("internal/newsletter depends on atproto package %s; newsletter data never enters the PDS (law 3)", dep)
 		}
 	}
 }
@@ -43,7 +43,7 @@ func TestOnlyAPIAndServerImportNewsletter(t *testing.T) {
 			continue
 		}
 		if !slices.Contains(allowedNewsletterImporters, fields[0]) {
-			t.Errorf("%s imports internal/newsletter", fields[0])
+			t.Errorf("%s imports internal/newsletter; only api and server may hold newsletter values, so nothing else can hand them to the PDS or the shared cache (law 3)", fields[0])
 		}
 	}
 }

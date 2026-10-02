@@ -160,13 +160,13 @@ func TestEveryReconcilePassCarriesTheListingGuard(t *testing.T) {
 				}
 				key, _ := kv.Key.(*ast.Ident)
 				value, isIdent := kv.Value.(*ast.Ident)
-				if key != nil && !(isIdent && value.Name == "nil") {
+				if key != nil && (!isIdent || value.Name != "nil") {
 					set[key.Name] = true
 				}
 			}
 			for _, field := range listingGuardFields {
 				if !set[field] {
-					t.Errorf("%s: reconcile pass omits %s", fset.Position(lit.Pos()), field)
+					t.Errorf("%s: reconcile pass omits %s; without the listing guard a stale PDS listing erases newer mirror writes (law 2)", fset.Position(lit.Pos()), field)
 				}
 			}
 			return true

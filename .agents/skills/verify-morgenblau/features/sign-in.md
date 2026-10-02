@@ -46,4 +46,4 @@ Preconditions:
 - The server holds one dev session in memory. Browser and `$V login` share it, so logging out in either signs both out, and restarting the instance drops it.
 - Console noise on every page: the Vite HMR websocket through the auth gate fails with 302, and `/dev/login` is 404 on anonymous runs. Neither is a failure.
 - The OAuth client metadata on an instance still names the `.env` callback (the user's `:8000` server), another reason OAuth is out of scope for runs.
-- `Continue` starts real OAuth against the handle's authorization server; agents do not drive it (see Unmapped).
+- `Continue` starts real OAuth against the handle's authorization server; agents do not drive it (see [Unmapped](./README.md#unmapped)).

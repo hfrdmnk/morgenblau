@@ -57,7 +57,7 @@ func SubscriptionGetHandler(reader SourceDetailReader) http.Handler {
 		})
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				http.NotFound(w, r)
+				writeError(w, http.StatusNotFound, codeNotFound, "not found")
 				return
 			}
 			slog.Warn("/api/subscriptions/{rkey}: lookup failed", "err", err)
@@ -89,7 +89,7 @@ func SubscriptionEntriesHandler(reader SourceEntriesReader) http.Handler {
 		})
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				http.NotFound(w, r)
+				writeError(w, http.StatusNotFound, codeNotFound, "not found")
 				return
 			}
 			slog.Warn("/api/subscriptions/{rkey}/entries: ownership lookup failed", "err", err)

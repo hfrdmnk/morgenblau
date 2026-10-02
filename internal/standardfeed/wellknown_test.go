@@ -29,7 +29,9 @@ func TestFetchWellKnown(t *testing.T) {
 				gotPath = r.URL.Path
 				gotUA = r.Header.Get("User-Agent")
 				w.WriteHeader(tc.status)
-				w.Write([]byte(tc.body))
+				if _, err := w.Write([]byte(tc.body)); err != nil {
+					t.Error(err)
+				}
 			}))
 			defer srv.Close()
 

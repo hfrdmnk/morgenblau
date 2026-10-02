@@ -12,7 +12,7 @@ import (
 
 func TestImportMirrorRejectsSupersededBaseline(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "import.db")
-	runNewsletterGoose(t, path, "up")
+	runGoose(t, path, "up")
 	t.Setenv("DB_PATH", path)
 	dbs, err := Open()
 	if err != nil {

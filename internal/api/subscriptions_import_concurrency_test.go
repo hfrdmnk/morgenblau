@@ -288,7 +288,7 @@ type supersededImportIndex struct {
 }
 
 func (idx supersededImportIndex) MirrorImportedSubscription(ctx context.Context, baseline *db.UserSubscription, feed db.UpsertFeedParams, row db.UpsertUserSubscriptionParams) error {
-	if err := idx.fakeIndex.UpsertUserSubscription(ctx, idx.newer); err != nil {
+	if err := idx.UpsertUserSubscription(ctx, idx.newer); err != nil {
 		return err
 	}
 	return idx.fakeIndex.MirrorImportedSubscription(ctx, baseline, feed, row)

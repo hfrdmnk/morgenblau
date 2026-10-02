@@ -319,7 +319,7 @@ func preflightStandardSubscription(ctx context.Context, w http.ResponseWriter, s
 	var sidecar *atprepo.ListedRecord
 	for i := range sidecars {
 		source, ok := sidecars[i].Value["source"].(map[string]any)
-		if !ok || source["$type"] != "blue.morgen.feed.subscription#standardPublication" || source["publication"] != publication {
+		if !ok || source["$type"] != lexicon.SourceStandard || source["publication"] != publication {
 			continue
 		}
 		rkey := atprepo.RkeyFromATURI(sidecars[i].URI)

@@ -35,7 +35,7 @@ func TestSyncUserReachesDoneOnlyThroughFinishSync(t *testing.T) {
 						seen[name] = true
 						if !setDoneCallers[name] {
 							rel, _ := filepath.Rel(root, path)
-							t.Errorf("%s: %s marks a job done outside finishSync", rel, name)
+							t.Errorf("%s: %s marks a job done outside finishSync; only finishSync checks that every reconcile pass committed (law 2)", rel, name)
 						}
 					}
 					return true
@@ -62,7 +62,7 @@ func TestCommitProofIsMintedOnlyByReconcileCollection(t *testing.T) {
 					return true
 				}
 				if name != "reconcileCollection" {
-					t.Errorf("%s: %s constructs a commit proof; only reconcileCollection may, after its transaction commits", path, name)
+					t.Errorf("%s: %s constructs a commit proof; only reconcileCollection may, after its transaction commits, or done stops meaning caught up (law 2)", path, name)
 					return true
 				}
 				minted = true

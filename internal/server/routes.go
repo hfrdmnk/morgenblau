@@ -18,7 +18,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux := s.routes()
 	gate := auth.New(s.sessions, s.store, s.sealer)
 	root := http.NewServeMux()
-	var devLogin http.Handler = http.NotFoundHandler()
+	devLogin := http.NotFoundHandler()
 	if os.Getenv("APP_ENV") == "local" && s.sessions.DevEnabled() {
 		devLogin = handler.DevLoginHandler(s.sessions, s.sealer, s.sync)
 	}
@@ -101,7 +101,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("GET /api/entries/{slug}", entry)
 	mux.Handle("POST /api/entries/{slug}/extract", api.EntryExtractHandler(s.qr, s.qw, s.safeClient))
 
-	mux.HandleFunc("/api/", http.NotFound)
+	mux.HandleFunc("/api/", api.NotFound)
 
 	mux.Handle("GET /about", api.AboutHandler())
 	mux.Handle("/", spaHandler())

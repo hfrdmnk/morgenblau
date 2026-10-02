@@ -1,6 +1,6 @@
 ---
 name: verify-morgenblau
-description: "Drive the real Morgenblau app like a user and prove a change works: an isolated instance with its own SQLite DB, the React UI in a real browser, the JSON API, inbound newsletter SMTP, sync jobs, evidence in .scratch/verify/, outcome pass, fail or blocked. Also says which static checks (Go, Bun, sqlc, Linux build) a change needs. Use after any user-facing change, before opening a PR, when asked to verify, reproduce or show proof, and when a feature file in features/ matches the work."
+description: "Drive the real Morgenblau app like a user to prove a change works or reproduce a bug: an instance with its own ports and SQLite DB, the React UI in a real browser, the JSON API, inbound newsletter SMTP, sync jobs, evidence in .scratch/verify/, outcome pass, fail or blocked. Signed-in runs use a dedicated dev account and write real records to its PDS (cleaned up by down), so only one run at a time. Also says which static checks (Go, lint, Bun, sqlc, Linux build) a change needs. Use after any user-facing change, before opening a PR, when asked to verify, reproduce or show proof, and when a feature file in features/ matches the work."
 ---
 
 # Verify Morgenblau
@@ -57,11 +57,15 @@ In the browser, sign in the way a user does: open `/login` and click `Log me in`
 
 A failed or abandoned attempt still runs step 8.
 
+## Reproduce a bug
+
+Run the same protocol with the report's steps in place of the feature file's user path, starting from the nearest feature file. A reproduction ends `fail` with evidence of the misbehavior; when the steps behave correctly, the outcome is `pass` and the report names what was tried. After the fix, drive the same steps again for the `pass`.
+
 ## Static checks by change type
 
 `Makefile`, `frontend/package.json` and `.github/workflows/ci.yml` own the commands; read them there. Pick by what changed and report actual results:
 
-- **Go, while working:** the focused package and test (`go test ./internal/<pkg> -run <Test> -count=1`). **Finishing Go work:** the full Go suite and `go vet ./...`; for concurrency changes make `make test-race` the final full run instead.
+- **Go, while working:** the focused package and test (`go test ./internal/<pkg> -run <Test> -count=1`). **Finishing Go work:** the full Go suite, `go vet ./...` and `golangci-lint run ./...` (every Go build needs a built `frontend/dist`, which the app embeds); for concurrency changes make `make test-race` the final full run instead.
 - **Frontend:** the relevant test files while working; finish with the Bun `test`, `lint` and `build` scripts (the build runs the TypeScript check). `frontend/AGENTS.md` owns the per-branch `doctor` rule.
 - **Embedded app or deploy build:** `make build-linux` (it already builds the frontend; do not build twice).
 - **Schema or queries:** `make sqlc`, read the regenerated diff, run the affected storage tests against real temporary SQLite. Migrations are tried on a disposable DB (`$V up` gives you one), never on `./data`.
@@ -90,7 +94,7 @@ static checks: <commands and results>
 
 ## Safety
 
-- One instance and one DB per run, created by `up`, removed by `down`. The only shared state is the dev account's PDS; `down` deletes what the run added there, and nothing else.
+- One instance and one DB per run, created by `up`, removed by `down`. The only shared state is the dev account's PDS: `down` deletes every record missing from the run's `login` baseline, so run one signed-in instance at a time, or a second run's records go with the first run's cleanup.
 - Never drive the user's own server, database or personal account.
 - Newsletter mail goes only to the instance's `127.0.0.1` SMTP port. The app sends no outbound mail and has no payments or admin panel.
 - Keep secrets out of evidence: never print or save the dev account password or the session cookie (`run/cookies.txt` is deleted by `down`).

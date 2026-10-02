@@ -38,7 +38,9 @@ func TestSMTPAcceptsMultipleOwnerRecipientsOnlyAfterAtomicReceiptCommit(t *testi
 	if err := data.Close(); err != nil {
 		t.Fatal(err)
 	}
-	client.Quit()
+	if err := client.Quit(); err != nil {
+		t.Fatal(err)
+	}
 	server.Close()
 
 	if got := countRows(t, reader, "newsletter_receipts"); got != 2 {
@@ -49,9 +51,13 @@ func TestSMTPAcceptsMultipleOwnerRecipientsOnlyAfterAtomicReceiptCommit(t *testi
 func TestSMTPRejectsUnknownRecipient(t *testing.T) {
 	service, _, _ := newTestService(t)
 	_, client := serveSMTP(t, service)
-	defer client.Quit()
-	client.Hello("sender.example")
-	client.Mail("bounce@sender.example")
+	defer quitSMTP(t, client)
+	if err := client.Hello("sender.example"); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Mail("bounce@sender.example"); err != nil {
+		t.Fatal(err)
+	}
 	err := client.Rcpt("unknown@news.example")
 	if err == nil || !strings.HasPrefix(err.Error(), "550") {
 		t.Fatalf("RCPT error = %v, want 550", err)
@@ -63,9 +69,13 @@ func TestSMTPReturnsTemporaryFailureWhenReceiptCannotCommit(t *testing.T) {
 	ctx := context.Background()
 	address, _ := service.CreateAddress(ctx, "did:plc:alice")
 	_, client := serveSMTP(t, service)
-	defer client.Quit()
-	client.Hello("sender.example")
-	client.Mail("bounce@sender.example")
+	defer quitSMTP(t, client)
+	if err := client.Hello("sender.example"); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Mail("bounce@sender.example"); err != nil {
+		t.Fatal(err)
+	}
 	if err := client.Rcpt(address); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +86,9 @@ func TestSMTPReturnsTemporaryFailureWhenReceiptCannotCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data.Write([]byte("From: sender@example.com\r\nSubject: Retry\r\n\r\nBody\r\n"))
+	if _, err := data.Write([]byte("From: sender@example.com\r\nSubject: Retry\r\n\r\nBody\r\n")); err != nil {
+		t.Fatal(err)
+	}
 	err = data.Close()
 	if err == nil || !strings.HasPrefix(err.Error(), "451") {
 		t.Fatalf("DATA error = %v, want 451", err)
@@ -91,9 +103,13 @@ func TestSMTPReturnsTemporaryFailureBeforeAcceptingOverQuota(t *testing.T) {
 	ctx := context.Background()
 	address, _ := service.CreateAddress(ctx, "did:plc:alice")
 	_, client := serveSMTP(t, service)
-	defer client.Quit()
-	client.Hello("sender.example")
-	client.Mail("bounce@sender.example")
+	defer quitSMTP(t, client)
+	if err := client.Hello("sender.example"); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Mail("bounce@sender.example"); err != nil {
+		t.Fatal(err)
+	}
 	if err := client.Rcpt(address); err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +117,9 @@ func TestSMTPReturnsTemporaryFailureBeforeAcceptingOverQuota(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data.Write([]byte("From: sender@example.com\r\nSubject: quota\r\n\r\nBody\r\n"))
+	if _, err := data.Write([]byte("From: sender@example.com\r\nSubject: quota\r\n\r\nBody\r\n")); err != nil {
+		t.Fatal(err)
+	}
 	err = data.Close()
 	if err == nil || !strings.HasPrefix(err.Error(), "451") {
 		t.Fatalf("DATA error = %v, want 451", err)
@@ -175,6 +193,13 @@ func serveSMTP(t *testing.T, service *Service) (*smtpServerHandle, *smtp.Client)
 	}}
 	t.Cleanup(handle.Close)
 	return handle, client
+}
+
+func quitSMTP(t *testing.T, client *smtp.Client) {
+	t.Helper()
+	if err := client.Quit(); err != nil {
+		t.Error(err)
+	}
 }
 
 type smtpServerHandle struct {

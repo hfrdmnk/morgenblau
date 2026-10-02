@@ -5,6 +5,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -87,12 +88,19 @@ func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer) Middlewar
 			}
 
 			if strings.HasPrefix(path, "/api/") {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				writeUnauthenticated(w)
 				return
 			}
 			http.Redirect(w, r, "/login", http.StatusFound)
 		})
 	}
+}
+
+// writeUnauthenticated mirrors api.writeError's {code, message} envelope; api imports this package, so it can't call writeError.
+func writeUnauthenticated(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	_, _ = io.WriteString(w, `{"code":"unauthenticated","message":"Your session ended. Sign in again."}`+"\n")
 }
 
 // holdsSessionLock must mirror the PDS-mutating routes in server/routes.go; subscriptions/resolve, digest/refresh, and entries/extract don't write to the PDS.

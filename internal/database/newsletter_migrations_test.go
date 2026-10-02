@@ -2,8 +2,6 @@ package database
 
 import (
 	"database/sql"
-	"fmt"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -28,14 +26,14 @@ func TestNewsletterMigrationsFreshUpDown(t *testing.T) {
 	}
 	var expectedTables []string
 	for _, migration := range migrations {
-		runNewsletterGoose(t, databasePath, "up-to", migration.version)
+		runGoose(t, databasePath, "up-to", migration.version)
 		expectedTables = append(expectedTables, migration.table)
-		db := openNewsletterMigrationDB(t, databasePath)
+		db := openMigrationDB(t, databasePath)
 		assertNewsletterTables(t, db, expectedTables)
 		_ = db.Close()
 	}
 
-	db := openNewsletterMigrationDB(t, databasePath)
+	db := openMigrationDB(t, databasePath)
 	if !newsletterColumnExists(t, db, "newsletter_receipts", "recipient_local_part") {
 		t.Fatal("fresh schema is missing recipient_local_part")
 	}
@@ -45,9 +43,9 @@ func TestNewsletterMigrationsFreshUpDown(t *testing.T) {
 	_ = db.Close()
 
 	for range migrations {
-		runNewsletterGoose(t, databasePath, "down")
+		runGoose(t, databasePath, "down")
 	}
-	db = openNewsletterMigrationDB(t, databasePath)
+	db = openMigrationDB(t, databasePath)
 	defer db.Close()
 	assertNewsletterTables(t, db, nil)
 	assertNewsletterForeignKeysValid(t, db)
@@ -173,44 +171,4 @@ func newsletterColumnExists(t *testing.T, db *sql.DB, table, column string) bool
 		t.Fatal(err)
 	}
 	return false
-}
-
-func openNewsletterMigrationDB(t *testing.T, path string) *sql.DB {
-	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(on)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	db.SetMaxOpenConns(1)
-	if err := db.Ping(); err != nil {
-		db.Close()
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
-}
-
-func runNewsletterGoose(t *testing.T, databasePath string, args ...string) {
-	t.Helper()
-	if err := runNewsletterGooseCommand(databasePath, args...); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func runNewsletterGooseCommand(databasePath string, args ...string) error {
-	goosePath, err := exec.LookPath("goose")
-	if err != nil {
-		return fmt.Errorf("goose CLI is required for migration tests; install github.com/pressly/goose/v3/cmd/goose@v3.27.1: %w", err)
-	}
-	migrationDir, err := filepath.Abs("migrations")
-	if err != nil {
-		return err
-	}
-	commandArgs := []string{"-dir", migrationDir, "sqlite3", databasePath}
-	commandArgs = append(commandArgs, args...)
-	output, err := exec.Command(goosePath, commandArgs...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("goose %s: %w\n%s", strings.Join(args, " "), err, output)
-	}
-	return nil
 }

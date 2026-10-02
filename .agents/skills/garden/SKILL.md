@@ -1,6 +1,6 @@
 ---
 name: garden
-description: Static gardening sweep of the repo. Runs the Go checks (gofmt, vet, race suite, go mod tidy, sqlc freshness), the frontend test, lint and build scripts, and fallow's whole-tree dead-code, health and dupes views; checks that every test LAWS.md names still exists; and checks AGENTS.md files, SPEC.md, LAWS.md and the repo skills for stale references, rules no check enforces, skill drift and skill size. Ships mechanical fixes as one PR on garden/<date> and files judgment calls as GitHub issues labelled gardening. Use when a scheduled gardening run fires, or when the user says "garden" or "/garden". "/garden dry-run" sweeps without writing anything.
+description: Static gardening sweep of the repo. Runs the Go checks (gofmt, vet, golangci-lint, race suite, go mod tidy, sqlc freshness), the frontend test, lint and build scripts, and fallow's whole-tree dead-code, health and dupes views; checks that every test LAWS.md names still exists; and checks AGENTS.md files, SPEC.md, LAWS.md and the repo skills for stale references, rules no check enforces, skill drift and skill size. Ships mechanical fixes as one PR on garden/<date> and files judgment calls as GitHub issues labelled gardening. Use when a scheduled gardening run fires, or when the user says "garden" or "/garden". "/garden dry-run" sweeps without writing anything.
 argument-hint: "[dry-run]"
 disable-model-invocation: true
 ---
@@ -29,7 +29,7 @@ When in doubt, it is judgment. A mechanical fix that turns any check red is reve
 - No behaviour changes.
 - Never add or reword rules or prose in any AGENTS.md, SPEC.md or skill. The only doc edit allowed is correcting a stale reference (path, make target, bun script, Go symbol, route) whose replacement is unambiguous. Everything else goes to an issue.
 - Never suppress a check: no `fallow-ignore` comments or config ignores, no `eslint-disable`, no `//nolint`, no `t.Skip`, no new entries in an invariant test's allowlist (such as `unscopedNewsletterQueries`), no lowered fallow thresholds.
-- Never touch `internal/database/migrations/` (goose owns them), `internal/database/db/` (sqlc-generated), `lexicons/`, `LAWS.md` (law changes need the maintainer), `.agents/skills/verify-morgenblau/features/` (`maintain-verification-skill` owns the feature map) or the shadcn components in `frontend/src/components/ui/`.
+- Never touch `internal/database/migrations/` (goose owns them), `internal/database/db/` (sqlc-generated), `lexicons/`, `LAWS.md` (law changes need the maintainer), `.agents/skills/verify-morgenblau/features/` (the verify skill maintains its own feature map) or the shadcn components in `frontend/src/components/ui/`.
 - Never run `make migrate-*`, `make dev` or anything that touches `./data/` or a PDS.
 - Never change the state or labels of an existing issue.
 
@@ -60,20 +60,21 @@ Record every finding as you go: kind, `file:line`, evidence, mechanical or judgm
 
 ### 2.1 Go
 
+The Go packages embed `frontend/dist`; when it is missing, run 2.2's `build` first.
+
 ```bash
 gofmt -l .
 go vet ./...
 go test -race ./... > "$G/go-test-race.txt" 2>&1
 go mod tidy -diff
 sqlc diff
+golangci-lint run ./... > "$G/golangci-lint.txt" 2>&1
 ```
 
 - `gofmt -l` output is mechanical: `gofmt -w` the listed files.
 - `go mod tidy -diff` output is mechanical when it touches only `go.sum` or `// indirect` markers: apply `go mod tidy`. An added or dropped direct `require` is judgment.
 - `sqlc diff` prints a diff and exits 1 when `internal/database/db/` is stale. That is judgment: the committed Go embeds the SQL that runs, so regenerating changes behaviour. A diff limited to the `// sqlc vX` header means the local CLI differs from the one that generated the code; report it, file nothing.
-- A red `go vet` or race suite is judgment. The race suite runs every law check, so name the failing tests in the issue.
-
-While neither a `.golangci.*` nor a `staticcheck.conf` exists, the repo runs no Go linter beyond `go vet`: one judgment issue keyed `tooling:go-linter` proposes one. Never add a linter config in the PR.
+- A red `go vet`, golangci-lint or race suite is judgment. The race suite runs every law check, so name the failing tests in the issue. CI pins the golangci-lint version in `.github/workflows/ci.yml`; a finding that only a different local version reports goes in the report, not an issue.
 
 ### 2.2 Frontend
 
@@ -124,12 +125,12 @@ Every law heading carries an "Enforced by:" list. A "Check by hand" line is allo
 
 ### 2.5 Docs and skills vs code
 
-Scope: every AGENTS.md (the `.claude/rules/*.md` symlinks and `CLAUDE.md` point at them), `.claude/rules/testing.md`, `SPEC.md`, `LAWS.md`, and every `SKILL.md` under `.agents/skills/` with the files it links. For the verify skill's `features/`, check only that references resolve; its content is `maintain-verification-skill`'s job. Resolve every reference:
+Scope: every AGENTS.md (the `.claude/rules/*.md` symlinks and `CLAUDE.md` point at them), `SPEC.md`, `LAWS.md`, and every `SKILL.md` under `.agents/skills/` with the files it links. For the verify skill's `features/`, check only that references resolve; its content is the verify skill's job. Resolve every reference:
 
 - repo paths exist (`test -e`): markdown links relative to the doc, backticked paths relative to the doc's directory or else the repo root; `#anchors` and prose section references ("SPEC.md, Newsletters") match a heading in the target
 - `make <target>` is a target in `Makefile`
 - `bun run <script>` is in `frontend/package.json`, or is a Bun built-in
-- Go symbols cited by name have a definition (`git grep -nwE 'func (\([^)]*\) )?<Name>\b|type <Name>\b' -- '*.go'`)
+- Go symbols cited by name have a definition (`git grep -nwE 'func (\([^)]*\) )?<Name>|type <Name>' -- '*.go'`)
 - routes written as `METHOD /path` are registered in `internal/server/routes.go`
 - `bin/verify` subcommands and flags exist in `.agents/skills/verify-morgenblau/bin/verify`
 
@@ -137,7 +138,7 @@ A stale reference is mechanical when exactly one replacement exists: a rename in
 
 ### 2.6 Prose without a check
 
-Judgment only; never edit. For each rule in the AGENTS.md files and `.claude/rules/testing.md`, look for the check that enforces it: Go tests (the source-scan and invariant tests next to the code they guard), `frontend/eslint.config.js`, `frontend/.fallowrc.jsonc`, `.github/workflows/ci.yml`, `.githooks/pre-commit` and constraints in the migrations. File an issue when:
+Judgment only; never edit. For each rule in the AGENTS.md files, look for the check that enforces it: Go tests (the source-scan and invariant tests next to the code they guard), `.golangci.yml`, `frontend/eslint.config.js`, `frontend/.fallowrc.jsonc`, `.github/workflows/ci.yml`, `.githooks/pre-commit` and constraints in the migrations. File an issue when:
 
 - a test or lint rule could express a rule that has none
 - a checked rule still carries prose beyond a pointer, or prose restates what the code already owns
@@ -200,7 +201,8 @@ With every mechanical fix in place:
 ```bash
 gofmt -l .
 go vet ./...
-go test -race ./...                       # when a Go file, go.mod or go.sum changed
+go test -race ./...                       # these two when a Go file, go.mod or go.sum changed
+golangci-lint run ./...
 bun run --cwd ./frontend test             # these three when anything under frontend/ changed
 bun run --cwd ./frontend lint
 bun run --cwd ./frontend build
@@ -248,7 +250,7 @@ Outcome: clean | changed | blocked
 Reason: <one line>
 PR: <url | none>
 Issues: new <#nums> | updated <#nums> | none
-Go: gofmt <n files> vet <ok|red> race <ok|red> tidy <ok|drift> sqlc <ok|stale>
+Go: gofmt <n files> vet <ok|red> lint <ok|red> race <ok|red> tidy <ok|drift> sqlc <ok|stale>
 Frontend: test <ok|red> lint <ok|red> build <ok|red>
 Fallow: dead-code <n> health <n> dupes <n> false positives <n>
 Laws: <n> tests named, <n> missing

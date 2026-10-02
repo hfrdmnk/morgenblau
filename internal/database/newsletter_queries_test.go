@@ -2,9 +2,7 @@ package database
 
 import (
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -48,10 +46,10 @@ func TestNewsletterTablesStayInNewsletterQueries(t *testing.T) {
 		for _, ref := range sqlTableRefs(query.sql) {
 			isNewsletter := strings.HasPrefix(ref.table, "newsletter_")
 			if query.file == newsletterQueryFile && !isNewsletter {
-				t.Errorf("%s reads or writes %s; newsletter queries touch only newsletter tables", query.name, ref.table)
+				t.Errorf("%s reads or writes %s; newsletter queries touch only newsletter tables so private data never joins shared ones (law 3)", query.name, ref.table)
 			}
 			if query.file != newsletterQueryFile && isNewsletter {
-				t.Errorf("%s in %s touches %s; newsletter tables belong to %s only", query.name, query.file, ref.table, newsletterQueryFile)
+				t.Errorf("%s in %s touches %s; newsletter tables belong to %s only, where the owner-scoping check reads them (law 3)", query.name, query.file, ref.table, newsletterQueryFile)
 			}
 		}
 	}
@@ -71,7 +69,7 @@ func TestNewsletterQueriesAreScopedByOwnerDID(t *testing.T) {
 			t.Errorf("%s is owner-scoped; drop it from unscopedNewsletterQueries", query.name)
 		case !unscoped:
 			for _, problem := range problems {
-				t.Errorf("%s: %s", query.name, problem)
+				t.Errorf("%s: %s; every newsletter query filters by the owner DID so one reader can never reach another's data (law 3)", query.name, problem)
 			}
 		}
 	}
@@ -84,36 +82,14 @@ func TestNewsletterQueriesAreScopedByOwnerDID(t *testing.T) {
 
 func TestNewsletterTablesAreQueriedOnlyThroughSQLFiles(t *testing.T) {
 	table := regexp.MustCompile(`\bnewsletter_[a-z_]+`)
-	for _, root := range []string{filepath.Join("..", "..", "cmd"), filepath.Join("..", "..", "internal")} {
-		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-			if err != nil {
-				return err
+	eachGoFile(t, false, func(path string, _ *token.FileSet, file *ast.File) {
+		ast.Inspect(file, func(node ast.Node) bool {
+			if literal, ok := node.(*ast.BasicLit); ok && literal.Kind == token.STRING && table.MatchString(literal.Value) {
+				t.Errorf("%s embeds SQL for %s; add the query to queries/%s instead, where the owner-scoping check can see it (law 3)", path, table.FindString(literal.Value), newsletterQueryFile)
 			}
-			if entry.IsDir() {
-				if path == filepath.Join("..", "..", "internal", "database", "db") {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-				return nil
-			}
-			file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
-			if err != nil {
-				return err
-			}
-			ast.Inspect(file, func(node ast.Node) bool {
-				if literal, ok := node.(*ast.BasicLit); ok && literal.Kind == token.STRING && table.MatchString(literal.Value) {
-					t.Errorf("%s embeds SQL for %s; add the query to queries/%s instead", path, table.FindString(literal.Value), newsletterQueryFile)
-				}
-				return true
-			})
-			return nil
+			return true
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
+	})
 }
 
 func newsletterScopeProblems(sql string) []string {
