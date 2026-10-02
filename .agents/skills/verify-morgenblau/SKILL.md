@@ -27,7 +27,7 @@ A sandboxed shell may be unable to bind ports or run `bunx` or `node`; rerun the
 | Need | Command |
 |---|---|
 | Isolated instance: own HTTP, SMTP, Vite, PLC and PDS ports, fresh migrated DB, own account | `$V up <slug>` (prints state JSON: `base_url`, `smtp`, `dev_login`, `pds.handle`) |
-| Sign in as the run's account (API cookie jar) and wait for the login sync | `$V login <slug>` |
+| Sign in as the run's account (API cookie jar) and wait for the login sync | `$V login <slug>` (dev login) or `$V oauth <slug>` (real OAuth through the run's PDS) |
 | Call the API as that user, or anonymously | `$V api <slug> GET /api/digest --out digest` (`--data JSON`, `--anon`) |
 | Read state as JSON | `$V inspect <slug> --out inspect-before` |
 | Browser | `$V browser <slug> <playwright-cli command>`; `$V browser <slug> --help` for the driver's commands |
@@ -39,15 +39,15 @@ A sandboxed shell may be unable to bind ports or run `bunx` or `node`; rerun the
 
 The instance runs the working tree with `APP_ENV=local`, its own PDS and `DEV_LOGIN_ENABLED` unless doctor exits `3`, the global feed refresher off (`--fetch-minutes N` turns it on), and newsletters on `newsletter.localhost`. `PLC_URL` and the loopback PDS are local-only exceptions owned by `internal/server/local_network.go`. It never touches `./data/morgenblau.db`, `.env` or a server the user already runs on `:8000`.
 
-In the browser, sign in the way a user does: open `/login` and click `Log me in` (`$V browser <slug> click "getByRole('button', { name: 'Log me in' })"`). The browser and `$V login` share the server's single dev session, so logging out in one logs out both. Target elements by role and accessible name, then label; read the page with `snapshot` or `find`. Use a snapshot ref only for a control without an accessible name, never class names or DOM position.
+In the browser, sign in the way a user does: open `/login` and click `Log me in` (`$V browser <slug> click "getByRole('button', { name: 'Log me in' })"`). The browser and `$V login` share the server's single dev session, so logging out in one logs out both. For real OAuth, type the run's handle (`pds.handle`) on `/login`, click `Continue`, put the password in with `$V browser <slug> fill-password <target>`, and click `Sign in` and `Authorize`; [sign-in](features/sign-in.md) has the steps. `fill-password` reads `run/account.json` and drops the driver's output, which would echo the password. Target elements by role and accessible name, then label; read the page with `snapshot` or `find`. Use a snapshot ref only for a control without an accessible name, never class names or DOM position.
 
-`$V browser` runs without a prompt, so it passes only the page-level commands in `BROWSER_COMMANDS` (`bin/verify`) and refuses the rest with exit `2` and a one-line reason. `open`, `goto` and `tab-new` take only this run's instance (pass a `/path`). Options that repoint the driver (`--config`, `--profile`, `--browser` and the like), a second session (`-s`) and `run-code` are refused. Every `--filename` and every `upload` file must resolve inside the evidence dir and outside `run/`; relative names resolve from the evidence dir. Page JavaScript goes through `eval`, and waiting for a navigation is a repeated `eval "() => location.href" --raw`. Snapshots, console logs and downloads land in `$E/.playwright-cli/`.
+`$V browser` runs without a prompt, so it passes only the page-level commands in `BROWSER_COMMANDS` (`bin/verify`) and refuses the rest with exit `2` and a one-line reason. `open`, `goto` and `tab-new` take only this run's instance (pass a `/path`). Options that repoint the driver (`--config`, `--profile`, `--browser` and the like), a second session (`-s`) and `run-code` are refused. Driver calls from all runs take turns on one lock (`playwright_cli` in `bin/verify`). Every `--filename` and every `upload` file must resolve inside the evidence dir and outside `run/`; relative names resolve from the evidence dir. Page JavaScript goes through `eval`, and waiting for a navigation is a repeated `eval "() => location.href" --raw`. Snapshots, console logs and downloads land in `$E/.playwright-cli/`.
 
 ## Protocol
 
 1. `$V stale`, then `$V doctor`.
 2. `$V up <slug>`, with the slug named after the feature file. The evidence dir is `.scratch/verify/<YYYY-MM-DD>-<slug>/`; call it `E`.
-3. For signed-in features, `$V login <slug>`.
+3. For signed-in features, `$V login <slug>`, or `$V oauth <slug>` when the change touches sign-in or sessions.
 4. `$V inspect <slug> --out inspect-before`.
 5. Follow the feature file through its user path. After an action that dispatches a job, wait until `$V api <slug> GET /api/jobs/active` returns `null`, then assert.
 6. Capture the evidence the feature file names, then `$V inspect <slug> --out inspect-after` and compare: `diff <(jq -S .counts $E/inspect-before.json) <(jq -S .counts $E/inspect-after.json)`.
