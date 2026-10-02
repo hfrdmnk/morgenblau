@@ -34,7 +34,7 @@ func loopbackCfg(t *testing.T) *config.Config {
 		"BLUESKY_OAUTH_SCOPE":       "atproto include:blue.morgen.access repo:site.standard.graph.subscription",
 		"BLUESKY_OAUTH_CLIENT_NAME": "Morgenblau",
 		"BLUESKY_OAUTH_CLIENT_URI":  "http://localhost:8000",
-	})
+	}, 8000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func publishedCfg(t *testing.T) *config.Config {
 		"BLUESKY_OAUTH_CLIENT_URI":  "https://app.example.com",
 		"BLUESKY_CLIENT_ID":         "https://app.example.com/oauth-client-metadata.json",
 		"BLUESKY_REDIRECT":          "https://app.example.com/oauth/callback",
-	})
+	}, 8000)
 	if err != nil {
 		t.Fatal(err)
 	}

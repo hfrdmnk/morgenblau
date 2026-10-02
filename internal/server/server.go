@@ -105,7 +105,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		return nil, nil, fmt.Errorf("open database: %w", err)
 	}
 
-	oauthCfg, err := config.FromOS()
+	oauthCfg, err := config.FromOS(port)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load oauth config: %w", err)
 	}

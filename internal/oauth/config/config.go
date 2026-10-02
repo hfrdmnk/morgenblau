@@ -2,7 +2,6 @@
 package config
 
 import (
-	"cmp"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/x509"
@@ -12,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/bluesky-social/indigo/atproto/atcrypto"
@@ -27,8 +25,8 @@ type Config struct {
 	ClientURI  string // advertised as client_uri when non-empty
 }
 
-// FromOS reads from the process environment.
-func FromOS() (*Config, error) {
+// FromOS reads from the process environment; port is the server's listen port, which names the loopback callback.
+func FromOS(port int) (*Config, error) {
 	keys := []string{
 		"BLUESKY_OAUTH_PRIVATE_KEY",
 		"BLUESKY_OAUTH_SCOPE",
@@ -36,17 +34,16 @@ func FromOS() (*Config, error) {
 		"BLUESKY_OAUTH_CLIENT_URI",
 		"BLUESKY_CLIENT_ID",
 		"BLUESKY_REDIRECT",
-		"PORT",
 	}
 	env := make(map[string]string, len(keys))
 	for _, k := range keys {
 		env[k] = os.Getenv(k)
 	}
-	return Load(env)
+	return Load(env, port)
 }
 
 // Load builds the config from an in-memory env map; empty BLUESKY_CLIENT_ID yields a loopback config, otherwise a metadata-URL config (caller must serve the metadata document).
-func Load(env map[string]string) (*Config, error) {
+func Load(env map[string]string, port int) (*Config, error) {
 	scope := strings.TrimSpace(env["BLUESKY_OAUTH_SCOPE"])
 	if scope == "" {
 		return nil, fmt.Errorf("BLUESKY_OAUTH_SCOPE is required")
@@ -65,12 +62,8 @@ func Load(env map[string]string) (*Config, error) {
 	var ic oauth.ClientConfig
 	var jwksURI string
 	if clientID == "" {
-		port := cmp.Or(strings.TrimSpace(env["PORT"]), "8000")
-		if _, err := strconv.Atoi(port); err != nil {
-			return nil, fmt.Errorf("PORT %q: %w", port, err)
-		}
 		// atproto spec reserves client_id=http://localhost for public clients, so no secret here.
-		ic = oauth.NewLocalhostConfig("http://127.0.0.1:"+port+"/oauth/callback", scopes)
+		ic = oauth.NewLocalhostConfig(fmt.Sprintf("http://127.0.0.1:%d/oauth/callback", port), scopes)
 	} else {
 		redirect := strings.TrimSpace(env["BLUESKY_REDIRECT"])
 		if redirect == "" {
