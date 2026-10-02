@@ -20,7 +20,6 @@ import (
 	gosmtp "github.com/emersion/go-smtp"
 
 	"morgenblau/internal/api"
-	"morgenblau/internal/atidentity"
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/cache/profiles"
 	"morgenblau/internal/database"
@@ -125,8 +124,16 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 
 	st := store.New(db.Writer, keyset)
 
-	safeClient := safehttp.NewClient(30*time.Second, 5)
-	identityDir := atidentity.Guarded(safeClient)
+	localNet, err := loadLocalNetwork(os.Getenv)
+	if err != nil {
+		_ = db.Close()
+		return nil, nil, fmt.Errorf("load local network: %w", err)
+	}
+	if localNet != nil {
+		slog.Info("local PLC and PDS enabled", "plc", localNet.plc, "pds", localNet.pds)
+	}
+	safeClient := safehttp.NewClient(30*time.Second, 5, localNet.clientOptions()...)
+	identityDir := localNet.identityDirectory(safeClient)
 	oauthApp := newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
 	devConfig, err := session.LoadDevConfig(os.Getenv)
 	if err != nil {
