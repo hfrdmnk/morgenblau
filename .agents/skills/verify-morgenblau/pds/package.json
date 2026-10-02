@@ -1,7 +1,0 @@
-{
-  "name": "verify-morgenblau-pds",
-  "private": true,
-  "dependencies": {
-    "@atproto/dev-env": "0.6.9"
-  }
-}

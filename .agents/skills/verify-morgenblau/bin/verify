@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Cookie jars, account files and state all hold run secrets.
+umask 077
 
 # Drive an isolated Morgenblau instance and keep the evidence.
 # Every subcommand takes the run's slug; evidence lands in .scratch/verify/<date>-<slug>/.
@@ -25,13 +27,12 @@ USAGE='usage: verify <command> [args]
   status                          list runs and whether their processes are alive
 
 The instance runs the working tree: a Go binary built by up, a Vite dev server on a spare port,
-a throwaway PLC and PDS (pds/boot.mjs) holding one .test account, fresh secrets, APP_ENV=local,
+a throwaway PLC and PDS (tools/boot.mjs) holding one .test account, fresh secrets, APP_ENV=local,
 FETCH_INTERVAL_MINUTES=0 unless asked, newsletter SMTP on 127.0.0.1 for newsletter.localhost.
 It never touches ./data/morgenblau.db, .env or a server the user already runs.'
 
-PLAYWRIGHT_CLI="@playwright/cli@0.1.22"
 NEWSLETTER_DOMAIN="newsletter.localhost"
-PDS_TOOLS=".agents/skills/verify-morgenblau/pds"
+TOOLS=".agents/skills/verify-morgenblau/tools"
 NODE_MAJOR_MIN=22
 STALE_HOURS=3
 
@@ -52,6 +53,7 @@ BROWSER_BOOLEAN_OPTIONS=" headed mobile persistent submit boxes clear full-page 
 ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 cd "$ROOT"
 VERIFY_ROOT="$ROOT/.scratch/verify"
+PLAYWRIGHT_CLI="$ROOT/$TOOLS/node_modules/.bin/playwright-cli"
 
 die() { printf 'verify: %s\n' "$1" >&2; exit "${2:-1}"; }
 say() { printf '%s\n' "$1" >&2; }
@@ -64,24 +66,33 @@ oauth_scope() {
 
 node_major() { node -p 'process.versions.node.split(".")[0]' 2>/dev/null || printf 0; }
 
-pds_tools_installed() {
-    local want have
-    want="$(jq -r '.dependencies["@atproto/dev-env"]' "$PDS_TOOLS/package.json")"
-    have="$(jq -r .version "$PDS_TOOLS/node_modules/@atproto/dev-env/package.json" 2>/dev/null || true)"
-    [ "$want" = "$have" ]
+tools_installed() {
+    local name
+    for name in $(jq -r '.dependencies | keys[]' "$TOOLS/package.json"); do
+        [ "$(jq -r --arg n "$name" '.dependencies[$n]' "$TOOLS/package.json")" = \
+            "$(jq -r .version "$TOOLS/node_modules/$name/package.json" 2>/dev/null || true)" ] || return 1
+    done
 }
 
-pds_available() { [ "$(node_major)" -ge "$NODE_MAJOR_MIN" ] && pds_tools_installed; }
+playwright_cli() { "$PLAYWRIGHT_CLI" "$@"; }
 
 # The local PDS resolves include: permission sets through its own PLC, which has never heard of blue.morgen, so runs ask for the set's permissions directly.
 local_oauth_scope() {
-    local set="lexicons/blue/morgen/access.json" id expanded scope
+    local set="lexicons/blue/morgen/access.json" id expanded token tokens permissions found=false out=()
     id="$(jq -r .id "$set")"
     expanded="$(jq -r '[.defs.main.permissions[]
         | if .resource == "repo" and (has("action") | not) then .collection[] | "repo:" + .
           else error("bin/verify cannot expand this permission: \(.)") end] | join(" ")' "$set")" || die "could not expand $set"
-    scope="$(oauth_scope)"
-    printf '%s' "${scope/include:$id/$expanded}"
+    read -ra tokens <<<"$(oauth_scope)"
+    for token in "${tokens[@]}"; do
+        case "$token" in
+            "include:$id") read -ra permissions <<<"$expanded"; out+=("${permissions[@]}"); found=true ;;
+            include:*) die "bin/verify cannot expand $token from BLUESKY_OAUTH_SCOPE for the local PDS; only a bare include:$id has an expansion" ;;
+            *) out+=("$token") ;;
+        esac
+    done
+    [ "$found" = true ] || die "BLUESKY_OAUTH_SCOPE has no include:$id to expand"
+    printf '%s' "${out[*]}"
 }
 
 port_free() { ! lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
@@ -101,38 +112,42 @@ claimed_ports() {
     done
 }
 
-# A machine-wide lock for work parallel runs must not interleave; mkdir is atomic, and a dead holder's lock is taken over.
-take_lock() {
-    local lock="$VERIFY_ROOT/.$1.lock" seconds="$2" holder i
+# Parallel ups choose ports and write the state.json that claims them under this lock; mkdir is atomic, and a dead holder's lock is taken over.
+lock_ports() {
+    local lock="$VERIFY_ROOT/.ports.lock" holder i
     mkdir -p "$VERIFY_ROOT"
-    for i in $(seq 1 $((seconds * 10))); do
+    for i in $(seq 1 100); do
         if mkdir "$lock" 2>/dev/null; then
             printf '%s' "$$" >"$lock/pid"
-            trap "release_lock $1" EXIT
+            trap unlock_ports EXIT
             return 0
         fi
         holder="$(cat "$lock/pid" 2>/dev/null || true)"
         if [ -n "$holder" ] && ! alive "$holder"; then rm -rf "$lock"; fi
         sleep 0.1
     done
-    die "$lock is still held after ${seconds}s; remove it if no verify command is running"
+    die "$lock is still held after 10s; remove it if no verify up is running"
 }
 
-release_lock() {
-    rm -rf "$VERIFY_ROOT/.$1.lock"
+unlock_ports() {
+    rm -rf "$VERIFY_ROOT/.ports.lock"
     trap - EXIT
 }
 
-# bunx relinks the driver into one shared cache dir on every call, so two calls at once fail with EEXIST.
-playwright_cli() {
-    local status=0
-    take_lock browser 300
-    bunx "$PLAYWRIGHT_CLI" "$@" || status=$?
-    release_lock browser
-    return "$status"
+alive() { [ -n "${1-}" ] && [ "$1" != null ] && kill -0 "$1" 2>/dev/null; }
+
+pid_start() { ps -o lstart= -p "$1" 2>/dev/null || true; }
+
+record_pid() {
+    set_state "$1" '.pids[$name] = ($pid | tonumber) | .pid_starts[$name] = $start' --arg name "$2" --arg pid "$3" --arg start "$(pid_start "$3")"
 }
 
-alive() { [ -n "${1-}" ] && [ "$1" != null ] && kill -0 "$1" 2>/dev/null; }
+# A pid the OS has since handed to another process must never be signalled, so a run owns a pid only while its start time still matches.
+owned_pid() {
+    local dir="$1" name="$2" pid
+    pid="$(state "$dir" ".pids.$name // empty")"
+    alive "$pid" && [ "$(pid_start "$pid")" = "$(state "$dir" ".pid_starts.$name // empty")" ] && printf '%s' "$pid"
+}
 
 kill_tree() {
     local pid="$1" signal="${2:-TERM}" child
@@ -154,7 +169,7 @@ stop_tree() {
 run_dir() {
     local slug="$1" match
     [[ "$slug" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "slug '$slug' must be lowercase letters, digits and dashes."
-    match="$(ls -d "$VERIFY_ROOT"/*-"$slug" 2>/dev/null | sort | tail -1 || true)"
+    match="$(ls -d "$VERIFY_ROOT"/????-??-??-"$slug" 2>/dev/null | sort | tail -1 || true)"
     [ -n "$match" ] && [ -f "$match/run/state.json" ] || die "no run for slug '$slug'; start one with: verify up $slug"
     printf '%s' "$match"
 }
@@ -163,8 +178,9 @@ state() { jq -r "$2" "$1/run/state.json"; }
 
 set_state() {
     local dir="$1" filter="$2" tmp
+    shift 2
     tmp="$(mktemp)"
-    jq "$filter" "$dir/run/state.json" >"$tmp" && mv "$tmp" "$dir/run/state.json"
+    jq "$@" "$filter" "$dir/run/state.json" >"$tmp" && mv "$tmp" "$dir/run/state.json"
 }
 
 doctor() {
@@ -172,42 +188,41 @@ doctor() {
     ok() { printf '  ok    %s\n' "$1"; }
     bad() { printf '  FAIL  %s\n' "$1"; status=1; }
 
-    for tool in go goose bun jq sqlite3 curl lsof openssl; do
+    for tool in go goose bun node jq sqlite3 curl lsof openssl; do
         if command -v "$tool" >/dev/null; then ok "$tool on PATH"; else bad "$tool missing (see README.md Prerequisites)"; fi
     done
     missing="$(jq -r '(.dependencies + .devDependencies) | keys[]' frontend/package.json \
         | while read -r dep; do [ -f "frontend/node_modules/$dep/package.json" ] || printf '%s ' "$dep"; done)"
     if [ -z "$missing" ]; then ok "frontend dependencies installed"; else bad "frontend dependencies missing (${missing% }); run: bun install --cwd ./frontend --frozen-lockfile"; fi
+    if tools_installed; then ok "verify tools installed ($TOOLS)"; else bad "verify tools missing or outdated; run: bun install --cwd $TOOLS --frozen-lockfile"; fi
     if git check-ignore -q .scratch/verify; then ok ".scratch/verify is gitignored"; else bad ".scratch/verify is not gitignored"; fi
-    if playwright_cli --version >/dev/null 2>&1; then ok "playwright-cli ($PLAYWRIGHT_CLI) resolves"; else bad "bunx $PLAYWRIGHT_CLI failed (needs network once)"; fi
-    ok "instances force APP_ENV=local, fresh secrets, a fresh DB under .scratch/verify, SMTP on 127.0.0.1 only"
+    ok "instances force APP_ENV=local, fresh secrets, a fresh DB under .scratch/verify, loopback-only listeners"
     [ "$status" = 0 ] || { printf 'doctor: FAIL\n'; return 1; }
 
-    local blocked=0
-    if [ "$(node_major)" -ge "$NODE_MAJOR_MIN" ]; then ok "node $(node --version) runs the local PDS"; else
-        printf '  BLOCKED  node %s or newer is missing; the local PDS needs it\n' "$NODE_MAJOR_MIN"; blocked=1; fi
-    if pds_tools_installed; then ok "local PDS tools installed ($PDS_TOOLS)"; else
-        printf '  BLOCKED  local PDS tools missing or outdated; run: bun install --cwd %s --frozen-lockfile\n' "$PDS_TOOLS"; blocked=1; fi
-    if [ "$blocked" = 0 ]; then
+    if [ "$(node_major)" -ge "$NODE_MAJOR_MIN" ]; then
+        ok "node $(node --version) runs the local PDS"
         printf 'doctor: ok\n'
     else
+        printf '  BLOCKED  node %s or newer is missing; the local PDS needs it\n' "$NODE_MAJOR_MIN"
         printf 'doctor: anonymous only (signed-in surfaces are blocked)\n'
         return 3
     fi
 }
 
+# The PDS's admin password and JWT secret are per run, since anything that knows them controls the account.
 start_pds() {
     local dir="$1" plc="$2" pds="$3"
     mkdir -p "$dir/run/pds"
-    (cd "$PDS_TOOLS" && PDS_DATA_DIR="$dir/run/pds" PDS_PORT="$pds" PLC_PORT="$plc" exec node boot.mjs) >"$dir/pds.log" 2>&1 &
-    set_state "$dir" ".pids.pds = $!"
+    (cd "$TOOLS" && PDS_DATA_DIR="$dir/run/pds" PDS_PORT="$pds" PLC_PORT="$plc" \
+        PDS_ADMIN_PASSWORD="$(openssl rand -hex 32)" PDS_JWT_SECRET="$(openssl rand -hex 32)" exec node boot.mjs) >"$dir/pds.log" 2>&1 &
+    record_pid "$dir" pds $!
 }
 
 wait_for_pds() {
     local dir="$1" url="$2" i
     for i in $(seq 1 120); do
         curl -fsS -o /dev/null "$url/xrpc/com.atproto.server.describeServer" 2>/dev/null && return 0
-        alive "$(state "$dir" .pids.pds)" || return 1
+        [ -n "$(owned_pid "$dir" pds)" ] || return 1
         sleep 0.5
     done
     return 1
@@ -220,20 +235,26 @@ run_handle() {
     printf '%s.test' "$name"
 }
 
-# The passwords stay in run/account.json (0600) and the server's environment; nothing prints them.
+# Secrets travel through stdin and the environment, never argv, and land only in run/account.json and the server's environment.
 create_account() {
     local dir="$1" url="$2" handle="$3" password created app
     password="$(openssl rand -hex 24)"
-    created="$(jq -n --arg handle "$handle" --arg password "$password" '{handle: $handle, email: "verify@example.com", password: $password}' \
+    created="$(ACCOUNT_PASSWORD="$password" jq -n --arg handle "$handle" '{handle: $handle, email: "verify@example.com", password: env.ACCOUNT_PASSWORD}' \
         | curl -fsS -X POST -H 'content-type: application/json' --data @- "$url/xrpc/com.atproto.server.createAccount")" || return 1
-    app="$(curl -fsS -X POST -H 'content-type: application/json' -H "authorization: Bearer $(jq -r .accessJwt <<<"$created")" \
-        --data '{"name":"verify"}' "$url/xrpc/com.atproto.server.createAppPassword")" || return 1
-    (umask 077; jq -n --argjson created "$created" --argjson app "$app" --arg password "$password" \
-        '{handle: $created.handle, did: $created.did, password: $password, app_password: $app.password}' >"$dir/run/account.json")
-    set_state "$dir" ".pds.handle = $(jq '.handle' <<<"$created") | .pds.did = $(jq '.did' <<<"$created")"
+    app="$(jq -r '"authorization: Bearer " + .accessJwt' <<<"$created" \
+        | curl -fsS -X POST -H @- -H 'content-type: application/json' --data '{"name":"verify"}' "$url/xrpc/com.atproto.server.createAppPassword")" || return 1
+    ACCOUNT_PASSWORD="$password" APP_PASSWORD="$(jq -r .password <<<"$app")" \
+        jq '{handle, did, password: env.ACCOUNT_PASSWORD, app_password: env.APP_PASSWORD}' <<<"$created" >"$dir/run/account.json"
+    set_state "$dir" '.pds.handle = $handle | .pds.did = $did' --arg handle "$(jq -r .handle <<<"$created")" --arg did "$(jq -r .did <<<"$created")"
 }
 
 oauth_private_key() { openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt | openssl base64 -A; }
+
+# Until up succeeds, any exit (a failed step, set -e, INT or TERM) stops what it started, so no half-started run holds its slug.
+abort_up() {
+    say "up did not finish; stopping what it started"
+    down_run "$1" false
+}
 
 up() {
     local slug="$1" fetch="${2:-0}" dir run http smtp vite plc="" pds="" claimed dev=false pds_url="" plc_url="" handle="" password="" scope server_pid i
@@ -244,11 +265,13 @@ up() {
     if [ -f "$run/state.json" ] && [[ "$(state "$dir" .status)" =~ ^(up|starting)$ ]]; then
         die "run '$slug' is already up at $(state "$dir" .base_url); run: verify down $slug"
     fi
+    if [ "$(node_major)" -ge "$NODE_MAJOR_MIN" ] && tools_installed; then dev=true; fi
+    if [ "$dev" = true ]; then scope="$(local_oauth_scope)"; else scope="$(oauth_scope)"; fi
     mkdir -p "$run"
-    pds_available && dev=true
 
-    # Parallel ups choose ports and write the state.json that claims them under one lock, so no two pick the same port.
-    take_lock ports 10
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    lock_ports
     claimed="$(claimed_ports)"
     http="$(free_port 8100 "$claimed")"; claimed+=$'\n'"$http"
     smtp="$(free_port 2600 "$claimed")"; claimed+=$'\n'"$smtp"
@@ -263,31 +286,29 @@ up() {
         --arg plc "$plc" --arg pds "$pds" --arg plc_url "$plc_url" --arg pds_url "$pds_url" \
         --arg domain "$NEWSLETTER_DOMAIN" --arg started "$(date -u +%FT%TZ)" --argjson epoch "$(date +%s)" \
         '{slug:$slug, dir:$dir, status:"starting", base_url:$base, http_port:$http, smtp:("127.0.0.1:"+($smtp|tostring)),
-          vite_url:("http://127.0.0.1:"+($vite|tostring)), newsletter_domain:$domain, dev_login:$dev, logged_in:false,
+          vite_url:("http://127.0.0.1:"+($vite|tostring)), newsletter_domain:$domain, logged_in:false,
           pds:(if $dev then {url:$pds_url, plc_url:$plc_url} else null end),
           ports:([$http, $smtp, $vite] + ([$plc, $pds] | map(select(. != "") | tonumber))),
-          pids:{}, started_at:$started, started_epoch:$epoch}' >"$run/state.json"
-    release_lock ports
+          pids:{}, pid_starts:{}, started_at:$started, started_epoch:$epoch}' >"$run/state.json"
+    unlock_ports
+    trap "abort_up $(printf %q "$dir")" EXIT
 
     [ "$dev" = false ] || start_pds "$dir" "$plc" "$pds"
     (cd frontend && exec ./node_modules/.bin/vite --port "$vite" --strictPort) >"$dir/vite.log" 2>&1 &
-    set_state "$dir" ".pids.vite = $!"
+    record_pid "$dir" vite $!
 
-    fail() { down_run "$dir" false; die "$1"; }
     goose -dir internal/database/migrations sqlite3 "$run/morgenblau.db" up >"$run/migrate.log" 2>&1 \
-        || fail "migrations failed; see $run/migrate.log"
-    go build -o "$run/morgenblau" ./cmd/api >"$run/build.log" 2>&1 || fail "go build failed; see $run/build.log"
+        || die "migrations failed; see $run/migrate.log"
+    go build -o "$run/morgenblau" ./cmd/api >"$run/build.log" 2>&1 || die "go build failed; see $run/build.log"
     if [ "$dev" = true ]; then
-        wait_for_pds "$dir" "$pds_url" || fail "the local PDS did not start; see $dir/pds.log"
-        create_account "$dir" "$pds_url" "$(run_handle "$slug")" || fail "could not create the run's account on $pds_url"
+        wait_for_pds "$dir" "$pds_url" || die "the local PDS did not start; see $dir/pds.log"
+        create_account "$dir" "$pds_url" "$(run_handle "$slug")" || die "could not create the run's account on $pds_url"
         handle="$(jq -r .handle "$run/account.json")"
         password="$(jq -r .app_password "$run/account.json")"
-        scope="$(local_oauth_scope)"
-    else
-        scope="$(oauth_scope)"
     fi
 
-    PORT="$http" DB_PATH="$run/morgenblau.db" APP_ENV=local FETCH_INTERVAL_MINUTES="$fetch" \
+    # The run dir as working directory keeps godotenv from loading the checkout's .env into the instance.
+    (cd "$run" && PORT="$http" DB_PATH="$run/morgenblau.db" APP_ENV=local FETCH_INTERVAL_MINUTES="$fetch" \
         VITE_URL="http://127.0.0.1:$vite" DEV_LOGIN_ENABLED="$dev" \
         ATPROTO_HANDLE="$handle" ATPROTO_PASSWORD="$password" ATPROTO_PDS="$pds_url" PLC_URL="$plc_url" \
         SESSION_COOKIE_KEY="$(openssl rand -base64 32)" SESSION_STORE_KEYS="$(openssl rand -base64 32)" \
@@ -295,22 +316,23 @@ up() {
         BLUESKY_CLIENT_ID= BLUESKY_REDIRECT= BLUESKY_OAUTH_CLIENT_NAME= BLUESKY_OAUTH_CLIENT_URI= \
         NEWSLETTER_DOMAIN="$NEWSLETTER_DOMAIN" SMTP_HOSTNAME="$NEWSLETTER_DOMAIN" SMTP_LISTEN_ADDR="127.0.0.1:$smtp" \
         SMTP_TLS_CERT_FILE= SMTP_TLS_KEY_FILE= SMTP_TLS_CERT_B64= SMTP_TLS_KEY_B64= \
-        "$run/morgenblau" >"$dir/server.log" 2>&1 &
+        exec "$run/morgenblau") >"$dir/server.log" 2>&1 &
     server_pid=$!
-    set_state "$dir" ".pids.server = $server_pid"
+    record_pid "$dir" server "$server_pid"
 
     for i in $(seq 1 60); do
         if curl -fsS "http://127.0.0.1:$http/api/health" 2>/dev/null | grep -q '"up"' \
             && curl -fsS -o /dev/null "http://127.0.0.1:$vite/" 2>/dev/null; then
             set_state "$dir" '.status = "up"'
+            trap - EXIT INT TERM
             jq . "$run/state.json"
             return 0
         fi
-        alive "$server_pid" || fail "server exited; see $dir/server.log"
-        alive "$(state "$dir" .pids.vite)" || fail "vite exited; see $dir/vite.log"
+        [ -n "$(owned_pid "$dir" server)" ] || die "server exited; see $dir/server.log"
+        [ -n "$(owned_pid "$dir" vite)" ] || die "vite exited; see $dir/vite.log"
         sleep 1
     done
-    fail "instance not healthy after 60s; see $dir/server.log and $dir/vite.log"
+    die "instance not healthy after 60s; see $dir/server.log and $dir/vite.log"
 }
 
 call() {
@@ -334,9 +356,13 @@ wait_for_jobs() {
     die "sync jobs still active after 120s; inspect: verify api <slug> GET /api/jobs/active"
 }
 
+require_account() {
+    [ "$(state "$1" '.pds != null')" = true ] || die "this run has no local PDS account (doctor exit 3); signed-in surfaces are blocked." 3
+}
+
 login() {
     local dir="$1" status body
-    [ "$(state "$dir" .dev_login)" = true ] || die "this run has no local PDS account (doctor exit 3); signed-in surfaces are blocked." 3
+    require_account "$dir"
     body="$(mktemp)"
     status="$(call "$dir" POST /dev/login "" false "$body")"
     [ "$status" = 204 ] || die "POST /dev/login returned $status: $(cat "$body"); see $dir/server.log and $dir/pds.log"
@@ -346,11 +372,10 @@ login() {
     jq '{logged_in, handle: .pds.handle, did: .pds.did}' "$dir/run/state.json"
 }
 
-# Signs in the way a browser does: the app's /oauth/login, the authorization server's sign-in and consent API, then the app's callback.
-# The AS API refuses cross-site calls, so each request carries the headers its page would send (oauth-provider's create-api-middleware.js).
+# The AS API refuses cross-site calls, so each request carries the origin, referer and csrf cookie-and-header pair its own page would send.
 oauth() {
     local dir="$1" base iss did jar as_jar authorize csrf body consent callback result
-    [ "$(state "$dir" .dev_login)" = true ] || die "this run has no local PDS account (doctor exit 3); signed-in surfaces are blocked." 3
+    require_account "$dir"
     base="$(state "$dir" .base_url)"; iss="$(state "$dir" .pds.url)"; did="$(state "$dir" .pds.did)"
     jar="$dir/run/cookies.txt"; as_jar="$dir/run/as-cookies.txt"
     body="$(mktemp)"
@@ -566,10 +591,10 @@ browser() {
     (cd "$dir" && playwright_cli -s="$(state "$dir" .slug)" ${ARGS[@]+"${ARGS[@]}"})
 }
 
-# playwright-cli echoes every fill value in its output, so this drops the output to keep the password out of the transcript and evidence.
+# playwright-cli echoes every fill value in its output, so this drops the output to keep the password out of the transcript and evidence; fill takes the value only as an argument.
 fill_password() {
     local dir="$1" target="$2"
-    [ -f "$dir/run/account.json" ] || die "this run has no account (doctor exit 3)." 3
+    require_account "$dir"
     if (cd "$dir" && playwright_cli -s="$(state "$dir" .slug)" fill "$target" "$(jq -r .password "$dir/run/account.json")") >/dev/null 2>&1; then
         say "filled the run account password into $target"
     else
@@ -578,15 +603,16 @@ fill_password() {
 }
 
 down_run() {
-    local dir="$1" dry="$2" pid slug
+    local dir="$1" dry="$2" name pid slug
     slug="$(state "$dir" .slug)"
     if [ "$dry" = true ]; then
-        say "would stop server $(state "$dir" .pids.server), vite $(state "$dir" .pids.vite) and PDS $(state "$dir" .pids.pds), close browser session $slug, delete the run DB, PDS data and account"
+        say "would stop server $(owned_pid "$dir" server || true), vite $(owned_pid "$dir" vite || true) and PDS $(owned_pid "$dir" pds || true), close browser session $slug, delete the run DB, PDS data and account"
         return 0
     fi
     (cd "$dir" && playwright_cli -s="$slug" close >/dev/null 2>&1) || true
-    for pid in "$(state "$dir" .pids.server)" "$(state "$dir" .pids.vite)" "$(state "$dir" .pids.pds)"; do
-        if alive "$pid"; then stop_tree "$pid"; fi
+    for name in server vite pds; do
+        pid="$(owned_pid "$dir" "$name" || true)"
+        if [ -n "$pid" ]; then stop_tree "$pid"; fi
     done
     rm -rf "$dir"/run/morgenblau.db* "$dir/run/cookies.txt" "$dir/run/as-cookies.txt" "$dir/run/morgenblau" "$dir/run/pds" "$dir/run/account.json"
     set_state "$dir" '.status = "down" | .logged_in = false'
@@ -595,9 +621,9 @@ down_run() {
 
 # Live runs may belong to another agent, so stale takes only runs with a dead process or past STALE_HOURS.
 stale_reason() {
-    local dir="$1" pid
-    for pid in $(jq -r '.pids[]?' "$dir/run/state.json"); do
-        alive "$pid" || { printf 'process %s is gone' "$pid"; return 0; }
+    local dir="$1" name
+    for name in $(jq -r '.pids | keys[]' "$dir/run/state.json"); do
+        [ -n "$(owned_pid "$dir" "$name" || true)" ] || { printf 'its %s process is gone' "$name"; return 0; }
     done
     if [ $(($(date +%s) - $(state "$dir" '.started_epoch // 0'))) -gt $((STALE_HOURS * 3600)) ]; then
         printf 'started over %s hours ago' "$STALE_HOURS"
@@ -623,8 +649,8 @@ status() {
     for state_file in "$VERIFY_ROOT"/*/run/state.json; do
         [ -f "$state_file" ] || continue
         dir="$(dirname "$(dirname "$state_file")")"
-        jq -c --arg server "$(alive "$(state "$dir" .pids.server)" && echo yes || echo no)" \
-            --arg pds "$(alive "$(state "$dir" .pids.pds)" && echo yes || echo no)" \
+        jq -c --arg server "$([ -n "$(owned_pid "$dir" server || true)" ] && echo yes || echo no)" \
+            --arg pds "$([ -n "$(owned_pid "$dir" pds || true)" ] && echo yes || echo no)" \
             '{slug, status, base_url, logged_in, handle: .pds.handle, server_alive: $server, pds_alive: $pds, dir}' "$state_file"
     done
 }
