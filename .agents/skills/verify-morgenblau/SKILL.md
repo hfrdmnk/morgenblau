@@ -16,7 +16,7 @@ V=.agents/skills/verify-morgenblau/bin/verify
 $V doctor
 ```
 
-Exit `0`: everything is reachable. Exit `3`: no dev account is configured, so only anonymous surfaces (public pages, auth denial, SMTP ingest, jobs without a session) can be driven; every signed-in step is `blocked` with that reason. Exit `1`: fix what it names first. It prints the env keys it read, never their values.
+Run it before the first drive and again after anything surprising. Exit `0`: everything is reachable. Exit `3`: no dev account is configured, so only anonymous surfaces (public pages, auth denial, SMTP ingest, jobs without a session) can be driven; every signed-in step is `blocked` with that reason. Exit `1`: fix what it names first. It prints the env keys it read, never their values.
 
 The dev account is `ATPROTO_HANDLE`, `ATPROTO_PASSWORD` (an app password) and an `https` `ATPROTO_PDS`, in `.env` or the environment. It must be a dedicated development account: runs write real subscription and save records to its PDS. Never ask for or use a personal account.
 
@@ -38,7 +38,9 @@ A sandboxed shell may be unable to bind ports, run `bunx` or read `.env`; rerun 
 
 The instance runs the working tree with `APP_ENV=local`, `DEV_LOGIN_ENABLED` only when doctor found a dev account, the global feed refresher off (`--fetch-minutes N` turns it on), and newsletters on `newsletter.localhost`. It never touches `./data/morgenblau.db` or a server the user already runs on `:8000`.
 
-In the browser, sign in the way a user does: open `/login` and click `Log me in` (`$V browser <slug> click "getByRole('button', { name: 'Log me in' })"`). Run `$V login <slug>` first anyway: it records the PDS baseline cleanup depends on, and both share the server's single dev session. Target elements by role and accessible name, then label; read the page with `snapshot` or `find`. Screenshots take `--filename=<name>.png` and land in the evidence dir.
+In the browser, sign in the way a user does: open `/login` and click `Log me in` (`$V browser <slug> click "getByRole('button', { name: 'Log me in' })"`). Run `$V login <slug>` first anyway: it records the PDS baseline cleanup depends on, and both share the server's single dev session. Target elements by role and accessible name, then label; read the page with `snapshot` or `find`. Use a snapshot ref only for a control without an accessible name, never class names or DOM position.
+
+`$V browser` runs without a prompt, so it passes only the page-level commands in `BROWSER_COMMANDS` (`bin/verify`) and refuses the rest with exit `2` and a one-line reason. `open`, `goto` and `tab-new` take only this run's instance (pass a `/path`). Options that repoint the driver (`--config`, `--profile`, `--browser` and the like), a second session (`-s`) and `run-code` are refused. Every `--filename` and every `upload` file must resolve inside the evidence dir and outside `run/`; relative names resolve from the evidence dir. Page JavaScript goes through `eval`, and waiting for a navigation is a repeated `eval "() => location.href" --raw`. Snapshots, console logs and downloads land in `$E/.playwright-cli/`.
 
 ## Protocol
 
@@ -46,8 +48,8 @@ In the browser, sign in the way a user does: open `/login` and click `Log me in`
 2. `$V up <slug>`, with the slug named after the feature file. The evidence dir is `.scratch/verify/<YYYY-MM-DD>-<slug>/`; call it `E`.
 3. For signed-in features, `$V login <slug>`.
 4. `$V inspect <slug> --out inspect-before`.
-5. Follow the feature file through its user path. After an action that dispatches a job, wait until `$V api <slug> GET /api/jobs/active` returns an empty list, then assert.
-6. Capture the evidence the feature file names, then `$V inspect <slug> --out inspect-after` and compare the two.
+5. Follow the feature file through its user path. After an action that dispatches a job, wait until `$V api <slug> GET /api/jobs/active` returns `null`, then assert.
+6. Capture the evidence the feature file names, then `$V inspect <slug> --out inspect-after` and compare: `diff <(jq -S .counts $E/inspect-before.json) <(jq -S .counts $E/inspect-after.json)`.
 7. Run the feature file's negative proofs.
 8. `$V down <slug>`. It deletes the PDS records this run added (listed in `E/cleanup.log`), closes the browser session, stops the processes `up` started and removes the run DB. Confirm `E` still holds the evidence.
 9. Report.
@@ -69,7 +71,7 @@ A failed or abandoned attempt still runs step 8.
 - Drive the real user path. `$V foreign` and direct SQL may arrange preconditions; the behavior under test comes from a browser action, an API call the frontend makes, or an SMTP delivery.
 - Capture the action and the resulting state: the screen or response, and the `inspect` delta.
 - A step that could not run is not a pass. Proving a feature through a different entry point than the one changed does not count.
-- `fail` means the app misbehaved. When a step fails because the feature file is wrong, fix the feature file and drive again.
+- `fail` means the app misbehaved. When a step fails because the feature file is wrong (a renamed button, a changed flow), fix the feature file and drive again. When it fails because the product is wrong, stop driving that feature and report the bug with its evidence; never rewrite the feature file around it.
 - `blocked` names its reason: doctor exit 3 for a signed-in step, an unreachable network for PDS or feed calls, a sandbox that cannot bind ports.
 
 ## Report
@@ -92,4 +94,4 @@ static checks: <commands and results>
 - Newsletter mail goes only to the instance's `127.0.0.1` SMTP port. The app sends no outbound mail and has no payments or admin panel.
 - Keep secrets out of evidence: never print or save the dev account password or the session cookie (`run/cookies.txt` is deleted by `down`).
 - Never kill processes by name; `down` stops the process ids `up` recorded.
-- Cleanup never deletes evidence.
+- Cleanup never deletes evidence. Evidence never leaves the machine.

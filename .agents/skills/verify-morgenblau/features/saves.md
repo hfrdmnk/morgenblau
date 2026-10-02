@@ -6,8 +6,8 @@ Help article: none
 
 ## Sub-features
 
-- `save` `POST /api/saves` with `{itemUrl, feedUrl}` answers `201` with the save; repeating it answers `200` with the same `rkey`.
-- `list` `GET /api/saves` lists URL saves and newsletter saves.
+- `save` `POST /api/saves` with `{itemUrl, feedUrl}` answers `201` with the save; repeating it answers `200` with the same `rkey` (that body has no `cid`).
+- `list` `GET /api/saves` lists URL saves (`rkey`, `itemUrl`) and newsletter saves (`kind` `newsletter`, `id`, `entrySlug`, no `rkey`).
 - `unsave` `DELETE /api/saves/{rkey}`.
 
 ## How to reach it
@@ -22,8 +22,8 @@ Preconditions:
 
 - **Save.** `$V api $S POST /api/saves --data '{"itemUrl":"<url>"}' --out save`: `201` with an `rkey`. `inspect`: a `user_saves` row with that rkey and URL.
 - **Idempotent.** Repeat the POST: `200`, same `rkey`, still one row.
-- **List.** `GET /api/saves --out saves`: contains the URL.
-- **Unsave.** `DELETE /api/saves/<rkey>`: success; the row is gone.
+- **List.** `GET /api/saves --out saves`: contains the URL. With a newsletter save from [newsletters](./newsletters.md) in place, it also holds that entry with `kind` `newsletter`; cleanup ignores it because it has no `rkey`.
+- **Unsave.** `DELETE /api/saves/<rkey>`: `204`; the row is gone.
 - **Negative.** `POST /api/saves --data '{}'`: `400` (`itemUrl is required`). `DELETE /api/saves/unknownrkey`: `404`. `GET /api/saves --anon`: `401`.
 
 ## Evidence

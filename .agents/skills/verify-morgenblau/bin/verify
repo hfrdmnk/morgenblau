@@ -16,7 +16,8 @@ USAGE='usage: verify <command> [args]
                                   send the MIME fixture (or -eml FILE) to the instance SMTP receiver, e.g. -to ADDRESS
   foreign <slug>                  arrange a second reader (placeholder DID) with a newsletter address; prints {did,address}
   browser <slug> <playwright-cli command> [args]
-                                  drive a browser session named after the slug; a /path expands to the instance URL
+                                  drive a browser session named after the slug; page-level commands only,
+                                  a /path expands to the instance URL, files stay in the evidence dir
   down <slug> [--dry-run]         delete PDS records the run added, close the browser, stop what up started, drop the DB
   stale [--dry-run]               run down for every run whose processes are still alive
   status                          list runs and whether their processes are alive
@@ -27,6 +28,20 @@ It never touches ./data/morgenblau.db or a server the user already runs.'
 
 PLAYWRIGHT_CLI="@playwright/cli@0.1.22"
 NEWSLETTER_DOMAIN="newsletter.localhost"
+
+# browser runs without a prompt, so it passes only page-level commands; nothing that runs Node code or touches host files.
+BROWSER_COMMANDS=" open close goto go-back go-forward reload
+    snapshot find eval screenshot pdf upload
+    click dblclick fill type select check uncheck hover drag
+    press keydown keyup mousemove mousedown mouseup mousewheel resize
+    dialog-accept dialog-dismiss
+    tab-list tab-new tab-close tab-select
+    console requests request request-headers request-body response-headers response-body
+    list "
+BROWSER_REFUSED_OPTIONS=" config profile persistent browser cdp endpoint extension "
+# playwright-cli's boolean options never take the next argument as a value.
+BROWSER_BOOLEAN_OPTIONS=" headed mobile persistent submit boxes clear full-page hires httpOnly secure static global
+    with-deps dry-run list force only-shell no-shell cursor annotate kill hide all g help json raw version "
 
 ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 cd "$ROOT"
@@ -89,7 +104,10 @@ doctor() {
     for tool in go goose bun jq sqlite3 curl lsof; do
         if command -v "$tool" >/dev/null; then ok "$tool on PATH"; else bad "$tool missing (see README.md Prerequisites)"; fi
     done
-    if [ -d frontend/node_modules ]; then ok "frontend/node_modules present"; else bad "frontend dependencies missing; run: bun install --cwd ./frontend"; fi
+    local missing
+    missing="$(jq -r '(.dependencies + .devDependencies) | keys[]' frontend/package.json \
+        | while read -r dep; do [ -f "frontend/node_modules/$dep/package.json" ] || printf '%s ' "$dep"; done)"
+    if [ -z "$missing" ]; then ok "frontend dependencies installed"; else bad "frontend dependencies missing (${missing% }); run: bun install --cwd ./frontend --frozen-lockfile"; fi
     if [ -f .env ]; then ok ".env present"; else bad ".env missing; copy .env.example and fill the keys it documents"; fi
 
     for key in SESSION_COOKIE_KEY SESSION_STORE_KEYS BLUESKY_OAUTH_PRIVATE_KEY; do
@@ -270,25 +288,118 @@ foreign() {
     state "$dir" .foreign
 }
 
-browser() {
-    local dir="$1" base arg args=()
-    shift
-    base="$(state "$dir" .base_url)"
-    [ $# -gt 0 ] || die "browser needs a playwright-cli command; see: bunx $PLAYWRIGHT_CLI --help"
-    case "$1" in
-        open|goto|tab-new)
-            args+=("$1"); shift
-            for arg in "$@"; do
-                case "$arg" in
-                    /*) args+=("$base$arg") ;;
-                    about:blank|"$base"|"$base"/*|-*) args+=("$arg") ;;
-                    *://*) die "browser only opens this run's instance ($base); pass a /path." ;;
-                    *) args+=("$arg") ;;
-                esac
-            done ;;
-        *) args=("$@") ;;
+refuse() { printf 'verify browser refused: %s\n' "$1" >&2; exit 2; }
+
+# A file the driver reads or writes must sit in the evidence dir, outside run/ (cookies, DB), also through symlinks.
+check_evidence_path() {
+    local dir="$1" path="$2" existing rest="" real root
+    [ -n "$path" ] || refuse "a file argument needs a path inside the evidence dir."
+    case "/$path/" in */../*) refuse "$path climbs with '..'; name a path inside the evidence dir." ;; esac
+    [[ "$path" = /* ]] || path="$dir/$path"
+    root="$(cd "$dir" && pwd -P)"
+    existing="$path"
+    while [ ! -e "$existing" ] && [ ! -L "$existing" ]; do
+        rest="/$(basename "$existing")$rest"
+        existing="$(dirname "$existing")"
+    done
+    if [ -d "$existing" ]; then
+        real="$(cd "$existing" && pwd -P)$rest"
+    elif [ -L "$existing" ]; then
+        refuse "$2 is a symlink."
+    else
+        real="$(cd "$(dirname "$existing")" && pwd -P)/$(basename "$existing")$rest"
+    fi
+    case "$real" in
+        "$root"/run|"$root"/run/*) refuse "$2 is inside run/, which holds the session cookie and the DB." ;;
+        "$root"/*) ;;
+        *) refuse "$2 resolves outside the evidence dir $dir." ;;
     esac
-    (cd "$dir" && bunx "$PLAYWRIGHT_CLI" -s="$(state "$dir" .slug)" "${args[@]}")
+}
+
+check_browser_option() {
+    local dir="$1" key="$2" value="$3"
+    case "$BROWSER_REFUSED_OPTIONS" in *" $key "*) refuse "--$key points the driver at another browser, profile or config file." ;; esac
+    case "$key" in
+        filename) check_evidence_path "$dir" "$value" ;;
+        s|session) refuse "the session is the run's slug; start another run for a second browser." ;;
+    esac
+}
+
+check_browser_url() {
+    local base="$1" url="$2" unsafe='[[:space:][:cntrl:]\\]'
+    [[ ! "$url" =~ $unsafe ]] || refuse "the URL $url holds whitespace, a control character or a backslash."
+    case "$url" in
+        about:blank|"$base"|"$base"/*) URL="$url" ;;
+        //*) refuse "$url is not on this run's instance ($base); pass a /path." ;;
+        /*) URL="$base$url" ;;
+        *) refuse "$url is not on this run's instance ($base); pass a /path." ;;
+    esac
+}
+
+# Parses arguments the way playwright-cli's minimist does, so what is checked here is what the driver sees.
+guard_browser_args() {
+    local dir="$1" base="$2" count i=0 arg next value key literal=0 command position positions=()
+    shift 2
+    ARGS=("$@"); count=$#
+    while [ "$i" -lt "$count" ]; do
+        arg="${ARGS[$i]}"
+        next="${ARGS[$((i + 1))]-}"
+        value=""
+        if [ "$literal" = 1 ]; then
+            positions+=("$i")
+        elif [ "$arg" = "--" ]; then
+            literal=1
+        elif [[ "$arg" =~ ^--([^=]+)=(.*)$ ]]; then
+            check_browser_option "$dir" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+        elif [[ "$arg" =~ ^--no-(.+)$ ]]; then
+            check_browser_option "$dir" "${BASH_REMATCH[1]}" false
+        elif [[ "$arg" =~ ^--. ]] || [ "$arg" = "-s" ]; then
+            key="${arg#--}"
+            [ "$arg" != "-s" ] || key=s
+            if [ $((i + 1)) -lt "$count" ] && ! [[ "$next" =~ ^--?[^-] ]] && [[ "$BROWSER_BOOLEAN_OPTIONS" != *" $key "* ]]; then
+                value="$next"
+                i=$((i + 1))
+            elif [ "$next" = true ] || [ "$next" = false ]; then
+                i=$((i + 1))
+            fi
+            check_browser_option "$dir" "$key" "$value"
+        elif [[ "$arg" =~ ^-s=(.*)$ ]]; then
+            check_browser_option "$dir" s "${BASH_REMATCH[1]}"
+        elif [[ "$arg" =~ ^-[A-Za-z] ]]; then
+            refuse "the short option $arg is not supported; use its long form."
+        else
+            positions+=("$i")
+        fi
+        i=$((i + 1))
+    done
+    [ "${#positions[@]}" -gt 0 ] || return 0
+    command="${ARGS[${positions[0]}]}"
+    case "$BROWSER_COMMANDS" in
+        *[[:space:]]"$command"[[:space:]]*) ;;
+        *) refuse "'$command' is not a page-level command (see BROWSER_COMMANDS in bin/verify)." ;;
+    esac
+    for ((position = 1; position < ${#positions[@]}; position++)); do
+        case "$command" in
+            open|goto|tab-new)
+                check_browser_url "$base" "${ARGS[${positions[$position]}]}"
+                ARGS[${positions[$position]}]="$URL" ;;
+            upload) check_evidence_path "$dir" "${ARGS[${positions[$position]}]}" ;;
+        esac
+    done
+}
+
+browser() {
+    local dir="$1" config var
+    shift
+    [ $# -gt 0 ] || die "browser needs a playwright-cli command; see: verify browser <slug> --help"
+    for config in "$dir/.playwright/cli.config.json" "$HOME/.playwright/cli.config.json"; do
+        [ ! -e "$config" ] || refuse "$config would reconfigure the driver; move it away first."
+    done
+    guard_browser_args "$dir" "$(state "$dir" .base_url)" "$@"
+    for var in $(compgen -e); do
+        case "$var" in PLAYWRIGHT_*|PWTEST_*|PW_*|NODE_OPTIONS) unset "$var" ;; esac
+    done
+    (cd "$dir" && bunx "$PLAYWRIGHT_CLI" -s="$(state "$dir" .slug)" ${ARGS[@]+"${ARGS[@]}"})
 }
 
 cleanup_pds() {
