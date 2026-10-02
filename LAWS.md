@@ -24,6 +24,12 @@ Newsletter addresses, messages, and saves are server-owned and scoped by DID in 
 
 The schema and owner-scoped queries live in [`internal/database/`](internal/database/); private behavior lives in [`internal/newsletter/`](internal/newsletter/) and the newsletter API. See [SPEC.md](SPEC.md#private-newsletter-data).
 
-**Check by hand:** Inspect the newsletter foreign keys and DID filters, then follow a newsletter save and a public URL save from the reader to their separate storage paths. Open an unapproved newsletter message and confirm remote images are blocked by default.
+**Enforced by:**
 
-An intentional change to a law updates [SPEC.md](SPEC.md), this file, and its behavioral tests together. There is no changed-file exception for the law checks.
+- Relational owner scoping: `TestEveryNewsletterTableIsOwnerScopedBySchema` in [`newsletter_schema_test.go`](internal/database/newsletter_schema_test.go) and the cross-owner inserts in `TestNewsletterMigrationsFreshUpDown`.
+- DID filters in every query: `TestNewsletterQueriesAreScopedByOwnerDID` and `TestNewsletterTablesAreQueriedOnlyThroughSQLFiles` in [`newsletter_queries_test.go`](internal/database/newsletter_queries_test.go). An unscoped query needs an entry with its reason in `unscopedNewsletterQueries`.
+- Kept out of the PDS and shared tables: `TestNewsletterTablesStayInNewsletterQueries` for SQL, `TestNewsletterPackageCannotReachPDSOrFeedCache` and `TestOnlyAPIAndServerImportNewsletter` in [`boundary_test.go`](internal/newsletter/boundary_test.go), and `TestNewsletterDeclarationsNeverReachPDSOrSharedTableWrites` in [`newsletter_boundary_test.go`](internal/api/newsletter_boundary_test.go).
+- Private saves: `TestNewsletterSaveStaysPrivateWhenMessageHasPublicWebURL` in [`newsletter_integration_test.go`](internal/api/newsletter_integration_test.go) and `TestNewsletterSaveRouteWritesOnlyPrivateStorage` in [`newsletter_routes_test.go`](internal/server/newsletter_routes_test.go).
+- Remote images: `TestBlockedNewsletterBodyFetchesNothingRemote` in [`mime_test.go`](internal/newsletter/mime_test.go), `TestNewsletterSMTPToAuthenticatedEntryFlow`, `TestRemoteImagePermissionIsRememberedPerMessage`, and [`newsletter-images.test.tsx`](frontend/src/components/newsletter-images.test.tsx).
+
+An intentional change to a law updates [SPEC.md](SPEC.md), this file, and the checks that enforce it together. There is no changed-file exception for the law checks.

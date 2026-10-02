@@ -185,7 +185,7 @@ func (s *Service) processNext(ctx context.Context) (bool, error) {
 		}
 		for _, asset := range parsed.Assets {
 			if err := q.CreateNewsletterInlineAsset(ctx, db.CreateNewsletterInlineAssetParams{
-				Token: asset.Token, MessageID: insertedID, ContentID: asset.ContentID, MediaType: asset.MediaType,
+				Token: asset.Token, Did: receipt.Did, MessageID: insertedID, ContentID: asset.ContentID, MediaType: asset.MediaType,
 				Data: asset.Data, ContentHash: asset.ContentHash, CreatedAt: now,
 			}); err != nil {
 				return err

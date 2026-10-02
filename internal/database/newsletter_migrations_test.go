@@ -120,10 +120,12 @@ func assertNewsletterForeignKeysRejectCrossOwnerRows(t *testing.T, db *sql.DB) {
 		{"cross-owner message", `INSERT INTO newsletter_messages (id, did, source_id, entry_slug, dedupe_key, sender_address, received_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '', ?, ?, ?)`, []any{"message-b", "did:plc:reader-b", "source-a", "message-b", "dedupe-b", now, now, now}},
 		{"cross-owner save", `INSERT INTO newsletter_saves (id, did, message_id, created_at) VALUES (?, ?, ?, ?)`, []any{"save-b", "did:plc:reader-b", "message-a", now}},
 		{"cross-owner receipt", `INSERT INTO newsletter_receipts (id, did, envelope_from, recipient, recipient_local_part, received_at, raw_mime, reserved_bytes, created_at) VALUES (?, ?, '', ?, ?, ?, X'01', 1, ?)`, []any{"receipt-b", "did:plc:reader-a", "reader-b-random@inbound.example", "reader-b-random", now, now}},
+		{"ownerless address", `INSERT INTO newsletter_addresses (did, local_part, created_at) VALUES (NULL, ?, ?)`, []any{"ownerless-random", now}},
+		{"cross-owner inline asset", `INSERT INTO newsletter_inline_assets (token, did, message_id, content_id, media_type, data, content_hash, created_at) VALUES (?, ?, ?, 'logo', 'image/png', X'01', 'hash', ?)`, []any{"asset-b", "did:plc:reader-b", "message-a", now}},
 	}
 	for _, statement := range statements {
-		if _, err := db.Exec(statement.query, statement.args...); err == nil {
-			t.Errorf("%s insert succeeded", statement.name)
+		if _, err := db.Exec(statement.query, statement.args...); err == nil || !strings.Contains(err.Error(), "constraint failed") {
+			t.Errorf("%s insert error = %v, want a constraint failure", statement.name, err)
 		}
 	}
 }

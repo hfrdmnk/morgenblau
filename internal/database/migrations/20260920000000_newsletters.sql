@@ -1,7 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE newsletter_addresses (
-    did        TEXT PRIMARY KEY,
+    did        TEXT PRIMARY KEY NOT NULL,
     local_part TEXT NOT NULL UNIQUE,
     created_at TEXT NOT NULL,
     UNIQUE (did, local_part)

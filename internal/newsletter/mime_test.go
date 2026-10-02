@@ -134,3 +134,33 @@ func TestParseMIMEMultipleStructuredForwardsKeepOuterIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestBlockedNewsletterBodyFetchesNothingRemote(t *testing.T) {
+	vectors := map[string]string{
+		"protocol-relative src": `<img src="//tracker.example/p.gif">`,
+		"uppercase scheme":      `<img src="HTTPS://tracker.example/p.gif">`,
+		"padded src":            `<img src="  https://tracker.example/p.gif  ">`,
+		"entity-encoded src":    `<img src="https&#58;&#47;&#47;tracker.example/p.gif">`,
+		"srcset only":           `<img srcset="https://tracker.example/p.gif 1x">`,
+		"legacy img sources":    `<img lowsrc="https://tracker.example/low.gif" dynsrc="https://tracker.example/clip.avi">`,
+		"picture source":        `<picture><source srcset="https://tracker.example/p.webp"><img alt="cover"></picture>`,
+		"inline style":          `<div style="background:url(https://tracker.example/bg.png)">x</div>`,
+		"style element":         `<style>@import url(https://tracker.example/s.css); p{background:url(https://tracker.example/bg.png)}</style><p>x</p>`,
+		"table background":      `<table background="https://tracker.example/bg.png"><tr><td background="https://tracker.example/td.png">x</td></tr></table>`,
+		"stylesheet link":       `<link rel="stylesheet" href="https://tracker.example/s.css"><p>x</p>`,
+		"video poster":          `<video poster="https://tracker.example/poster.png" src="https://tracker.example/v.mp4"></video>`,
+		"audio":                 `<audio src="https://tracker.example/a.mp3"></audio>`,
+		"image input":           `<input type="image" src="https://tracker.example/p.gif">`,
+		"svg image":             `<svg><image href="https://tracker.example/p.svg"></image></svg>`,
+		"embedded documents":    `<iframe src="https://tracker.example/f"></iframe><object data="https://tracker.example/o"></object><embed src="https://tracker.example/e">`,
+		"meta refresh":          `<meta http-equiv="refresh" content="0;url=https://tracker.example/r">`,
+	}
+	for name, raw := range vectors {
+		t.Run(name, func(t *testing.T) {
+			blocked, _, _ := sanitizeNewsletterHTML(raw, nil)
+			if strings.Contains(blocked, "tracker.example") {
+				t.Fatalf("blocked body still references the remote host: %s", blocked)
+			}
+		})
+	}
+}

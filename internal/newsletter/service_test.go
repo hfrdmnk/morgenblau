@@ -304,6 +304,7 @@ func TestRemoteImagePermissionIsRememberedPerMessage(t *testing.T) {
 	ctx := context.Background()
 	sourceID := seedSource(t, writer, "did:plc:alice", "source-a", SourceActive)
 	messageID := seedMessage(t, writer, "did:plc:alice", sourceID, "images", "dedupe-images")
+	seedMessage(t, writer, "did:plc:alice", sourceID, "other", "dedupe-other")
 
 	message, err := service.AllowRemoteImages(ctx, "did:plc:alice", messageID)
 	if err != nil {
@@ -315,6 +316,10 @@ func TestRemoteImagePermissionIsRememberedPerMessage(t *testing.T) {
 	again, err := service.GetMessageBySlug(ctx, "did:plc:alice", "images")
 	if err != nil || !again.RemoteImagesAllowed || again.BodyHTML != "<p>remote</p>" {
 		t.Fatalf("remembered message = %+v, %v", again, err)
+	}
+	other, err := service.GetMessageBySlug(ctx, "did:plc:alice", "other")
+	if err != nil || other.RemoteImagesAllowed || !other.HasBlockedRemoteImages || other.BodyHTML != "<p>blocked</p>" {
+		t.Fatalf("other message after consent elsewhere = %+v, %v", other, err)
 	}
 }
 
