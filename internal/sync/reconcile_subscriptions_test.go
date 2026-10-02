@@ -75,7 +75,7 @@ func runStandardReconcile(t *testing.T, store *fakeStore, lister *fakeLister, pd
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = eng.reconcileTier1(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice"), snapshot, snapshotAt, func(url string) {
+	_, _, err = eng.reconcileTier1(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice"), snapshot, snapshotAt, func(url string) {
 		mu.Lock()
 		added = append(added, url)
 		mu.Unlock()
@@ -324,7 +324,7 @@ func TestStandardReconcile_ListErrorAbortsBeforeDeletes(t *testing.T) {
 	snapshot, _ := store.ListUserSubscriptionsForSync(context.Background(), "did:plc:alice")
 
 	lister.standardErr = errors.New("pds down")
-	err := eng.reconcileTier1(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice"), snapshot, eng.now().UTC(), func(string) {})
+	_, _, err := eng.reconcileTier1(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice"), snapshot, eng.now().UTC(), func(string) {})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -334,7 +334,7 @@ func TestStandardReconcile_ListErrorAbortsBeforeDeletes(t *testing.T) {
 
 	lister.standardErr = nil
 	lister.subsErr = errors.New("pds down")
-	err = eng.reconcileTier1(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice"), snapshot, eng.now().UTC(), func(string) {})
+	_, _, err = eng.reconcileTier1(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice"), snapshot, eng.now().UTC(), func(string) {})
 	if err == nil {
 		t.Fatal("expected error")
 	}

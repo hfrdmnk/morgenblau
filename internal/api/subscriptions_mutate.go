@@ -15,7 +15,6 @@ import (
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/lexicon"
-	"morgenblau/internal/standardfeed"
 	"morgenblau/internal/tags"
 )
 
@@ -38,8 +37,8 @@ type patchRequest struct {
 	FeedURL *string   `json:"feedUrl"`
 }
 
-// patchResponse adds JobID so the client can poll the dispatched fetch after a feed URL change.
-type patchResponse struct {
+// subscriptionResponse adds JobID so the client can poll the fetch dispatched by an add or a feed URL change.
+type subscriptionResponse struct {
 	SubscriptionWire
 	JobID string `json:"jobId,omitempty"`
 }
@@ -135,6 +134,13 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 					writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 					return
 				}
+				candidateSite := ""
+				if feed, err := reader.GetFeed(r.Context(), candidate); err == nil {
+					candidateSite = derefStr(feed.SiteUrl)
+				}
+				if rejectCrossKindSite(w, r, reader, didStr, "rss", rssSiblingKey(candidateSite, candidate), "/api/subscriptions PATCH") {
+					return
+				}
 				newFeedURL = candidate
 				feedChanged = true
 				changed = true
@@ -143,7 +149,7 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 
 		if !changed {
 			// No diff: return the existing record without a PDS hit.
-			writeJSON(w, patchResponse{SubscriptionWire: rowToWire(row)})
+			writeJSON(w, subscriptionResponse{SubscriptionWire: rowToWire(row)})
 			return
 		}
 
@@ -173,24 +179,21 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			if row.SidecarRkey != nil {
 				existingSidecarRkey = *row.SidecarRkey
 			}
-			result, ok := writeSidecarPair(r.Context(), w, sess, pds, sidecarWriteSpec{
-				Sidecar:           record,
-				SidecarCollection: syntax.NSID(subscriptionCollection),
-				SidecarRkey:       existingSidecarRkey,
-				SidecarOp:         "/api/subscriptions PATCH: PDS sidecar write failed",
-			})
-			if !ok {
-				return
-			}
-			sidecarRkey := result.SidecarRkey
-			mirrorOrRepair(r.Context(), disp, sess, "/api/subscriptions PATCH: standardfeed Tier-1 upsert", func() error {
+			result, ok := commitThenMirror(r.Context(), disp, sess, "/api/subscriptions PATCH: standardfeed Tier-1 upsert", func() (sidecarWriteResult, bool) {
+				return writeSidecarPair(r.Context(), w, sess, pds, sidecarWriteSpec{
+					Sidecar:           record,
+					SidecarCollection: syntax.NSID(subscriptionCollection),
+					SidecarRkey:       existingSidecarRkey,
+					SidecarOp:         "/api/subscriptions PATCH: PDS sidecar write failed",
+				})
+			}, func(result sidecarWriteResult) error {
 				return writer.UpsertUserSubscription(r.Context(), db.UpsertUserSubscriptionParams{
 					Did:         didStr,
 					Rkey:        rkey,
 					AtUri:       row.AtUri,
 					FeedUrl:     row.FeedUrl,
 					Kind:        row.Kind,
-					SidecarRkey: &sidecarRkey,
+					SidecarRkey: &result.SidecarRkey,
 					Title:       newTitle,
 					IsPrimary:   newPrimary,
 					Tags:        newTags,
@@ -198,12 +201,16 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 					UpdatedAt:   now,
 				})
 			})
+			if !ok {
+				return
+			}
+			sidecarRkey := result.SidecarRkey
 			row.Title = newTitle
 			row.IsPrimary = newPrimary
 			row.Tags = newTags
 			row.SidecarRkey = &sidecarRkey
 			row.UpdatedAt = now
-			writeJSON(w, patchResponse{SubscriptionWire: rowToWire(row)})
+			writeJSON(w, subscriptionResponse{SubscriptionWire: rowToWire(row)})
 			return
 		}
 
@@ -232,24 +239,26 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			writeError(w, http.StatusInternalServerError, codeInvalidRecord, "internal error")
 			return
 		}
-		ref, err := pds.PutRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), rkey, record)
-		if err != nil {
-			slog.Warn("/api/subscriptions PATCH: PDS put failed", "err", err)
-			writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
-			return
-		}
 		now := time.Now().UTC().Format(time.RFC3339)
-		// Ensure the Tier-2 catalog row exists before Tier-1 references it (feed_url FK), mirroring the POST contract.
-		if feedChanged {
-			mirrorOrRepair(r.Context(), disp, sess, "/api/subscriptions PATCH: Tier-2 upsert", func() error {
-				return writer.UpsertFeed(r.Context(), db.UpsertFeedParams{
+		ref, ok := commitThenMirror(r.Context(), disp, sess, "/api/subscriptions PATCH: Tier-1 upsert", func() (*atprepo.RecordRef, bool) {
+			ref, err := pds.PutRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), rkey, record)
+			if err != nil {
+				slog.Warn("/api/subscriptions PATCH: PDS put failed", "err", err)
+				writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+				return nil, false
+			}
+			return ref, true
+		}, func(ref *atprepo.RecordRef) error {
+			// Ensure the Tier-2 catalog row exists before Tier-1 references it (feed_url FK), mirroring the POST contract.
+			if feedChanged {
+				if err := writer.UpsertFeed(r.Context(), db.UpsertFeedParams{
 					FeedUrl:   newFeedURL,
 					CreatedAt: now,
 					UpdatedAt: now,
-				})
-			})
-		}
-		mirrorOrRepair(r.Context(), disp, sess, "/api/subscriptions PATCH: Tier-1 upsert", func() error {
+				}); err != nil {
+					return err
+				}
+			}
 			return writer.UpsertUserSubscription(r.Context(), db.UpsertUserSubscriptionParams{
 				Did:       didStr,
 				Rkey:      rkey,
@@ -262,13 +271,16 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 				UpdatedAt: now,
 			})
 		})
+		if !ok {
+			return
+		}
 		row.Title = newTitle
 		row.IsPrimary = newPrimary
 		row.Tags = newTags
 		row.FeedUrl = newFeedURL
 		row.UpdatedAt = now
 		row.AtUri = ref.URI
-		resp := patchResponse{SubscriptionWire: rowToWire(row)}
+		resp := subscriptionResponse{SubscriptionWire: rowToWire(row)}
 		if feedChanged {
 			// The job id lets the client poll /api/jobs/active and refresh once content lands.
 			resp.JobID = disp.StartFetchOneFeed(sess.Data.AccountDID, newFeedURL)
@@ -284,7 +296,6 @@ type RepoWriterLister interface {
 }
 
 // SubscriptionsDeleteHandler tombstones the PDS record(s) and removes the Tier-1 row; the Tier-2 feeds row stays since other users may still subscribe.
-// For standardfeed it also sweeps every duplicate standard record for the publication, since another app may have written one and leaving it would resurrect the subscription on reconcile.
 func SubscriptionsDeleteHandler(reader IndexRkeyReader, deleter IndexDeleter, pds RepoWriterLister, disp RepairDispatcher) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -308,30 +319,24 @@ func SubscriptionsDeleteHandler(reader IndexRkeyReader, deleter IndexDeleter, pd
 			return
 		}
 
-		if row.Kind == "standardfeed" {
-			if !requireStandardWrite(w, sess) {
-				return
+		if row.Kind == "standardfeed" && !requireStandardWrite(w, sess) {
+			return
+		}
+		if _, ok := commitThenMirror(r.Context(), disp, sess, "/api/subscriptions DELETE: Tier-1 delete", func() (struct{}, bool) {
+			if row.Kind == "standardfeed" {
+				return struct{}{}, deleteStandardSubscription(r.Context(), w, sess, pds, row.FeedUrl, derefStr(row.SidecarRkey))
 			}
-			if !sweepDuplicates(r.Context(), w, sess, pds, "/api/subscriptions DELETE: standard record", syntax.NSID(standardfeed.CollectionSubscription), stringField("publication"), row.FeedUrl) {
-				return
-			}
-			if row.SidecarRkey != nil && *row.SidecarRkey != "" {
-				if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), *row.SidecarRkey); err != nil {
-					slog.Warn("/api/subscriptions DELETE: sidecar delete failed", "err", err)
-					writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
-					return
-				}
-			}
-		} else {
 			if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(subscriptionCollection), rkey); err != nil {
 				slog.Warn("/api/subscriptions DELETE: PDS delete failed", "err", err)
 				writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
-				return
+				return struct{}{}, false
 			}
-		}
-		mirrorOrRepair(r.Context(), disp, sess, "/api/subscriptions DELETE: Tier-1 delete", func() error {
+			return struct{}{}, true
+		}, func(struct{}) error {
 			return deleter.DeleteUserSubscription(r.Context(), db.DeleteUserSubscriptionParams{Did: didStr, Rkey: rkey})
-		})
+		}); !ok {
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	})
 }

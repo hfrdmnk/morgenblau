@@ -16,8 +16,10 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
+	"github.com/bluesky-social/indigo/atproto/syntax"
 	gosmtp "github.com/emersion/go-smtp"
 
+	"morgenblau/internal/api"
 	"morgenblau/internal/atidentity"
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/cache/profiles"
@@ -37,6 +39,19 @@ import (
 	internalsync "morgenblau/internal/sync"
 )
 
+// syncDispatcher is the slice of the sync orchestrator the routes dispatch through.
+type syncDispatcher interface {
+	StartManualRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error)
+	StartLoginRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error)
+	StartFetchOneFeed(did syntax.DID, feedURL string) string
+}
+
+// pdsRepo is the reader's PDS as the routes reach it: the shared mutation surface plus OPML import's conditional writes.
+type pdsRepo interface {
+	api.SessionRepo
+	api.ImportRepo
+}
+
 type Server struct {
 	port int
 
@@ -50,7 +65,8 @@ type Server struct {
 	sealer      *cookie.Sealer
 	profiles    *profiles.Cache
 	jobs        *jobs.Tracker
-	sync        *internalsync.Orchestrator
+	sync        syncDispatcher
+	pds         pdsRepo
 	feedfinder  *feedfinder.Finder
 	safeClient  *http.Client
 	newsletters *newsletter.Service
@@ -177,6 +193,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		profiles:    profileCache,
 		jobs:        tracker,
 		sync:        orchestrator,
+		pds:         atprepo.SessionWriter{},
 		feedfinder:  finder,
 		safeClient:  safeClient,
 		newsletters: newsletterService,

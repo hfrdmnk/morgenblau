@@ -3,6 +3,8 @@ import { Link, useParams } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
 import { ArrowRightIcon, ExternalLinkIcon } from '@/components/icons';
+import { NewsletterImages } from '@/components/newsletter-images';
+import { ReaderNotice } from '@/components/reader-notice';
 import { Button } from '@/components/ui/button';
 import { api, ApiError } from '@/lib/api';
 import { parseDigestDate, toDateKey } from '@/lib/digest-dates';
@@ -135,10 +137,6 @@ function ReaderMedia({ entry, onChange }: { entry: ReaderEntry; onChange: (entry
     return null;
 }
 
-function ReaderNotice({ notice }: { notice: string }) {
-    return notice ? <p className="mt-5 text-sm text-muted-foreground" role="status">{notice}</p> : null;
-}
-
 function ArticleExtraction({ entry, onChange, initiallyExtracted, extractionFailed }: {
     entry: ReaderEntry;
     onChange: (entry: ReaderEntry) => void;
@@ -175,43 +173,6 @@ function ArticleExtraction({ entry, onChange, initiallyExtracted, extractionFail
                     <Button disabled={pending} onClick={() => void extract()} variant="secondary">{pending ? 'Loading full article…' : 'Load full article'}</Button>
                 </div>
             ) : null}
-            <ReaderNotice notice={notice} />
-        </>
-    );
-}
-
-function NewsletterImages({ entry, newsletter, onChange }: {
-    entry: ReaderEntry;
-    newsletter: NonNullable<ReaderEntry['newsletter']>;
-    onChange: (entry: ReaderEntry) => void;
-}) {
-    const [pending, setPending] = useState(false);
-    const [notice, setNotice] = useState('');
-
-    async function allowImages() {
-        setPending(true);
-        setNotice('');
-        try {
-            const result = await api<{ body: string; remoteImagesAllowed: boolean; hasBlockedRemoteImages: boolean }>(
-                `/api/newsletters/messages/${encodeURIComponent(newsletter.messageId)}/images`, { method: 'POST' },
-            );
-            onChange({ ...entry, body: result.body, newsletter: { ...newsletter, ...result } });
-        } catch {
-            setNotice('Images could not be loaded. Please try again.');
-        } finally {
-            setPending(false);
-        }
-    }
-
-    return (
-        <>
-            {newsletter.hasBlockedRemoteImages && !newsletter.remoteImagesAllowed ? (
-                <aside className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-lg bg-muted/60 p-4 text-sm">
-                    <div className="max-w-md space-y-1"><p>Remote images are blocked</p><p className="text-muted-foreground">Loading them may tell the sender you opened this message. This choice applies only to this message.</p></div>
-                    <Button disabled={pending} onClick={() => void allowImages()} variant="secondary">{pending ? 'Loading images…' : 'Load images'}</Button>
-                </aside>
-            ) : null}
-
             <ReaderNotice notice={notice} />
         </>
     );

@@ -12,6 +12,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/session"
 )
 
 const mirrorDID = "did:plc:alice"
@@ -55,6 +56,55 @@ type failingSubscriptionMirror struct{ *rkeyIndex }
 
 func (failingSubscriptionMirror) DeleteUserSubscription(context.Context, db.DeleteUserSubscriptionParams) error {
 	return errMirrorDown
+}
+
+// --- commitThenMirror ---
+
+func TestCommitThenMirror_FailedCommitSkipsTheMirror(t *testing.T) {
+	repair := &recordingRepair{}
+	mirrored := false
+	_, ok := commitThenMirror(context.Background(), repair, mirrorSession(), "test", func() (string, bool) {
+		return "", false
+	}, func(string) error {
+		mirrored = true
+		return nil
+	})
+	if ok || mirrored || repair.count() != 0 {
+		t.Fatalf("ok = %v, mirrored = %v, repairs = %d; want a failed commit to stop before any local write", ok, mirrored, repair.count())
+	}
+}
+
+func TestCommitThenMirror_MirrorReceivesTheCommitResult(t *testing.T) {
+	repair := &recordingRepair{}
+	var got string
+	out, ok := commitThenMirror(context.Background(), repair, mirrorSession(), "test", func() (string, bool) {
+		return "at://did:plc:alice/c/3la", true
+	}, func(uri string) error {
+		got = uri
+		return nil
+	})
+	if !ok || out != "at://did:plc:alice/c/3la" || got != out || repair.count() != 0 {
+		t.Fatalf("ok = %v, out = %q, mirrored = %q, repairs = %d", ok, out, got, repair.count())
+	}
+}
+
+func TestCommitThenMirror_MirrorFailureReportsTheCommitAndDispatchesOneRepair(t *testing.T) {
+	repair := &recordingRepair{}
+	_, ok := commitThenMirror(context.Background(), repair, mirrorSession(), "test", func() (string, bool) {
+		return "ref", true
+	}, func(string) error {
+		return errMirrorDown
+	})
+	if !ok {
+		t.Fatal("ok = false; a committed PDS write must be reported as committed")
+	}
+	if got := repair.count(); got != 1 {
+		t.Fatalf("repair dispatches = %d, want 1", got)
+	}
+}
+
+func mirrorSession() *session.Session {
+	return &session.Session{Data: &session.Data{AccountDID: syntax.DID(mirrorDID), SessionID: "sid-1"}}
 }
 
 // --- saves ---

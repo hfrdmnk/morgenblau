@@ -149,3 +149,23 @@ func candidateSiblingKey(c feedfinder.Candidate) (string, string) {
 	}
 	return rssSiblingKey(c.SiteURL, c.FeedURL), kind
 }
+
+// Keyed like the resolve sibling annotation, so the server rejects exactly the candidates the picker disables.
+func rejectCrossKindSite(w http.ResponseWriter, r *http.Request, reader IndexReader, did, kind, siteKey, op string) bool {
+	if siteKey == "" {
+		return false
+	}
+	subs, err := reader.ListUserSubscriptionsWithSiteURL(r.Context(), did)
+	if err != nil {
+		slog.Warn(op+": site sibling probe failed", "err", err)
+		writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
+		return true
+	}
+	for _, s := range subs {
+		if wireKind(s.Kind) != kind && subscriptionSiblingKey(s) == siteKey {
+			writeError(w, http.StatusConflict, codeConflict, "Pick either the RSS feed or the ATProto publication for a site, not both")
+			return true
+		}
+	}
+	return false
+}

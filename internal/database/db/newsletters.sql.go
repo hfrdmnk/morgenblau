@@ -69,13 +69,14 @@ func (q *Queries) CreateNewsletterAddress(ctx context.Context, arg CreateNewslet
 
 const createNewsletterInlineAsset = `-- name: CreateNewsletterInlineAsset :exec
 INSERT INTO newsletter_inline_assets (
-    token, message_id, content_id, media_type, data, content_hash, created_at
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+    token, did, message_id, content_id, media_type, data, content_hash, created_at
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
 ON CONFLICT (message_id, content_id) DO NOTHING
 `
 
 type CreateNewsletterInlineAssetParams struct {
 	Token       string `json:"token"`
+	Did         string `json:"did"`
 	MessageID   string `json:"message_id"`
 	ContentID   string `json:"content_id"`
 	MediaType   string `json:"media_type"`
@@ -87,6 +88,7 @@ type CreateNewsletterInlineAssetParams struct {
 func (q *Queries) CreateNewsletterInlineAsset(ctx context.Context, arg CreateNewsletterInlineAssetParams) error {
 	_, err := q.db.ExecContext(ctx, createNewsletterInlineAsset,
 		arg.Token,
+		arg.Did,
 		arg.MessageID,
 		arg.ContentID,
 		arg.MediaType,
@@ -369,10 +371,7 @@ func (q *Queries) GetNewsletterGlobalStorageBytes(ctx context.Context) (int64, e
 }
 
 const getNewsletterInlineAsset = `-- name: GetNewsletterInlineAsset :one
-SELECT a.token, a.message_id, a.content_id, a.media_type, a.data, a.content_hash, a.created_at
-FROM newsletter_inline_assets a
-JOIN newsletter_messages m ON m.id = a.message_id
-WHERE m.did = ?1 AND a.token = ?2
+SELECT token, did, message_id, content_id, media_type, data, content_hash, created_at FROM newsletter_inline_assets WHERE did = ?1 AND token = ?2
 `
 
 type GetNewsletterInlineAssetParams struct {
@@ -385,6 +384,7 @@ func (q *Queries) GetNewsletterInlineAsset(ctx context.Context, arg GetNewslette
 	var i NewsletterInlineAsset
 	err := row.Scan(
 		&i.Token,
+		&i.Did,
 		&i.MessageID,
 		&i.ContentID,
 		&i.MediaType,

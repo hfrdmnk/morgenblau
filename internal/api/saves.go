@@ -109,18 +109,18 @@ func SavesCreateHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 			writeError(w, http.StatusInternalServerError, codeInvalidRecord, "internal error")
 			return
 		}
-		ref, err := pds.CreateRecord(r.Context(), sess, syntax.NSID(saveCollection), record)
-		if err != nil {
-			slog.Warn("/api/saves: PDS create failed", "err", err)
-			writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
-			return
-		}
-		rkey := atprepo.RkeyFromATURI(ref.URI)
-
-		mirrorOrRepair(r.Context(), disp, sess, "/api/saves: Tier-1 upsert", func() error {
+		ref, ok := commitThenMirror(r.Context(), disp, sess, "/api/saves: Tier-1 upsert", func() (*atprepo.RecordRef, bool) {
+			ref, err := pds.CreateRecord(r.Context(), sess, syntax.NSID(saveCollection), record)
+			if err != nil {
+				slog.Warn("/api/saves: PDS create failed", "err", err)
+				writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+				return nil, false
+			}
+			return ref, true
+		}, func(ref *atprepo.RecordRef) error {
 			return writer.UpsertUserSave(r.Context(), db.UpsertUserSaveParams{
 				Did:       didStr,
-				Rkey:      rkey,
+				Rkey:      atprepo.RkeyFromATURI(ref.URI),
 				AtUri:     ref.URI,
 				ItemUrl:   body.ItemURL,
 				FeedUrl:   nilIfEmpty(body.FeedURL),
@@ -128,6 +128,10 @@ func SavesCreateHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 				UpdatedAt: now,
 			})
 		})
+		if !ok {
+			return
+		}
+		rkey := atprepo.RkeyFromATURI(ref.URI)
 
 		writeJSONStatus(w, http.StatusCreated, SaveWire{
 			URI:       ref.URI,
@@ -166,14 +170,18 @@ func SavesDeleteHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
-		if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(saveCollection), rkey); err != nil {
-			slog.Warn("/api/saves DELETE: PDS delete failed", "err", err)
-			writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+		if _, ok := commitThenMirror(r.Context(), disp, sess, "/api/saves DELETE: Tier-1 delete", func() (struct{}, bool) {
+			if err := pds.DeleteRecord(r.Context(), sess, syntax.NSID(saveCollection), rkey); err != nil {
+				slog.Warn("/api/saves DELETE: PDS delete failed", "err", err)
+				writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+				return struct{}{}, false
+			}
+			return struct{}{}, true
+		}, func(struct{}) error {
+			return writer.DeleteUserSave(r.Context(), db.DeleteUserSaveParams{Did: didStr, Rkey: rkey})
+		}); !ok {
 			return
 		}
-		mirrorOrRepair(r.Context(), disp, sess, "/api/saves DELETE: Tier-1 delete", func() error {
-			return writer.DeleteUserSave(r.Context(), db.DeleteUserSaveParams{Did: didStr, Rkey: rkey})
-		})
 		w.WriteHeader(http.StatusNoContent)
 	})
 }

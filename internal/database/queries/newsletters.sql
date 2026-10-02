@@ -181,15 +181,12 @@ WHERE did = ?1 AND id = ?2;
 
 -- name: CreateNewsletterInlineAsset :exec
 INSERT INTO newsletter_inline_assets (
-    token, message_id, content_id, media_type, data, content_hash, created_at
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+    token, did, message_id, content_id, media_type, data, content_hash, created_at
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
 ON CONFLICT (message_id, content_id) DO NOTHING;
 
 -- name: GetNewsletterInlineAsset :one
-SELECT a.token, a.message_id, a.content_id, a.media_type, a.data, a.content_hash, a.created_at
-FROM newsletter_inline_assets a
-JOIN newsletter_messages m ON m.id = a.message_id
-WHERE m.did = ?1 AND a.token = ?2;
+SELECT * FROM newsletter_inline_assets WHERE did = ?1 AND token = ?2;
 
 -- name: CreateNewsletterSave :exec
 INSERT INTO newsletter_saves (id, did, message_id, created_at)

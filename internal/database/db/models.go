@@ -44,6 +44,7 @@ type NewsletterAddress struct {
 
 type NewsletterInlineAsset struct {
 	Token       string `json:"token"`
+	Did         string `json:"did"`
 	MessageID   string `json:"message_id"`
 	ContentID   string `json:"content_id"`
 	MediaType   string `json:"media_type"`

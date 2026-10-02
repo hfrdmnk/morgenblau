@@ -74,6 +74,35 @@ func TestWithTx_Rollback(t *testing.T) {
 	}
 }
 
+// A deferred FK lets every statement succeed and fails only at COMMIT, the case a closure's nil error cannot vouch for.
+func TestWithTx_CommitErrorPropagates(t *testing.T) {
+	dbs := openTestDB(t)
+	ctx := context.Background()
+	if _, err := dbs.Writer.ExecContext(ctx, `
+CREATE TABLE commit_tripwire_parent (id TEXT PRIMARY KEY);
+CREATE TABLE commit_tripwire (ref TEXT REFERENCES commit_tripwire_parent(id) DEFERRABLE INITIALLY DEFERRED);
+CREATE TRIGGER feeds_commit_tripwire AFTER INSERT ON feeds BEGIN
+    INSERT INTO commit_tripwire (ref) VALUES ('missing');
+END;`); err != nil {
+		t.Fatalf("tripwire: %v", err)
+	}
+
+	var statementErr error
+	err := WithTx(ctx, dbs.Writer, func(q *db.Queries) error {
+		statementErr = q.UpsertFeed(ctx, db.UpsertFeedParams{FeedUrl: "https://d.example.com/feed", CreatedAt: "t", UpdatedAt: "t"})
+		return statementErr
+	})
+	if statementErr != nil {
+		t.Fatalf("statement failed before COMMIT: %v", statementErr)
+	}
+	if err == nil {
+		t.Fatal("WithTx returned nil although COMMIT failed")
+	}
+	if _, err := db.New(dbs.Writer).GetFeed(ctx, "https://d.example.com/feed"); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("row survived the failed commit: err=%v", err)
+	}
+}
+
 func TestWithTx_ReaderSeesCommit(t *testing.T) {
 	dbs := openTestDB(t)
 	ctx := context.Background()

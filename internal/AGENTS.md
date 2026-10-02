@@ -24,7 +24,8 @@ paths:
 ## PDS mutations
 
 - Order is fixed: dedupe, validate against the lexicon, write to the PDS, then mirror into the local index. Never mirror first; the PDS is the authority and the local table is a derived index.
-- The mirror write goes through `mirrorOrRepair` (`internal/api/mirror.go`) and never fails the response: the PDS write it follows already committed, so a failed mirror dispatches a repair sync instead of surfacing an error.
+- A mutation request makes at most one PDS commit; several records go in one `applyWrites`. Routes hand handlers an `api.CommitGate`, which refuses a second commit (law 1 in `LAWS.md`).
+- The commit and its mirror go through `commitThenMirror` (`internal/api/mirror.go`): the mirror runs only after the commit succeeded and never fails the response, so a failed mirror dispatches a repair sync instead of surfacing an error.
 - Outbound atproto HTTP is built by `atxrpc.New`, which installs a per-host cooldown honoring `Retry-After` and rate-limit headers. New fetch loops inherit it by construction; never hand-roll retries or retry-hint parsing at a call site.
 
 ## Testing

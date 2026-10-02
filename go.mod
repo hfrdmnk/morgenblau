@@ -2,6 +2,9 @@ module morgenblau
 
 go 1.26.5
 
+// npm packages (e.g. flatted) ship Go files that ./... would otherwise build and vet
+ignore ./frontend/node_modules
+
 require (
 	github.com/PuerkitoBio/goquery v1.8.0
 	github.com/bluesky-social/indigo v0.0.0-20260428083920-ce62b8fce9e0

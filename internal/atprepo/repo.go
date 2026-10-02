@@ -25,11 +25,12 @@ type RecordRef struct {
 	CID string `json:"cid"`
 }
 
-// RecordWrite is one create operation passed to applyWrites.
+// RecordWrite is one create, or with Delete one delete, passed to applyWrites.
 type RecordWrite struct {
 	Collection syntax.NSID
 	Rkey       syntax.RecordKey
 	Record     map[string]any
+	Delete     bool
 }
 
 // Writer is the slice of PDS operations the subscription endpoints use; production wires SessionWriter, tests inject a fake.
@@ -39,7 +40,7 @@ type Writer interface {
 	DeleteRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey string) error
 }
 
-// AtomicWriter applies creates in one repo commit.
+// AtomicWriter applies creates and deletes in one repo commit.
 type AtomicWriter interface {
 	ApplyWrites(ctx context.Context, sess *session.Session, writes []RecordWrite) ([]*RecordRef, error)
 }
@@ -84,15 +85,15 @@ type deleteRecordBody struct {
 }
 
 type applyWritesBody struct {
-	Repo   string                  `json:"repo"`
-	Writes []applyWritesCreateBody `json:"writes"`
+	Repo   string              `json:"repo"`
+	Writes []applyWritesOpBody `json:"writes"`
 }
 
-type applyWritesCreateBody struct {
+type applyWritesOpBody struct {
 	Type       string         `json:"$type"`
 	Collection string         `json:"collection"`
 	Rkey       string         `json:"rkey,omitempty"`
-	Value      map[string]any `json:"value"`
+	Value      map[string]any `json:"value,omitempty"`
 }
 
 type applyWritesResponse struct {
@@ -124,19 +125,23 @@ func (SessionWriter) ApplyWrites(ctx context.Context, sess *session.Session, wri
 	}
 	body := applyWritesBody{
 		Repo:   sess.Data.AccountDID.String(),
-		Writes: make([]applyWritesCreateBody, 0, len(writes)),
+		Writes: make([]applyWritesOpBody, 0, len(writes)),
 	}
 	for _, write := range writes {
 		rkey, err := syntax.ParseRecordKey(write.Rkey.String())
 		if err != nil {
 			return nil, fmt.Errorf("invalid applyWrites rkey: %w", err)
 		}
-		body.Writes = append(body.Writes, applyWritesCreateBody{
+		op := applyWritesOpBody{
 			Type:       "com.atproto.repo.applyWrites#create",
 			Collection: write.Collection.String(),
 			Rkey:       rkey.String(),
 			Value:      write.Record,
-		})
+		}
+		if write.Delete {
+			op.Type, op.Value = "com.atproto.repo.applyWrites#delete", nil
+		}
+		body.Writes = append(body.Writes, op)
 	}
 
 	var response applyWritesResponse

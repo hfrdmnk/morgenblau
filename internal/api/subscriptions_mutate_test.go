@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -473,18 +474,26 @@ func TestSubscriptionsPatch_Standardfeed_SecondEdit_PutsExistingSidecar(t *testi
 	}
 }
 
-func TestSubscriptionsDelete_Standardfeed_SweepsDuplicatesAndSidecar(t *testing.T) {
+func standardDeleteFixture() (*rkeyIndex, *fakePDS) {
 	idx := newRkeyIndex()
 	idx.seedRow(seedStandardRow(ptrString("3sc")))
 	pds := &fakePDS{listed: map[string][]atprepo.ListedRecord{
 		standardSubCollection: {
 			{URI: "at://did:plc:alice/" + standardSubCollection + "/3std", Value: map[string]any{"publication": testPublication}},
-			// A duplicate written by another app; must be swept too.
+			// A duplicate written by another app; must be removed too.
 			{URI: "at://did:plc:alice/" + standardSubCollection + "/3dup", Value: map[string]any{"publication": testPublication}},
 			// A different publication; must survive.
 			{URI: "at://did:plc:alice/" + standardSubCollection + "/3other", Value: map[string]any{"publication": "at://did:plc:other/site.standard.publication/3x"}},
 		},
+		subscriptionCollection: {
+			{URI: "at://did:plc:alice/" + subscriptionCollection + "/3sc", Value: map[string]any{}},
+		},
 	}}
+	return idx, pds
+}
+
+func TestSubscriptionsDelete_Standardfeed_RemovesDuplicatesAndSidecarInOneCommit(t *testing.T) {
+	idx, pds := standardDeleteFixture()
 	mux := http.NewServeMux()
 	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds, &recordingRepair{}))
 
@@ -500,16 +509,33 @@ func TestSubscriptionsDelete_Standardfeed_SweepsDuplicatesAndSidecar(t *testing.
 		standardSubCollection + "/3dup",
 		"blue.morgen.feed.subscription/3sc",
 	}
-	if len(pds.deleted) != len(want) {
-		t.Fatalf("deleted = %v, want %v", pds.deleted, want)
-	}
-	for i := range want {
-		if pds.deleted[i] != want[i] {
-			t.Errorf("deleted[%d] = %q, want %q", i, pds.deleted[i], want[i])
-		}
+	if pds.applyCalls != 1 || !slices.Equal(pds.appliedDeletes, want) || len(pds.deleted) != 0 {
+		t.Fatalf("applyWrites calls = %d, deletes = %v, single deletes = %v; want one commit deleting %v", pds.applyCalls, pds.appliedDeletes, pds.deleted, want)
 	}
 	if len(idx.deleted) != 1 {
 		t.Errorf("local deletes = %v", idx.deleted)
+	}
+}
+
+func TestSubscriptionsDelete_Standardfeed_SidecarDeleteFailureLeavesEverything(t *testing.T) {
+	idx, pds := standardDeleteFixture()
+	pds.applyErr = errors.New("sidecar delete refused")
+	repair := &recordingRepair{}
+	mux := http.NewServeMux()
+	mux.Handle("DELETE /api/subscriptions/{rkey}", SubscriptionsDeleteHandler(idx, idx, pds, repair))
+
+	req := withStandardWriteSession(httptest.NewRequest(http.MethodDelete, "/api/subscriptions/3std", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502; body = %s", rr.Code, rr.Body.String())
+	}
+	if len(pds.listed[standardSubCollection]) != 3 || len(pds.listed[subscriptionCollection]) != 1 || len(pds.deleted) != 0 {
+		t.Errorf("PDS records = %v, single deletes = %v; a reported failure must leave the existence records and sidecar in place", pds.listed, pds.deleted)
+	}
+	if len(idx.deleted) != 0 || repair.count() != 0 {
+		t.Errorf("local deletes = %v, repairs = %d; want the SQLite row untouched", idx.deleted, repair.count())
 	}
 }
 
@@ -614,7 +640,7 @@ func TestSubscriptionsPatch_FeedURLChange_RepointsAndDispatches(t *testing.T) {
 		t.Errorf("metadata not preserved: title=%v primary=%d", row.Title, row.IsPrimary)
 	}
 	// Response carries the new feed URL and the dispatched job id.
-	var got patchResponse
+	var got subscriptionResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
@@ -730,6 +756,28 @@ func TestSubscriptionsPatch_FeedURLChange_Conflict_409(t *testing.T) {
 	}
 	if len(disp.dispatched) != 0 {
 		t.Errorf("dispatch despite conflict: %v", disp.dispatched)
+	}
+}
+
+func TestSubscriptionsPatch_FeedURLOntoSiteFollowedAsPublication_409(t *testing.T) {
+	idx := newRkeyIndex()
+	idx.seed("did:plc:alice", "3la", "https://old.example.com/feed.xml")
+	seedSiteSubscription(idx.fakeIndex, "standardfeed", testPublication, "https://blog.example.com")
+	pds := &fakePDS{}
+	disp := &fakeDispatcher{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, disp))
+
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
+		strings.NewReader(`{"feedUrl":"https://blog.example.com/feed.xml"}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "not both") {
+		t.Fatalf("status = %d, want 409 with the site conflict message; body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.puts != 0 || len(idx.upsertedFeeds) != 0 || len(disp.dispatched) != 0 {
+		t.Errorf("puts = %d, feeds = %v, fetches = %v, want nothing written", pds.puts, idx.upsertedFeeds, disp.dispatched)
 	}
 }
 

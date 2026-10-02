@@ -22,7 +22,7 @@ func TestSubscriptionsCreate_HappyPath_FullChoiceA(t *testing.T) {
 	disp := &fakeDispatcher{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
 
-	body := `{"subscriptions":[{"feedUrl":"https://example.test/feed.xml","title":"Example","siteUrl":"https://example.test"}]}`
+	body := `{"feedUrl":"https://example.test/feed.xml","title":"Example","siteUrl":"https://example.test"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -30,15 +30,12 @@ func TestSubscriptionsCreate_HappyPath_FullChoiceA(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
-	var got addResponse
+	var got subscriptionResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Records) != 1 {
-		t.Fatalf("records = %d", len(got.Records))
-	}
-	if len(got.JobIDs) != 1 {
-		t.Errorf("jobs = %d", len(got.JobIDs))
+	if got.Rkey == "" || got.JobID == "" {
+		t.Fatalf("response = %+v, want the created record and its fetch job", got)
 	}
 	if pds.creates != 1 {
 		t.Errorf("PDS creates = %d", pds.creates)
@@ -58,7 +55,7 @@ func TestSubscriptionsCreate_StandardfeedRejectsInvalidSidecarBeforePDSWrite(t *
 	idx := newFakeIndex()
 	pds := &fakePDS{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{})
-	body, err := json.Marshal(addRequest{Subscriptions: []addItem{{Publication: testPublication, Title: strings.Repeat("a", 129)}}})
+	body, err := json.Marshal(addRequest{Publication: testPublication, Title: strings.Repeat("a", 129)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +86,7 @@ func TestSubscriptionsCreate_DedupeGuard_Idempotent(t *testing.T) {
 	disp := &fakeDispatcher{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
 
-	body := `{"subscriptions":[{"feedUrl":"https://example.test/feed.xml","title":"NewName"}]}`
+	body := `{"feedUrl":"https://example.test/feed.xml","title":"NewName"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -111,13 +108,16 @@ func TestSubscriptionsCreate_PDSFailure_502(t *testing.T) {
 	disp := &fakeDispatcher{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
 
-	body := `{"subscriptions":[{"feedUrl":"https://example.test/feed.xml"}]}`
+	body := `{"feedUrl":"https://example.test/feed.xml"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusBadGateway {
 		t.Errorf("status = %d, want 502", rr.Code)
+	}
+	if len(idx.upsertedFeeds) != 0 || len(idx.rows) != 0 || len(disp.dispatched) != 0 {
+		t.Errorf("feeds = %v, rows = %v, fetches = %v; a failed PDS commit must leave SQLite untouched", idx.upsertedFeeds, idx.rows, disp.dispatched)
 	}
 }
 
@@ -127,22 +127,28 @@ func TestSubscriptionsCreate_Validation(t *testing.T) {
 		body string
 		want string
 	}{
-		{name: "empty list", body: `{"subscriptions":[]}`, want: "no subscriptions submitted"},
-		{name: "missing feed URL", body: `{"subscriptions":[{"title":"Example"}]}`, want: "subscriptions.0.feedUrl"},
-		{name: "malformed JSON", body: `{"subscriptions":[`, want: "invalid json"},
-		{name: "both feedUrl and publication", body: `{"subscriptions":[{"feedUrl":"https://x/feed.xml","publication":"at://did:plc:p/site.standard.publication/3p"}]}`, want: "subscriptions.0.publication"},
-		{name: "publication not an at-uri", body: `{"subscriptions":[{"publication":"https://not-an-at-uri.example"}]}`, want: "subscriptions.0.publication"},
+		{name: "empty body", body: `{}`, want: `"feedUrl"`},
+		{name: "missing feed URL", body: `{"title":"Example"}`, want: `"feedUrl"`},
+		{name: "several sources in one request", body: `{"subscriptions":[{"feedUrl":"https://example.test/a.xml"},{"feedUrl":"https://example.test/b.xml"}]}`, want: `"feedUrl"`},
+		{name: "a list of sources", body: `[{"feedUrl":"https://example.test/a.xml"}]`, want: "invalid json"},
+		{name: "malformed JSON", body: `{"feedUrl":`, want: "invalid json"},
+		{name: "both feedUrl and publication", body: `{"feedUrl":"https://x/feed.xml","publication":"at://did:plc:p/site.standard.publication/3p"}`, want: `"publication"`},
+		{name: "publication not an at-uri", body: `{"publication":"https://not-an-at-uri.example"}`, want: `"publication"`},
 	}
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			h := SubscriptionsCreateHandler(newFakeIndex(), newFakeIndex(), &fakePDS{}, &fakeDispatcher{})
+			pds := &fakePDS{}
+			h := SubscriptionsCreateHandler(newFakeIndex(), newFakeIndex(), pds, &fakeDispatcher{})
 			req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(tt.body)), "did:plc:alice", "sid-1")
 			rr := httptest.NewRecorder()
 			h.ServeHTTP(rr, req)
 
 			if rr.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400; body = %s", rr.Code, rr.Body.String())
+			}
+			if pds.creates != 0 || pds.applyCalls != 0 {
+				t.Errorf("PDS writes = creates:%d applyWrites:%d, want none", pds.creates, pds.applyCalls)
 			}
 			if !strings.Contains(rr.Body.String(), tt.want) {
 				t.Errorf("body = %q, want substring %q", rr.Body.String(), tt.want)
@@ -151,12 +157,124 @@ func TestSubscriptionsCreate_Validation(t *testing.T) {
 	}
 }
 
+const blogFeed = "https://blog.example.com/feed.xml"
+
+// seedSiteSubscription gives alice one subscription of kind keyed by feedURL, with siteURL as its catalog site_url (nil when empty).
+func seedSiteSubscription(idx *fakeIndex, kind, feedURL, siteURL string) {
+	if idx.rows["did:plc:alice"] == nil {
+		idx.rows["did:plc:alice"] = map[string]db.UserSubscription{}
+	}
+	idx.rows["did:plc:alice"][feedURL] = db.UserSubscription{
+		Did:     "did:plc:alice",
+		Rkey:    "3la" + kind,
+		AtUri:   "at://did:plc:alice/blue.morgen.feed.subscription/3la" + kind,
+		FeedUrl: feedURL,
+		Kind:    kind,
+		Title:   ptrString("Example Blog"),
+	}
+	idx.siteURLs[feedURL] = nilIfEmpty(siteURL)
+}
+
+func TestSubscriptionsCreate_SameSiteAsOtherKind_409WithoutPDSWrite(t *testing.T) {
+	cases := []struct {
+		name                      string
+		existingKind, existingKey string
+		existingSite, body        string
+		standardWrite             bool
+	}{
+		{
+			name:         "rss feed for a site followed as a publication",
+			existingKind: "standardfeed", existingKey: testPublication, existingSite: "https://blog.example.com",
+			body: `{"feedUrl":"` + blogFeed + `","title":"Example Blog","siteUrl":"https://www.blog.example.com/"}`,
+		},
+		{
+			name:         "publication for a site followed as an rss feed",
+			existingKind: "rss", existingKey: blogFeed, existingSite: "https://blog.example.com/",
+			body:          `{"publication":"` + testPublication + `","siteUrl":"https://blog.example.com"}`,
+			standardWrite: true,
+		},
+		{
+			name:         "publication for a site whose rss feed declares no site link",
+			existingKind: "rss", existingKey: blogFeed,
+			body:          `{"publication":"` + testPublication + `","siteUrl":"https://blog.example.com"}`,
+			standardWrite: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			idx := newFakeIndex()
+			seedSiteSubscription(idx, tc.existingKind, tc.existingKey, tc.existingSite)
+			pds := &fakePDS{}
+			disp := &fakeDispatcher{}
+			h := SubscriptionsCreateHandler(idx, idx, pds, disp)
+			req := httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(tc.body))
+			if tc.standardWrite {
+				req = withStandardWriteSession(req, "did:plc:alice", "sid-1")
+			} else {
+				req = withSession(req, "did:plc:alice", "sid-1")
+			}
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusConflict {
+				t.Fatalf("status = %d, want 409; body = %s", rr.Code, rr.Body.String())
+			}
+			var body struct{ Code, Message string }
+			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Code != codeConflict || body.Message != "Pick either the RSS feed or the ATProto publication for a site, not both" {
+				t.Errorf("body = %+v", body)
+			}
+			if pds.creates != 0 || pds.applyCalls != 0 || pds.listCalls != 0 {
+				t.Errorf("PDS calls = creates:%d applyWrites:%d lists:%d, want none", pds.creates, pds.applyCalls, pds.listCalls)
+			}
+			if len(idx.upsertedFeeds) != 0 || len(disp.dispatched) != 0 {
+				t.Errorf("feeds = %v, fetches = %v, want SQLite and jobs untouched", idx.upsertedFeeds, disp.dispatched)
+			}
+		})
+	}
+}
+
+func TestSubscriptionsCreate_SameSiteSameKindIsAllowed(t *testing.T) {
+	idx := newFakeIndex()
+	seedSiteSubscription(idx, "rss", blogFeed, "https://blog.example.com/")
+	pds := &fakePDS{}
+	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{})
+
+	body := `{"feedUrl":"https://blog.example.com/comments.xml","siteUrl":"https://blog.example.com/"}`
+	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK || pds.creates != 1 {
+		t.Fatalf("status = %d, creates = %d, want a second feed for the same site added; body = %s", rr.Code, pds.creates, rr.Body.String())
+	}
+}
+
+func TestSubscriptionsCreate_ExistingBothKindsStayIdempotent(t *testing.T) {
+	idx := newFakeIndex()
+	seedSiteSubscription(idx, "rss", blogFeed, "https://blog.example.com/")
+	seedSiteSubscription(idx, "standardfeed", testPublication, "https://blog.example.com")
+	pds := &fakePDS{}
+	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{})
+
+	body := `{"feedUrl":"` + blogFeed + `","siteUrl":"https://blog.example.com/"}`
+	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK || pds.creates != 0 {
+		t.Fatalf("status = %d, creates = %d, want the existing subscription returned untouched; body = %s", rr.Code, pds.creates, rr.Body.String())
+	}
+}
+
 func TestSubscriptionsCreate_DedupeProbeError_500(t *testing.T) {
 	idx := newFakeIndex()
 	idx.getFeedErr = errors.New("database unavailable")
 	h := SubscriptionsCreateHandler(idx, idx, &fakePDS{}, &fakeDispatcher{})
 
-	body := `{"subscriptions":[{"feedUrl":"https://example.test/feed.xml"}]}`
+	body := `{"feedUrl":"https://example.test/feed.xml"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -180,7 +298,7 @@ func TestSubscriptionsCreate_Tier1Failure_DispatchesSyncUser(t *testing.T) {
 	disp := &fakeDispatcher{}
 	h := SubscriptionsCreateHandler(idx, writer, pds, disp)
 
-	body := `{"subscriptions":[{"feedUrl":"https://example.test/feed.xml","title":"Example"}]}`
+	body := `{"feedUrl":"https://example.test/feed.xml","title":"Example"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -203,7 +321,7 @@ func TestSubscriptionsCreate_Standardfeed_DefaultsCreateOnlyStandardRecord(t *te
 	disp := &fakeDispatcher{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
 
-	body := `{"subscriptions":[{"publication":"` + testPublication + `","siteUrl":"https://blog.example"}]}`
+	body := `{"publication":"` + testPublication + `","siteUrl":"https://blog.example"}`
 	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -262,14 +380,11 @@ func TestSubscriptionsCreate_Standardfeed_DefaultsCreateOnlyStandardRecord(t *te
 		t.Errorf("dispatched = %v", disp.dispatched)
 	}
 
-	var got addResponse
+	var got subscriptionResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Records) != 1 {
-		t.Fatalf("records = %d", len(got.Records))
-	}
-	wire := got.Records[0]
+	wire := got.SubscriptionWire
 	if wire.Kind != "standardfeed" || wire.Publication != testPublication || wire.FeedURL != testPublication {
 		t.Errorf("wire = %+v", wire)
 	}
@@ -288,7 +403,7 @@ func TestSubscriptionsCreate_Standardfeed_CustomMetadata_AdoptsBarePDSExistence(
 	disp := &fakeDispatcher{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
 
-	body := `{"subscriptions":[{"publication":"` + testPublication + `","title":"My Name","primary":true,"tags":["News"]}]}`
+	body := `{"publication":"` + testPublication + `","title":"My Name","primary":true,"tags":["News"]}`
 	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -319,7 +434,7 @@ func TestSubscriptionsCreate_Standardfeed_PreflightFailureDoesNotWrite(t *testin
 	pds := &fakePDS{listErr: errors.New("pds down")}
 	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{})
 
-	body := `{"subscriptions":[{"publication":"` + testPublication + `"}]}`
+	body := `{"publication":"` + testPublication + `"}`
 	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -347,7 +462,7 @@ func TestSubscriptionsCreate_Standardfeed_CustomMetadata_AdoptsPriorAtomicPair(t
 	idx := newFakeIndex()
 	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{})
 
-	body := `{"subscriptions":[{"publication":"` + testPublication + `","title":"My Name","primary":true,"tags":["News"]}]}`
+	body := `{"publication":"` + testPublication + `","title":"My Name","primary":true,"tags":["News"]}`
 	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -373,7 +488,7 @@ func TestSubscriptionsCreate_Standardfeed_AmbiguousCommitFreshRetryAdoptsPair(t 
 		applyAfterCommitErr: errors.New("connection lost after commit"),
 		getErr:              errors.New("readback unavailable"),
 	}
-	body := `{"subscriptions":[{"publication":"` + testPublication + `","title":"My Name","primary":true,"tags":["News"]}]}`
+	body := `{"publication":"` + testPublication + `","title":"My Name","primary":true,"tags":["News"]}`
 	disp := &fakeDispatcher{}
 	first := SubscriptionsCreateHandler(idx, idx, pds, disp)
 	firstResp := httptest.NewRecorder()
@@ -420,7 +535,7 @@ func TestSubscriptionsCreate_Standardfeed_CustomMetadata_AtomicApplyWrites(t *te
 	pds := &fakePDS{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{})
 
-	body := `{"subscriptions":[{"publication":"` + testPublication + `","title":"My Name","primary":true,"tags":["News"]}]}`
+	body := `{"publication":"` + testPublication + `","title":"My Name","primary":true,"tags":["News"]}`
 	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -478,7 +593,7 @@ func TestSubscriptionsCreate_Standardfeed_CustomMetadata_AtomicFailureLeavesNoBa
 	disp := &fakeDispatcher{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
 
-	body := `{"subscriptions":[{"publication":"` + testPublication + `","title":"My Name"}]}`
+	body := `{"publication":"` + testPublication + `","title":"My Name"}`
 	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -501,7 +616,7 @@ func TestSubscriptionsCreate_Standardfeed_StaleScope_403(t *testing.T) {
 	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
 
 	// withSession carries no scopes, simulating a pre-change grant.
-	body := `{"subscriptions":[{"publication":"` + testPublication + `"}]}`
+	body := `{"publication":"` + testPublication + `"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -535,7 +650,7 @@ func TestSubscriptionsCreate_Standardfeed_Dedupe_Idempotent(t *testing.T) {
 	disp := &fakeDispatcher{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
 
-	body := `{"subscriptions":[{"publication":"` + testPublication + `"}]}`
+	body := `{"publication":"` + testPublication + `"}`
 	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -549,74 +664,14 @@ func TestSubscriptionsCreate_Standardfeed_Dedupe_Idempotent(t *testing.T) {
 	if len(disp.dispatched) != 0 {
 		t.Errorf("dispatch on dedupe path: %v", disp.dispatched)
 	}
-	var got addResponse
+	var got subscriptionResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Records) != 1 || got.Records[0].Kind != "standardfeed" || got.Records[0].Publication != testPublication {
-		t.Errorf("records = %+v", got.Records)
+	if got.Kind != "standardfeed" || got.Publication != testPublication {
+		t.Errorf("record = %+v", got.SubscriptionWire)
 	}
 }
-
-func TestSubscriptionsCreate_MixedBatch_BothKinds(t *testing.T) {
-	idx := newFakeIndex()
-	pds := &fakePDS{}
-	disp := &fakeDispatcher{}
-	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
-
-	body := `{"subscriptions":[{"feedUrl":"https://example.test/feed.xml","title":"RSS"},{"publication":"` + testPublication + `"}]}`
-	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
-	}
-	if pds.creates != 1 || pds.applyCalls != 1 {
-		t.Fatalf("PDS creates = %d, applyWrites=%d, want RSS create + Standardfeed applyWrites", pds.creates, pds.applyCalls)
-	}
-	if pds.created[0].collection != "blue.morgen.feed.subscription" || pds.applied[0].collection != standardSubCollection {
-		t.Errorf("collections = RSS:%q Standardfeed:%q", pds.created[0].collection, pds.applied[0].collection)
-	}
-	var got addResponse
-	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if len(got.Records) != 2 || got.Records[0].Kind != "rss" || got.Records[1].Kind != "standardfeed" {
-		t.Errorf("records = %+v", got.Records)
-	}
-	if len(disp.dispatched) != 2 {
-		t.Errorf("dispatched = %v", disp.dispatched)
-	}
-}
-
-func TestSubscriptionsCreate_SiblingPairInBatch_409(t *testing.T) {
-	idx := newFakeIndex()
-	pds := &fakePDS{}
-	disp := &fakeDispatcher{}
-	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
-
-	// An rss feed and a publication for the SAME site in one batch.
-	body := `{"subscriptions":[
-		{"feedUrl":"https://blog.example.test/feed.xml","siteUrl":"https://blog.example.test"},
-		{"publication":"` + testPublication + `","siteUrl":"https://blog.example.test"}
-	]}`
-	req := withStandardWriteSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusConflict {
-		t.Fatalf("status = %d, want 409; body = %s", rr.Code, rr.Body.String())
-	}
-	if pds.creates != 0 {
-		t.Errorf("PDS creates = %d, want 0", pds.creates)
-	}
-	if len(disp.dispatched) != 0 {
-		t.Errorf("dispatched = %v", disp.dispatched)
-	}
-}
-
-// --- primary + tags ---
 
 func TestSubscriptionsCreate_PrimaryAndTags_PersistedEverywhere(t *testing.T) {
 	idx := newFakeIndex()
@@ -624,7 +679,7 @@ func TestSubscriptionsCreate_PrimaryAndTags_PersistedEverywhere(t *testing.T) {
 	disp := &fakeDispatcher{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
 
-	body := `{"subscriptions":[{"feedUrl":"https://example.test/feed.xml","title":"Example","primary":true,"tags":["News","Tech"]}]}`
+	body := `{"feedUrl":"https://example.test/feed.xml","title":"Example","primary":true,"tags":["News","Tech"]}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -665,14 +720,11 @@ func TestSubscriptionsCreate_PrimaryAndTags_PersistedEverywhere(t *testing.T) {
 	}
 
 	// Response wire echoes them.
-	var got addResponse
+	var got subscriptionResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Records) != 1 {
-		t.Fatalf("records = %d", len(got.Records))
-	}
-	rec := got.Records[0]
+	rec := got.SubscriptionWire
 	if !rec.Primary {
 		t.Errorf("response primary = %v, want true", rec.Primary)
 	}
@@ -689,7 +741,7 @@ func TestSubscriptionsCreate_DefaultsOmitPrimaryAndTags(t *testing.T) {
 	pds := &fakePDS{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{})
 
-	body := `{"subscriptions":[{"feedUrl":"https://example.test/feed.xml","title":"Example"}]}`
+	body := `{"feedUrl":"https://example.test/feed.xml","title":"Example"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -704,9 +756,9 @@ func TestSubscriptionsCreate_DefaultsOmitPrimaryAndTags(t *testing.T) {
 		t.Errorf("PDS record should omit tags when empty: %v", pds.lastRec["tags"])
 	}
 
-	var got addResponse
+	var got subscriptionResponse
 	_ = json.Unmarshal(rr.Body.Bytes(), &got)
-	rec := got.Records[0]
+	rec := got.SubscriptionWire
 	if rec.Primary {
 		t.Errorf("response primary = true, want false")
 	}
@@ -733,7 +785,7 @@ func TestSubscriptionsCreate_TagNormalization(t *testing.T) {
 		"a", "b", "c", "d", "e", "f", "g", "h", // pushes well past 10 total
 	}
 	jsonTags, _ := json.Marshal(tags)
-	body := `{"subscriptions":[{"feedUrl":"https://example.test/feed.xml","tags":` + string(jsonTags) + `}]}`
+	body := `{"feedUrl":"https://example.test/feed.xml","tags":` + string(jsonTags) + `}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -741,9 +793,9 @@ func TestSubscriptionsCreate_TagNormalization(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
-	var got addResponse
+	var got subscriptionResponse
 	_ = json.Unmarshal(rr.Body.Bytes(), &got)
-	out := got.Records[0].Tags
+	out := got.Tags
 
 	if len(out) > 10 {
 		t.Errorf("tags not capped at 10: %v", out)
@@ -779,7 +831,7 @@ func TestSubscriptionsCreate_InvalidRecord_500_NoWrite(t *testing.T) {
 	h := SubscriptionsCreateHandler(idx, idx, pds, disp)
 
 	overlong := strings.Repeat("x", 200) // > maxGraphemes:128
-	body := `{"subscriptions":[{"feedUrl":"https://example.test/feed.xml","title":"` + overlong + `"}]}`
+	body := `{"feedUrl":"https://example.test/feed.xml","title":"` + overlong + `"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)

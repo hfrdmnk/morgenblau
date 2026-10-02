@@ -52,7 +52,7 @@ test('keeps RSS titles but does not customize discovered native publications', a
     const bodies: unknown[] = [];
     respond((_url, init) => {
         bodies.push(JSON.parse(String(init?.body)));
-        return Response.json({ records: [], jobIds: [] });
+        return Response.json({ rkey: '3example' });
     });
     await addSource({ feedUrl: 'https://example.com/rss', title: 'Example' });
     await addSource({
@@ -62,19 +62,10 @@ test('keeps RSS titles but does not customize discovered native publications', a
         siteUrl: 'https://example.org',
     });
     expect(bodies).toEqual([
+        { feedUrl: 'https://example.com/rss', title: 'Example' },
         {
-            subscriptions: [
-                { feedUrl: 'https://example.com/rss', title: 'Example' },
-            ],
-        },
-        {
-            subscriptions: [
-                {
-                    publication:
-                        'at://did:plc:example/site.standard.publication/test',
-                    siteUrl: 'https://example.org',
-                },
-            ],
+            publication: 'at://did:plc:example/site.standard.publication/test',
+            siteUrl: 'https://example.org',
         },
     ]);
 });
@@ -89,7 +80,7 @@ test('notifies after each confirmed addition, including before a partial failure
         completed++;
         return completed === 3
             ? Response.json({ message: 'Unavailable' }, { status: 502 })
-            : Response.json({ records: [], jobIds: [] });
+            : Response.json({ rkey: '3example' });
     });
     try {
         await addSource({ feedUrl: 'https://example.com/first.xml' });
@@ -128,11 +119,11 @@ test('save confirms each source sequentially and stops at a partial failure', as
     const confirmed: string[] = [];
     respond((_url, init) => {
         expect(confirmed).toEqual(requested);
-        const { subscriptions } = JSON.parse(String(init?.body));
-        requested.push(subscriptions[0].feedUrl);
+        const { feedUrl } = JSON.parse(String(init?.body));
+        requested.push(feedUrl);
         return requested.length === 2
             ? Response.json({ message: 'Unavailable' }, { status: 502 })
-            : Response.json({ records: [], jobIds: [] });
+            : Response.json({ rkey: '3example' });
     });
     await expect(
         saveSources(candidates, (candidate) => {

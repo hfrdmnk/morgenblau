@@ -140,10 +140,11 @@ func (e *Engine) run(run *userRun) {
 
 		e.jobs.SetRunning(run.id)
 		bg, cancel := context.WithTimeout(e.parentCtx, 5*time.Minute)
+		var receipt syncReceipt
 		sess, err := e.resumeAndRefresh(bg, run.did, sessionID)
 		if err != nil {
 			slog.Warn("sync_user: resume failed", "did", run.did, "err", err)
-		} else if err = e.runDualTrack(bg, run.did, sess); err != nil {
+		} else if receipt, err = e.runDualTrack(bg, run.did, sess); err != nil {
 			slog.Warn("sync_user: failed", "did", run.did, "err", err)
 		}
 		cancel()
@@ -155,15 +156,27 @@ func (e *Engine) run(run *userRun) {
 			e.runMu.Unlock()
 			continue
 		}
-		if err != nil {
-			e.jobs.SetFailed(run.id)
-		} else {
-			e.jobs.SetDone(run.id)
-		}
+		e.finishSync(run.id, receipt, err)
 		delete(e.active, run.did.String())
 		e.runMu.Unlock()
 		return
 	}
+}
+
+// syncReceipt holds each reconcile pass's commit proof; a nil proof means that pass did not commit.
+type syncReceipt struct {
+	rss          *committed[db.UserSubscription]
+	standardfeed *committed[db.UserSubscription]
+	saves        *committed[db.UserSave]
+}
+
+// finishSync is the only way a sync_user job reaches done, and it requires every pass's commit proof.
+func (e *Engine) finishSync(id string, r syncReceipt, err error) {
+	if err != nil || r.rss == nil || r.standardfeed == nil || r.saves == nil {
+		e.jobs.SetFailed(id)
+		return
+	}
+	e.jobs.SetDone(id)
 }
 
 // resumeAndRefresh resumes and refreshes under one continuous lock hold: resuming outside
@@ -187,12 +200,12 @@ func (e *Engine) resumeAndRefresh(ctx context.Context, did syntax.DID, sessionID
 }
 
 // runDualTrack is unexported-but-callable so tests can drive it directly, without the goroutine wrapping.
-func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *session.Session) error {
+func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *session.Session) (syncReceipt, error) {
 	// Snapshot Tier-1 BEFORE reconcile so Phase 1B doesn't wait on 1A.
 	snapshotAt := e.now().UTC()
 	snapshot, err := e.store.ListUserSubscriptionsForSync(ctx, did.String())
 	if err != nil {
-		return err
+		return syncReceipt{}, err
 	}
 	snapURLs := make([]string, 0, len(snapshot))
 	for _, row := range snapshot {
@@ -206,16 +219,21 @@ func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *session
 	)
 
 	// Phase 1A: PDS reconcile.
-	var wg sync.WaitGroup
+	var (
+		wg      sync.WaitGroup
+		receipt syncReceipt
+	)
 	errC := make(chan error, 2)
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
-		if err := e.reconcileTier1(ctx, did, sess, snapshot, snapshotAt, func(url string) {
+		var err error
+		receipt.rss, receipt.standardfeed, err = e.reconcileTier1(ctx, did, sess, snapshot, snapshotAt, func(url string) {
 			addedMu.Lock()
 			addedFeedURLs = append(addedFeedURLs, url)
 			addedMu.Unlock()
-		}); err != nil {
+		})
+		if err != nil {
 			errC <- fmt.Errorf("subscriptions reconcile: %w", err)
 		}
 	}()
@@ -229,7 +247,8 @@ func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *session
 	// Phase 1C: saves reconcile, independent of subscriptions and fetches.
 	go func() {
 		defer wg.Done()
-		if err := e.reconcileSaves(ctx, did, sess); err != nil {
+		var err error
+		if receipt.saves, err = e.reconcileSaves(ctx, did, sess); err != nil {
 			slog.Warn("sync_user: saves reconcile failed", "did", did, "err", err)
 			errC <- fmt.Errorf("saves reconcile: %w", err)
 		}
@@ -256,7 +275,7 @@ func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *session
 	}
 	addedMu.Unlock()
 	fetchAll(ctx, topUp, e.fetcher)
-	return errors.Join(reconcileErrs...)
+	return receipt, errors.Join(reconcileErrs...)
 }
 
 func fetchAll(ctx context.Context, urls []string, f FeedFetcher) {
