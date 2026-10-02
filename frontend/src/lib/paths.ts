@@ -4,6 +4,7 @@ export const PATHS = {
     library: '/library',
     sources: '/sources',
     settings: '/settings',
+    general: '/settings/general',
     import: '/settings/import',
     export: '/settings/export',
     entry: '/entry',

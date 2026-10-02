@@ -41,7 +41,11 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /oauth/login", handler.LoginHandler(s.oauthApp))
 	mux.Handle("GET /oauth/callback", handler.CallbackHandler(s.oauthApp, s.sealer, s.sync))
 	mux.Handle("POST /oauth/logout", handler.LogoutHandler(s.sessions, s.sealer, s.store))
-	mux.Handle("GET /api/profiles/me", api.MeProfileHandler(s.profiles, s.sync))
+	var addresses api.ProfileAddressInitializer
+	if s.newsletters != nil {
+		addresses = s.newsletters
+	}
+	mux.Handle("GET /api/profiles/me", api.MeProfileHandler(s.profiles, s.sync, addresses))
 
 	pdsWriter := atprepo.SessionWriter{}
 	// POST/PATCH/DELETE routes below make PDS writes; auth.holdsSessionLock must match this set.

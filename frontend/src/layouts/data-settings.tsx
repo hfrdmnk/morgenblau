@@ -4,20 +4,22 @@ import { Link } from 'wouter';
 import { PATHS } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 
+const labels = { general: 'General', import: 'Import', export: 'Export' };
+
 export function DataSettings({
     page,
     children,
 }: {
-    page: 'import' | 'export';
+    page: 'general' | 'import' | 'export';
     children: ReactNode;
 }) {
     return (
         <>
             <nav
-                aria-label="Data settings"
+                aria-label="Settings"
                 className="flex justify-center gap-6 px-5 pt-12 text-sm sm:px-8"
             >
-                {(['import', 'export'] as const).map((item) => (
+                {(['general', 'import', 'export'] as const).map((item) => (
                     <Link
                         key={item}
                         href={PATHS[item]}
@@ -29,7 +31,7 @@ export function DataSettings({
                                 : 'text-subtle-foreground hover:text-foreground',
                         )}
                     >
-                        {item === 'import' ? 'Import' : 'Export'}
+                        {labels[item]}
                     </Link>
                 ))}
             </nav>

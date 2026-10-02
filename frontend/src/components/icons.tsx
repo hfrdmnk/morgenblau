@@ -169,10 +169,36 @@ function SourcesIcon(props: IconProps) {
 
 function LibraryIcon(props: IconProps) {
     return (
-        <svg aria-hidden="true" focusable="false" viewBox="-4.68 106 48 48" {...props}>
+        <svg
+            aria-hidden="true"
+            focusable="false"
+            viewBox="-4.68 106 48 48"
+            {...props}
+        >
             <path
                 d="M22.784 154.25H-4.93V105.75H22.784V154.25ZM36.641 154.25H29.713V105.75H36.641V154.25ZM43.57 154.25H40.106V105.75H43.57V154.25Z"
                 fill="currentColor"
+            />
+        </svg>
+    );
+}
+
+function SettingsIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M4.08923 6.24364L11.4377 2.26004C12.1113 1.89488 12.935 1.91558 13.5885 2.31409L20.0047 6.22711C20.6239 6.60472 21 7.26692 21 7.97938V16.0206C21 16.7331 20.6239 17.3953 20.0047 17.7729L13.5885 21.6859C12.935 22.0844 12.1113 22.1051 11.4377 21.74L4.08923 17.7564C3.41695 17.3919 3 16.7005 3 15.95V8.04996C3 7.29953 3.41695 6.60808 4.08923 6.24364Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+            <path
+                d="M15 12.0002C15 13.657 13.6569 15.0002 12 15.0002C10.3431 15.0002 9 13.657 9 12.0002C9 10.3433 10.3431 9.00016 12 9.00016C13.6569 9.00016 15 10.3433 15 12.0002Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
             />
         </svg>
     );
@@ -186,6 +212,34 @@ function PlusIcon(props: IconProps) {
                 stroke="currentColor"
                 strokeLinecap="round"
                 strokeWidth="1.5"
+            />
+        </svg>
+    );
+}
+
+function CloseIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M5 5L19 19M5 19L19 5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
+function CopyIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M5 15H4C2.89543 15 2 14.1046 2 13V4C2 2.89543 2.89543 2 4 2H13C14.1046 2 15 2.89543 15 4V5M11 22H20C21.1046 22 22 21.1046 22 20V11C22 9.89543 21.1046 9 20 9H11C9.89543 9 9 9.89543 9 11V20C9 21.1046 9.89543 22 11 22Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
             />
         </svg>
     );
@@ -224,6 +278,8 @@ export {
     ArrowRightIcon,
     CheckIcon,
     ChevronDownIcon,
+    CloseIcon,
+    CopyIcon,
     DigestIcon,
     DownloadIcon,
     ExternalLinkIcon,
@@ -231,6 +287,7 @@ export {
     LibraryIcon,
     LoadingIcon,
     PlusIcon,
+    SettingsIcon,
     SourcesIcon,
     UploadIcon,
 };

@@ -53,7 +53,7 @@ func (q *Queries) CreateManualNewsletterSource(ctx context.Context, arg CreateMa
 const createNewsletterAddress = `-- name: CreateNewsletterAddress :exec
 INSERT INTO newsletter_addresses (did, local_part, created_at)
 VALUES (?1, ?2, ?3)
-ON CONFLICT (did) DO NOTHING
+ON CONFLICT DO NOTHING
 `
 
 type CreateNewsletterAddressParams struct {

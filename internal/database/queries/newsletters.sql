@@ -11,7 +11,7 @@ WHERE local_part = ?1;
 -- name: CreateNewsletterAddress :exec
 INSERT INTO newsletter_addresses (did, local_part, created_at)
 VALUES (?1, ?2, ?3)
-ON CONFLICT (did) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- name: CreateNewsletterReceipt :exec
 INSERT INTO newsletter_receipts (

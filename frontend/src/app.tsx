@@ -34,6 +34,7 @@ const CHROME_PAGES: PageDef[] = [
     { path: PATHS.library, Component: Library },
     { path: PATHS.sources, Component: Sources },
     { path: PATHS.settings, Component: Settings },
+    { path: PATHS.general, Component: Settings },
     { path: PATHS.import, Component: ImportSources },
     { path: PATHS.export, Component: ExportSources },
     { path: `${PATHS.sources}/newsletters/:id`, Component: NewsletterSource },

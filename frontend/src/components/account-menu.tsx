@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'wouter';
 
-import { DownloadIcon, UploadIcon } from '@/components/icons';
+import { DownloadIcon, SettingsIcon, UploadIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import {
     Popover,
@@ -40,14 +40,6 @@ function ProfileAvatar({ profile }: { profile: AppProfile }) {
     );
 }
 
-export function AccountMenuSkeleton() {
-    return (
-        <span aria-label="Loading account" className="flex size-10 shrink-0 items-center justify-center">
-            <span className="size-8 rounded-full bg-secondary" />
-        </span>
-    );
-}
-
 export function AccountMenu({ profile }: { profile: AppProfile }) {
     const accountName = profile.displayName?.trim() || `@${profile.handle}`;
     const [open, setOpen] = useState(false);
@@ -68,12 +60,22 @@ export function AccountMenu({ profile }: { profile: AppProfile }) {
             </PopoverTrigger>
             <PopoverContent align="end" className="w-64">
                 <PopoverHeader>
-                    <PopoverTitle className="truncate">{accountName}</PopoverTitle>
+                    <PopoverTitle className="truncate">
+                        {accountName}
+                    </PopoverTitle>
                     <PopoverDescription className="truncate">
                         @{profile.handle}
                     </PopoverDescription>
                 </PopoverHeader>
                 <nav aria-label="Account" className="-mx-2">
+                    <Link
+                        href={PATHS.general}
+                        className="flex min-h-10 items-center gap-3 rounded-md px-2 text-sm hover:bg-secondary/50"
+                        onClick={() => setOpen(false)}
+                    >
+                        <SettingsIcon className="size-4" />
+                        General
+                    </Link>
                     <Link
                         href={PATHS.import}
                         className="flex min-h-10 items-center gap-3 rounded-md px-2 text-sm hover:bg-secondary/50"
@@ -92,7 +94,11 @@ export function AccountMenu({ profile }: { profile: AppProfile }) {
                     </Link>
                 </nav>
                 <form method="POST" action={PATHS.oauthLogout}>
-                    <Button type="submit" variant="secondary" className="w-full">
+                    <Button
+                        type="submit"
+                        variant="secondary"
+                        className="w-full"
+                    >
                         Log out
                     </Button>
                 </form>

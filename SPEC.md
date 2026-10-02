@@ -95,6 +95,10 @@ OPML import/export covers RSS/Atom subscriptions, including YouTube feeds. It ex
 
 Each user receives one random inbound email address for v1, privately mapped to their DID. Replacing or rotating that address is outside v1. The address is neither derived from the DID nor published in the PDS. An address derived from a public identity would be predictable and unnecessarily connect incoming email to that identity.
 
+[`internal/newsletter/address.go`](internal/newsletter/address.go) generates memorable adjective–animal–place names using cryptographic randomness. Address allocation enforces uniqueness atomically and retries collisions; an assigned address stays stable.
+
+The authenticated app-entry handler in [`internal/api/profiles.go`](internal/api/profiles.go) provisions the address when newsletter delivery is enabled. Subsequent entries reuse it; opening the source picker only reads it.
+
 Giving that address to a publisher is the reader's decision to add the source. The first incoming message automatically creates a private Newsletter source without another approval step. While the source is active, confirmation, welcome, account, and other messages delivered to the address remain readable.
 
 Forwarded mail remains readable and uses structured original newsletter identity when available; otherwise it is grouped under the forwarding sender so the reader can correct that message's attribution, without guessing among quoted messages or silently losing or misassigning content. A correction applies only to that message and does not create a rule for future deliveries.

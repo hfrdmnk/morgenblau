@@ -5,14 +5,13 @@ import { Link as RouterLink, useLocation } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
 import { AccountMenu } from '@/components/account-menu';
+import { AddSourceDialog } from '@/components/add-source-dialog';
 import {
     ChevronDownIcon,
     DigestIcon,
     LibraryIcon,
-    PlusIcon,
     SourcesIcon,
 } from '@/components/icons';
-import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAppProfile } from '@/hooks/use-app-profile';
 import { useModeSelect } from '@/hooks/use-mode-select';
@@ -77,15 +76,7 @@ export function AppHeader() {
                 <span className="hidden md:block" />
             )}
             <div className="col-start-2 row-start-1 flex items-center justify-end gap-4 md:col-start-3">
-                <Button
-                    aria-label="Add a source"
-                    className="text-subtle-foreground"
-                    size="icon-sm"
-                    type="button"
-                    variant="ghost"
-                >
-                    <PlusIcon className="size-5" />
-                </Button>
+                <AddSourceDialog />
                 {profile.kind === 'ready' ? (
                     <AccountMenu profile={profile.profile} />
                 ) : (

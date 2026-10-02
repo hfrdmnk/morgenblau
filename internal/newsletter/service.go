@@ -2,9 +2,7 @@ package newsletter
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/base32"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,6 +24,7 @@ type Service struct {
 	globalStorageBytes int64
 	wake               chan struct{}
 	now                func() time.Time
+	newLocalPart       func() (string, error)
 }
 
 func NewService(reader, writer *sql.DB, cfg Config) *Service {
@@ -44,6 +43,7 @@ func NewService(reader, writer *sql.DB, cfg Config) *Service {
 		globalStorageBytes: cfg.GlobalStorageBytes,
 		wake:               make(chan struct{}, 1),
 		now:                time.Now,
+		newLocalPart:       randomLocalPart,
 	}
 }
 
@@ -78,17 +78,22 @@ func (s *Service) CreateAddress(ctx context.Context, did string) (string, error)
 	} else if !errors.Is(err, ErrNotFound) {
 		return "", err
 	}
-	localPart, err := randomLocalPart()
-	if err != nil {
-		return "", fmt.Errorf("generate newsletter address: %w", err)
+	for {
+		localPart, err := s.newLocalPart()
+		if err != nil {
+			return "", fmt.Errorf("generate newsletter address: %w", err)
+		}
+		now := formatTime(s.now())
+		if err := database.WithTx(ctx, s.writer, func(q *db.Queries) error {
+			return q.CreateNewsletterAddress(ctx, db.CreateNewsletterAddressParams{Did: did, LocalPart: localPart, CreatedAt: now})
+		}); err != nil {
+			return "", err
+		}
+		address, err := s.Address(ctx, did)
+		if !errors.Is(err, ErrNotFound) {
+			return address, err
+		}
 	}
-	now := formatTime(s.now())
-	if err := database.WithTx(ctx, s.writer, func(q *db.Queries) error {
-		return q.CreateNewsletterAddress(ctx, db.CreateNewsletterAddressParams{Did: did, LocalPart: localPart, CreatedAt: now})
-	}); err != nil {
-		return "", err
-	}
-	return s.Address(ctx, did)
 }
 
 func (s *Service) ListSources(ctx context.Context, did string) (SourceGroups, error) {
@@ -366,14 +371,6 @@ func (s *Service) GetInlineAsset(ctx context.Context, did, token string) (Inline
 		return InlineAsset{}, publicDBError(err)
 	}
 	return InlineAsset{MediaType: row.MediaType, Data: row.Data, ETag: row.ContentHash}, nil
-}
-
-func randomLocalPart() (string, error) {
-	buf := make([]byte, 20)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(buf)), nil
 }
 
 func cleanTags(tags []string) ([]string, error) {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { subscriptionChanges } from '@/lib/add-source';
 import { api } from '@/lib/api';
 
 export type FeedSource = {
@@ -30,6 +31,10 @@ export function useSources<T>(path: string) {
 
     useEffect(() => {
         const controller = new AbortController();
+        const refresh = () => setAttempt((value) => value + 1);
+        if (path === '/api/subscriptions') {
+            subscriptionChanges.addEventListener('change', refresh);
+        }
         api<T>(path, { signal: controller.signal })
             .then((data) => {
                 if (!controller.signal.aborted) setState({ status: 'loaded', data });
@@ -37,7 +42,10 @@ export function useSources<T>(path: string) {
             .catch(() => {
                 if (!controller.signal.aborted) setState({ status: 'error' });
             });
-        return () => controller.abort();
+        return () => {
+            controller.abort();
+            subscriptionChanges.removeEventListener('change', refresh);
+        };
     }, [path, attempt]);
 
     function retry() {
