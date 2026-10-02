@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"go/ast"
 	"testing"
 	"time"
 
@@ -12,32 +13,6 @@ import (
 const guardDID = "did:plc:alice"
 
 var guardSnapshotAt = time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-
-func TestCreatedAfterSnapshot(t *testing.T) {
-	cases := []struct {
-		name      string
-		createdAt string
-		want      bool
-	}{
-		{"one second after the snapshot", "2026-07-20T12:00:01Z", true},
-		{"one second before the snapshot", "2026-07-20T11:59:59Z", false},
-		{"exactly at the snapshot", "2026-07-20T12:00:00Z", false},
-		{"fractional seconds after the snapshot", "2026-07-20T12:00:00.250Z", true},
-		{"numeric offset resolving after the snapshot", "2026-07-20T14:00:05+02:00", true},
-		{"numeric offset resolving before the snapshot", "2026-07-20T13:00:00+02:00", false},
-		{"empty", "", false},
-		{"garbage", "not-a-timestamp", false},
-		{"date only", "2026-07-21", false},
-		{"sqlite space separator", "2026-07-20 12:00:01", false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := createdAfterSnapshot(tc.createdAt, guardSnapshotAt); got != tc.want {
-				t.Errorf("createdAfterSnapshot(%q, %s) = %v, want %v", tc.createdAt, guardSnapshotAt.Format(time.RFC3339), got, tc.want)
-			}
-		})
-	}
-}
 
 func TestUpdatedAfterSnapshot(t *testing.T) {
 	cases := []struct {
@@ -89,7 +64,7 @@ func TestReconcile_StaleSubscriptionListingPreservesSameSecondMirrorUpdate(t *te
 				t.Fatal(err)
 			}
 
-			if err := eng.reconcileTier1(context.Background(), mustDID(guardDID), newSession(guardDID), baseline, guardSnapshotAt, func(string) {}); err != nil {
+			if _, _, err := eng.reconcileTier1(context.Background(), mustDID(guardDID), newSession(guardDID), baseline, guardSnapshotAt, func(string) {}); err != nil {
 				t.Fatal(err)
 			}
 			row := store.rows[guardDID]["3sub"]
@@ -106,6 +81,40 @@ func TestReconcile_StaleSubscriptionListingPreservesSameSecondMirrorUpdate(t *te
 	}
 }
 
+// Drives runDualTrack so the baseline both subscription passes guard against is the one the engine itself took before listing.
+func TestSyncUser_StaleSubscriptionListingPreservesMirrorWritesInBothPasses(t *testing.T) {
+	store := newFakeStore()
+	store.rows[guardDID] = map[string]db.UserSubscription{
+		"3sub": {Did: guardDID, Rkey: "3sub", AtUri: "at://" + guardDID + "/blue.morgen.feed.subscription/3sub", FeedUrl: "https://example.com/feed", Kind: "rss", Title: strPtr("Old"), UpdatedAt: "2026-07-20T11:59:59Z"},
+		"3std": {Did: guardDID, Rkey: "3std", AtUri: "at://" + guardDID + "/site.standard.graph.subscription/3std", FeedUrl: pubA, Kind: "standardfeed", Title: strPtr("Old"), UpdatedAt: "2026-07-20T11:59:59Z"},
+	}
+	lister := &fakeLister{}
+	lister.beforeSubs = func() {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		for rkey, row := range store.rows[guardDID] {
+			row.Title = strPtr("New local title")
+			row.UpdatedAt = guardSnapshotAt.Format(time.RFC3339)
+			store.rows[guardDID][rkey] = row
+		}
+	}
+	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
+	eng.now = func() time.Time { return guardSnapshotAt }
+
+	if _, err := eng.runDualTrack(context.Background(), mustDID(guardDID), newSession(guardDID)); err != nil {
+		t.Fatal(err)
+	}
+	for _, rkey := range []string{"3sub", "3std"} {
+		row, ok := store.rows[guardDID][rkey]
+		if !ok || row.Title == nil || *row.Title != "New local title" {
+			t.Errorf("%s = %+v (present %v), want the concurrent mirror write", rkey, row, ok)
+		}
+	}
+	if len(store.deletes) != 0 {
+		t.Errorf("deletes = %v, want none", store.deletes)
+	}
+}
+
 func TestReconcile_StaleSaveListingPreservesSameSecondMirrorInsert(t *testing.T) {
 	store := newFakeStore()
 	lister := &fakeLister{}
@@ -119,7 +128,7 @@ func TestReconcile_StaleSaveListingPreservesSameSecondMirrorInsert(t *testing.T)
 	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
 	eng.now = func() time.Time { return guardSnapshotAt }
 
-	if err := eng.reconcileSaves(context.Background(), mustDID(guardDID), newSession(guardDID)); err != nil {
+	if _, err := eng.reconcileSaves(context.Background(), mustDID(guardDID), newSession(guardDID)); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := store.saves[guardDID]["3save"]; !ok {
@@ -128,6 +137,52 @@ func TestReconcile_StaleSaveListingPreservesSameSecondMirrorInsert(t *testing.T)
 	if len(store.saveDeletes) != 0 {
 		t.Errorf("save deletes = %v, want none", store.saveDeletes)
 	}
+}
+
+// Omitting any of these weakens the guard for one collection without failing that collection's other tests.
+var listingGuardFields = []string{"snapshotAt", "baseline", "changedSinceSnapshot", "updatedAtOf"}
+
+func TestEveryReconcilePassCarriesTheListingGuard(t *testing.T) {
+	passes := 0
+	fset, files := parseGoSources(t, ".")
+	for _, file := range files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			lit, ok := n.(*ast.CompositeLit)
+			if !ok || !isReconcilePassType(lit.Type) {
+				return true
+			}
+			passes++
+			set := map[string]bool{}
+			for _, elt := range lit.Elts {
+				kv, ok := elt.(*ast.KeyValueExpr)
+				if !ok {
+					continue
+				}
+				key, _ := kv.Key.(*ast.Ident)
+				value, isIdent := kv.Value.(*ast.Ident)
+				if key != nil && !(isIdent && value.Name == "nil") {
+					set[key.Name] = true
+				}
+			}
+			for _, field := range listingGuardFields {
+				if !set[field] {
+					t.Errorf("%s: reconcile pass omits %s", fset.Position(lit.Pos()), field)
+				}
+			}
+			return true
+		})
+	}
+	if passes == 0 {
+		t.Error("found no reconcilePass literals")
+	}
+}
+
+func isReconcilePassType(expr ast.Expr) bool {
+	if index, ok := expr.(*ast.IndexExpr); ok {
+		expr = index.X
+	}
+	ident, ok := expr.(*ast.Ident)
+	return ok && ident.Name == "reconcilePass"
 }
 
 func strPtr(s string) *string { return &s }

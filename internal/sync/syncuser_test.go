@@ -218,6 +218,7 @@ func (f *fakeLister) ListStandardSubscriptions(_ context.Context, _ *session.Ses
 type countingFetcher struct {
 	mu      sync.Mutex
 	delay   time.Duration
+	err     error
 	fetched []string
 }
 
@@ -228,7 +229,7 @@ func (f *countingFetcher) FetchAndStore(_ context.Context, url string) error {
 	if f.delay > 0 {
 		time.Sleep(f.delay)
 	}
-	return nil
+	return f.err
 }
 
 func (f *countingFetcher) seen() []string {
@@ -249,7 +250,7 @@ func newSession(did string) *session.Session {
 func TestSyncUser_ReconcilesOnlyRetainedCollections(t *testing.T) {
 	lister := &fakeLister{}
 	eng := NewEngine(jobs.New(), newFakeStore(), lister, &countingFetcher{}, nil, nil)
-	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+	if _, err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
 		t.Fatal(err)
 	}
 	if got := atomic.LoadInt32(&lister.calls); got != 1 {
@@ -273,7 +274,7 @@ func TestSyncUser_ReconcileApplies_InsertsAndDeletes(t *testing.T) {
 	}}
 	fetcher := &countingFetcher{}
 	eng := NewEngine(jobs.New(), store, lister, fetcher, nil, nil)
-	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+	if _, err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -292,7 +293,7 @@ func TestSyncUser_ReconcilePreservesPrimaryAndTags(t *testing.T) {
 		{URI: "at://x/a/bare", Kind: "rss", Rkey: "bare", FeedURL: "https://feed/bare"},
 	}}
 	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
-	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+	if _, err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -327,7 +328,7 @@ func TestSyncUser_DualTrackParallelism(t *testing.T) {
 	eng := NewEngine(jobs.New(), store, lister, fetcher, nil, nil)
 
 	t0 := time.Now()
-	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+	if _, err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
 		t.Fatal(err)
 	}
 	elapsed := time.Since(t0)
@@ -347,7 +348,7 @@ func TestSyncUser_Phase2FetchesOnlyNewURLs(t *testing.T) {
 	}}
 	fetcher := &countingFetcher{}
 	eng := NewEngine(jobs.New(), store, lister, fetcher, nil, nil)
-	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+	if _, err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -400,6 +401,31 @@ func TestSyncUser_FailsWhenSaveMirrorDoesNotReconcile(t *testing.T) {
 	}
 }
 
+func TestSyncUser_FailsWhenStandardfeedMirrorDoesNotReconcile(t *testing.T) {
+	store := newFakeStore()
+	store.feedErr = func(feedURL string) error {
+		if feedURL == pubA {
+			return errors.New("standardfeed catalog write failed")
+		}
+		return nil
+	}
+	lister := &fakeLister{
+		subs:         []PDSSubscription{{URI: "at://did:plc:alice/blue.morgen.feed.subscription/3sub", Kind: "rss", Rkey: "3sub", FeedURL: "https://example.com/feed"}},
+		standardSubs: []PDSStandardSubscription{stdSub("3std", pubA)},
+	}
+	tracker := jobs.New()
+	eng := NewEngine(tracker, store, lister, &countingFetcher{}, &nopResumer{}, nil)
+	did := mustDID("did:plc:alice")
+	id, err := eng.SyncUser(context.Background(), did, "sid-1", jobs.TriggerManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := waitForTerminalJob(t, tracker, id, did)
+	if job.Status != jobs.StatusFailed {
+		t.Fatalf("status = %q, want failed after a standardfeed write error", job.Status)
+	}
+}
+
 type failingFetcher struct{ err error }
 
 func (f failingFetcher) FetchAndStore(context.Context, string) error { return f.err }
@@ -420,6 +446,44 @@ func TestSyncUser_FetchFailureDoesNotFailReconciliation(t *testing.T) {
 	job := waitForTerminalJob(t, tracker, id, did)
 	if job.Status != jobs.StatusDone {
 		t.Fatalf("status = %q, want done when only fetch failed", job.Status)
+	}
+}
+
+func TestSyncUser_TopUpFetchFailureDoesNotFailReconciliation(t *testing.T) {
+	lister := &fakeLister{subs: []PDSSubscription{{URI: "at://did:plc:alice/blue.morgen.feed.subscription/3new", Kind: "rss", Rkey: "3new", FeedURL: "https://example.com/new-feed"}}}
+	fetcher := &countingFetcher{err: errors.New("upstream unavailable")}
+	tracker := jobs.New()
+	eng := NewEngine(tracker, newFakeStore(), lister, fetcher, &nopResumer{}, nil)
+	did := mustDID("did:plc:alice")
+	id, err := eng.SyncUser(context.Background(), did, "sid-1", jobs.TriggerManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := waitForTerminalJob(t, tracker, id, did)
+	if seen := fetcher.seen(); len(seen) != 1 || seen[0] != "https://example.com/new-feed" {
+		t.Fatalf("fetches = %v, want the Phase 2 top-up of the new feed", seen)
+	}
+	if job.Status != jobs.StatusDone {
+		t.Fatalf("status = %q, want done when only the top-up fetch failed", job.Status)
+	}
+}
+
+func TestSyncUser_SidecarCleanupFailureDoesNotFailReconciliation(t *testing.T) {
+	pds := &fakeRecordWriter{failures: map[string]int{"3sc": 1}}
+	lister := &fakeLister{subs: []PDSSubscription{sidecar("3sc", pubA, "Orphan")}}
+	tracker := jobs.New()
+	eng := NewEngine(tracker, newFakeStore(), lister, &countingFetcher{}, &nopResumer{}, pds)
+	did := mustDID("did:plc:alice")
+	id, err := eng.SyncUser(context.Background(), did, "sid-1", jobs.TriggerManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := waitForTerminalJob(t, tracker, id, did)
+	if len(pds.attempts) != 1 || len(pds.deleted) != 0 {
+		t.Fatalf("sidecar cleanup attempts=%v deleted=%v, want one failed attempt", pds.attempts, pds.deleted)
+	}
+	if job.Status != jobs.StatusDone {
+		t.Fatalf("status = %q, want done when only sidecar cleanup failed", job.Status)
 	}
 }
 
@@ -456,7 +520,7 @@ func TestSyncUser_FK_NotCalledOnTier2Failure(t *testing.T) {
 	}}
 	fetcher := &countingFetcher{}
 	eng := NewEngine(jobs.New(), store, lister, fetcher, nil, nil)
-	if err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err == nil {
+	if _, err := eng.runDualTrack(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err == nil {
 		t.Fatal("expected Tier-2 failure to fail reconciliation")
 	}
 	if store.upserts != 0 {

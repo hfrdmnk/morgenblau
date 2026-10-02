@@ -27,13 +27,10 @@ type reconcilePass[L any] struct {
 	// snapshot reads the local side inside the tx; its failure rolls the whole pass back rather than deleting against a partial view.
 	snapshot func(ctx context.Context, q SyncStore) ([]L, error)
 
-	baseline          []L
-	guardLocalChanges bool
+	// baseline is the local side read before the PDS listing; rows that differ from it in the tx were written during the listing and win.
+	baseline []L
 
 	rkeyOf func(L) string
-
-	// createdAtOf feeds the in-flight guard; nil where the snapshot query carries no created_at column.
-	createdAtOf func(L) string
 
 	updatedAtOf func(L) string
 
@@ -47,40 +44,41 @@ type reconcilePass[L any] struct {
 	deleteFirst bool
 }
 
+// committed proves one reconcile pass's transaction committed; only reconcileCollection mints it, so finishSync cannot be satisfied by a swallowed error.
+type committed[L any] struct{}
+
 // reconcileCollection applies one pass's diff in a single transaction: local rows the PDS no
 // longer lists are deleted, everything the PDS lists is upserted.
-func reconcileCollection[L any](ctx context.Context, runTx txRunner, p reconcilePass[L]) error {
+func reconcileCollection[L any](ctx context.Context, runTx txRunner, p reconcilePass[L]) (*committed[L], error) {
 	keep := make(map[string]struct{}, len(p.desired))
 	for _, d := range p.desired {
 		keep[d.rkey] = struct{}{}
 	}
 
-	return runTx(ctx, func(q SyncStore) error {
+	err := runTx(ctx, func(q SyncStore) error {
 		local, err := p.snapshot(ctx, q)
 		if err != nil {
 			return err
 		}
 		changedDuringListing := make(map[string]struct{})
 		deletedDuringListing := make(map[string]struct{})
-		if p.guardLocalChanges {
-			baselineByRkey := make(map[string]L, len(p.baseline))
-			for _, row := range p.baseline {
-				baselineByRkey[p.rkeyOf(row)] = row
+		baselineByRkey := make(map[string]L, len(p.baseline))
+		for _, row := range p.baseline {
+			baselineByRkey[p.rkeyOf(row)] = row
+		}
+		currentByRkey := make(map[string]L, len(local))
+		for _, row := range local {
+			rkey := p.rkeyOf(row)
+			currentByRkey[rkey] = row
+			baseline, existed := baselineByRkey[rkey]
+			if !existed || (p.changedSinceSnapshot != nil && p.changedSinceSnapshot(row, baseline)) ||
+				(p.updatedAtOf != nil && updatedAfterSnapshot(p.updatedAtOf(row), p.snapshotAt)) {
+				changedDuringListing[rkey] = struct{}{}
 			}
-			currentByRkey := make(map[string]L, len(local))
-			for _, row := range local {
-				rkey := p.rkeyOf(row)
-				currentByRkey[rkey] = row
-				baseline, existed := baselineByRkey[rkey]
-				if !existed || (p.changedSinceSnapshot != nil && p.changedSinceSnapshot(row, baseline)) ||
-					(p.updatedAtOf != nil && updatedAfterSnapshot(p.updatedAtOf(row), p.snapshotAt)) {
-					changedDuringListing[rkey] = struct{}{}
-				}
-			}
-			for rkey := range baselineByRkey {
-				if _, exists := currentByRkey[rkey]; !exists {
-					deletedDuringListing[rkey] = struct{}{}
-				}
+		}
+		for rkey := range baselineByRkey {
+			if _, exists := currentByRkey[rkey]; !exists {
+				deletedDuringListing[rkey] = struct{}{}
 			}
 		}
 
@@ -92,10 +90,6 @@ func reconcileCollection[L any](ctx context.Context, runTx txRunner, p reconcile
 				}
 				if _, fresh := changedDuringListing[rkey]; fresh {
 					slog.Debug("reconcile: delete skipped, local row changed during the PDS listing", "collection", p.collection, "rkey", rkey)
-					continue
-				}
-				if p.createdAtOf != nil && createdAfterSnapshot(p.createdAtOf(row), p.snapshotAt) {
-					slog.Debug("reconcile: delete skipped, row newer than the PDS snapshot", "collection", p.collection, "rkey", rkey, "createdAt", p.createdAtOf(row))
 					continue
 				}
 				if err := p.deleteRow(ctx, q, rkey); err != nil {
@@ -132,6 +126,10 @@ func reconcileCollection[L any](ctx context.Context, runTx txRunner, p reconcile
 		}
 		return deleteStale()
 	})
+	if err != nil {
+		return nil, err
+	}
+	return &committed[L]{}, nil
 }
 
 // orNow backfills a record whose optional createdAt is absent, so the local row never carries an empty timestamp.

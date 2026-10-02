@@ -11,7 +11,6 @@ import (
 // coreRow stands in for any collection's snapshot row, so these tests exercise the diff and not a schema.
 type coreRow struct {
 	rkey      string
-	createdAt string
 	updatedAt string
 }
 
@@ -20,7 +19,6 @@ type coreHarness struct {
 	local        []coreRow
 	baseline     []coreRow
 	desiredKeys  []string
-	guarded      bool
 	updatedGuard bool
 	changedGuard bool
 	deleteFirst  bool
@@ -52,15 +50,13 @@ func (h *coreHarness) pass() reconcilePass[coreRow] {
 			return h.deleteFail[rkey]
 		},
 	}
-	if h.guarded {
-		p.createdAtOf = func(r coreRow) string { return r.createdAt }
+	// A nil baseline means nothing changed locally during the listing.
+	p.baseline = h.baseline
+	if p.baseline == nil {
+		p.baseline = h.local
 	}
 	if h.updatedGuard {
 		p.updatedAtOf = func(r coreRow) string { return r.updatedAt }
-	}
-	if h.updatedGuard || h.changedGuard {
-		p.guardLocalChanges = true
-		p.baseline = h.baseline
 	}
 	if h.changedGuard {
 		p.changedSinceSnapshot = func(current, baseline coreRow) bool {
@@ -79,11 +75,12 @@ func (h *coreHarness) pass() reconcilePass[coreRow] {
 	return p
 }
 
-// txSpy stands in for Engine.runTx: beginErr fails the whole batch, inner records what the pass closure returned.
+// txSpy stands in for Engine.runTx: beginErr fails the whole batch, inner records what the pass closure returned, commitErr fails a clean closure at COMMIT.
 type txSpy struct {
-	beginErr error
-	inner    error
-	opened   bool
+	beginErr  error
+	commitErr error
+	inner     error
+	opened    bool
 }
 
 func (t *txSpy) run(ctx context.Context, fn func(SyncStore) error) error {
@@ -92,7 +89,10 @@ func (t *txSpy) run(ctx context.Context, fn func(SyncStore) error) error {
 	}
 	t.opened = true
 	t.inner = fn(nil)
-	return t.inner
+	if t.inner != nil {
+		return t.inner
+	}
+	return t.commitErr
 }
 
 func assertOps(t *testing.T, got []string, want ...string) {
@@ -134,7 +134,7 @@ func TestReconcileCollection_DeletesStaleAndUpsertsDesired(t *testing.T) {
 	}
 	tx := &txSpy{}
 
-	if err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
+	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
 		t.Fatal(err)
 	}
 	assertOpSet(t, h.ops, "upsert:b", "upsert:c", "delete:a")
@@ -144,7 +144,7 @@ func TestReconcileCollection_EmptyDesiredDeletesEveryLocalRow(t *testing.T) {
 	h := &coreHarness{local: []coreRow{{rkey: "a"}, {rkey: "b"}}}
 	tx := &txSpy{}
 
-	if err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
+	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
 		t.Fatal(err)
 	}
 	assertOpSet(t, h.ops, "delete:a", "delete:b")
@@ -154,37 +154,32 @@ func TestReconcileCollection_UpsertsRunInDesiredOrder(t *testing.T) {
 	h := &coreHarness{desiredKeys: []string{"c", "a", "b"}}
 	tx := &txSpy{}
 
-	if err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
+	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
 		t.Fatal(err)
 	}
 	assertOps(t, h.ops, "upsert:c", "upsert:a", "upsert:b")
 }
 
 // A row written in-app after the PDS listing was taken is absent from that listing without having been deleted remotely.
-func TestReconcileCollection_GuardSparesRowsNewerThanTheSnapshot(t *testing.T) {
-	cases := []struct {
-		name      string
-		createdAt string
-		wantGone  bool
-	}{
-		{"created after the snapshot", "2026-07-20T12:00:01Z", false},
-		{"created before the snapshot", "2026-07-20T11:00:00Z", true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			h := &coreHarness{guarded: true, local: []coreRow{{rkey: "a", createdAt: tc.createdAt}}}
-			tx := &txSpy{}
+func TestReconcileCollection_SparesRowInsertedDuringListing(t *testing.T) {
+	h := &coreHarness{local: []coreRow{{rkey: "a"}, {rkey: "b"}}, baseline: []coreRow{{rkey: "b"}}}
+	tx := &txSpy{}
 
-			if err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
-				t.Fatal(err)
-			}
-			if tc.wantGone {
-				assertOps(t, h.ops, "delete:a")
-				return
-			}
-			assertOps(t, h.ops)
-		})
+	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
+		t.Fatal(err)
 	}
+	assertOps(t, h.ops, "delete:b")
+}
+
+// A local delete made during the listing is newer than the listed record, so the stale listing must not resurrect it.
+func TestReconcileCollection_DoesNotResurrectRowDeletedDuringListing(t *testing.T) {
+	h := &coreHarness{local: []coreRow{}, baseline: []coreRow{{rkey: "a"}}, desiredKeys: []string{"a", "c"}}
+	tx := &txSpy{}
+
+	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
+		t.Fatal(err)
+	}
+	assertOps(t, h.ops, "upsert:c")
 }
 
 func TestReconcileCollection_SparesLocalSubscriptionUpdatedAfterSnapshot(t *testing.T) {
@@ -196,7 +191,7 @@ func TestReconcileCollection_SparesLocalSubscriptionUpdatedAfterSnapshot(t *test
 	}
 	tx := &txSpy{}
 
-	if err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
+	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
 		t.Fatal(err)
 	}
 	assertOps(t, h.ops)
@@ -211,21 +206,10 @@ func TestReconcileCollection_SparesLocalSubscriptionUpdatedInSnapshotSecond(t *t
 	}
 	tx := &txSpy{}
 
-	if err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
+	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
 		t.Fatal(err)
 	}
 	assertOps(t, h.ops)
-}
-
-// A pass whose snapshot query carries no created_at leaves createdAtOf nil and deletes on absence alone.
-func TestReconcileCollection_WithoutCreatedAtOf_DeletesUnguarded(t *testing.T) {
-	h := &coreHarness{local: []coreRow{{rkey: "a", createdAt: "2026-07-20T12:00:01Z"}}}
-	tx := &txSpy{}
-
-	if err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
-		t.Fatal(err)
-	}
-	assertOps(t, h.ops, "delete:a")
 }
 
 func TestReconcileCollection_PerStatementErrorsFailThePass(t *testing.T) {
@@ -237,7 +221,7 @@ func TestReconcileCollection_PerStatementErrorsFailThePass(t *testing.T) {
 	}
 	tx := &txSpy{}
 
-	if err := reconcileCollection(context.Background(), tx.run, h.pass()); err == nil {
+	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); err == nil {
 		t.Fatal("reconcile returned nil despite a failed local write")
 	}
 	assertOps(t, h.ops, "upsert:c")
@@ -251,7 +235,7 @@ func TestReconcileCollection_SnapshotFailureRollsBackBeforeAnyWrite(t *testing.T
 	h := &coreHarness{snapshotErr: boom, local: []coreRow{{rkey: "a"}}, desiredKeys: []string{"c"}}
 	tx := &txSpy{}
 
-	if err := reconcileCollection(context.Background(), tx.run, h.pass()); !errors.Is(err, boom) {
+	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want %v", err, boom)
 	}
 	assertOps(t, h.ops)
@@ -265,12 +249,41 @@ func TestReconcileCollection_TxFailurePropagatesWithNoWrites(t *testing.T) {
 	h := &coreHarness{local: []coreRow{{rkey: "a"}}, desiredKeys: []string{"c"}}
 	tx := &txSpy{beginErr: boom}
 
-	if err := reconcileCollection(context.Background(), tx.run, h.pass()); !errors.Is(err, boom) {
+	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want %v", err, boom)
 	}
 	assertOps(t, h.ops)
 	if tx.opened {
 		t.Error("the pass ran despite the tx failing to open")
+	}
+}
+
+func TestReconcileCollection_CommitProofOnlyAfterTheTransactionCommits(t *testing.T) {
+	boom := errors.New("tx boom")
+	cases := []struct {
+		name string
+		h    *coreHarness
+		tx   *txSpy
+	}{
+		{"begin fails", &coreHarness{desiredKeys: []string{"c"}}, &txSpy{beginErr: boom}},
+		{"a statement fails", &coreHarness{desiredKeys: []string{"c"}, upsertFail: map[string]error{"c": boom}}, &txSpy{}},
+		{"commit fails after a clean closure", &coreHarness{desiredKeys: []string{"c"}}, &txSpy{commitErr: boom}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			proof, err := reconcileCollection(context.Background(), tc.tx.run, tc.h.pass())
+			if !errors.Is(err, boom) {
+				t.Fatalf("err = %v, want %v", err, boom)
+			}
+			if proof != nil {
+				t.Fatal("reconcileCollection minted a commit proof for a transaction that did not commit")
+			}
+		})
+	}
+
+	proof, err := reconcileCollection(context.Background(), (&txSpy{}).run, (&coreHarness{desiredKeys: []string{"c"}}).pass())
+	if err != nil || proof == nil {
+		t.Fatalf("committed pass: proof = %v, err = %v, want a proof", proof, err)
 	}
 }
 
@@ -283,7 +296,7 @@ func TestReconcileCollection_DeleteFirstOrdersTheWholePass(t *testing.T) {
 	}
 	tx := &txSpy{}
 
-	if err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
+	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
 		t.Fatal(err)
 	}
 	assertOps(t, h.ops, "delete:old", "upsert:new")
@@ -299,7 +312,7 @@ func TestReconcileCollection_DeleteFirstDeleteFailureRollsBack(t *testing.T) {
 	}
 	tx := &txSpy{}
 
-	err := reconcileCollection(context.Background(), tx.run, h.pass())
+	_, err := reconcileCollection(context.Background(), tx.run, h.pass())
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want wrapped %v", err, boom)
 	}
@@ -324,7 +337,7 @@ func TestReconcileCollection_DeleteFirstDesiredWriteFailureRollsBackStaleDelete(
 	}
 	tx := &txSpy{}
 
-	err := reconcileCollection(context.Background(), tx.run, h.pass())
+	_, err := reconcileCollection(context.Background(), tx.run, h.pass())
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want wrapped %v", err, boom)
 	}
@@ -346,7 +359,7 @@ func TestReconcileCollection_WithoutDeleteFirstUpsertsLead(t *testing.T) {
 	}
 	tx := &txSpy{}
 
-	if err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
+	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
 		t.Fatal(err)
 	}
 	assertOps(t, h.ops, "upsert:new", "delete:old")
@@ -357,7 +370,7 @@ func TestReconcileCollection_ReadsOnlyTheStoreTheTxHandsIt(t *testing.T) {
 	h := &coreHarness{local: []coreRow{{rkey: "a"}}, desiredKeys: []string{"c"}}
 	tx := &txSpy{}
 
-	if err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
+	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
 		t.Fatal(err)
 	}
 	if !h.sawStore || h.store != nil {

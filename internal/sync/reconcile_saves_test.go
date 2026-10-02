@@ -20,7 +20,7 @@ func TestSyncUser_ReconcileSaves_InsertsAndDeletes(t *testing.T) {
 	}}
 	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
 
-	if err := eng.reconcileSaves(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+	if _, err := eng.reconcileSaves(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -47,7 +47,7 @@ func TestSyncUser_ReconcileSaves_EmptyCreatedAtFallsBackToNow(t *testing.T) {
 		{URI: "at://x/s/noDate", Rkey: "noDate", ItemURL: "https://item/x", CreatedAt: ""},
 	}}
 	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
-	if err := eng.reconcileSaves(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
+	if _, err := eng.reconcileSaves(context.Background(), mustDID("did:plc:alice"), newSession("did:plc:alice")); err != nil {
 		t.Fatal(err)
 	}
 	got := store.saveUpsertParams["noDate"]

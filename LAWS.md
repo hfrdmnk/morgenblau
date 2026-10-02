@@ -16,7 +16,12 @@ The write paths live in [`internal/api/`](internal/api/) and [`internal/atprepo/
 
 The sync engine and reconciliation guards live in [`internal/sync/`](internal/sync/); job status lives in [`internal/jobs/`](internal/jobs/). See [SPEC.md](SPEC.md#data-ownership) for the authority boundary.
 
-**Check by hand:** Follow both reconciliation results into the job's `done` transition. Inspect the stale-listing guard before any local deletion, and confirm a failed local transaction cannot return success.
+**Enforced by:**
+
+- Done needs every commit: `finishSync` in [`syncuser.go`](internal/sync/syncuser.go) marks a `sync_user` job done only with a commit proof from each reconcile pass, and only `reconcileCollection` mints one, after its transaction commits. `TestSyncUserReachesDoneOnlyThroughFinishSync` and `TestCommitProofIsMintedOnlyByReconcileCollection` in [`sync_completion_test.go`](internal/sync/sync_completion_test.go) keep both paths single.
+- A failed commit is a failed sync: `TestWithTx_CommitErrorPropagates` in [`conn_test.go`](internal/database/conn_test.go), `TestReconcileCollection_CommitProofOnlyAfterTheTransactionCommits` in [`reconcile_test.go`](internal/sync/reconcile_test.go), `TestSyncUser_FailsWhenTheSavesTransactionDoesNotCommit` in [`syncuser_integration_test.go`](internal/sync/syncuser_integration_test.go), and the per-pass `TestSyncUser_FailsWhen*MirrorDoesNotReconcile` in [`syncuser_test.go`](internal/sync/syncuser_test.go).
+- Stale listings: the guard in `reconcileCollection` has no off switch. `TestEveryReconcilePassCarriesTheListingGuard`, `TestSyncUser_StaleSubscriptionListingPreservesMirrorWritesInBothPasses`, and `TestReconcile_StaleSaveListingPreservesSameSecondMirrorInsert` in [`reconcile_guard_test.go`](internal/sync/reconcile_guard_test.go), plus `TestReconcileCollection_DoesNotResurrectRowDeletedDuringListing` in [`reconcile_test.go`](internal/sync/reconcile_test.go).
+- Retryable side work: `TestSyncUser_FetchFailureDoesNotFailReconciliation`, `TestSyncUser_TopUpFetchFailureDoesNotFailReconciliation`, and `TestSyncUser_SidecarCleanupFailureDoesNotFailReconciliation` in [`syncuser_test.go`](internal/sync/syncuser_test.go), and `TestStandardReconcile_SidecarCleanupFailureIsRetried` in [`reconcile_subscriptions_test.go`](internal/sync/reconcile_subscriptions_test.go).
 
 ## 3. Newsletter data stays private to its reader
 

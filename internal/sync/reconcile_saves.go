@@ -11,18 +11,18 @@ import (
 )
 
 // reconcileSaves has no Tier-2 join and no fetch to trigger; saves are leaf bookmarks.
-func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *session.Session) error {
+func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *session.Session) (*committed[db.UserSave], error) {
 	snapshotAt := e.now().UTC()
 	didStr := did.String()
 	baseline, err := e.store.ListUserSavesForSync(ctx, didStr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Network first: the writer connection must never be held across a PDS round-trip.
 	remote, err := e.lister.ListSaves(ctx, sess)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	now := e.now().UTC().Format(time.RFC3339)
@@ -48,7 +48,6 @@ func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *sessi
 		collection:           "saves",
 		snapshotAt:           snapshotAt,
 		baseline:             baseline,
-		guardLocalChanges:    true,
 		updatedAtOf:          func(row db.UserSave) string { return row.UpdatedAt },
 		changedSinceSnapshot: saveChangedSinceSnapshot,
 		snapshot: func(ctx context.Context, q SyncStore) ([]db.UserSave, error) {

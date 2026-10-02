@@ -21,19 +21,19 @@ func (e *Engine) reconcileTier1(
 	snapshot []db.UserSubscription,
 	snapshotAt time.Time,
 	onAdded func(feedURL string),
-) error {
+) (rss, standardfeed *committed[db.UserSubscription], err error) {
 	// Both lists are fetched before any mutation, so a failed listing can't leave deletes running against a partial snapshot.
 	remote, err := e.lister.ListSubscriptions(ctx, sess)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	standard, err := e.lister.ListStandardSubscriptions(ctx, sess)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	rssErr := e.reconcileRSS(ctx, did, snapshot, snapshotAt, remote, onAdded)
-	standardErr := e.reconcileStandardfeed(ctx, did, sess, snapshot, snapshotAt, remote, standard, onAdded)
-	return errors.Join(rssErr, standardErr)
+	rss, rssErr := e.reconcileRSS(ctx, did, snapshot, snapshotAt, remote, onAdded)
+	standardfeed, standardErr := e.reconcileStandardfeed(ctx, did, sess, snapshot, snapshotAt, remote, standard, onAdded)
+	return rss, standardfeed, errors.Join(rssErr, standardErr)
 }
 
 func (e *Engine) reconcileRSS(
@@ -43,7 +43,7 @@ func (e *Engine) reconcileRSS(
 	snapshotAt time.Time,
 	remote []PDSSubscription,
 	onAdded func(feedURL string),
-) error {
+) (*committed[db.UserSubscription], error) {
 	// This pass only touches kind=rss rows; standardfeed rows belong to reconcileStandardfeed and must never be deleted here.
 	local := filterSubscriptions(snapshot, isRSS)
 	localByRkey := rkeySet(local)
@@ -91,7 +91,6 @@ func (e *Engine) reconcileRSS(
 		collection:           "subscriptions.rss",
 		snapshotAt:           snapshotAt,
 		baseline:             local,
-		guardLocalChanges:    true,
 		updatedAtOf:          func(row db.UserSubscription) string { return row.UpdatedAt },
 		changedSinceSnapshot: subscriptionChangedSinceSnapshot,
 		snapshot: func(ctx context.Context, q SyncStore) ([]db.UserSubscription, error) {
@@ -118,7 +117,7 @@ func (e *Engine) reconcileStandardfeed(
 	morgen []PDSSubscription,
 	standard []PDSStandardSubscription,
 	onAdded func(feedURL string),
-) error {
+) (*committed[db.UserSubscription], error) {
 	local := filterSubscriptions(snapshot, isStandardfeed)
 	localByRkey := rkeySet(local)
 
@@ -174,11 +173,10 @@ func (e *Engine) reconcileStandardfeed(
 		})
 	}
 
-	err := reconcileCollection(ctx, e.runTx, reconcilePass[db.UserSubscription]{
+	receipt, err := reconcileCollection(ctx, e.runTx, reconcilePass[db.UserSubscription]{
 		collection:           "subscriptions.standardfeed",
 		snapshotAt:           snapshotAt,
 		baseline:             local,
-		guardLocalChanges:    true,
 		updatedAtOf:          func(row db.UserSubscription) string { return row.UpdatedAt },
 		changedSinceSnapshot: subscriptionChangedSinceSnapshot,
 		snapshot: func(ctx context.Context, q SyncStore) ([]db.UserSubscription, error) {
@@ -205,7 +203,7 @@ func (e *Engine) reconcileStandardfeed(
 		func(rkey string, err error) {
 			slog.Warn("reconcile: sidecar cleanup failed", "rkey", rkey, "err", err)
 		})
-	return err
+	return receipt, err
 }
 
 // tier2ThenTier1 upserts the catalog row before the subscription: the FK from feed_entries.feed_url requires it,
