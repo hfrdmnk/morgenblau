@@ -40,6 +40,27 @@ func TestDevConfigRequiresExplicitLocalOptIn(t *testing.T) {
 	}
 }
 
+func TestDevConfigAcceptsPlainHTTPOnlyForALoopbackPDS(t *testing.T) {
+	for host, ok := range map[string]bool{
+		"http://localhost:2583":      true,
+		"http://127.0.0.1:2583":      true,
+		"http://[::1]:2583":          true,
+		"http://pds.example.com":     false,
+		"http://10.0.0.1:2583":       false,
+		"http://localhost.example":   false,
+		"http://localhost:2583/xrpc": false,
+	} {
+		values := map[string]string{"APP_ENV": "local", "DEV_LOGIN_ENABLED": "true", "ATPROTO_PDS": host, "ATPROTO_HANDLE": "reader.test", "ATPROTO_PASSWORD": "example-app-password"}
+		cfg, err := LoadDevConfig(func(key string) string { return values[key] })
+		if (err == nil) != ok {
+			t.Errorf("%s: err = %v, want accepted %v", host, err, ok)
+		}
+		if ok && (cfg == nil || cfg.PDS != host) {
+			t.Errorf("%s: cfg = %+v", host, cfg)
+		}
+	}
+}
+
 func TestDevSessionLoginRefreshLogout(t *testing.T) {
 	var creates, refreshes, deletes atomic.Int32
 	pds := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

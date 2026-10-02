@@ -50,6 +50,15 @@ func WithAllowLoopbackPorts(ports ...int) Option {
 	}
 }
 
+// IsLoopbackHost reports whether a URL hostname names this machine without a DNS lookup.
+func IsLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // Validator returns an error if ip falls into a disallowed range.
 func Validator(ip net.IP) error {
 	if ip == nil {

@@ -234,3 +234,14 @@ func TestNewClient_AllowLoopbackPortsPermitsOnlyThosePorts(t *testing.T) {
 		}
 	}
 }
+
+func TestIsLoopbackHost(t *testing.T) {
+	for host, want := range map[string]bool{
+		"localhost": true, "127.0.0.1": true, "127.0.0.2": true, "::1": true,
+		"localhost.example": false, "example.com": false, "10.0.0.1": false, "": false,
+	} {
+		if got := IsLoopbackHost(host); got != want {
+			t.Errorf("IsLoopbackHost(%q) = %v, want %v", host, got, want)
+		}
+	}
+}

@@ -13,6 +13,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/atxrpc"
+	"morgenblau/internal/safehttp"
 )
 
 // A colon cannot occur in Indigo's base64url OAuth session IDs.
@@ -28,8 +29,10 @@ func LoadDevConfig(getenv func(string) string) (*DevConfig, error) {
 	}
 	cfg := &DevConfig{PDS: strings.TrimRight(getenv("ATPROTO_PDS"), "/"), Handle: getenv("ATPROTO_HANDLE"), Password: getenv("ATPROTO_PASSWORD")}
 	u, err := url.Parse(cfg.PDS)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" {
-		return nil, errors.New("development login requires an HTTPS ATPROTO_PDS origin")
+	// A verify run's throwaway PDS listens on plain HTTP on this machine.
+	secure := err == nil && (u.Scheme == "https" || (u.Scheme == "http" && safehttp.IsLoopbackHost(u.Hostname())))
+	if !secure || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" {
+		return nil, errors.New("development login requires an HTTPS ATPROTO_PDS origin, or plain HTTP on loopback")
 	}
 	if _, err := syntax.ParseAtIdentifier(cfg.Handle); err != nil || cfg.Password == "" {
 		return nil, errors.New("development login requires ATPROTO_HANDLE and ATPROTO_PASSWORD")
