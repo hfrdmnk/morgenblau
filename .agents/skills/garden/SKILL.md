@@ -29,7 +29,7 @@ When in doubt, it is judgment. A mechanical fix that turns any check red is reve
 - No behaviour changes.
 - Never add or reword rules or prose in any AGENTS.md, SPEC.md or skill. The only doc edit allowed is correcting a stale reference (path, make target, bun script, Go symbol, route) whose replacement is unambiguous. Everything else goes to an issue.
 - Never suppress a check: no `fallow-ignore` comments or config ignores, no `eslint-disable`, no `//nolint`, no `t.Skip`, no new entries in an invariant test's allowlist (such as `unscopedNewsletterQueries`), no lowered fallow thresholds.
-- Never touch `internal/database/migrations/` (goose owns them), `internal/database/db/` (sqlc-generated), `lexicons/`, `LAWS.md` (law changes need the maintainer), `.agents/skills/verify-morgenblau/features/` (`maintain-verification-skill` owns the feature map) or the shadcn components in `frontend/src/components/ui/`.
+- Never touch `internal/database/migrations/` (goose owns them), `internal/database/db/` (sqlc-generated), `lexicons/`, `LAWS.md` (law changes need the maintainer), `.agents/skills/verify-morgenblau/features/` (the verify skill maintains its own feature map) or the shadcn components in `frontend/src/components/ui/`.
 - Never run `make migrate-*`, `make dev` or anything that touches `./data/` or a PDS.
 - Never change the state or labels of an existing issue.
 
@@ -124,12 +124,12 @@ Every law heading carries an "Enforced by:" list. A "Check by hand" line is allo
 
 ### 2.5 Docs and skills vs code
 
-Scope: every AGENTS.md (the `.claude/rules/*.md` symlinks and `CLAUDE.md` point at them), `.claude/rules/testing.md`, `SPEC.md`, `LAWS.md`, and every `SKILL.md` under `.agents/skills/` with the files it links. For the verify skill's `features/`, check only that references resolve; its content is `maintain-verification-skill`'s job. Resolve every reference:
+Scope: every AGENTS.md (the `.claude/rules/*.md` symlinks and `CLAUDE.md` point at them), `.claude/rules/testing.md`, `SPEC.md`, `LAWS.md`, and every `SKILL.md` under `.agents/skills/` with the files it links. For the verify skill's `features/`, check only that references resolve; its content is the verify skill's job. Resolve every reference:
 
 - repo paths exist (`test -e`): markdown links relative to the doc, backticked paths relative to the doc's directory or else the repo root; `#anchors` and prose section references ("SPEC.md, Newsletters") match a heading in the target
 - `make <target>` is a target in `Makefile`
 - `bun run <script>` is in `frontend/package.json`, or is a Bun built-in
-- Go symbols cited by name have a definition (`git grep -nwE 'func (\([^)]*\) )?<Name>\b|type <Name>\b' -- '*.go'`)
+- Go symbols cited by name have a definition (`git grep -nwE 'func (\([^)]*\) )?<Name>|type <Name>' -- '*.go'`)
 - routes written as `METHOD /path` are registered in `internal/server/routes.go`
 - `bin/verify` subcommands and flags exist in `.agents/skills/verify-morgenblau/bin/verify`
 

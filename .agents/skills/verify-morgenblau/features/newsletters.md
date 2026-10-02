@@ -1,6 +1,6 @@
 # Private newsletters
 
-Each reader gets one private email address on the newsletter domain, made of memorable words (`internal/newsletter/address.go`). Mail sent to it is received over SMTP, stored privately (never on the PDS), grouped into sources by sender, and shown in the digest, the Sources page and the reader. Remote images stay blocked until the reader allows them for a message. Stopping a source deletes its unsaved messages (SPEC.md, Newsletters).
+Each reader gets one private email address on the newsletter domain, made of memorable words (`internal/newsletter/address.go`). Mail sent to it is received over SMTP, stored privately (never on the PDS), grouped into sources by sender, and shown in the digest, the Sources page and the reader. Remote images stay blocked until the reader allows them for a message. Stopping a source deletes its unsaved messages (SPEC.md, Private Newsletter Data).
 
 Help article: none
 
