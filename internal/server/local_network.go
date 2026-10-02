@@ -8,9 +8,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/identity"
 
 	"morgenblau/internal/atidentity"
+	"morgenblau/internal/oauth/handler"
+	"morgenblau/internal/oauth/localflow"
 	"morgenblau/internal/safehttp"
 )
 
@@ -59,4 +62,11 @@ func (n *localNetwork) identityDirectory(client *http.Client) identity.Directory
 		return atidentity.Guarded(client)
 	}
 	return atidentity.Local(client, n.plc, n.pds)
+}
+
+func (n *localNetwork) oauthFlow(app *oauth.ClientApp) handler.ClientApp {
+	if n == nil {
+		return app
+	}
+	return localflow.App{ClientApp: app, PDS: n.pds}
 }

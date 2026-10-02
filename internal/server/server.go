@@ -15,7 +15,6 @@ import (
 
 	_ "github.com/joho/godotenv/autoload"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	gosmtp "github.com/emersion/go-smtp"
 
@@ -30,6 +29,7 @@ import (
 	"morgenblau/internal/newsletter"
 	"morgenblau/internal/oauth/config"
 	"morgenblau/internal/oauth/cookie"
+	"morgenblau/internal/oauth/handler"
 	"morgenblau/internal/oauth/store"
 	"morgenblau/internal/safehttp"
 	"morgenblau/internal/secret"
@@ -58,7 +58,7 @@ type Server struct {
 	qr          *dbqueries.Queries
 	qw          *dbqueries.Queries
 	oauthCfg    *config.Config
-	oauthApp    *oauth.ClientApp
+	oauthFlow   handler.ClientApp
 	sessions    *session.Manager
 	store       *store.Store
 	sealer      *cookie.Sealer
@@ -193,7 +193,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		qr:          qr,
 		qw:          qw,
 		oauthCfg:    oauthCfg,
-		oauthApp:    oauthApp,
+		oauthFlow:   localNet.oauthFlow(oauthApp),
 		sessions:    sessions,
 		store:       st,
 		sealer:      sealer,

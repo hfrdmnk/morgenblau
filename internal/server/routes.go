@@ -40,8 +40,8 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("/oauth-jwks.json", handler.JWKSHandler(s.oauthCfg))
 	// Anyone can make login and callback fan out to DNS, PLC and authorization-server fetches; a real sign-in uses two requests.
 	signIn := ratelimit.New(10, time.Minute, ratelimit.ClientIP(os.Getenv("FLY_APP_NAME") != ""))
-	mux.Handle("POST /oauth/login", signIn.Wrap(handler.LoginHandler(s.oauthApp)))
-	mux.Handle("GET /oauth/callback", signIn.Wrap(handler.CallbackHandler(s.oauthApp, s.sealer, s.sync)))
+	mux.Handle("POST /oauth/login", signIn.Wrap(handler.LoginHandler(s.oauthFlow)))
+	mux.Handle("GET /oauth/callback", signIn.Wrap(handler.CallbackHandler(s.oauthFlow, s.sealer, s.sync)))
 	mux.Handle("POST /oauth/logout", handler.LogoutHandler(s.sessions, s.sealer, s.store))
 	var addresses api.ProfileAddressInitializer
 	if s.newsletters != nil {

@@ -10,9 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
+	"morgenblau/internal/oauth/handler"
+	"morgenblau/internal/oauth/localflow"
 	"morgenblau/internal/safehttp"
 )
 
@@ -108,5 +111,20 @@ func TestNoLocalNetwork_KeepsProductionDefaults(t *testing.T) {
 	_, _ = n.identityDirectory(&http.Client{Transport: tr}).LookupDID(context.Background(), "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa")
 	if len(tr.hosts) != 1 || tr.hosts[0] != "plc.directory" {
 		t.Errorf("did:plc lookup reached %v, want only plc.directory", tr.hosts)
+	}
+}
+
+func TestOAuthFlow_LocalNetworkStartsLocalAccountsItself(t *testing.T) {
+	cfg := oauth.NewLocalhostConfig("http://127.0.0.1:8123/oauth/callback", []string{"atproto"})
+	app := oauth.NewClientApp(&cfg, oauth.NewMemStore())
+
+	var none *localNetwork
+	if got := none.oauthFlow(app); got != handler.ClientApp(app) {
+		t.Errorf("without a local network oauthFlow = %T, want indigo's app", got)
+	}
+	n := &localNetwork{plc: "http://localhost:2700", pds: "http://localhost:2701"}
+	local, ok := n.oauthFlow(app).(localflow.App)
+	if !ok || local.ClientApp != app || local.PDS != n.pds {
+		t.Errorf("with a local network oauthFlow = %#v, want localflow.App for %s", n.oauthFlow(app), n.pds)
 	}
 }
