@@ -8,7 +8,8 @@ USAGE='usage: verify <command> [args]
   doctor                          check this machine can verify; exit 0 ok, 3 no local PDS (anonymous only), 1 fail
   up <slug> [--fetch-minutes N]   start an isolated instance (own ports, fresh DB, own Vite, own PDS and account); prints its state
                                   --fetch-minutes turns on the global feed refresher (default off)
-  login <slug>                    sign the run cookie jar in as the run account and wait for the login sync
+  login <slug>                    sign the run cookie jar in as the run account (dev login) and wait for the login sync
+  oauth <slug>                    sign the run cookie jar in through real OAuth on the run PDS, then wait like login
   api <slug> <METHOD> <path> [--data JSON] [--out NAME] [--anon]
                                   call the instance; prints the body, status on stderr; --out keeps NAME.json + NAME.status
   inspect <slug> [--out NAME]     JSON snapshot of the run DB (counts, subscriptions, saves, newsletter rows)
@@ -17,7 +18,8 @@ USAGE='usage: verify <command> [args]
   foreign <slug>                  arrange a second reader (placeholder DID) with a newsletter address; prints {did,address}
   browser <slug> <playwright-cli command> [args]
                                   drive a browser session named after the slug; page-level commands only,
-                                  a /path expands to the instance URL, files stay in the evidence dir
+                                  a /path expands to the instance URL, files stay in the evidence dir;
+                                  fill-password <target> types the run account password without echoing it
   down <slug> [--dry-run]         close the browser, stop what up started, drop the DB, the PDS data and the account
   stale [--dry-run]               run down for every run with a dead process or started over STALE_HOURS ago
   status                          list runs and whether their processes are alive
@@ -70,6 +72,17 @@ pds_tools_installed() {
 }
 
 pds_available() { [ "$(node_major)" -ge "$NODE_MAJOR_MIN" ] && pds_tools_installed; }
+
+# The local PDS resolves include: permission sets through its own PLC, which has never heard of blue.morgen, so runs ask for the set's permissions directly.
+local_oauth_scope() {
+    local set="lexicons/blue/morgen/access.json" id expanded scope
+    id="$(jq -r .id "$set")"
+    expanded="$(jq -r '[.defs.main.permissions[]
+        | if .resource == "repo" and (has("action") | not) then .collection[] | "repo:" + .
+          else error("bin/verify cannot expand this permission: \(.)") end] | join(" ")' "$set")" || die "could not expand $set"
+    scope="$(oauth_scope)"
+    printf '%s' "${scope/include:$id/$expanded}"
+}
 
 port_free() { ! lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
 
@@ -214,7 +227,7 @@ create_account() {
 oauth_private_key() { openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt | openssl base64 -A; }
 
 up() {
-    local slug="$1" fetch="${2:-0}" dir run http smtp vite plc="" pds="" claimed dev=false pds_url="" plc_url="" handle="" password="" server_pid i
+    local slug="$1" fetch="${2:-0}" dir run http smtp vite plc="" pds="" claimed dev=false pds_url="" plc_url="" handle="" password="" scope server_pid i
     [[ "$fetch" =~ ^[0-9]+$ ]] || die "--fetch-minutes takes a whole number of minutes"
     [[ "$slug" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "slug '$slug' must be lowercase letters, digits and dashes."
     dir="$VERIFY_ROOT/$(date +%F)-$slug"
@@ -259,13 +272,17 @@ up() {
         create_account "$dir" "$pds_url" "$(run_handle "$slug")" || fail "could not create the run's account on $pds_url"
         handle="$(jq -r .handle "$run/account.json")"
         password="$(jq -r .app_password "$run/account.json")"
+        scope="$(local_oauth_scope)"
+    else
+        scope="$(oauth_scope)"
     fi
 
     PORT="$http" DB_PATH="$run/morgenblau.db" APP_ENV=local FETCH_INTERVAL_MINUTES="$fetch" \
         VITE_URL="http://127.0.0.1:$vite" DEV_LOGIN_ENABLED="$dev" \
         ATPROTO_HANDLE="$handle" ATPROTO_PASSWORD="$password" ATPROTO_PDS="$pds_url" PLC_URL="$plc_url" \
         SESSION_COOKIE_KEY="$(openssl rand -base64 32)" SESSION_STORE_KEYS="$(openssl rand -base64 32)" \
-        BLUESKY_OAUTH_PRIVATE_KEY="$(oauth_private_key)" BLUESKY_OAUTH_SCOPE="$(oauth_scope)" \
+        BLUESKY_OAUTH_PRIVATE_KEY="$(oauth_private_key)" BLUESKY_OAUTH_SCOPE="$scope" \
+        BLUESKY_CLIENT_ID= BLUESKY_REDIRECT= BLUESKY_OAUTH_CLIENT_NAME= BLUESKY_OAUTH_CLIENT_URI= \
         NEWSLETTER_DOMAIN="$NEWSLETTER_DOMAIN" SMTP_HOSTNAME="$NEWSLETTER_DOMAIN" SMTP_LISTEN_ADDR="127.0.0.1:$smtp" \
         SMTP_TLS_CERT_FILE= SMTP_TLS_KEY_FILE= SMTP_TLS_CERT_B64= SMTP_TLS_KEY_B64= \
         "$run/morgenblau" >"$dir/server.log" 2>&1 &
@@ -317,6 +334,45 @@ login() {
     wait_for_jobs "$dir"
     set_state "$dir" '.logged_in = true'
     jq '{logged_in, handle: .pds.handle, did: .pds.did}' "$dir/run/state.json"
+}
+
+# Signs in the way a browser does: the app's /oauth/login, the authorization server's sign-in and consent API, then the app's callback.
+# The AS API refuses cross-site calls, so each request carries the headers its page would send (oauth-provider's create-api-middleware.js).
+oauth() {
+    local dir="$1" base iss did jar as_jar authorize csrf body consent callback result
+    [ "$(state "$dir" .dev_login)" = true ] || die "this run has no local PDS account (doctor exit 3); signed-in surfaces are blocked." 3
+    base="$(state "$dir" .base_url)"; iss="$(state "$dir" .pds.url)"; did="$(state "$dir" .pds.did)"
+    jar="$dir/run/cookies.txt"; as_jar="$dir/run/as-cookies.txt"
+    body="$(mktemp)"
+    rm -f "$as_jar"
+
+    authorize="$(curl -sS -o "$body" -w '%{redirect_url}' -b "$jar" -c "$jar" --data-urlencode "handle=$(state "$dir" .pds.handle)" "$base/oauth/login")"
+    [[ "$authorize" == "$iss/oauth/authorize?"* ]] || die "POST /oauth/login did not redirect to $iss/oauth/authorize: $(cat "$body"); see $dir/server.log"
+    [ "$(curl -sS -o /dev/null -w '%{http_code}' -b "$as_jar" -c "$as_jar" -H 'sec-fetch-site: cross-site' \
+        -H 'sec-fetch-mode: navigate' -H 'sec-fetch-dest: document' "$authorize")" = 200 ] || die "the authorize page did not load"
+    csrf="$(awk '$6 == "csrf-token" { print $7 }' "$as_jar")"
+    [ -n "$csrf" ] || die "the authorize page set no csrf-token cookie"
+
+    as_api() {
+        curl -sS -o "$body" -w '%{http_code}' -X POST -b "$as_jar" -c "$as_jar" -H 'content-type: application/json' \
+            -H 'sec-fetch-site: same-origin' -H 'sec-fetch-mode: same-origin' -H 'sec-fetch-dest: empty' \
+            -H "origin: $iss" -H "referer: $authorize" -H "x-csrf-token: $csrf" --data @- "$iss/@atproto/oauth-provider/~api/$1"
+    }
+    [ "$(jq '{locale: "en", username: .handle, password: .password, remember: true}' "$dir/run/account.json" | as_api sign-in)" = 200 ] \
+        || die "AS sign-in failed: $(jq -c '{error, error_description}' "$body")"
+    [ "$(jq -n --arg did "$did" '{did: $did}' | as_api consent)" = 200 ] || die "AS consent failed: $(jq -c '{error, error_description}' "$body")"
+    consent="$(jq -r '.url // empty' "$body")"
+
+    callback="$(curl -sS -o /dev/null -w '%{redirect_url}' -b "$as_jar" -c "$as_jar" -H 'sec-fetch-site: same-origin' \
+        -H 'sec-fetch-mode: navigate' -H 'sec-fetch-dest: document' -H "referer: $authorize" "$consent")"
+    [[ "$callback" == "$base/oauth/callback?"* ]] || die "the AS sent the browser to '${callback%%\?*}', not $base/oauth/callback"
+    result="$(curl -sS -o "$body" -w '%{http_code} %{redirect_url}' -b "$jar" -c "$jar" "$callback")"
+    [ "$result" = "302 $base/" ] || die "GET /oauth/callback answered '$result': $(cat "$body"); see $dir/server.log"
+    rm -f "$body" "$as_jar"
+
+    wait_for_jobs "$dir"
+    set_state "$dir" '.logged_in = true'
+    jq '{logged_in, via: "oauth", handle: .pds.handle, did: .pds.did}' "$dir/run/state.json"
 }
 
 api() {
@@ -488,11 +544,27 @@ browser() {
     for config in "$dir/.playwright/cli.config.json" "$HOME/.playwright/cli.config.json"; do
         [ ! -e "$config" ] || refuse "$config would reconfigure the driver; move it away first."
     done
-    guard_browser_args "$dir" "$(state "$dir" .base_url)" "$@"
     for var in $(compgen -e); do
         case "$var" in PLAYWRIGHT_*|PWTEST_*|PW_*|NODE_OPTIONS) unset "$var" ;; esac
     done
+    if [ "$1" = fill-password ]; then
+        { [ $# -eq 2 ] && [[ "$2" != -* ]]; } || refuse "fill-password takes one target, e.g. \"getByRole('textbox', { name: 'Password' })\"."
+        fill_password "$dir" "$2"
+        return
+    fi
+    guard_browser_args "$dir" "$(state "$dir" .base_url)" "$@"
     (cd "$dir" && bunx "$PLAYWRIGHT_CLI" -s="$(state "$dir" .slug)" ${ARGS[@]+"${ARGS[@]}"})
+}
+
+# playwright-cli echoes every fill value in its output, so this drops the output to keep the password out of the transcript and evidence.
+fill_password() {
+    local dir="$1" target="$2"
+    [ -f "$dir/run/account.json" ] || die "this run has no account (doctor exit 3)." 3
+    if (cd "$dir" && bunx "$PLAYWRIGHT_CLI" -s="$(state "$dir" .slug)" fill "$target" "$(jq -r .password "$dir/run/account.json")") >/dev/null 2>&1; then
+        say "filled the run account password into $target"
+    else
+        die "fill-password failed; its output is withheld because it echoes the password. Check the target with snapshot."
+    fi
 }
 
 down_run() {
@@ -506,7 +578,7 @@ down_run() {
     for pid in "$(state "$dir" .pids.server)" "$(state "$dir" .pids.vite)" "$(state "$dir" .pids.pds)"; do
         if alive "$pid"; then stop_tree "$pid"; fi
     done
-    rm -rf "$dir"/run/morgenblau.db* "$dir/run/cookies.txt" "$dir/run/morgenblau" "$dir/run/pds" "$dir/run/account.json"
+    rm -rf "$dir"/run/morgenblau.db* "$dir/run/cookies.txt" "$dir/run/as-cookies.txt" "$dir/run/morgenblau" "$dir/run/pds" "$dir/run/account.json"
     set_state "$dir" '.status = "down" | .logged_in = false'
     say "down: $slug; evidence kept in $dir"
 }
@@ -553,6 +625,7 @@ case "$cmd" in
     doctor) doctor ;;
     up) { [ $# -eq 1 ] || { [ $# -eq 3 ] && [ "$2" = --fetch-minutes ]; }; } || die "usage: verify up <slug> [--fetch-minutes N]"; up "$1" "${3-}" ;;
     login) [ $# -eq 1 ] || die "usage: verify login <slug>"; login "$(run_dir "$1")" ;;
+    oauth) [ $# -eq 1 ] || die "usage: verify oauth <slug>"; oauth "$(run_dir "$1")" ;;
     api) [ $# -ge 3 ] || die "usage: verify api <slug> <METHOD> <path> [--data JSON] [--out NAME] [--anon]"; d="$(run_dir "$1")"; shift; api "$d" "$@" ;;
     inspect) [ $# -ge 1 ] || die "usage: verify inspect <slug> [--out NAME]"; d="$(run_dir "$1")"; inspect "$d" "$([ "${2-}" = --out ] && echo "${3-}")" ;;
     mail) [ $# -ge 1 ] || die "usage: verify mail <slug> -to ADDRESS [-eml FILE]"; d="$(run_dir "$1")"; shift; mail "$d" "$@" ;;
