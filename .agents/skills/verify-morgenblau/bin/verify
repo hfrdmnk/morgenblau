@@ -192,8 +192,11 @@ call() {
 pds_records() {
     local dir="$1" subs saves
     subs="$(mktemp)"; saves="$(mktemp)"
-    call "$dir" GET /api/subscriptions "" false "$subs" >/dev/null
-    call "$dir" GET /api/saves "" false "$saves" >/dev/null
+    # A 401 body parses as JSON too; reading it as "no records" would corrupt the baseline or skip cleanup.
+    if [ "$(call "$dir" GET /api/subscriptions "" false "$subs")" != 200 ] || [ "$(call "$dir" GET /api/saves "" false "$saves")" != 200 ]; then
+        rm -f "$subs" "$saves"
+        return 1
+    fi
     jq -cn --slurpfile s "$subs" --slurpfile v "$saves" '{
         subscriptions: ([$s[0] | .. | objects | select(has("rkey") and has("feedUrl") and (has("itemUrl") | not)) | .rkey] | unique),
         saves: ([$v[0] | .. | objects | select(has("rkey") and has("itemUrl")) | .rkey] | unique)}'
@@ -221,7 +224,7 @@ login() {
     [ "$status" = 204 ] || die "POST /dev/login returned $status: $(cat "$body"); check the dev account credentials."
     rm -f "$body"
     wait_for_jobs "$dir"
-    pds_records "$dir" >"$dir/run/pds-baseline.json"
+    pds_records "$dir" >"$dir/run/pds-baseline.json" || { rm -f "$dir/run/pds-baseline.json"; die "could not list the dev account's records; no PDS baseline recorded"; }
     set_state "$dir" '.logged_in = true'
     jq -n --slurpfile b "$dir/run/pds-baseline.json" '{logged_in:true, pds_baseline:{subscriptions:($b[0].subscriptions|length), saves:($b[0].saves|length)}}'
 }
@@ -406,7 +409,7 @@ cleanup_pds() {
     local dir="$1" dry="$2" current rkey kind status body
     [ -f "$dir/run/pds-baseline.json" ] || return 0
     alive "$(state "$dir" .pids.server)" || { say "server not running; PDS records this run added cannot be removed here"; return 0; }
-    current="$(pds_records "$dir")"
+    current="$(pds_records "$dir")" || die "could not list the dev account's records (session lost?); the instance stays up: run login, then down again"
     body="$(mktemp)"
     for kind in subscriptions saves; do
         for rkey in $(jq -rn --argjson now "$current" --slurpfile base "$dir/run/pds-baseline.json" \

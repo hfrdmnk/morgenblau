@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -194,6 +195,30 @@ func (b *bodyReader) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// The frontend reads every /api/ failure as JSON {code, message}; a plain-text 401 loses the code it keys off.
+func TestMiddleware_UnauthedAPIAnswersTheJSONErrorEnvelope(t *testing.T) {
+	m := New(&fakeResumer{sessions: map[string]*session.Session{}}, noopLocker{}, newSealer(t))
+	rr := httptest.NewRecorder()
+	m(&passthroughNext{}).ServeHTTP(rr, httptest.NewRequest("GET", "/api/digest", nil))
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rr.Code)
+	}
+	if got := rr.Header().Get("Content-Type"); got != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", got)
+	}
+	var body struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body %q is not JSON: %v", rr.Body.String(), err)
+	}
+	if body.Code != "unauthenticated" || body.Message == "" {
+		t.Errorf("body = %+v, want code unauthenticated and a message", body)
+	}
 }
 
 func TestMiddleware_CapsAPIBodySize(t *testing.T) {

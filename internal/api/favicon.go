@@ -41,7 +41,7 @@ func FaviconProxyHandler(reader FaviconReader, client *http.Client) http.Handler
 		icon, err := reader.GetFeedIconURL(r.Context(), feedURL)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				http.NotFound(w, r)
+				writeError(w, http.StatusNotFound, codeNotFound, "not found")
 				return
 			}
 			slog.Warn("/api/favicon: lookup failed", "err", err)
@@ -49,7 +49,7 @@ func FaviconProxyHandler(reader FaviconReader, client *http.Client) http.Handler
 			return
 		}
 		if icon == nil || *icon == "" {
-			http.NotFound(w, r)
+			writeError(w, http.StatusNotFound, codeNotFound, "not found")
 			return
 		}
 		iconURL := *icon

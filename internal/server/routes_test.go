@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -150,5 +151,24 @@ func TestNewsletterRoutesAreRegistered(t *testing.T) {
 				t.Fatalf("route not registered: status = %d", rr.Code)
 			}
 		})
+	}
+}
+
+// The frontend reads every /api/ failure as {code, message}; ServeMux's own 404 and 405 bodies are plain text.
+func TestUnroutedAPIRequestsAnswerTheJSONErrorEnvelope(t *testing.T) {
+	for _, req := range []*http.Request{
+		httptest.NewRequest(http.MethodGet, "/api/does-not-exist", nil),
+		httptest.NewRequest(http.MethodPut, "/api/digest", nil),
+	} {
+		rr := httptest.NewRecorder()
+		(&Server{}).routes().ServeHTTP(rr, req)
+
+		var body struct{ Code, Message string }
+		if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil || body.Code == "" || body.Message == "" {
+			t.Errorf("%s %s = %d %q, want a JSON {code, message} body", req.Method, req.URL.Path, rr.Code, rr.Body.String())
+		}
+		if got := rr.Header().Get("Content-Type"); got != "application/json" {
+			t.Errorf("%s %s Content-Type = %q, want application/json", req.Method, req.URL.Path, got)
+		}
 	}
 }
