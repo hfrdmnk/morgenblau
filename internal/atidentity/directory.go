@@ -30,26 +30,34 @@ func Guarded(client *http.Client) identity.Directory {
 		SkipDNSDomainSuffixes: []string{".bsky.social"},
 		UserAgent:             "morgenblau-identity",
 	}
-	return identity.NewCacheDirectory(detached{&base}, 250_000, 24*time.Hour, 2*time.Minute, 5*time.Minute)
+	return cached(&base)
+}
+
+func cached(inner identity.Directory) identity.Directory {
+	return identity.NewCacheDirectory(detached{inner}, 250_000, 24*time.Hour, 2*time.Minute, 5*time.Minute)
 }
 
 // detached shields lookups from caller cancellation, because CacheDirectory caches whatever its inner directory returns and shares it with every later caller.
 type detached struct{ inner identity.Directory }
 
+func detach(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), lookupTimeout)
+}
+
 func (d detached) LookupHandle(ctx context.Context, h syntax.Handle) (*identity.Identity, error) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), lookupTimeout)
+	ctx, cancel := detach(ctx)
 	defer cancel()
 	return d.inner.LookupHandle(ctx, h)
 }
 
 func (d detached) LookupDID(ctx context.Context, did syntax.DID) (*identity.Identity, error) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), lookupTimeout)
+	ctx, cancel := detach(ctx)
 	defer cancel()
 	return d.inner.LookupDID(ctx, did)
 }
 
 func (d detached) Lookup(ctx context.Context, atid syntax.AtIdentifier) (*identity.Identity, error) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), lookupTimeout)
+	ctx, cancel := detach(ctx)
 	defer cancel()
 	return d.inner.Lookup(ctx, atid)
 }

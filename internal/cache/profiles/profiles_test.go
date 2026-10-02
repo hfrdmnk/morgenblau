@@ -5,21 +5,30 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 )
 
 type fakeResolver struct {
-	calls int32
-	byDID map[syntax.DID]*identity.Identity
-	err   error
+	calls    int32
+	deadline atomic.Bool
+	byDID    map[syntax.DID]*identity.Identity
+	err      error
 }
 
-func (f *fakeResolver) LookupDID(_ context.Context, did syntax.DID) (*identity.Identity, error) {
+func (f *fakeResolver) LookupDID(ctx context.Context, did syntax.DID) (*identity.Identity, error) {
 	atomic.AddInt32(&f.calls, 1)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	_, ok := ctx.Deadline()
+	f.deadline.Store(ok)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -136,24 +145,51 @@ func TestCache_MissingProfileRecordCollapsesToNulls(t *testing.T) {
 	}
 }
 
-type ctxFetcher struct{ displayName *string }
+// gatedFetcher holds the first fetch until the test releases it, then answers from whatever context it was given.
+type gatedFetcher struct {
+	displayName *string
+	gate        sync.Once
+	entered     chan struct{}
+	proceed     chan struct{}
+	calls       atomic.Int32
+	deadline    atomic.Bool
+}
 
-func (f ctxFetcher) FetchProfile(ctx context.Context, _ syntax.DID, _ string) (ProfileRecord, error) {
+func newGatedFetcher(displayName string) *gatedFetcher {
+	return &gatedFetcher{displayName: &displayName, entered: make(chan struct{}), proceed: make(chan struct{})}
+}
+
+func (f *gatedFetcher) FetchProfile(ctx context.Context, _ syntax.DID, _ string) (ProfileRecord, error) {
+	f.calls.Add(1)
+	_, ok := ctx.Deadline()
+	f.deadline.Store(ok)
+	f.gate.Do(func() {
+		close(f.entered)
+		<-f.proceed
+	})
 	if err := ctx.Err(); err != nil {
 		return ProfileRecord{}, err
 	}
 	return ProfileRecord{DisplayName: f.displayName}, nil
 }
 
-// A caller that gives up mid-load must not leave a nameless profile cached for everyone after it.
-func TestCache_CallerCancelDoesNotCacheNullProfile(t *testing.T) {
+// A caller that gives up mid-fetch must not leave a nameless profile cached for everyone after it.
+func TestCache_CallerCancelMidFetchDoesNotCacheNullProfile(t *testing.T) {
 	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
 	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
-	c := New(res, ctxFetcher{displayName: ptr("Alice")})
+	fet := newGatedFetcher("Alice")
+	c := New(res, fet)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = c.Get(ctx, did)
+	}()
+	<-fet.entered
 	cancel()
-	_, _ = c.Get(ctx, did)
+	close(fet.proceed)
+	<-done
 
 	p, err := c.Get(context.Background(), did)
 	if err != nil {
@@ -161,6 +197,90 @@ func TestCache_CallerCancelDoesNotCacheNullProfile(t *testing.T) {
 	}
 	if p.DisplayName == nil || *p.DisplayName != "Alice" {
 		t.Fatalf("displayName = %v, want Alice", p.DisplayName)
+	}
+	if !res.deadline.Load() || !fet.deadline.Load() {
+		t.Fatalf("deadline seen by resolver = %v, fetcher = %v; want both bounded", res.deadline.Load(), fet.deadline.Load())
+	}
+}
+
+// A waiter coalesced onto a leader whose caller gives up must still get the real profile.
+func TestCache_CoalescedWaiterSurvivesLeaderCancel(t *testing.T) {
+	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
+	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
+	// Built outside the bubble: the expirable LRU runs a ticker goroutine that never exits.
+	c := New(res, nil)
+
+	synctest.Test(t, func(t *testing.T) {
+		fet := newGatedFetcher("Alice")
+		c.fetcher = fet
+
+		ctxA, cancelA := context.WithCancel(context.Background())
+		doneA := make(chan struct{})
+		go func() {
+			defer close(doneA)
+			_, _ = c.Get(ctxA, did)
+		}()
+		<-fet.entered
+
+		var pB Profile
+		var errB error
+		doneB := make(chan struct{})
+		go func() {
+			defer close(doneB)
+			pB, errB = c.Get(context.Background(), did)
+		}()
+		synctest.Wait()
+
+		cancelA()
+		close(fet.proceed)
+		<-doneA
+		<-doneB
+
+		if errB != nil {
+			t.Fatalf("waiter Get: %v", errB)
+		}
+		if pB.DisplayName == nil || *pB.DisplayName != "Alice" {
+			t.Fatalf("waiter displayName = %v, want Alice", pB.DisplayName)
+		}
+		if got := fet.calls.Load(); got != 1 {
+			t.Fatalf("fetcher calls = %d, want 1 (waiter must coalesce)", got)
+		}
+	})
+}
+
+// A degraded profile heals after degradedTTL, while a complete one keeps the full TTL.
+func TestCache_DegradedProfileExpiresAfterShortTTL(t *testing.T) {
+	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
+	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
+	fet := &fakeFetcher{err: fmt.Errorf("service unavailable")}
+	c := New(res, fet)
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	c.now = func() time.Time { return now }
+
+	if p, _ := c.Get(context.Background(), did); p.DisplayName != nil {
+		t.Fatalf("degraded displayName = %v, want nil", *p.DisplayName)
+	}
+	fet.err = nil
+	fet.displayName = ptr("Alice")
+
+	now = now.Add(degradedTTL - time.Second)
+	if p, _ := c.Get(context.Background(), did); p.DisplayName != nil {
+		t.Fatalf("displayName before degradedTTL = %v, want the cached nil", *p.DisplayName)
+	}
+
+	now = now.Add(2 * time.Second)
+	p, err := c.Get(context.Background(), did)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if p.DisplayName == nil || *p.DisplayName != "Alice" {
+		t.Fatalf("displayName after degradedTTL = %v, want Alice", p.DisplayName)
+	}
+
+	fet.displayName = ptr("Alice Smith")
+	now = now.Add(time.Hour)
+	if p, _ := c.Get(context.Background(), did); p.DisplayName == nil || *p.DisplayName != "Alice" {
+		t.Fatalf("complete profile displayName = %v, want the cached Alice", p.DisplayName)
 	}
 }
 

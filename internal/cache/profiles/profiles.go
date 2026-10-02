@@ -16,6 +16,7 @@ import (
 const (
 	defaultCapacity = 10_000
 	defaultTTL      = 6 * time.Hour
+	degradedTTL     = 2 * time.Minute
 	fetchTimeout    = 15 * time.Second
 )
 
@@ -47,13 +48,20 @@ type RecordFetcher interface {
 
 // Cache resolves DIDs to a profile payload via an expirable LRU. Concurrency-safe.
 type Cache struct {
-	lru      *lru.LRU[string, Profile]
+	lru      *lru.LRU[string, entry]
+	now      func() time.Time
 	resolver Resolver
 	fetcher  RecordFetcher
 
 	// guards the in-flight singleflight map: prevents duplicate PDS round-trips for the same DID.
 	mu       sync.Mutex
 	inflight map[string]*inflight
+}
+
+type entry struct {
+	profile Profile
+	// expires is set only for degraded profiles, since the LRU applies one TTL to every entry.
+	expires time.Time
 }
 
 type inflight struct {
@@ -70,7 +78,8 @@ func New(resolver Resolver, fetcher RecordFetcher) *Cache {
 // NewWithOptions is the test-friendly constructor.
 func NewWithOptions(resolver Resolver, fetcher RecordFetcher, capacity int, ttl time.Duration) *Cache {
 	return &Cache{
-		lru:      lru.NewLRU[string, Profile](capacity, nil, ttl),
+		lru:      lru.NewLRU[string, entry](capacity, nil, ttl),
+		now:      time.Now,
 		resolver: resolver,
 		fetcher:  fetcher,
 		inflight: make(map[string]*inflight),
@@ -80,8 +89,8 @@ func NewWithOptions(resolver Resolver, fetcher RecordFetcher, capacity int, ttl 
 // Get returns the profile for did, resolving and back-filling on a cache miss; concurrent misses for the same DID collapse to one upstream load.
 func (c *Cache) Get(ctx context.Context, did syntax.DID) (Profile, error) {
 	key := did.String()
-	if p, ok := c.lru.Get(key); ok {
-		return p, nil
+	if e, ok := c.lru.Get(key); ok && (e.expires.IsZero() || c.now().Before(e.expires)) {
+		return e.profile, nil
 	}
 	return c.load(ctx, did, true)
 }
@@ -116,20 +125,20 @@ func (c *Cache) load(ctx context.Context, did syntax.DID, useInflight bool) (Pro
 			close(f.done)
 		}()
 
-		profile, err := c.fetch(ctx, did)
-		f.profile = profile
+		e, err := c.fetch(ctx, did)
+		f.profile = e.profile
 		f.err = err
 		if err == nil {
-			c.lru.Add(key, profile)
+			c.lru.Add(key, e)
 		}
-		return profile, err
+		return e.profile, err
 	}
 
-	profile, err := c.fetch(ctx, did)
+	e, err := c.fetch(ctx, did)
 	if err == nil {
-		c.lru.Add(key, profile)
+		c.lru.Add(key, e)
 	}
-	return profile, err
+	return e.profile, err
 }
 
 // ErrHandleInvalid means bidirectional handle verification failed; callers must surface a 500, never a sentinel handle.
@@ -138,16 +147,16 @@ var ErrHandleInvalid = errors.New("bidirectional handle verification failed")
 // ErrNoPDS is returned when the identity has no atproto_pds service endpoint.
 var ErrNoPDS = errors.New("identity has no PDS endpoint")
 
-func (c *Cache) fetch(ctx context.Context, did syntax.DID) (Profile, error) {
+func (c *Cache) fetch(ctx context.Context, did syntax.DID) (entry, error) {
 	// The result is cached and shared with in-flight waiters, so it must not depend on whether this caller stayed.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fetchTimeout)
 	defer cancel()
 	ident, err := c.resolver.LookupDID(ctx, did)
 	if err != nil {
-		return Profile{}, fmt.Errorf("resolve did: %w", err)
+		return entry{}, fmt.Errorf("resolve did: %w", err)
 	}
 	if ident.Handle.IsInvalidHandle() {
-		return Profile{}, ErrHandleInvalid
+		return entry{}, ErrHandleInvalid
 	}
 	endpoint := ident.PDSEndpoint()
 	p := Profile{
@@ -155,15 +164,15 @@ func (c *Cache) fetch(ctx context.Context, did syntax.DID) (Profile, error) {
 		Handle: ident.Handle.String(),
 	}
 	if endpoint == "" {
-		return p, nil
+		return entry{profile: p}, nil
 	}
 	record, err := c.fetcher.FetchProfile(ctx, did, endpoint)
 	if err != nil {
-		// Profile fetch failure is non-fatal: collapse to nulls so chrome still renders with the handle.
-		return p, nil
+		// Profile fetch failure is non-fatal: collapse to nulls so chrome still renders with the handle, and retry soon.
+		return entry{profile: p, expires: c.now().Add(degradedTTL)}, nil
 	}
 	p.DisplayName = record.DisplayName
 	p.Avatar = record.Avatar
 	p.Description = record.Description
-	return p, nil
+	return entry{profile: p}, nil
 }
