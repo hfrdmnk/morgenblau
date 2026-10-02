@@ -10,6 +10,7 @@ import (
 
 	"morgenblau/internal/api"
 	"morgenblau/internal/middleware/auth"
+	"morgenblau/internal/middleware/ratelimit"
 	"morgenblau/internal/oauth/handler"
 )
 
@@ -37,8 +38,10 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("/api/health", s.healthHandler)
 	mux.Handle("/oauth-client-metadata.json", handler.ClientMetadataHandler(s.oauthCfg))
 	mux.Handle("/oauth-jwks.json", handler.JWKSHandler(s.oauthCfg))
-	mux.Handle("POST /oauth/login", handler.LoginHandler(s.oauthApp))
-	mux.Handle("GET /oauth/callback", handler.CallbackHandler(s.oauthApp, s.sealer, s.sync))
+	// Anyone can make login and callback fan out to DNS, PLC and authorization-server fetches; a real sign-in uses two requests.
+	signIn := ratelimit.New(10, time.Minute, ratelimit.ClientIP(os.Getenv("FLY_APP_NAME") != ""))
+	mux.Handle("POST /oauth/login", signIn.Wrap(handler.LoginHandler(s.oauthApp)))
+	mux.Handle("GET /oauth/callback", signIn.Wrap(handler.CallbackHandler(s.oauthApp, s.sealer, s.sync)))
 	mux.Handle("POST /oauth/logout", handler.LogoutHandler(s.sessions, s.sealer, s.store))
 	var addresses api.ProfileAddressInitializer
 	if s.newsletters != nil {

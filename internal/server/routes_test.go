@@ -36,6 +36,29 @@ func TestDevLoginRouteRequiresLocalOptIn(t *testing.T) {
 	}
 }
 
+func TestSignInRoutesAreRateLimitedPerClient(t *testing.T) {
+	h := (&Server{}).RegisterRoutes()
+	for i := range 10 {
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/oauth/login", nil))
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("login %d: status = %d, want the handler's 400 for a missing handle", i+1, rr.Code)
+		}
+	}
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/oauth/callback", nil))
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("callback after 10 logins: status = %d, want 429; login and callback share one budget because both make anyone's request fan out to remote identity lookups", rr.Code)
+	}
+	other := httptest.NewRequest(http.MethodPost, "/oauth/login", nil)
+	other.RemoteAddr = "198.51.100.7:1234"
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, other)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("another client: status = %d, want 400; the budget is per client", rr.Code)
+	}
+}
+
 func TestDevRoutesArePublicInLocalEnvironment(t *testing.T) {
 	vite := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

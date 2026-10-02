@@ -34,6 +34,7 @@ A sandboxed shell may be unable to bind ports, run `bunx` or read `.env`; rerun 
 | Deliver a newsletter to the instance | `$V mail <slug> -to <address>` (`-eml FILE` for your own message) |
 | Arrange a second reader with a newsletter address | `$V foreign <slug>` |
 | Clean up this run | `$V down <slug>` (`--dry-run` first when unsure) |
+| List runs and whether their server is still alive | `$V status` |
 | Sweep runs left alive by failed attempts | `$V stale` (`--dry-run` lists them) |
 
 The instance runs the working tree with `APP_ENV=local`, `DEV_LOGIN_ENABLED` only when doctor found a dev account, the global feed refresher off (`--fetch-minutes N` turns it on), and newsletters on `newsletter.localhost`. It never touches `./data/morgenblau.db` or a server the user already runs on `:8000`.

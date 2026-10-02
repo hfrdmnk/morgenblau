@@ -39,6 +39,17 @@ func TestGuarded_UsesInjectedClient(t *testing.T) {
 	}
 }
 
+func TestGuarded_ResolvesEveryHandleSuffixThroughDNS(t *testing.T) {
+	cache, ok := Guarded(&http.Client{}).(*identity.CacheDirectory)
+	if !ok {
+		t.Fatal("Guarded no longer returns a *identity.CacheDirectory")
+	}
+	base := cache.Inner.(detached).inner.(*identity.BaseDirectory)
+	if len(base.SkipDNSDomainSuffixes) > 0 {
+		t.Fatalf("Guarded skips DNS for %v; indigo then answers a failed well-known lookup with an empty DID and no error, so a mistyped handle fails as an unsupported DID method instead of not found", base.SkipDNSDomainSuffixes)
+	}
+}
+
 const (
 	testDID    = syntax.DID("did:web:example.com")
 	testHandle = syntax.Handle("user.example.com")
