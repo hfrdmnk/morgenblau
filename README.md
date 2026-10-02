@@ -75,7 +75,7 @@ To exercise forwarded or unusual mail, pass an existing message with `-eml ./mes
 
 ## OAuth
 
-Local dev uses a **loopback client**: `client_id` is `http://localhost`, callback is `http://127.0.0.1:8000/oauth/callback`, and the AS skips the client-metadata fetch entirely. Leave `BLUESKY_CLIENT_ID` and `BLUESKY_REDIRECT` empty in `.env` and sign in straight from `http://127.0.0.1:8000` — no tunnel, no public hostname.
+Local dev uses a **loopback client**: `client_id` is `http://localhost`, callback is `http://127.0.0.1:<PORT>/oauth/callback` (`8000` by default), and the AS skips the client-metadata fetch entirely. Leave `BLUESKY_CLIENT_ID` and `BLUESKY_REDIRECT` empty in `.env` and sign in straight from `http://127.0.0.1:8000` — no tunnel, no public hostname.
 
 For prod, set both env vars to your public URLs and serve `oauth-client-metadata.json` + `oauth-jwks.json` from that origin.
 

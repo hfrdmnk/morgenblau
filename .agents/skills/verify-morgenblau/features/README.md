@@ -6,14 +6,14 @@ What Morgenblau does, how a user reaches each feature, and what proves it works.
 
 - `$V doctor` exits `0` (or `3`, which blocks every signed-in step).
 - A fresh instance for this run: `$V up $S`. Its `base_url` is `http://127.0.0.1:<port>`; a `/path` passed to `$V browser` expands to it.
-- Signed-in recipes start with `$V login $S`. The signed-in user is the configured dev account; its DID and handle come from `$V api $S GET /api/profiles/me`.
+- Signed-in recipes start with `$V login $S`. The signed-in user is the run's own `.test` account, which starts with no subscriptions or saves; `$V login $S` prints its DID and handle.
 - UI recipes drive the React app through `$V browser`. API recipes drive `/api/*` exactly as `frontend/src/lib/api.ts` does, for surfaces without UI and for exact status and state checks.
 
 ## Features
 
 UI and public:
 
-- [Sign in and out](./sign-in.md): `/login`, the dev `Log me in` button, anonymous redirects, the account menu and `Log out`.
+- [Sign in and out](./sign-in.md): `/login`, OAuth sign-in with the run's handle, the dev `Log me in` button, anonymous redirects, the account menu and `Log out`.
 - [Public pages](./public-pages.md): `/about`, `/api/health`, OAuth client metadata, `/dev/login` availability.
 - [Daily digest](./digest.md): `/` and `/?date=`, the header date navigation, digest API, entry API.
 - [Entry reader](./entry-reader.md): `/entry/<slug>`, `Load full article` (extract), newsletter inline assets and `Load images`, `Back to digest`.
@@ -31,12 +31,12 @@ Email:
 
 Isolation:
 
-- [Reader isolation](./tenant-isolation.md): a second reader's newsletter data is 404 for the dev account and 401 for anonymous callers.
+- [Reader isolation](./tenant-isolation.md): a second reader's newsletter data is 404 for the run's account and 401 for anonymous callers.
 
 ## Unmapped
 
 - Library page: `frontend/src/pages/library.tsx` (placeholder).
 - Source detail pages `/sources/:rkey` and `/sources/newsletters/:id`: `frontend/src/pages/source.tsx`, `frontend/src/pages/newsletter-source.tsx` (placeholders; nothing links to them yet).
-- OAuth handle sign-in end to end: `internal/oauth/handler/flow.go` (needs a real account's consent screen in the user's browser).
+- OAuth with the production confidential client: only the loopback public client runs on an instance (see [sign-in](./sign-in.md) gotchas).
 - Favicon proxy: `GET /api/favicon` in `internal/api/favicon.go`.
 - Dev styleguide: `/dev/styleguide` from `frontend/src/dev/`.

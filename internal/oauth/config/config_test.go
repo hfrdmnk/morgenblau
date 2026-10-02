@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -55,7 +56,7 @@ func TestLoad_LoopbackWhenClientIDEmpty(t *testing.T) {
 	env := baseEnv(t)
 	delete(env, "BLUESKY_CLIENT_ID")
 
-	cfg, err := Load(env)
+	cfg, err := Load(env, 8000)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -68,12 +69,26 @@ func TestLoad_LoopbackWhenClientIDEmpty(t *testing.T) {
 	}
 }
 
+func TestLoad_LoopbackCallbackUsesTheServerPort(t *testing.T) {
+	cfg, err := Load(baseEnv(t), 8123)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	const want = "http://127.0.0.1:8123/oauth/callback"
+	if cfg.Indigo.CallbackURL != want {
+		t.Errorf("CallbackURL = %q, want %q", cfg.Indigo.CallbackURL, want)
+	}
+	if !strings.Contains(cfg.Indigo.ClientID, url.QueryEscape(want)) {
+		t.Errorf("client_id %q does not carry the callback", cfg.Indigo.ClientID)
+	}
+}
+
 func TestLoad_WiresClientNameAndURI(t *testing.T) {
 	env := baseEnv(t)
 	env["BLUESKY_CLIENT_ID"] = "https://app.example.com/oauth-client-metadata.json"
 	env["BLUESKY_REDIRECT"] = "https://app.example.com/oauth/callback"
 
-	cfg, err := Load(env)
+	cfg, err := Load(env, 8000)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -90,7 +105,7 @@ func TestLoad_MetadataURLWhenClientIDSet(t *testing.T) {
 	env["BLUESKY_CLIENT_ID"] = "https://app.example.com/oauth-client-metadata.json"
 	env["BLUESKY_REDIRECT"] = "https://app.example.com/oauth/callback"
 
-	cfg, err := Load(env)
+	cfg, err := Load(env, 8000)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -108,7 +123,7 @@ func TestLoad_MetadataURLWhenClientIDSet(t *testing.T) {
 func TestLoad_RejectsNonP256Key(t *testing.T) {
 	env := baseEnv(t)
 	env["BLUESKY_OAUTH_PRIVATE_KEY"] = genP384B64PEM(t)
-	_, err := Load(env)
+	_, err := Load(env, 8000)
 	if err == nil {
 		t.Fatal("expected error for non-P-256 key, got nil")
 	}
@@ -120,7 +135,7 @@ func TestLoad_RejectsNonP256Key(t *testing.T) {
 func TestLoad_RejectsMissingPrivateKey(t *testing.T) {
 	env := baseEnv(t)
 	env["BLUESKY_OAUTH_PRIVATE_KEY"] = ""
-	_, err := Load(env)
+	_, err := Load(env, 8000)
 	if err == nil {
 		t.Fatal("expected error when private key missing")
 	}
@@ -129,7 +144,7 @@ func TestLoad_RejectsMissingPrivateKey(t *testing.T) {
 func TestLoad_RejectsGarbagePrivateKey(t *testing.T) {
 	env := baseEnv(t)
 	env["BLUESKY_OAUTH_PRIVATE_KEY"] = "not-base64!@#$"
-	_, err := Load(env)
+	_, err := Load(env, 8000)
 	if err == nil {
 		t.Fatal("expected error for garbage key")
 	}
@@ -138,7 +153,7 @@ func TestLoad_RejectsGarbagePrivateKey(t *testing.T) {
 func TestLoad_RejectsMissingScope(t *testing.T) {
 	env := baseEnv(t)
 	env["BLUESKY_OAUTH_SCOPE"] = ""
-	_, err := Load(env)
+	_, err := Load(env, 8000)
 	if err == nil {
 		t.Fatal("expected error when scope missing")
 	}
@@ -147,7 +162,7 @@ func TestLoad_RejectsMissingScope(t *testing.T) {
 func TestLoad_RejectsScopeWithoutAtproto(t *testing.T) {
 	env := baseEnv(t)
 	env["BLUESKY_OAUTH_SCOPE"] = "repo:blue.morgen.feed.subscription"
-	_, err := Load(env)
+	_, err := Load(env, 8000)
 	if err == nil {
 		t.Fatal("expected error when scope missing 'atproto'")
 	}
@@ -159,7 +174,7 @@ func TestLoad_PublicJWKSHasNoPrivateMaterial(t *testing.T) {
 	env["BLUESKY_CLIENT_ID"] = "https://app.example.com/oauth-client-metadata.json"
 	env["BLUESKY_REDIRECT"] = "https://app.example.com/oauth/callback"
 
-	cfg, err := Load(env)
+	cfg, err := Load(env, 8000)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -197,7 +212,7 @@ func TestLoad_KeyRoundTripsThroughECDH(t *testing.T) {
 	env := baseEnv(t)
 	env["BLUESKY_CLIENT_ID"] = "https://app.example.com/oauth-client-metadata.json"
 	env["BLUESKY_REDIRECT"] = "https://app.example.com/oauth/callback"
-	cfg, err := Load(env)
+	cfg, err := Load(env, 8000)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}

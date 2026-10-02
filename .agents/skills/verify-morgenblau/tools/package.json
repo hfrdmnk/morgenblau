@@ -1,0 +1,8 @@
+{
+  "name": "verify-morgenblau-tools",
+  "private": true,
+  "dependencies": {
+    "@atproto/dev-env": "0.6.9",
+    "@playwright/cli": "0.1.22"
+  }
+}

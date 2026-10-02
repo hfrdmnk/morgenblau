@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -202,5 +203,72 @@ func TestNewClient_ContextCancel(t *testing.T) {
 	_, err := c.Do(req)
 	if err == nil {
 		t.Fatal("expected context error")
+	}
+}
+
+func TestNewClient_AllowLoopbackPortsPermitsOnlyThosePorts(t *testing.T) {
+	allowed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer allowed.Close()
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer other.Close()
+	port := allowed.Listener.Addr().(*net.TCPAddr).Port
+
+	c := NewClient(2*time.Second, 5, WithAllowLoopbackPorts(port))
+	resp, err := c.Get(allowed.URL)
+	if err != nil {
+		t.Fatalf("Get allowed port: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if _, err := c.Get(other.URL); !errors.Is(err, ErrBlockedAddress) {
+		t.Errorf("Get other loopback port err = %v, want ErrBlockedAddress", err)
+	}
+	for _, host := range []string{"10.0.0.1", "169.254.169.254", "0.0.0.0"} {
+		raw := "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/"
+		if _, err := c.Get(raw); !errors.Is(err, ErrBlockedAddress) {
+			t.Errorf("Get %s err = %v, want ErrBlockedAddress", raw, err)
+		}
+	}
+}
+
+func TestIsLoopbackHost(t *testing.T) {
+	for host, want := range map[string]bool{
+		"localhost": true, "127.0.0.1": true, "127.0.0.2": true, "::1": true,
+		"localhost.example": false, "example.com": false, "10.0.0.1": false, "": false,
+	} {
+		if got := IsLoopbackHost(host); got != want {
+			t.Errorf("IsLoopbackHost(%q) = %v, want %v", host, got, want)
+		}
+	}
+}
+
+func TestLoopbackOrigin(t *testing.T) {
+	for raw, want := range map[string]struct {
+		origin string
+		port   int
+	}{
+		"http://localhost:2701":  {"http://localhost:2701", 2701},
+		"http://localhost:2701/": {"http://localhost:2701", 2701},
+		"http://127.0.0.1:2701":  {"http://127.0.0.1:2701", 2701},
+		"http://[::1]:2701":      {"http://[::1]:2701", 2701},
+		"HTTP://LocalHost:2701":  {"http://localhost:2701", 2701},
+	} {
+		origin, port, err := LoopbackOrigin(raw)
+		if err != nil || origin != want.origin || port != want.port {
+			t.Errorf("LoopbackOrigin(%q) = %q, %d, %v; want %q, %d", raw, origin, port, err, want.origin, want.port)
+		}
+	}
+	for _, raw := range []string{
+		"https://localhost:2701", "http://localhost", "http://pds.example.com:2701", "http://10.0.0.1:2701",
+		"http://localhost.example:2701", "http://user@localhost:2701", "http://localhost:2701/xrpc",
+		"http://localhost:2701?x=1", "http://localhost:2701#x", "http://localhost:0", "",
+	} {
+		if origin, port, err := LoopbackOrigin(raw); err == nil {
+			t.Errorf("LoopbackOrigin(%q) = %q, %d; want an error", raw, origin, port)
+		}
 	}
 }

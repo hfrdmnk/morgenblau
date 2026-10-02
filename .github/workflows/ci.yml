@@ -56,7 +56,7 @@ jobs:
       - name: Check Bun is the only package manager
         run: |
           stray="$(git ls-files '*package-lock.json' '*pnpm-lock.yaml' '*yarn.lock')"
-          test -z "$stray" || { echo "Remove $stray: frontend/bun.lock is the only lockfile, so installs stay reproducible."; exit 1; }
+          test -z "$stray" || { echo "Remove $stray: Bun owns every install (bun.lock), so installs stay reproducible."; exit 1; }
 
       - name: Install frontend dependencies
         run: bun install --cwd ./frontend --frozen-lockfile

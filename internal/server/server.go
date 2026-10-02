@@ -15,7 +15,6 @@ import (
 
 	_ "github.com/joho/godotenv/autoload"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	gosmtp "github.com/emersion/go-smtp"
 
@@ -31,6 +30,8 @@ import (
 	"morgenblau/internal/newsletter"
 	"morgenblau/internal/oauth/config"
 	"morgenblau/internal/oauth/cookie"
+	"morgenblau/internal/oauth/handler"
+	"morgenblau/internal/oauth/localflow"
 	"morgenblau/internal/oauth/store"
 	"morgenblau/internal/safehttp"
 	"morgenblau/internal/secret"
@@ -59,7 +60,7 @@ type Server struct {
 	qr          *dbqueries.Queries
 	qw          *dbqueries.Queries
 	oauthCfg    *config.Config
-	oauthApp    *oauth.ClientApp
+	oauthFlow   handler.ClientApp
 	sessions    *session.Manager
 	store       *store.Store
 	sealer      *cookie.Sealer
@@ -104,7 +105,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		return nil, nil, fmt.Errorf("open database: %w", err)
 	}
 
-	oauthCfg, err := config.FromOS()
+	oauthCfg, err := config.FromOS(port)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load oauth config: %w", err)
 	}
@@ -125,10 +126,29 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 
 	st := store.New(db.Writer, keyset)
 
+	localNet, err := loadLocalNetwork(os.Getenv)
+	if err != nil {
+		_ = db.Close()
+		return nil, nil, fmt.Errorf("load local network: %w", err)
+	}
 	safeClient := safehttp.NewClient(30*time.Second, 5)
 	identityDir := atidentity.Guarded(safeClient)
 	oauthApp := newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
+	var oauthFlow handler.ClientApp = oauthApp
+	listenHost := ""
+	if localNet != nil {
+		slog.Info("local PLC and PDS enabled", "plc", localNet.plc, "pds", localNet.pds)
+		safeClient = safehttp.NewClient(30*time.Second, 5, safehttp.WithAllowLoopbackPorts(localNet.ports...))
+		identityDir = atidentity.Local(safeClient, localNet.plc, localNet.pds)
+		oauthApp = newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
+		oauthFlow = localflow.App{ClientApp: oauthApp, PDS: localNet.pds}
+		// A verify instance holds throwaway sign-in material; nothing off this machine should reach it.
+		listenHost = "127.0.0.1"
+	}
 	devConfig, err := session.LoadDevConfig(os.Getenv)
+	if err == nil {
+		err = checkDevPDS(devConfig, localNet)
+	}
 	if err != nil {
 		_ = db.Close()
 		return nil, nil, err
@@ -186,7 +206,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		qr:          qr,
 		qw:          qw,
 		oauthCfg:    oauthCfg,
-		oauthApp:    oauthApp,
+		oauthFlow:   oauthFlow,
 		sessions:    sessions,
 		store:       st,
 		sealer:      sealer,
@@ -201,7 +221,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	}
 
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", srv.port),
+		Addr:         net.JoinHostPort(listenHost, strconv.Itoa(srv.port)),
 		Handler:      srv.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,

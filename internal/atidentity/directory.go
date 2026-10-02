@@ -17,7 +17,11 @@ const lookupTimeout = 10 * time.Second
 // Guarded mirrors indigo's DefaultDirectory but swaps in client (the safehttp client) for identity HTTP fetches and resolves every handle through DNS.
 // The SSRF guard lives on client's dial Control, so it fires against the resolved peer IP at connect time and defeats DNS rebinding.
 func Guarded(client *http.Client) identity.Directory {
-	base := identity.BaseDirectory{
+	return cached(guardedBase(client))
+}
+
+func guardedBase(client *http.Client) *identity.BaseDirectory {
+	return &identity.BaseDirectory{
 		PLCURL:     identity.DefaultPLCURL,
 		HTTPClient: *client,
 		Resolver: net.Resolver{
@@ -30,7 +34,6 @@ func Guarded(client *http.Client) identity.Directory {
 		// No SkipDNSDomainSuffixes: for a skipped suffix indigo turns a failed well-known lookup into an empty DID with no error.
 		UserAgent: "morgenblau-identity",
 	}
-	return cached(&base)
 }
 
 func cached(inner identity.Directory) identity.Directory {

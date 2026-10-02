@@ -30,7 +30,7 @@ Preconditions:
 - Doctor exit `0`, `$V login $S`. `$V inspect $S --out inspect-before`. Do not open the browser or call `/api/profiles/me` before the Address step, or the address already exists.
 
 - **Address.** `$V api $S GET /api/newsletters/address --out address-before`: `{}`. `$V api $S POST /api/newsletters/address --out address`: `{"address":"<word>-<word>-<word>@newsletter.localhost"}`. POST again: same address.
-- **Receive.** `$V mail $S -to <address>`: exits 0. Wait about 5 seconds (the processor ticks every 5s), then `$V inspect $S --out inspect-received`: one `newsletter_messages` row for the dev account's DID with `has_blocked_remote_images` 1 and `remote_images_allowed` 0, and no `newsletter_receipts` with a `last_error`.
+- **Receive.** `$V mail $S -to <address>`: exits 0. Wait about 5 seconds (the processor ticks every 5s), then `$V inspect $S --out inspect-received`: one `newsletter_messages` row for the run account's DID with `has_blocked_remote_images` 1 and `remote_images_allowed` 0, and no `newsletter_receipts` with a `last_error`.
 - **Refused recipient.** `$V mail $S -to nobody@newsletter.localhost`: fails with `550 "5.1.1 recipient not found"`.
 - **Sources.** `$V api $S GET /api/newsletters --out sources`: one `active` source titled `sample@sender.example` with `issueCount` 1. `GET /api/newsletters/<id>/entries --out source-entries`: the message.
 - **Edit.** `PATCH /api/newsletters/<id> --data '{"title":"Example Letters","primary":true,"tags":["example"]}' --out patch`: the new title, `primary` and tags.
