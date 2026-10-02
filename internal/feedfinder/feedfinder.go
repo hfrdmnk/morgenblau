@@ -139,15 +139,16 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 	}
 	defer resp.Body.Close()
 
-	ct := strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0])
-	if _, isFeed := feedContentTypes[strings.ToLower(ct)]; isFeed {
-		// Passthrough: parse the body for the canonical title so the dialog can prefill.
-		return []Candidate{{FeedURL: raw, ContentType: ct, SiteURL: raw, Title: sniffFeedTitle(resp.Body)}}, nil
-	}
-
 	base := u
 	if resp.Request != nil && resp.Request.URL != nil {
 		base = resp.Request.URL
+	}
+
+	ct := strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0])
+	if _, isFeed := feedContentTypes[strings.ToLower(ct)]; isFeed {
+		// Passthrough: the parsed body gives the dialog its title and the feed's own site link.
+		title, link := sniffFeed(resp.Body)
+		return []Candidate{{FeedURL: raw, ContentType: ct, SiteURL: siteLink(base, link), Title: title}}, nil
 	}
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
@@ -239,17 +240,29 @@ func extractStandardDocLink(doc *goquery.Document) string {
 	return href
 }
 
-// sniffFeedTitle returns the feed's title, or empty if the body can't be read or parsed.
-func sniffFeedTitle(body io.Reader) string {
+// sniffFeed returns the feed's title and site link, or empties if the body can't be read or parsed.
+func sniffFeed(body io.Reader) (title, link string) {
 	buf, err := io.ReadAll(io.LimitReader(body, maxFeedSniffBytes))
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	parsed, err := gofeed.NewParser().Parse(bytes.NewReader(buf))
 	if err != nil || parsed == nil {
+		return "", ""
+	}
+	return strings.TrimSpace(parsed.Title), strings.TrimSpace(parsed.Link)
+}
+
+// siteLink resolves a feed's declared site link; no usable link yields empty, since the feed URL itself is no site.
+func siteLink(feedURL *url.URL, link string) string {
+	if link == "" {
 		return ""
 	}
-	return strings.TrimSpace(parsed.Title)
+	abs, err := feedURL.Parse(link)
+	if err != nil || (abs.Scheme != "http" && abs.Scheme != "https") || abs.Host == "" {
+		return ""
+	}
+	return abs.String()
 }
 
 func extractLinkRels(doc *goquery.Document, base *url.URL) []Candidate {
@@ -344,7 +357,8 @@ func (f *Finder) fetchYTFeedTitle(ctx context.Context, feedURL string) string {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		return ""
 	}
-	return sniffFeedTitle(resp.Body)
+	title, _ := sniffFeed(resp.Body)
+	return title
 }
 
 func ytFeedCandidate(channelID string, u *url.URL) *Candidate {

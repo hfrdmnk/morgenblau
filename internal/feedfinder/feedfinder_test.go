@@ -96,6 +96,66 @@ func TestResolve_PassthroughExtractsCanonicalTitle(t *testing.T) {
 	}
 }
 
+func TestResolve_PassthroughSiteURLComesFromTheFeedLink(t *testing.T) {
+	cases := []struct {
+		name, contentType, body, want string
+	}{
+		{
+			name:        "rss channel link",
+			contentType: "application/rss+xml",
+			body: `<?xml version="1.0"?><rss version="2.0"><channel><title>Example Blog</title>
+<link>https://blog.example.com/</link>
+<atom:link xmlns:atom="http://www.w3.org/2005/Atom" href="https://blog.example.com/rss" rel="self"/>
+</channel></rss>`,
+			want: "https://blog.example.com/",
+		},
+		{
+			name:        "atom alternate link, not self",
+			contentType: "application/atom+xml",
+			body: `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Example Blog</title>
+<link rel="self" href="https://blog.example.com/rss"/>
+<link rel="alternate" href="https://blog.example.com/"/>
+</feed>`,
+			want: "https://blog.example.com/",
+		},
+		{
+			name:        "relative link resolves against the feed",
+			contentType: "application/atom+xml",
+			body:        `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Example Blog</title><link href="/"/></feed>`,
+			want:        "https://blog.example.com/",
+		},
+		{
+			name:        "no site link stays empty",
+			contentType: "application/rss+xml",
+			body:        `<?xml version="1.0"?><rss version="2.0"><channel><title>Example Blog</title></channel></rss>`,
+			want:        "",
+		},
+		{
+			name:        "non-http link stays empty",
+			contentType: "application/rss+xml",
+			body:        `<?xml version="1.0"?><rss version="2.0"><channel><title>Example Blog</title><link>javascript:alert(1)</link></channel></rss>`,
+			want:        "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			finder := New(&http.Client{Transport: roundTripperFunc(func(_ *http.Request) *http.Response {
+				return resp(tc.body, tc.contentType)
+			})})
+			cands, err := finder.Resolve(context.Background(), "https://blog.example.com/rss")
+			if err != nil {
+				t.Fatalf("Resolve: %v", err)
+			}
+			if len(cands) != 1 {
+				t.Fatalf("len = %d", len(cands))
+			}
+			if cands[0].SiteURL != tc.want {
+				t.Errorf("SiteURL = %q, want %q", cands[0].SiteURL, tc.want)
+			}
+		})
+	}
+}
+
 const ytAtomFeed = `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>Vollmar Cant</title>
