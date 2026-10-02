@@ -16,17 +16,17 @@ V=.agents/skills/verify-morgenblau/bin/verify
 $V doctor
 ```
 
-Run it before the first drive and again after anything surprising. Exit `0`: everything is reachable. Exit `3`: the local PDS cannot start (Node too old, or the `pds/` tools package missing; it prints the install command), so only anonymous surfaces (public pages, auth denial, SMTP ingest, jobs without a session) can be driven; every signed-in step is `blocked` with that reason. Exit `1`: fix what it names first.
+Run it before the first drive and again after anything surprising. Exit `0`: everything is reachable. Exit `3`: Node is too old for the local PDS, so only anonymous surfaces (public pages, auth denial, SMTP ingest, jobs without a session) can be driven; every signed-in step is `blocked` with that reason. Exit `1`: fix what it names first; a missing or outdated `tools/` package (the PDS and the browser driver) is one, with its install command.
 
-Runs need no `.env`. `up` boots a throwaway PLC and PDS from [`pds/boot.mjs`](pds/boot.mjs) (`@atproto/dev-env`, pinned in `pds/package.json`), creates one `.test` account on it, and starts the server with fresh secrets pointed at that account; `down` deletes all of it. The shared dev account in the user's `.env` is for their own manual sign-in; runs never use it. Never ask for a personal account.
+Runs need no `.env`. `up` boots a throwaway PLC and PDS from [`tools/boot.mjs`](tools/boot.mjs) (`@atproto/dev-env`, pinned with the browser driver in `tools/package.json`), creates one `.test` account on it, and starts the server from the run dir with fresh secrets pointed at that account; `down` deletes all of it.
 
-A sandboxed shell may be unable to bind ports or run `bunx` or `node`; rerun the helper outside the sandbox before calling the run `blocked`.
+A sandboxed shell may be unable to bind ports or run `node`; rerun the helper outside the sandbox before calling the run `blocked`.
 
 ## Levers
 
 | Need | Command |
 |---|---|
-| Isolated instance: own HTTP, SMTP, Vite, PLC and PDS ports, fresh migrated DB, own account | `$V up <slug>` (prints state JSON: `base_url`, `smtp`, `dev_login`, `pds.handle`) |
+| Isolated instance: own HTTP, SMTP, Vite, PLC and PDS ports, fresh migrated DB, own account | `$V up <slug>` (prints state JSON: `base_url`, `smtp`, and `pds` with the account's `handle`, or `null` when doctor exits `3`) |
 | Sign in as the run's account (API cookie jar) and wait for the login sync | `$V login <slug>` (dev login) or `$V oauth <slug>` (real OAuth through the run's PDS) |
 | Call the API as that user, or anonymously | `$V api <slug> GET /api/digest --out digest` (`--data JSON`, `--anon`) |
 | Read state as JSON | `$V inspect <slug> --out inspect-before` |
@@ -37,11 +37,11 @@ A sandboxed shell may be unable to bind ports or run `bunx` or `node`; rerun the
 | List runs and whether their server is still alive | `$V status` |
 | Sweep runs left behind: a recorded process died, or started over `STALE_HOURS` ago (`bin/verify`); other agents' live runs stay up | `$V stale` (`--dry-run` lists them) |
 
-The instance runs the working tree with `APP_ENV=local`, its own PDS and `DEV_LOGIN_ENABLED` unless doctor exits `3`, the global feed refresher off (`--fetch-minutes N` turns it on), and newsletters on `newsletter.localhost`. `PLC_URL` and the loopback PDS are local-only exceptions owned by `internal/server/local_network.go`. It never touches `./data/morgenblau.db`, `.env` or a server the user already runs on `:8000`.
+The instance runs the working tree with `APP_ENV=local`, its own PDS and `DEV_LOGIN_ENABLED` unless doctor exits `3`, the global feed refresher off (`--fetch-minutes N` turns it on), and newsletters on `newsletter.localhost`. `PLC_URL` and the loopback PDS are local-only exceptions: `loadLocalNetwork` and the local block in `NewServer` (`internal/server/`) own them. It never touches `./data/morgenblau.db`, `.env` or a server the user already runs on `:8000`.
 
 In the browser, sign in the way a user does: open `/login` and click `Log me in` (`$V browser <slug> click "getByRole('button', { name: 'Log me in' })"`). The browser and `$V login` share the server's single dev session, so logging out in one logs out both. For real OAuth, type the run's handle (`pds.handle`) on `/login`, click `Continue`, put the password in with `$V browser <slug> fill-password <target>`, and click `Sign in` and `Authorize`; [sign-in](features/sign-in.md) has the steps. `fill-password` reads `run/account.json` and drops the driver's output, which would echo the password. Target elements by role and accessible name, then label; read the page with `snapshot` or `find`. Use a snapshot ref only for a control without an accessible name, never class names or DOM position.
 
-`$V browser` runs without a prompt, so it passes only the page-level commands in `BROWSER_COMMANDS` (`bin/verify`) and refuses the rest with exit `2` and a one-line reason. `open`, `goto` and `tab-new` take only this run's instance (pass a `/path`). Options that repoint the driver (`--config`, `--profile`, `--browser` and the like), a second session (`-s`) and `run-code` are refused. Driver calls from all runs take turns on one lock (`playwright_cli` in `bin/verify`). Every `--filename` and every `upload` file must resolve inside the evidence dir and outside `run/`; relative names resolve from the evidence dir. Page JavaScript goes through `eval`, and waiting for a navigation is a repeated `eval "() => location.href" --raw`. Snapshots, console logs and downloads land in `$E/.playwright-cli/`.
+`$V browser` runs without a prompt, so it passes only the page-level commands in `BROWSER_COMMANDS` (`bin/verify`) and refuses the rest with exit `2` and a one-line reason. `open`, `goto` and `tab-new` take only this run's instance (pass a `/path`). Options that repoint the driver (`--config`, `--profile`, `--browser` and the like), a second session (`-s`) and `run-code` are refused. Every `--filename` and every `upload` file must resolve inside the evidence dir and outside `run/`; relative names resolve from the evidence dir. Page JavaScript goes through `eval`, and waiting for a navigation is a repeated `eval "() => location.href" --raw`. Snapshots, console logs and downloads land in `$E/.playwright-cli/`.
 
 ## Protocol
 
@@ -93,9 +93,9 @@ static checks: <commands and results>
 
 ## Safety
 
-- One instance, one DB, one PDS and one account per run, created by `up`, removed by `down`. Runs share no state, so any number can run in parallel.
+- One instance, one DB, one PDS and one account per run, created by `up`, removed by `down`. Runs share no state, so any number can run in parallel. Every listener binds `127.0.0.1`, and the PDS's admin password and JWT secret are fresh per run.
 - Never drive the user's own server, database or personal account.
 - Newsletter mail goes only to the instance's `127.0.0.1` SMTP port. The app sends no outbound mail and has no payments or admin panel.
-- Keep secrets out of evidence: never print or save the account passwords (`run/account.json`) or the session cookie (`run/cookies.txt`); `down` deletes both.
+- Keep secrets out of evidence: never print or save the account passwords (`run/account.json`) or the session cookie (`run/cookies.txt`); `down` deletes both. `fill-password` keeps the password out of output, but the driver's `fill` takes it as an argument, so other processes of this user can see it while that call runs.
 - Never kill processes by name; `down` stops the process ids `up` recorded.
 - Cleanup never deletes evidence. Evidence never leaves the machine.

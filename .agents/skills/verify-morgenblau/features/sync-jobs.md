@@ -27,7 +27,7 @@ Preconditions:
 - **Login sync.** `$V login $S` waits for the jobs to finish. `$V inspect $S --out inspect-after-login`: `user_subscriptions` and `user_saves` now mirror the run account's PDS records (none on a fresh run) (compare their counts with `GET /api/subscriptions` and `GET /api/saves`).
 - **Latest after login.** `GET /api/jobs/latest --out latest-after-login`: the login `sync_user` job, status `done`.
 - **Manual refresh.** `$V api $S POST /api/digest/refresh --out refresh`: `{jobId}`. Right after, `GET /api/jobs/active --out active-running` is that job (`running`) and `GET /api/digest` has `hasActiveJob` true. `GET /api/jobs/<jobId> --out job` until its status is `done` or `failed`; `GET /api/jobs/latest --out latest` agrees.
-- **Global refresh.** On a `--fetch-minutes 1` instance, save `sqlite3 -readonly $E/run/morgenblau.db "select max(last_fetched_at) from feeds"` to `fetched-1.txt`, wait past a minute, save `fetched-2.txt`: it advanced while `/api/jobs/active` stayed `null`. `server.log` shows `global feed fetch enabled interval=1m0s`.
+- **Global refresh.** On a `--fetch-minutes 1` instance, sign in and add a feed first (`$V api $S POST /api/subscriptions --data '{"feedUrl":"<feed url>"}'`, the standing feed from [subscriptions](./subscriptions.md)) so `feeds` has a row, wait for its fetch job, then save `sqlite3 -readonly $E/run/morgenblau.db "select max(last_fetched_at) from feeds"` to `fetched-1.txt`, wait past a minute, save `fetched-2.txt`: it advanced while `/api/jobs/active` stayed `null`. `server.log` shows `global feed fetch enabled interval=1m0s`.
 - **Negative.** `GET /api/jobs/unknownid`: `404`. `POST /api/digest/refresh --anon`: `401`.
 
 ## Evidence
