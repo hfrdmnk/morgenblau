@@ -101,26 +101,35 @@ claimed_ports() {
     done
 }
 
-# Parallel ups choose ports and write the state.json that claims them under this lock, so no two pick the same port.
-lock_ports() {
-    local lock="$VERIFY_ROOT/.ports.lock" holder i
+# A machine-wide lock for work parallel runs must not interleave; mkdir is atomic, and a dead holder's lock is taken over.
+take_lock() {
+    local lock="$VERIFY_ROOT/.$1.lock" seconds="$2" holder i
     mkdir -p "$VERIFY_ROOT"
-    for i in $(seq 1 100); do
+    for i in $(seq 1 $((seconds * 10))); do
         if mkdir "$lock" 2>/dev/null; then
             printf '%s' "$$" >"$lock/pid"
-            trap unlock_ports EXIT
+            trap "release_lock $1" EXIT
             return 0
         fi
         holder="$(cat "$lock/pid" 2>/dev/null || true)"
         if [ -n "$holder" ] && ! alive "$holder"; then rm -rf "$lock"; fi
         sleep 0.1
     done
-    die "$lock is still held after 10s; remove it if no verify up is running"
+    die "$lock is still held after ${seconds}s; remove it if no verify command is running"
 }
 
-unlock_ports() {
-    rm -rf "$VERIFY_ROOT/.ports.lock"
+release_lock() {
+    rm -rf "$VERIFY_ROOT/.$1.lock"
     trap - EXIT
+}
+
+# bunx relinks the driver into one shared cache dir on every call, so two calls at once fail with EEXIST.
+playwright_cli() {
+    local status=0
+    take_lock browser 300
+    bunx "$PLAYWRIGHT_CLI" "$@" || status=$?
+    release_lock browser
+    return "$status"
 }
 
 alive() { [ -n "${1-}" ] && [ "$1" != null ] && kill -0 "$1" 2>/dev/null; }
@@ -170,7 +179,7 @@ doctor() {
         | while read -r dep; do [ -f "frontend/node_modules/$dep/package.json" ] || printf '%s ' "$dep"; done)"
     if [ -z "$missing" ]; then ok "frontend dependencies installed"; else bad "frontend dependencies missing (${missing% }); run: bun install --cwd ./frontend --frozen-lockfile"; fi
     if git check-ignore -q .scratch/verify; then ok ".scratch/verify is gitignored"; else bad ".scratch/verify is not gitignored"; fi
-    if bunx "$PLAYWRIGHT_CLI" --version >/dev/null 2>&1; then ok "playwright-cli ($PLAYWRIGHT_CLI) resolves"; else bad "bunx $PLAYWRIGHT_CLI failed (needs network once)"; fi
+    if playwright_cli --version >/dev/null 2>&1; then ok "playwright-cli ($PLAYWRIGHT_CLI) resolves"; else bad "bunx $PLAYWRIGHT_CLI failed (needs network once)"; fi
     ok "instances force APP_ENV=local, fresh secrets, a fresh DB under .scratch/verify, SMTP on 127.0.0.1 only"
     [ "$status" = 0 ] || { printf 'doctor: FAIL\n'; return 1; }
 
@@ -238,7 +247,8 @@ up() {
     mkdir -p "$run"
     pds_available && dev=true
 
-    lock_ports
+    # Parallel ups choose ports and write the state.json that claims them under one lock, so no two pick the same port.
+    take_lock ports 10
     claimed="$(claimed_ports)"
     http="$(free_port 8100 "$claimed")"; claimed+=$'\n'"$http"
     smtp="$(free_port 2600 "$claimed")"; claimed+=$'\n'"$smtp"
@@ -257,7 +267,7 @@ up() {
           pds:(if $dev then {url:$pds_url, plc_url:$plc_url} else null end),
           ports:([$http, $smtp, $vite] + ([$plc, $pds] | map(select(. != "") | tonumber))),
           pids:{}, started_at:$started, started_epoch:$epoch}' >"$run/state.json"
-    unlock_ports
+    release_lock ports
 
     [ "$dev" = false ] || start_pds "$dir" "$plc" "$pds"
     (cd frontend && exec ./node_modules/.bin/vite --port "$vite" --strictPort) >"$dir/vite.log" 2>&1 &
@@ -553,14 +563,14 @@ browser() {
         return
     fi
     guard_browser_args "$dir" "$(state "$dir" .base_url)" "$@"
-    (cd "$dir" && bunx "$PLAYWRIGHT_CLI" -s="$(state "$dir" .slug)" ${ARGS[@]+"${ARGS[@]}"})
+    (cd "$dir" && playwright_cli -s="$(state "$dir" .slug)" ${ARGS[@]+"${ARGS[@]}"})
 }
 
 # playwright-cli echoes every fill value in its output, so this drops the output to keep the password out of the transcript and evidence.
 fill_password() {
     local dir="$1" target="$2"
     [ -f "$dir/run/account.json" ] || die "this run has no account (doctor exit 3)." 3
-    if (cd "$dir" && bunx "$PLAYWRIGHT_CLI" -s="$(state "$dir" .slug)" fill "$target" "$(jq -r .password "$dir/run/account.json")") >/dev/null 2>&1; then
+    if (cd "$dir" && playwright_cli -s="$(state "$dir" .slug)" fill "$target" "$(jq -r .password "$dir/run/account.json")") >/dev/null 2>&1; then
         say "filled the run account password into $target"
     else
         die "fill-password failed; its output is withheld because it echoes the password. Check the target with snapshot."
@@ -574,7 +584,7 @@ down_run() {
         say "would stop server $(state "$dir" .pids.server), vite $(state "$dir" .pids.vite) and PDS $(state "$dir" .pids.pds), close browser session $slug, delete the run DB, PDS data and account"
         return 0
     fi
-    (cd "$dir" && bunx "$PLAYWRIGHT_CLI" -s="$slug" close >/dev/null 2>&1) || true
+    (cd "$dir" && playwright_cli -s="$slug" close >/dev/null 2>&1) || true
     for pid in "$(state "$dir" .pids.server)" "$(state "$dir" .pids.vite)" "$(state "$dir" .pids.pds)"; do
         if alive "$pid"; then stop_tree "$pid"; fi
     done
