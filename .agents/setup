@@ -112,6 +112,7 @@ install_dev_tools() {
 install_dependencies() {
 	go mod download
 	bun install --cwd ./frontend --frozen-lockfile
+	bun install --cwd ./.agents/skills/verify-morgenblau/tools --frozen-lockfile
 	bun run --cwd ./frontend build
 }
 
