@@ -2,6 +2,7 @@
 package config
 
 import (
+	"cmp"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/x509"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/bluesky-social/indigo/atproto/atcrypto"
@@ -34,6 +36,7 @@ func FromOS() (*Config, error) {
 		"BLUESKY_OAUTH_CLIENT_URI",
 		"BLUESKY_CLIENT_ID",
 		"BLUESKY_REDIRECT",
+		"PORT",
 	}
 	env := make(map[string]string, len(keys))
 	for _, k := range keys {
@@ -62,8 +65,12 @@ func Load(env map[string]string) (*Config, error) {
 	var ic oauth.ClientConfig
 	var jwksURI string
 	if clientID == "" {
+		port := cmp.Or(strings.TrimSpace(env["PORT"]), "8000")
+		if _, err := strconv.Atoi(port); err != nil {
+			return nil, fmt.Errorf("PORT %q: %w", port, err)
+		}
 		// atproto spec reserves client_id=http://localhost for public clients, so no secret here.
-		ic = oauth.NewLocalhostConfig("http://127.0.0.1:8000/oauth/callback", scopes)
+		ic = oauth.NewLocalhostConfig("http://127.0.0.1:"+port+"/oauth/callback", scopes)
 	} else {
 		redirect := strings.TrimSpace(env["BLUESKY_REDIRECT"])
 		if redirect == "" {

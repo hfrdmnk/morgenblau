@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -65,6 +66,31 @@ func TestLoad_LoopbackWhenClientIDEmpty(t *testing.T) {
 	// atproto spec reserves client_id=http://localhost for public, secret-less clients.
 	if cfg.Indigo.IsConfidential() {
 		t.Errorf("expected public loopback client, got confidential")
+	}
+}
+
+func TestLoad_LoopbackCallbackFollowsPORT(t *testing.T) {
+	for port, want := range map[string]string{
+		"":     "http://127.0.0.1:8000/oauth/callback",
+		"8123": "http://127.0.0.1:8123/oauth/callback",
+	} {
+		env := baseEnv(t)
+		env["PORT"] = port
+		cfg, err := Load(env)
+		if err != nil {
+			t.Fatalf("PORT=%q: Load: %v", port, err)
+		}
+		if cfg.Indigo.CallbackURL != want {
+			t.Errorf("PORT=%q: CallbackURL = %q, want %q", port, cfg.Indigo.CallbackURL, want)
+		}
+		if !strings.Contains(cfg.Indigo.ClientID, url.QueryEscape(want)) {
+			t.Errorf("PORT=%q: client_id %q does not carry the callback", port, cfg.Indigo.ClientID)
+		}
+	}
+	env := baseEnv(t)
+	env["PORT"] = "not-a-port"
+	if _, err := Load(env); err == nil {
+		t.Error("Load accepted PORT=not-a-port")
 	}
 }
 
