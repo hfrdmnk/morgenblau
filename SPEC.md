@@ -77,7 +77,7 @@ Content classification belongs to ingestion. The fetch pipelines in `internal/sy
 
 ## Sources and Refresh
 
-Readers add feeds by URL, including website feed discovery, YouTube channel resolution, and native Standardfeed publications. The source resolver lives in `internal/feedfinder/`. Source titles, tags, and primary status remain editable.
+Readers add feeds by URL, including website feed discovery, YouTube channel resolution, and native Standardfeed publications. The source resolver lives in `internal/feedfinder/`. Source titles, tags, and primary status remain editable. A reader follows a site through its RSS feed or its Standardfeed publication, never both: the picker disables the other kind, and the server rejects a new add or feed URL change that would create the pair (`rejectCrossKindSite` in `internal/api/`). Pairs that already exist stay.
 
 Feed content refreshes on login, manual refresh, source addition, and a background sweep. User-triggered work runs asynchronously; adding a source fetches that source. The background sweep refreshes the shared catalog without reconciling user PDS records. Scheduling, duplicate-work guards, and upstream backoff belong to `internal/sync/` and `internal/fetcher/`.
 

@@ -36,6 +36,7 @@ type addRequest struct {
 type IndexReader interface {
 	ListUserSubscriptions(ctx context.Context, did string) ([]db.UserSubscription, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error)
+	ListUserSubscriptionsWithSiteURL(ctx context.Context, did string) ([]db.ListUserSubscriptionsWithSiteURLRow, error)
 }
 
 // IndexWriter is the write slice, kept distinct from IndexReader so the GET handler can depend on a narrower interface.
@@ -107,6 +108,13 @@ func SubscriptionsCreateHandler(
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			slog.Warn("/api/subscriptions: dedupe probe failed", "err", err)
 			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
+			return
+		}
+		siteKey := rssSiblingKey(item.SiteURL, key)
+		if isStandard {
+			siteKey = siblingKey(item.SiteURL)
+		}
+		if rejectCrossKindSite(w, r, reader, didStr, kind, siteKey, "/api/subscriptions") {
 			return
 		}
 

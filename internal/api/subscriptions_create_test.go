@@ -157,6 +157,118 @@ func TestSubscriptionsCreate_Validation(t *testing.T) {
 	}
 }
 
+const blogFeed = "https://blog.example.com/feed.xml"
+
+// seedSiteSubscription gives alice one subscription of kind keyed by feedURL, with siteURL as its catalog site_url (nil when empty).
+func seedSiteSubscription(idx *fakeIndex, kind, feedURL, siteURL string) {
+	if idx.rows["did:plc:alice"] == nil {
+		idx.rows["did:plc:alice"] = map[string]db.UserSubscription{}
+	}
+	idx.rows["did:plc:alice"][feedURL] = db.UserSubscription{
+		Did:     "did:plc:alice",
+		Rkey:    "3la" + kind,
+		AtUri:   "at://did:plc:alice/blue.morgen.feed.subscription/3la" + kind,
+		FeedUrl: feedURL,
+		Kind:    kind,
+		Title:   ptrString("Example Blog"),
+	}
+	idx.siteURLs[feedURL] = nilIfEmpty(siteURL)
+}
+
+func TestSubscriptionsCreate_SameSiteAsOtherKind_409WithoutPDSWrite(t *testing.T) {
+	cases := []struct {
+		name                      string
+		existingKind, existingKey string
+		existingSite, body        string
+		standardWrite             bool
+	}{
+		{
+			name:         "rss feed for a site followed as a publication",
+			existingKind: "standardfeed", existingKey: testPublication, existingSite: "https://blog.example.com",
+			body: `{"feedUrl":"` + blogFeed + `","title":"Example Blog","siteUrl":"https://www.blog.example.com/"}`,
+		},
+		{
+			name:         "publication for a site followed as an rss feed",
+			existingKind: "rss", existingKey: blogFeed, existingSite: "https://blog.example.com/",
+			body:          `{"publication":"` + testPublication + `","siteUrl":"https://blog.example.com"}`,
+			standardWrite: true,
+		},
+		{
+			name:         "publication for a site whose rss feed declares no site link",
+			existingKind: "rss", existingKey: blogFeed,
+			body:          `{"publication":"` + testPublication + `","siteUrl":"https://blog.example.com"}`,
+			standardWrite: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			idx := newFakeIndex()
+			seedSiteSubscription(idx, tc.existingKind, tc.existingKey, tc.existingSite)
+			pds := &fakePDS{}
+			disp := &fakeDispatcher{}
+			h := SubscriptionsCreateHandler(idx, idx, pds, disp)
+			req := httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(tc.body))
+			if tc.standardWrite {
+				req = withStandardWriteSession(req, "did:plc:alice", "sid-1")
+			} else {
+				req = withSession(req, "did:plc:alice", "sid-1")
+			}
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusConflict {
+				t.Fatalf("status = %d, want 409; body = %s", rr.Code, rr.Body.String())
+			}
+			var body struct{ Code, Message string }
+			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Code != codeConflict || body.Message != "Pick either the RSS feed or the ATProto publication for a site, not both" {
+				t.Errorf("body = %+v", body)
+			}
+			if pds.creates != 0 || pds.applyCalls != 0 || pds.listCalls != 0 {
+				t.Errorf("PDS calls = creates:%d applyWrites:%d lists:%d, want none", pds.creates, pds.applyCalls, pds.listCalls)
+			}
+			if len(idx.upsertedFeeds) != 0 || len(disp.dispatched) != 0 {
+				t.Errorf("feeds = %v, fetches = %v, want SQLite and jobs untouched", idx.upsertedFeeds, disp.dispatched)
+			}
+		})
+	}
+}
+
+func TestSubscriptionsCreate_SameSiteSameKindIsAllowed(t *testing.T) {
+	idx := newFakeIndex()
+	seedSiteSubscription(idx, "rss", blogFeed, "https://blog.example.com/")
+	pds := &fakePDS{}
+	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{})
+
+	body := `{"feedUrl":"https://blog.example.com/comments.xml","siteUrl":"https://blog.example.com/"}`
+	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK || pds.creates != 1 {
+		t.Fatalf("status = %d, creates = %d, want a second feed for the same site added; body = %s", rr.Code, pds.creates, rr.Body.String())
+	}
+}
+
+func TestSubscriptionsCreate_ExistingBothKindsStayIdempotent(t *testing.T) {
+	idx := newFakeIndex()
+	seedSiteSubscription(idx, "rss", blogFeed, "https://blog.example.com/")
+	seedSiteSubscription(idx, "standardfeed", testPublication, "https://blog.example.com")
+	pds := &fakePDS{}
+	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{})
+
+	body := `{"feedUrl":"` + blogFeed + `","siteUrl":"https://blog.example.com/"}`
+	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK || pds.creates != 0 {
+		t.Fatalf("status = %d, creates = %d, want the existing subscription returned untouched; body = %s", rr.Code, pds.creates, rr.Body.String())
+	}
+}
+
 func TestSubscriptionsCreate_DedupeProbeError_500(t *testing.T) {
 	idx := newFakeIndex()
 	idx.getFeedErr = errors.New("database unavailable")

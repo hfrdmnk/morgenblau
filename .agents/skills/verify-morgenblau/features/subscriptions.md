@@ -9,9 +9,9 @@ Help article: none
 - `sources-page` `/sources` (`frontend/src/pages/sources.tsx`) lists `Feeds` (title, site or feed URL, `Primary`, a muted note for failing feeds) and `Newsletters` (plus `Stopped newsletters` when any); each list has a `Try again` on load failure. No feeds shows `No feeds yet. Import feeds`.
 - `add-dialog` `Add a source` (`frontend/src/components/add-source-dialog.tsx`, in the app header on every app page) takes `Website or feed URL`, `Find feeds` lists `Available feeds` with `Select <title>` buttons, `Save` adds the selection and toasts `Source added`. The same dialog shows the private `Newsletter email address` with a copy button.
 - `resolve` `POST /api/subscriptions/resolve` with `{url}` returns `{candidates, existingSubscriptions}`.
-- `add` `POST /api/subscriptions` with one source per request, `{"feedUrl":"..."}` (RSS) or `{"publication":"at://..."}` (Standardfeed); returns the record plus its `jobId`. Adding an existing feed returns its record without a `jobId`. A missing URL answers `400` with field errors; a list body is `invalid json`.
+- `add` `POST /api/subscriptions` with one source per request, `{"feedUrl":"..."}` (RSS) or `{"publication":"at://..."}` (Standardfeed); returns the record plus its `jobId`. Adding an existing feed returns its record without a `jobId`. A missing URL answers `400` with field errors; a list body is `invalid json`. A source for a site the reader already follows under the other kind answers `409` `Pick either the RSS feed or the ATProto publication for a site, not both`, before any PDS write.
 - `list` `GET /api/subscriptions`, `GET /api/subscriptions/{rkey}`, `GET /api/subscriptions/{rkey}/entries`, `GET /api/subscriptions/tags`.
-- `edit` `PATCH /api/subscriptions/{rkey}` with any of `title`, `primary`, `tags`, `feedUrl`; a `feedUrl` change returns a `jobId`, and one that matches another subscription answers `409` `already subscribed to that feed`.
+- `edit` `PATCH /api/subscriptions/{rkey}` with any of `title`, `primary`, `tags`, `feedUrl`; a `feedUrl` change returns a `jobId`, and one that matches another subscription answers `409` `already subscribed to that feed`. One that moves onto a site followed as a Standardfeed publication answers the site `409` above.
 - `remove` `DELETE /api/subscriptions/{rkey}`.
 
 ## How to reach it
@@ -35,11 +35,12 @@ Preconditions:
 - **Edit.** `PATCH /api/subscriptions/<rkey> --data '{"title":"Example Feed","tags":["example"]}' --out patch`: `200`; `GET /api/subscriptions/tags` includes `example`. `PATCH` with `{"feedUrl":"<feed url>?verify=1"}` `--out patch-feedurl`: `200` with a `jobId`.
 - **Remove.** `DELETE /api/subscriptions/<rkey>`: `204`; the row is gone from `inspect` and from `/sources` after `reload`, and `down` has nothing left to delete for it.
 - **Negative.** `PATCH` the new subscription's `feedUrl` to another subscription's feed URL: `409` (run this before Remove). `PATCH /api/subscriptions/unknownrkey --data '{"title":"x"}'`: `404`. `POST /api/subscriptions --data '{}' --out add-invalid`: `400` with `errors["feedUrl"]`. `POST /api/subscriptions --data '[{"feedUrl":"<feed url>"}]' --out add-list`: `400` `invalid json`, and no new row or PDS record. `GET /api/subscriptions --anon`: `401`.
+- **Other kind for a followed site.** The dev account follows the standing site's RSS feed, so `POST /api/subscriptions/resolve --data '{"url":"https://dominikhofer.me"}' --out resolve-site` shows its Standardfeed candidate with `subscribedVia` (the dialog shows it disabled, `Already followed via another feed.`). Post that candidate as the dialog would, `--data '{"publication":"<its publication>","siteUrl":"<its siteUrl>"}' --out add-publication-conflict`: `409` with the site message, unchanged `inspect` counts, and nothing for `down` to delete.
 
 ## Evidence
 
 - `notes.md` (the feed URL used), `sources.png`, `add-source-dialog.png`, `add-source-saved.png`
-- `resolve.json`, `sub.json`, `entries.json`, `add-again.json`, `patch.json`, `patch-feedurl.json`, `add-invalid.json`, `add-list.json`
+- `resolve.json`, `sub.json`, `entries.json`, `add-again.json`, `patch.json`, `patch-feedurl.json`, `add-invalid.json`, `add-list.json`, `resolve-site.json`, `add-publication-conflict.json`
 - `inspect-before.json`, `inspect-after.json`, `cleanup.log` when `down` deleted anything
 
 ## Gotchas

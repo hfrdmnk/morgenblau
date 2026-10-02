@@ -759,6 +759,28 @@ func TestSubscriptionsPatch_FeedURLChange_Conflict_409(t *testing.T) {
 	}
 }
 
+func TestSubscriptionsPatch_FeedURLOntoSiteFollowedAsPublication_409(t *testing.T) {
+	idx := newRkeyIndex()
+	idx.seed("did:plc:alice", "3la", "https://old.example.com/feed.xml")
+	seedSiteSubscription(idx.fakeIndex, "standardfeed", testPublication, "https://blog.example.com")
+	pds := &fakePDS{}
+	disp := &fakeDispatcher{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, disp))
+
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
+		strings.NewReader(`{"feedUrl":"https://blog.example.com/feed.xml"}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "not both") {
+		t.Fatalf("status = %d, want 409 with the site conflict message; body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.puts != 0 || len(idx.upsertedFeeds) != 0 || len(disp.dispatched) != 0 {
+		t.Errorf("puts = %d, feeds = %v, fetches = %v, want nothing written", pds.puts, idx.upsertedFeeds, disp.dispatched)
+	}
+}
+
 // TestSubscriptionsPatch_InvalidRecord_500_NoWrite proves an over-cap title (>128 graphemes) is rejected before the PDS put, not merely logged.
 func TestSubscriptionsPatch_InvalidRecord_500_NoWrite(t *testing.T) {
 	idx := newRkeyIndex()

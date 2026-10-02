@@ -134,6 +134,13 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 					writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 					return
 				}
+				candidateSite := ""
+				if feed, err := reader.GetFeed(r.Context(), candidate); err == nil {
+					candidateSite = derefStr(feed.SiteUrl)
+				}
+				if rejectCrossKindSite(w, r, reader, didStr, "rss", rssSiblingKey(candidateSite, candidate), "/api/subscriptions PATCH") {
+					return
+				}
 				newFeedURL = candidate
 				feedChanged = true
 				changed = true

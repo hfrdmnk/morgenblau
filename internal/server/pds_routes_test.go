@@ -75,6 +75,16 @@ var pdsRoutes = []pdsRoute{
 		},
 	},
 	{
+		name: "add feed for a site followed as a publication", pattern: "POST /api/subscriptions", method: http.MethodPost, path: "/api/subscriptions",
+		body: `{"feedUrl":"https://feeds.example.com/c.xml","siteUrl":"https://feeds.example.com/"}`, seed: seedPublicationOnFeedsSite,
+		wantStatus: http.StatusConflict,
+	},
+	{
+		name: "add publication for a site followed as a feed", pattern: "POST /api/subscriptions", method: http.MethodPost, path: "/api/subscriptions",
+		body: `{"publication":"at://did:plc:publisher/site.standard.publication/3other","siteUrl":"https://feeds.example.com"}`, seed: seedFeedSubscription,
+		wantStatus: http.StatusConflict,
+	},
+	{
 		name: "edit feed", pattern: "PATCH /api/subscriptions/{rkey}", method: http.MethodPatch, path: "/api/subscriptions/3feed",
 		body: `{"title":"Renamed","tags":["later"]}`, seed: seedFeedSubscription,
 		wantStatus: http.StatusOK, maxCommits: 1, mirrors: true, repairs: 1,
@@ -370,6 +380,11 @@ func seedPublicationSubscription(t *testing.T, env *routeEnv) {
 	env.exec(t, `INSERT INTO feeds (feed_url, kind, created_at, updated_at) VALUES (?, 'standardfeed', ?, ?)`, routePublication, seededAt, seededAt)
 	env.exec(t, `INSERT INTO user_subscriptions (did, rkey, at_uri, feed_url, kind, sidecar_rkey, title, created_at, updated_at) VALUES (?, '3std', ?, ?, 'standardfeed', '3side', 'Example Publication', ?, ?)`,
 		routeDID, "at://"+routeDID+"/"+stdCollection+"/3std", routePublication, seededAt, seededAt)
+}
+
+func seedPublicationOnFeedsSite(t *testing.T, env *routeEnv) {
+	seedPublicationSubscription(t, env)
+	env.exec(t, `UPDATE feeds SET site_url = 'https://feeds.example.com' WHERE feed_url = ?`, routePublication)
 }
 
 func seedSave(t *testing.T, env *routeEnv) {
