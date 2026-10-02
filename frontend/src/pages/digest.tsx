@@ -76,20 +76,18 @@ function DigestItem({ date, entry }: { date: string; entry: DigestEntry }) {
                 {entry.title || 'Untitled'}
             </RouterLink>
             <div className="mt-2.5 flex items-center gap-2.5 text-sm text-subtle-foreground">
-                <span className="relative size-4 shrink-0 overflow-hidden rounded-sm bg-sunrise-orange">
-                    {entry.source.faviconUrl ? (
-                        <img
-                            alt=""
-                            className="absolute inset-0 size-full object-cover"
-                            loading="lazy"
-                            onError={(event) => {
-                                event.currentTarget.hidden = true;
-                            }}
-                            referrerPolicy="no-referrer"
-                            src={entry.source.faviconUrl}
-                        />
-                    ) : null}
-                </span>
+                {entry.source.faviconUrl ? (
+                    <img
+                        alt=""
+                        className="size-4 shrink-0 rounded-sm object-cover"
+                        loading="lazy"
+                        onError={(event) => {
+                            event.currentTarget.hidden = true;
+                        }}
+                        referrerPolicy="no-referrer"
+                        src={entry.source.faviconUrl}
+                    />
+                ) : null}
                 <span className="truncate">{sourceDetails}</span>
             </div>
         </li>

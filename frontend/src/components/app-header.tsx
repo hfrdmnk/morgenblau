@@ -111,6 +111,7 @@ function ModeSelect({
     open: boolean;
 }) {
     const current = currentMode(location);
+    const outsideMode = current.href === PATHS.digest && location !== PATHS.digest;
     const state = useModeSelect(current, modes, onOpenChange);
     const {
         finishClose,
@@ -130,20 +131,24 @@ function ModeSelect({
                 current={current}
                 open={open}
                 reduceMotion={reduceMotion}
-                selecting={targetIndex !== null}
+                selecting={targetIndex !== null || (open && outsideMode)}
             />
             <ModeMenu
                 finishClose={finishClose}
                 itemsVisible={itemsVisible}
                 menuModes={menuModes}
                 reduceMotion={reduceMotion}
-                selectedMode={selectedMode}
+                selectedMode={menuSelection(outsideMode, targetIndex, selectedMode)}
                 selectMode={selectMode}
                 settling={settling}
                 targetIndex={targetIndex}
             />
         </Popover>
     );
+}
+
+function menuSelection(outsideMode: boolean, targetIndex: number | null, selectedMode: Mode): Mode | null {
+    return outsideMode && targetIndex === null ? null : selectedMode;
 }
 
 function ModeSelectTrigger({
@@ -161,6 +166,7 @@ function ModeSelectTrigger({
         <PopoverTrigger
             render={
                 <button
+                    aria-label={`${current.label}: choose mode`}
                     className="group inline-flex w-fit items-center gap-3 rounded-md text-muted-foreground"
                     type="button"
                 />
@@ -253,7 +259,7 @@ function ModeMenu({
     itemsVisible: boolean;
     menuModes: Mode[];
     reduceMotion: boolean;
-    selectedMode: Mode;
+    selectedMode: Mode | null;
     selectMode: (index: number) => void;
     settling: boolean;
     targetIndex: number | null;
