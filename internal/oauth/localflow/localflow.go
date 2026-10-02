@@ -4,6 +4,7 @@ package localflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,7 +16,12 @@ import (
 	"morgenblau/internal/safehttp"
 )
 
-// App is indigo's ClientApp with StartAuthFlow taking over for accounts whose PDS is PDS; ProcessCallback and Logout stay indigo's.
+var (
+	errOtherLoopbackPDS  = errors.New("the account's PDS runs on this machine but is not the configured local PDS")
+	errForeignAuthServer = errors.New("the local PDS names an authorization server elsewhere")
+)
+
+// App is indigo's ClientApp with StartAuthFlow taking over for accounts on PDS, the run's loopback PDS; ProcessCallback and Logout stay indigo's.
 type App struct {
 	*oauth.ClientApp
 	PDS string
@@ -28,22 +34,37 @@ func (a App) StartAuthFlow(ctx context.Context, identifier string) (string, erro
 		return a.ClientApp.StartAuthFlow(ctx, identifier)
 	}
 	ident, err := a.Dir.Lookup(ctx, atid)
-	if err != nil || ident.PDSEndpoint() != a.PDS {
+	if err != nil {
 		return a.ClientApp.StartAuthFlow(ctx, identifier)
+	}
+	_, accountPort, err := safehttp.LoopbackOrigin(ident.PDSEndpoint())
+	if err != nil {
+		return a.ClientApp.StartAuthFlow(ctx, identifier)
+	}
+	pds, pdsPort, err := safehttp.LoopbackOrigin(a.PDS)
+	if err != nil {
+		return "", fmt.Errorf("local PDS: %w", err)
+	}
+	if accountPort != pdsPort {
+		return "", fmt.Errorf("%w: %s, not %s", errOtherLoopbackPDS, ident.PDSEndpoint(), pds)
 	}
 
 	var resource oauth.ProtectedResourceMetadata
-	if err := a.getJSON(ctx, a.PDS+"/.well-known/oauth-protected-resource", &resource); err != nil {
+	if err := a.getJSON(ctx, pds+"/.well-known/oauth-protected-resource", &resource); err != nil {
 		return "", fmt.Errorf("fetching protected resource document: %w", err)
 	}
-	if len(resource.AuthorizationServers) == 0 || resource.AuthorizationServers[0] != a.PDS {
-		return "", fmt.Errorf("local PDS %s names another authorization server: %v", a.PDS, resource.AuthorizationServers)
+	if len(resource.AuthorizationServers) == 0 {
+		return "", fmt.Errorf("%w: none listed", errForeignAuthServer)
+	}
+	authServer, authPort, err := safehttp.LoopbackOrigin(resource.AuthorizationServers[0])
+	if err != nil || authPort != pdsPort {
+		return "", fmt.Errorf("%w: %s", errForeignAuthServer, resource.AuthorizationServers[0])
 	}
 	var meta oauth.AuthServerMetadata
-	if err := a.getJSON(ctx, a.PDS+"/.well-known/oauth-authorization-server", &meta); err != nil {
+	if err := a.getJSON(ctx, authServer+"/.well-known/oauth-authorization-server", &meta); err != nil {
 		return "", fmt.Errorf("fetching auth server metadata: %w", err)
 	}
-	if err := validateAuthServer(meta, a.PDS); err != nil {
+	if err := validateAuthServer(meta, authServer); err != nil {
 		return "", err
 	}
 
@@ -77,13 +98,14 @@ func (a App) getJSON(ctx context.Context, docURL string, out any) error {
 
 // validateAuthServer checks the parts of indigo's AuthServerMetadata.Validate that demand https against a loopback origin instead, then runs Validate itself on a copy moved to a placeholder https origin for everything else.
 func validateAuthServer(meta oauth.AuthServerMetadata, serverURL string) error {
-	iss, err := url.Parse(meta.Issuer)
-	if err != nil || iss.Scheme != "http" || !safehttp.IsLoopbackHost(iss.Hostname()) || iss.User != nil || iss.Path != "" || iss.RawQuery != "" || iss.Fragment != "" {
-		return fmt.Errorf("%w: issuer %q is not a loopback HTTP origin", oauth.ErrInvalidAuthServerMetadata, meta.Issuer)
+	_, issuerPort, err := safehttp.LoopbackOrigin(meta.Issuer)
+	if err != nil {
+		return fmt.Errorf("%w: issuer: %w", oauth.ErrInvalidAuthServerMetadata, err)
 	}
-	if meta.Issuer != serverURL {
+	if _, serverPort, err := safehttp.LoopbackOrigin(serverURL); err != nil || issuerPort != serverPort {
 		return fmt.Errorf("%w: issuer must match request URL", oauth.ErrInvalidAuthServerMetadata)
 	}
+	iss, _ := url.Parse(meta.Issuer)
 	authorize, err := url.Parse(meta.AuthorizationEndpoint)
 	if err != nil || authorize.Scheme != iss.Scheme || authorize.Host != iss.Host || authorize.RawQuery != "" || authorize.Fragment != "" {
 		return fmt.Errorf("%w: invalid auth endpoint URL: %s", oauth.ErrInvalidAuthServerMetadata, meta.AuthorizationEndpoint)

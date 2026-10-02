@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -46,23 +47,25 @@ func metadata(issuer string) oauth.AuthServerMetadata {
 // fakePDS is a loopback PDS that is its own authorization server, as the dev-env PDS is.
 type fakePDS struct {
 	*httptest.Server
-	meta  func(issuer string) oauth.AuthServerMetadata
-	hits  atomic.Int32
-	state atomic.Value
+	meta        func(issuer string) oauth.AuthServerMetadata
+	authServers func(self string) []string
+	hits, pars  atomic.Int32
+	state       atomic.Value
 }
 
 func newFakePDS(t *testing.T) *fakePDS {
 	t.Helper()
-	f := &fakePDS{meta: metadata}
+	f := &fakePDS{meta: metadata, authServers: func(self string) []string { return []string{self} }}
 	f.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.hits.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/.well-known/oauth-protected-resource":
-			_ = json.NewEncoder(w).Encode(map[string]any{"resource": f.URL, "authorization_servers": []string{f.URL}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"resource": f.URL, "authorization_servers": f.authServers(f.URL)})
 		case "/.well-known/oauth-authorization-server":
 			_ = json.NewEncoder(w).Encode(f.meta(f.URL))
 		case "/oauth/par":
+			f.pars.Add(1)
 			if err := r.ParseForm(); err != nil || r.Header.Get("DPoP") == "" || r.PostForm.Get("code_challenge_method") != "S256" {
 				w.WriteHeader(http.StatusBadRequest)
 				return
@@ -80,6 +83,11 @@ func newFakePDS(t *testing.T) *fakePDS {
 
 func newApp(t *testing.T, pds *fakePDS) (App, *oauth.MemStore) {
 	t.Helper()
+	return newAppWithAccountPDS(t, pds, pds.URL)
+}
+
+func newAppWithAccountPDS(t *testing.T, pds *fakePDS, accountPDS string) (App, *oauth.MemStore) {
+	t.Helper()
 	cfg := oauth.NewLocalhostConfig("http://127.0.0.1:8123/oauth/callback", []string{"atproto"})
 	store := oauth.NewMemStore()
 	app := oauth.NewClientApp(&cfg, store)
@@ -87,7 +95,7 @@ func newApp(t *testing.T, pds *fakePDS) (App, *oauth.MemStore) {
 	dir := identity.NewMockDirectory()
 	dir.Insert(identity.Identity{
 		DID: localDID, Handle: "reader.test", AlsoKnownAs: []string{"at://reader.test"},
-		Services: map[string]identity.ServiceEndpoint{"atproto_pds": {Type: "AtprotoPersonalDataServer", URL: pds.URL}},
+		Services: map[string]identity.ServiceEndpoint{"atproto_pds": {Type: "AtprotoPersonalDataServer", URL: accountPDS}},
 	})
 	dir.Insert(identity.Identity{
 		DID: remoteDID, Handle: "writer.example.com", AlsoKnownAs: []string{"at://writer.example.com"},
@@ -133,12 +141,50 @@ func TestStartAuthFlow_AccountsOffTheLocalPDSGoThroughIndigo(t *testing.T) {
 	pds := newFakePDS(t)
 	app, _ := newApp(t, pds)
 
-	_, err := app.StartAuthFlow(context.Background(), "writer.example.com")
-	if err == nil || !strings.Contains(err.Error(), "not a valid public host URL") {
-		t.Errorf("err = %v, want indigo's public-host refusal", err)
+	if _, err := app.StartAuthFlow(context.Background(), "writer.example.com"); err == nil {
+		t.Error("StartAuthFlow succeeded for an account indigo cannot reach")
 	}
 	if pds.hits.Load() != 0 {
 		t.Errorf("local PDS hits = %d, want 0", pds.hits.Load())
+	}
+}
+
+func TestStartAuthFlow_AnotherLoopbackPDSIsAnErrorNotAFallback(t *testing.T) {
+	pds := newFakePDS(t)
+	app, _ := newAppWithAccountPDS(t, pds, "http://localhost:1")
+
+	if _, err := app.StartAuthFlow(context.Background(), "reader.test"); !errors.Is(err, errOtherLoopbackPDS) {
+		t.Errorf("err = %v, want errOtherLoopbackPDS", err)
+	}
+	if pds.hits.Load() != 0 {
+		t.Errorf("local PDS hits = %d, want 0", pds.hits.Load())
+	}
+}
+
+// The DID document and ATPROTO_PDS may spell the same loopback server differently.
+func TestStartAuthFlow_MatchesTheLocalPDSByLoopbackPort(t *testing.T) {
+	pds := newFakePDS(t)
+	port := pds.Listener.Addr().(*net.TCPAddr).Port
+	app, _ := newAppWithAccountPDS(t, pds, fmt.Sprintf("http://localhost:%d/", port))
+
+	if _, err := app.StartAuthFlow(context.Background(), "reader.test"); err != nil {
+		t.Fatalf("StartAuthFlow: %v", err)
+	}
+	if pds.pars.Load() != 1 {
+		t.Errorf("PAR calls = %d, want 1", pds.pars.Load())
+	}
+}
+
+func TestStartAuthFlow_RefusesAPDSThatNamesAnotherAuthorizationServer(t *testing.T) {
+	pds := newFakePDS(t)
+	pds.authServers = func(string) []string { return []string{"https://entryway.example.com"} }
+	app, _ := newApp(t, pds)
+
+	if _, err := app.StartAuthFlow(context.Background(), "reader.test"); !errors.Is(err, errForeignAuthServer) {
+		t.Errorf("err = %v, want errForeignAuthServer", err)
+	}
+	if pds.pars.Load() != 0 {
+		t.Errorf("PAR calls = %d, want 0", pds.pars.Load())
 	}
 }
 
