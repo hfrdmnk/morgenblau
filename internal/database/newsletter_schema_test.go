@@ -9,8 +9,8 @@ import (
 
 func TestEveryNewsletterTableIsOwnerScopedBySchema(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "schema.db")
-	runNewsletterGoose(t, databasePath, "up")
-	db := openNewsletterMigrationDB(t, databasePath)
+	runGoose(t, databasePath, "up")
+	db := openMigrationDB(t, databasePath)
 
 	tables := newsletterTableNames(t, db)
 	if len(tables) == 0 {
@@ -18,7 +18,7 @@ func TestEveryNewsletterTableIsOwnerScopedBySchema(t *testing.T) {
 	}
 	for _, table := range tables {
 		if !newsletterDIDIsNotNull(t, db, table) {
-			t.Errorf("%s.did must be declared NOT NULL", table)
+			t.Errorf("%s.did must be declared NOT NULL; a row without an owner is readable by no one and scoped by nothing (law 3)", table)
 		}
 		parents := 0
 		for _, fk := range newsletterForeignKeys(t, db, table) {
@@ -27,12 +27,12 @@ func TestEveryNewsletterTableIsOwnerScopedBySchema(t *testing.T) {
 			}
 			parents++
 			if fk.columns["did"] != "did" {
-				t.Errorf("%s foreign key to %s must map did -> did, got %v", table, fk.parent, fk.columns)
+				t.Errorf("%s foreign key to %s must map did -> did, got %v; otherwise a row can point at another reader's data (law 3)", table, fk.parent, fk.columns)
 			}
 		}
 		// The address row is the owner root; every other newsletter row hangs off an owned parent.
 		if table != "newsletter_addresses" && parents == 0 {
-			t.Errorf("%s has no owner-scoped foreign key to a newsletter table", table)
+			t.Errorf("%s has no owner-scoped foreign key to a newsletter table; the schema must tie every row to its reader (law 3)", table)
 		}
 	}
 }
