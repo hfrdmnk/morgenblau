@@ -61,7 +61,7 @@ A failed or abandoned attempt still runs step 8.
 
 `Makefile`, `frontend/package.json` and `.github/workflows/ci.yml` own the commands; read them there. Pick by what changed and report actual results:
 
-- **Go, while working:** the focused package and test (`go test ./internal/<pkg> -run <Test> -count=1`). **Finishing Go work:** the full Go suite and `go vet ./...`; for concurrency changes make `make test-race` the final full run instead.
+- **Go, while working:** the focused package and test (`go test ./internal/<pkg> -run <Test> -count=1`). **Finishing Go work:** the full Go suite, `go vet ./...` and `golangci-lint run ./...` (every Go build needs a built `frontend/dist`, which the app embeds); for concurrency changes make `make test-race` the final full run instead.
 - **Frontend:** the relevant test files while working; finish with the Bun `test`, `lint` and `build` scripts (the build runs the TypeScript check). `frontend/AGENTS.md` owns the per-branch `doctor` rule.
 - **Embedded app or deploy build:** `make build-linux` (it already builds the frontend; do not build twice).
 - **Schema or queries:** `make sqlc`, read the regenerated diff, run the affected storage tests against real temporary SQLite. Migrations are tried on a disposable DB (`$V up` gives you one), never on `./data`.
