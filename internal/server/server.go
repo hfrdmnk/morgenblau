@@ -135,12 +135,15 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	identityDir := atidentity.Guarded(safeClient)
 	oauthApp := newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
 	var oauthFlow handler.ClientApp = oauthApp
+	listenHost := ""
 	if localNet != nil {
 		slog.Info("local PLC and PDS enabled", "plc", localNet.plc, "pds", localNet.pds)
 		safeClient = safehttp.NewClient(30*time.Second, 5, safehttp.WithAllowLoopbackPorts(localNet.ports...))
 		identityDir = atidentity.Local(safeClient, localNet.plc, localNet.pds)
 		oauthApp = newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
 		oauthFlow = localflow.App{ClientApp: oauthApp, PDS: localNet.pds}
+		// A verify instance holds throwaway sign-in material; nothing off this machine should reach it.
+		listenHost = "127.0.0.1"
 	}
 	devConfig, err := session.LoadDevConfig(os.Getenv)
 	if err == nil {
@@ -218,7 +221,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	}
 
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", srv.port),
+		Addr:         net.JoinHostPort(listenHost, strconv.Itoa(srv.port)),
 		Handler:      srv.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
