@@ -8,6 +8,10 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores(['dist']),
   {
+    // Inline disables only warn under noInlineConfig; the lint script's --max-warnings 0 makes them fail.
+    linterOptions: { noInlineConfig: true },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     extends: [
       js.configs.recommended,
@@ -19,6 +23,21 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'fetch',
+          message: 'Call api() from src/lib/api.ts: it parses the {code, message} error body and throws ApiError, which reauth and form errors depend on.',
+        },
+      ],
+      'no-restricted-properties': [
+        'error',
+        ...['window', 'globalThis', 'self'].map((object) => ({
+          object,
+          property: 'fetch',
+          message: 'Call api() from src/lib/api.ts: it parses the {code, message} error body and throws ApiError, which reauth and form errors depend on.',
+        })),
+      ],
       'no-restricted-imports': [
         'error',
         {
@@ -31,5 +50,10 @@ export default defineConfig([
         },
       ],
     },
+  },
+  {
+    // api() itself, and tests that stub fetch beneath it.
+    files: ['src/lib/api.ts', 'src/**/*.test.{ts,tsx}'],
+    rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' },
   },
 ])
