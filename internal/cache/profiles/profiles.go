@@ -16,6 +16,7 @@ import (
 const (
 	defaultCapacity = 10_000
 	defaultTTL      = 6 * time.Hour
+	fetchTimeout    = 15 * time.Second
 )
 
 // Profile is the cached shape returned to handlers.
@@ -138,6 +139,9 @@ var ErrHandleInvalid = errors.New("bidirectional handle verification failed")
 var ErrNoPDS = errors.New("identity has no PDS endpoint")
 
 func (c *Cache) fetch(ctx context.Context, did syntax.DID) (Profile, error) {
+	// The result is cached and shared with in-flight waiters, so it must not depend on whether this caller stayed.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fetchTimeout)
+	defer cancel()
 	ident, err := c.resolver.LookupDID(ctx, did)
 	if err != nil {
 		return Profile{}, fmt.Errorf("resolve did: %w", err)

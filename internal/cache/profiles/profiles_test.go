@@ -136,6 +136,34 @@ func TestCache_MissingProfileRecordCollapsesToNulls(t *testing.T) {
 	}
 }
 
+type ctxFetcher struct{ displayName *string }
+
+func (f ctxFetcher) FetchProfile(ctx context.Context, _ syntax.DID, _ string) (ProfileRecord, error) {
+	if err := ctx.Err(); err != nil {
+		return ProfileRecord{}, err
+	}
+	return ProfileRecord{DisplayName: f.displayName}, nil
+}
+
+// A caller that gives up mid-load must not leave a nameless profile cached for everyone after it.
+func TestCache_CallerCancelDoesNotCacheNullProfile(t *testing.T) {
+	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
+	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
+	c := New(res, ctxFetcher{displayName: ptr("Alice")})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _ = c.Get(ctx, did)
+
+	p, err := c.Get(context.Background(), did)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if p.DisplayName == nil || *p.DisplayName != "Alice" {
+		t.Fatalf("displayName = %v, want Alice", p.DisplayName)
+	}
+}
+
 func TestCache_DescriptionInJSON(t *testing.T) {
 	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
 	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
