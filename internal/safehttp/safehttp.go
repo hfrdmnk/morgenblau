@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -24,16 +25,29 @@ var ErrTooManyRedirects = errors.New("safehttp: too many redirects")
 // ErrBlockedScheme is returned when a redirect target isn't http or https.
 var ErrBlockedScheme = errors.New("safehttp: blocked scheme")
 
-// Option configures NewClient; the only public option, WithAllowLoopback, is for tests hitting httptest.NewServer (127.0.0.1).
+// Option configures NewClient.
 type Option func(*options)
 
 type options struct {
-	allowLoopback bool
+	allowLoopback      bool
+	allowLoopbackPorts map[int]bool
 }
 
 // WithAllowLoopback permits loopback connections; test-only, production never sets this.
 func WithAllowLoopback() Option {
 	return func(o *options) { o.allowLoopback = true }
+}
+
+// WithAllowLoopbackPorts permits loopback connections to the listed ports only, for an APP_ENV=local server talking to a throwaway PDS and PLC on this machine.
+func WithAllowLoopbackPorts(ports ...int) Option {
+	return func(o *options) {
+		if o.allowLoopbackPorts == nil {
+			o.allowLoopbackPorts = map[int]bool{}
+		}
+		for _, port := range ports {
+			o.allowLoopbackPorts[port] = true
+		}
+	}
 }
 
 // Validator returns an error if ip falls into a disallowed range.
@@ -70,7 +84,7 @@ func NewClient(timeout time.Duration, maxRedirects int, opts ...Option) *http.Cl
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
 		Control: func(network, address string, _ syscall.RawConn) error {
-			host, _, err := net.SplitHostPort(address)
+			host, rawPort, err := net.SplitHostPort(address)
 			if err != nil {
 				return fmt.Errorf("safehttp: parse address: %w", err)
 			}
@@ -78,8 +92,10 @@ func NewClient(timeout time.Duration, maxRedirects int, opts ...Option) *http.Cl
 			if ip == nil {
 				return fmt.Errorf("%w: not an ip %q", ErrBlockedAddress, host)
 			}
-			if cfg.allowLoopback && ip.IsLoopback() {
-				return nil
+			if ip.IsLoopback() {
+				if port, err := strconv.Atoi(rawPort); cfg.allowLoopback || (err == nil && cfg.allowLoopbackPorts[port]) {
+					return nil
+				}
 			}
 			return Validator(ip)
 		},

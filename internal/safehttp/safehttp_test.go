@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -202,5 +203,34 @@ func TestNewClient_ContextCancel(t *testing.T) {
 	_, err := c.Do(req)
 	if err == nil {
 		t.Fatal("expected context error")
+	}
+}
+
+func TestNewClient_AllowLoopbackPortsPermitsOnlyThosePorts(t *testing.T) {
+	allowed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer allowed.Close()
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer other.Close()
+	port := allowed.Listener.Addr().(*net.TCPAddr).Port
+
+	c := NewClient(2*time.Second, 5, WithAllowLoopbackPorts(port))
+	resp, err := c.Get(allowed.URL)
+	if err != nil {
+		t.Fatalf("Get allowed port: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if _, err := c.Get(other.URL); !errors.Is(err, ErrBlockedAddress) {
+		t.Errorf("Get other loopback port err = %v, want ErrBlockedAddress", err)
+	}
+	for _, host := range []string{"10.0.0.1", "169.254.169.254", "0.0.0.0"} {
+		raw := "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/"
+		if _, err := c.Get(raw); !errors.Is(err, ErrBlockedAddress) {
+			t.Errorf("Get %s err = %v, want ErrBlockedAddress", raw, err)
+		}
 	}
 }
