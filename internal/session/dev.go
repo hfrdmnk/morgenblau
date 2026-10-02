@@ -29,9 +29,9 @@ func LoadDevConfig(getenv func(string) string) (*DevConfig, error) {
 	}
 	cfg := &DevConfig{PDS: strings.TrimRight(getenv("ATPROTO_PDS"), "/"), Handle: getenv("ATPROTO_HANDLE"), Password: getenv("ATPROTO_PASSWORD")}
 	u, err := url.Parse(cfg.PDS)
+	httpsOrigin := err == nil && u.Scheme == "https" && u.Hostname() != "" && u.User == nil && u.RawQuery == "" && u.Fragment == "" && u.Path == ""
 	// A verify run's throwaway PDS listens on plain HTTP on this machine.
-	secure := err == nil && (u.Scheme == "https" || (u.Scheme == "http" && safehttp.IsLoopbackHost(u.Hostname())))
-	if !secure || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" {
+	if _, _, loopbackErr := safehttp.LoopbackOrigin(cfg.PDS); !httpsOrigin && loopbackErr != nil {
 		return nil, errors.New("development login requires an HTTPS ATPROTO_PDS origin, or plain HTTP on loopback")
 	}
 	if _, err := syntax.ParseAtIdentifier(cfg.Handle); err != nil || cfg.Password == "" {

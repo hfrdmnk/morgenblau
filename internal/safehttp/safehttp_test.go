@@ -245,3 +245,30 @@ func TestIsLoopbackHost(t *testing.T) {
 		}
 	}
 }
+
+func TestLoopbackOrigin(t *testing.T) {
+	for raw, want := range map[string]struct {
+		origin string
+		port   int
+	}{
+		"http://localhost:2701":  {"http://localhost:2701", 2701},
+		"http://localhost:2701/": {"http://localhost:2701", 2701},
+		"http://127.0.0.1:2701":  {"http://127.0.0.1:2701", 2701},
+		"http://[::1]:2701":      {"http://[::1]:2701", 2701},
+		"HTTP://LocalHost:2701":  {"http://localhost:2701", 2701},
+	} {
+		origin, port, err := LoopbackOrigin(raw)
+		if err != nil || origin != want.origin || port != want.port {
+			t.Errorf("LoopbackOrigin(%q) = %q, %d, %v; want %q, %d", raw, origin, port, err, want.origin, want.port)
+		}
+	}
+	for _, raw := range []string{
+		"https://localhost:2701", "http://localhost", "http://pds.example.com:2701", "http://10.0.0.1:2701",
+		"http://localhost.example:2701", "http://user@localhost:2701", "http://localhost:2701/xrpc",
+		"http://localhost:2701?x=1", "http://localhost:2701#x", "http://localhost:0", "",
+	} {
+		if origin, port, err := LoopbackOrigin(raw); err == nil {
+			t.Errorf("LoopbackOrigin(%q) = %q, %d; want an error", raw, origin, port)
+		}
+	}
+}

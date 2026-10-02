@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"syscall"
@@ -57,6 +58,21 @@ func IsLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// LoopbackOrigin parses a plain-HTTP origin on this machine with an explicit port, the only shape a verify run's throwaway PDS, PLC or authorization server takes.
+// Loopback origins on the same port are the same server, so callers compare ports, not strings.
+func LoopbackOrigin(raw string) (origin string, port int, err error) {
+	u, err := url.Parse(strings.TrimSuffix(raw, "/"))
+	if err != nil || !strings.EqualFold(u.Scheme, "http") || !IsLoopbackHost(strings.ToLower(u.Hostname())) ||
+		u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery {
+		return "", 0, fmt.Errorf("want a plain HTTP loopback origin, got %q", raw)
+	}
+	port, err = strconv.Atoi(u.Port())
+	if err != nil || port < 1 || port > 65535 {
+		return "", 0, fmt.Errorf("%q needs an explicit port", raw)
+	}
+	return "http://" + strings.ToLower(u.Host), port, nil
 }
 
 // Validator returns an error if ip falls into a disallowed range.
