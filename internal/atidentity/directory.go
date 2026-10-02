@@ -14,7 +14,7 @@ import (
 // lookupTimeout bounds a lookup that callers can no longer cancel.
 const lookupTimeout = 10 * time.Second
 
-// Guarded mirrors indigo's DefaultDirectory but swaps in client (the safehttp client) for identity HTTP fetches, preserving DNS/PLC settings.
+// Guarded mirrors indigo's DefaultDirectory but swaps in client (the safehttp client) for identity HTTP fetches and resolves every handle through DNS.
 // The SSRF guard lives on client's dial Control, so it fires against the resolved peer IP at connect time and defeats DNS rebinding.
 func Guarded(client *http.Client) identity.Directory {
 	base := identity.BaseDirectory{
@@ -26,9 +26,9 @@ func Guarded(client *http.Client) identity.Directory {
 				return d.DialContext(ctx, network, address)
 			},
 		},
-		TryAuthoritativeDNS:   true,
-		SkipDNSDomainSuffixes: []string{".bsky.social"},
-		UserAgent:             "morgenblau-identity",
+		TryAuthoritativeDNS: true,
+		// No SkipDNSDomainSuffixes: for a skipped suffix indigo turns a failed well-known lookup into an empty DID with no error.
+		UserAgent: "morgenblau-identity",
 	}
 	return cached(&base)
 }
