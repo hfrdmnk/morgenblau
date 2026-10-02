@@ -16,7 +16,9 @@ func TestFetchProfile_SendsMorgenblauUserAgent(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUA = r.Header.Get("User-Agent")
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"uri":"at://did:plc:alice/app.bsky.actor.profile/self","cid":"c","value":{}}`))
+		if _, err := w.Write([]byte(`{"uri":"at://did:plc:alice/app.bsky.actor.profile/self","cid":"c","value":{}}`)); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer srv.Close()
 
@@ -36,7 +38,9 @@ func TestFetchProfile_SendsMorgenblauUserAgent(t *testing.T) {
 func TestFetchProfile_ParsesDescription(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"uri":"at://did:plc:alice/app.bsky.actor.profile/self","cid":"c","value":{"description":"Reads calmly."}}`))
+		if _, err := w.Write([]byte(`{"uri":"at://did:plc:alice/app.bsky.actor.profile/self","cid":"c","value":{"description":"Reads calmly."}}`)); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer srv.Close()
 
@@ -57,7 +61,9 @@ func TestFetchProfile_ParsesDescription(t *testing.T) {
 func TestFetchProfile_MissingDescription_StaysNil(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"uri":"at://did:plc:alice/app.bsky.actor.profile/self","cid":"c","value":{}}`))
+		if _, err := w.Write([]byte(`{"uri":"at://did:plc:alice/app.bsky.actor.profile/self","cid":"c","value":{}}`)); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer srv.Close()
 

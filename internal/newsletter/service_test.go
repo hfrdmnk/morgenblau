@@ -98,7 +98,11 @@ func TestSaveMessageReturnsNotFoundWhenStopWinsAfterReadBeforeWrite(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stop.Rollback()
+	defer func() {
+		if err := stop.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			t.Error(err)
+		}
+	}()
 	waitsBefore := writer.Stats().WaitCount
 	saveResult := make(chan error, 1)
 	go func() {

@@ -44,7 +44,9 @@ func TestStoppedSourceDiscardsFutureDeliveryWithoutRetainingRaw(t *testing.T) {
 	ctx := context.Background()
 	address, _ := service.CreateAddress(ctx, "did:plc:alice")
 	first := []byte("From: Weekly <hello@example.com>\r\nSubject: First\r\nMessage-ID: <first@example.com>\r\nList-ID: Weekly <weekly.example>\r\nContent-Type: text/plain\r\n\r\nFirst")
-	service.acceptReceipts(ctx, "bounce@example.com", []deliveryRecipient{{DID: "did:plc:alice", Address: address}}, first)
+	if err := service.acceptReceipts(ctx, "bounce@example.com", []deliveryRecipient{{DID: "did:plc:alice", Address: address}}, first); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := service.processNext(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +58,9 @@ func TestStoppedSourceDiscardsFutureDeliveryWithoutRetainingRaw(t *testing.T) {
 		t.Fatal(err)
 	}
 	second := []byte("From: Weekly <hello@example.com>\r\nSubject: Second\r\nMessage-ID: <second@example.com>\r\nList-ID: Weekly <weekly.example>\r\nContent-Type: text/plain\r\n\r\nSecond")
-	service.acceptReceipts(ctx, "bounce@example.com", []deliveryRecipient{{DID: "did:plc:alice", Address: address}}, second)
+	if err := service.acceptReceipts(ctx, "bounce@example.com", []deliveryRecipient{{DID: "did:plc:alice", Address: address}}, second); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := service.processNext(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -74,11 +78,17 @@ func TestEnableDiscardsBacklogAcceptedWhileSourceWasStopped(t *testing.T) {
 	address, _ := service.CreateAddress(ctx, "did:plc:alice")
 	recipient := []deliveryRecipient{{DID: "did:plc:alice", Address: address}}
 	first := []byte("From: Weekly <hello@example.com>\r\nSubject: First\r\nMessage-ID: <first@example.com>\r\nList-ID: Weekly <weekly.example>\r\nContent-Type: text/plain\r\n\r\nFirst")
-	service.acceptReceipts(ctx, "bounce@example.com", recipient, first)
-	service.processNext(ctx)
+	if err := service.acceptReceipts(ctx, "bounce@example.com", recipient, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.processNext(ctx); err != nil {
+		t.Fatal(err)
+	}
 	groups, _ := service.ListSources(ctx, "did:plc:alice")
 	sourceID := groups.Active[0].ID
-	service.StopSource(ctx, "did:plc:alice", sourceID)
+	if _, err := service.StopSource(ctx, "did:plc:alice", sourceID); err != nil {
+		t.Fatal(err)
+	}
 
 	service.now = func() time.Time { return testNow.Add(time.Minute) }
 	backlog := []byte("From: Weekly <hello@example.com>\r\nSubject: Backlog\r\nMessage-ID: <backlog@example.com>\r\nList-ID: Weekly <weekly.example>\r\nContent-Type: text/plain\r\n\r\nBacklog")
@@ -98,8 +108,12 @@ func TestEnableDiscardsBacklogAcceptedWhileSourceWasStopped(t *testing.T) {
 
 	future := []byte("From: Weekly <hello@example.com>\r\nSubject: Future\r\nMessage-ID: <future@example.com>\r\nList-ID: Weekly <weekly.example>\r\nContent-Type: text/plain\r\n\r\nFuture")
 	service.now = func() time.Time { return testNow.Add(3 * time.Minute) }
-	service.acceptReceipts(ctx, "bounce@example.com", recipient, future)
-	service.processNext(ctx)
+	if err := service.acceptReceipts(ctx, "bounce@example.com", recipient, future); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.processNext(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if got := countRows(t, reader, "newsletter_messages"); got != 1 {
 		t.Fatalf("post-resume message count = %d, want 1", got)
 	}
@@ -110,8 +124,12 @@ func TestDeliveryRetryAfterManualMoveDoesNotDuplicateMessage(t *testing.T) {
 	ctx := context.Background()
 	address, _ := service.CreateAddress(ctx, "did:plc:alice")
 	raw := []byte("From: Weekly <hello@example.com>\r\nSubject: Issue\r\nMessage-ID: <retry@example.com>\r\nList-ID: Weekly <weekly.example>\r\nContent-Type: text/plain\r\n\r\nSame body")
-	service.acceptReceipts(ctx, "bounce@example.com", []deliveryRecipient{{DID: "did:plc:alice", Address: address}}, raw)
-	service.processNext(ctx)
+	if err := service.acceptReceipts(ctx, "bounce@example.com", []deliveryRecipient{{DID: "did:plc:alice", Address: address}}, raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.processNext(ctx); err != nil {
+		t.Fatal(err)
+	}
 	groups, _ := service.ListSources(ctx, "did:plc:alice")
 	originalSource := groups.Active[0]
 	messages, _ := service.ListSourceMessages(ctx, "did:plc:alice", groups.Active[0].ID)
@@ -119,7 +137,9 @@ func TestDeliveryRetryAfterManualMoveDoesNotDuplicateMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	service.now = func() time.Time { return testNow.Add(time.Hour) }
-	service.acceptReceipts(ctx, "bounce@example.com", []deliveryRecipient{{DID: "did:plc:alice", Address: address}}, raw)
+	if err := service.acceptReceipts(ctx, "bounce@example.com", []deliveryRecipient{{DID: "did:plc:alice", Address: address}}, raw); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := service.processNext(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -141,15 +161,23 @@ func TestInlineImageRetryAfterMoveDoesNotDuplicateMessage(t *testing.T) {
 	address, _ := service.CreateAddress(ctx, "did:plc:alice")
 	recipient := []deliveryRecipient{{DID: "did:plc:alice", Address: address}}
 	raw := []byte("From: Weekly <hello@example.com>\r\nSubject: Illustrated\r\nMessage-ID: <inline-retry@example.com>\r\nList-ID: Weekly <weekly.example>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/related; boundary=rel\r\n\r\n--rel\r\nContent-Type: text/html\r\n\r\n<p>Issue<img src=\"cid:logo\"></p>\r\n--rel\r\nContent-Type: image/png\r\nContent-ID: <logo>\r\nContent-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n--rel--\r\n")
-	service.acceptReceipts(ctx, "bounce@example.com", recipient, raw)
-	service.processNext(ctx)
+	if err := service.acceptReceipts(ctx, "bounce@example.com", recipient, raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.processNext(ctx); err != nil {
+		t.Fatal(err)
+	}
 	groups, _ := service.ListSources(ctx, "did:plc:alice")
 	messages, _ := service.ListSourceMessages(ctx, "did:plc:alice", groups.Active[0].ID)
 	if _, err := service.MoveMessage(ctx, "did:plc:alice", messages[0].ID, MoveTarget{NewSourceTitle: "Filed"}); err != nil {
 		t.Fatal(err)
 	}
-	service.acceptReceipts(ctx, "bounce@example.com", recipient, raw)
-	service.processNext(ctx)
+	if err := service.acceptReceipts(ctx, "bounce@example.com", recipient, raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.processNext(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if got := countRows(t, reader, "newsletter_messages"); got != 1 {
 		t.Fatalf("inline retry message count = %d, want 1", got)
 	}
@@ -188,8 +216,12 @@ func TestNormalizedStorageCountsTowardQuotaAndStopFreesIt(t *testing.T) {
 	address, _ := service.CreateAddress(ctx, "did:plc:alice")
 	recipient := []deliveryRecipient{{DID: "did:plc:alice", Address: address}}
 	raw := []byte("From: sender@example.com\r\nSubject: stored\r\nContent-Type: text/plain\r\n\r\nstored body")
-	service.acceptReceipts(ctx, "sender@example.com", recipient, raw)
-	service.processNext(ctx)
+	if err := service.acceptReceipts(ctx, "sender@example.com", recipient, raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.processNext(ctx); err != nil {
+		t.Fatal(err)
+	}
 	var storedBytes int64
 	if err := reader.QueryRow("SELECT storage_bytes FROM newsletter_messages").Scan(&storedBytes); err != nil {
 		t.Fatal(err)
@@ -215,7 +247,9 @@ func TestMalformedAcceptedMIMEBecomesReadableIssue(t *testing.T) {
 	ctx := context.Background()
 	address, _ := service.CreateAddress(ctx, "did:plc:alice")
 	raw := []byte("From: broken@example.com\r\nSubject: Broken\r\nContent-Type: multipart/mixed; boundary=missing\r\n\r\nReadable fallback")
-	service.acceptReceipts(ctx, "bounce@example.com", []deliveryRecipient{{DID: "did:plc:alice", Address: address}}, raw)
+	if err := service.acceptReceipts(ctx, "bounce@example.com", []deliveryRecipient{{DID: "did:plc:alice", Address: address}}, raw); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := service.processNext(ctx); err != nil {
 		t.Fatal(err)
 	}

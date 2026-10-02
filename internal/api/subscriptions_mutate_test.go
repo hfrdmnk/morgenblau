@@ -735,7 +735,7 @@ func TestSubscriptionsPatch_FeedURLChange_Conflict_409(t *testing.T) {
 		UpdatedAt: "2026-05-15T10:00:00Z",
 	})
 	// Alice already subscribes to the target feed under a different rkey.
-	idx.fakeIndex.rows["did:plc:alice"] = map[string]db.UserSubscription{
+	idx.rows["did:plc:alice"] = map[string]db.UserSubscription{
 		playlist: {Did: "did:plc:alice", Rkey: "3other", FeedUrl: playlist},
 	}
 	pds := &fakePDS{}

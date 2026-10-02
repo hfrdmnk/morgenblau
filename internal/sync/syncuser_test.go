@@ -82,15 +82,7 @@ func (s *fakeStore) UpsertUserSave(_ context.Context, arg db.UpsertUserSaveParam
 	if _, ok := s.saves[arg.Did]; !ok {
 		s.saves[arg.Did] = map[string]db.UserSave{}
 	}
-	s.saves[arg.Did][arg.Rkey] = db.UserSave{
-		Did:       arg.Did,
-		Rkey:      arg.Rkey,
-		AtUri:     arg.AtUri,
-		ItemUrl:   arg.ItemUrl,
-		FeedUrl:   arg.FeedUrl,
-		CreatedAt: arg.CreatedAt,
-		UpdatedAt: arg.UpdatedAt,
-	}
+	s.saves[arg.Did][arg.Rkey] = db.UserSave(arg)
 	return s.saveUpsertErr
 }
 

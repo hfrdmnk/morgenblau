@@ -81,15 +81,7 @@ func (f *fakeSavesIndex) UpsertUserSave(_ context.Context, arg db.UpsertUserSave
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.upserts++
-	row := db.UserSave{
-		Did:       arg.Did,
-		Rkey:      arg.Rkey,
-		AtUri:     arg.AtUri,
-		ItemUrl:   arg.ItemUrl,
-		FeedUrl:   arg.FeedUrl,
-		CreatedAt: arg.CreatedAt,
-		UpdatedAt: arg.UpdatedAt,
-	}
+	row := db.UserSave(arg)
 	if _, ok := f.byRkey[arg.Did]; !ok {
 		f.byRkey[arg.Did] = map[string]db.UserSave{}
 	}

@@ -59,14 +59,16 @@ func TestGetPublication_MapsFields(t *testing.T) {
 	var gotQuery map[string]string
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/xrpc/com.atproto.repo.getRecord" {
-			t.Fatalf("unexpected path %s", r.URL.Path)
+			t.Errorf("unexpected path %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
 		}
 		gotQuery = map[string]string{
 			"repo":       r.URL.Query().Get("repo"),
 			"collection": r.URL.Query().Get("collection"),
 			"rkey":       r.URL.Query().Get("rkey"),
 		}
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"uri": pubURI,
 			"cid": "bafycid1",
 			"value": map[string]any{
@@ -77,7 +79,9 @@ func TestGetPublication_MapsFields(t *testing.T) {
 					"ref": map[string]any{"$link": "bafyicon"},
 				},
 			},
-		})
+		}); err != nil {
+			t.Error(err)
+		}
 	})
 	client, srvURL := newClientAgainst(t, handler)
 
@@ -106,14 +110,16 @@ func TestGetPublication_MapsFields(t *testing.T) {
 func TestGetPublication_HandleAuthorityNormalizesURI(t *testing.T) {
 	didURI := "at://" + pubDID + "/site.standard.publication/3abc"
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"uri": didURI,
 			"cid": "bafycid1",
 			"value": map[string]any{
 				"name": "Example Journal",
 				"url":  "https://example.com",
 			},
-		})
+		}); err != nil {
+			t.Error(err)
+		}
 	})
 	client, _ := newClientAgainst(t, handler, "journal.example.com")
 
@@ -137,17 +143,21 @@ func TestGetPublication_Errors(t *testing.T) {
 			uri:  "at://" + pubDID + "/site.standard.publication/3abc",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]any{"error": "RecordNotFound", "message": "nope"})
+				if err := json.NewEncoder(w).Encode(map[string]any{"error": "RecordNotFound", "message": "nope"}); err != nil {
+					t.Error(err)
+				}
 			},
 		},
 		{
 			name: "missing required fields",
 			uri:  "at://" + pubDID + "/site.standard.publication/3abc",
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				json.NewEncoder(w).Encode(map[string]any{
+				if err := json.NewEncoder(w).Encode(map[string]any{
 					"uri": "at://" + pubDID + "/site.standard.publication/3abc", "cid": "c",
 					"value": map[string]any{"url": "https://example.com"},
-				})
+				}); err != nil {
+					t.Error(err)
+				}
 			},
 		},
 		{
@@ -176,14 +186,16 @@ func TestGetPublication_SendsMorgenblauUserAgent(t *testing.T) {
 	var gotUA string
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUA = r.Header.Get("User-Agent")
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"uri": pubURI,
 			"cid": "bafycid1",
 			"value": map[string]any{
 				"name": "Example Journal",
 				"url":  "https://example.com/",
 			},
-		})
+		}); err != nil {
+			t.Error(err)
+		}
 	})
 	client, _ := newClientAgainst(t, handler)
 
@@ -199,7 +211,7 @@ func TestGetDocument_MapsFields(t *testing.T) {
 	docURI := "at://" + pubDID + "/site.standard.document/3doc"
 	pubURI := "at://" + pubDID + "/site.standard.publication/3abc"
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"uri": docURI,
 			"cid": "bafydoc",
 			"value": map[string]any{
@@ -215,7 +227,9 @@ func TestGetDocument_MapsFields(t *testing.T) {
 					"ref": map[string]any{"$link": "bafycover"},
 				},
 			},
-		})
+		}); err != nil {
+			t.Error(err)
+		}
 	})
 	client, srvURL := newClientAgainst(t, handler)
 
@@ -242,7 +256,7 @@ func TestGetDocument_MapsFields(t *testing.T) {
 func TestGetDocument_MissingOptionals(t *testing.T) {
 	docURI := "at://" + pubDID + "/site.standard.document/3doc"
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"uri": docURI,
 			"cid": "bafydoc",
 			"value": map[string]any{
@@ -250,7 +264,9 @@ func TestGetDocument_MissingOptionals(t *testing.T) {
 				"title":       "Loose",
 				"publishedAt": "2026-07-01T08:00:00Z",
 			},
-		})
+		}); err != nil {
+			t.Error(err)
+		}
 	})
 	client, _ := newClientAgainst(t, handler)
 
@@ -290,14 +306,18 @@ func TestListDocuments_PagesAndFilters(t *testing.T) {
 		cursors = append(cursors, cursor)
 		switch cursor {
 		case "":
-			json.NewEncoder(w).Encode(map[string]any{
+			if err := json.NewEncoder(w).Encode(map[string]any{
 				"records": []any{docRecord("3one", pubURI), docRecord("3two", otherPub)},
 				"cursor":  "page2",
-			})
+			}); err != nil {
+				t.Error(err)
+			}
 		case "page2":
-			json.NewEncoder(w).Encode(map[string]any{
+			if err := json.NewEncoder(w).Encode(map[string]any{
 				"records": []any{docRecord("3three", "https://loose.example.com"), docRecord("3four", pubURI)},
-			})
+			}); err != nil {
+				t.Error(err)
+			}
 		default:
 			t.Fatalf("unexpected cursor %q", cursor)
 		}
@@ -320,7 +340,7 @@ func TestListDocuments_HandleAuthorityMatchesDIDSite(t *testing.T) {
 	handlePub := "at://alice.example/site.standard.publication/3abc"
 	didPub := "at://" + pubDID + "/site.standard.publication/3abc"
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"records": []any{map[string]any{
 				"uri": "at://" + pubDID + "/site.standard.document/3one",
 				"cid": "cid-1",
@@ -328,7 +348,9 @@ func TestListDocuments_HandleAuthorityMatchesDIDSite(t *testing.T) {
 					"site": didPub, "title": "Doc", "publishedAt": "2026-07-01T08:00:00Z",
 				},
 			}},
-		})
+		}); err != nil {
+			t.Error(err)
+		}
 	})
 	client, _ := newClientAgainst(t, handler, "alice.example")
 
@@ -344,7 +366,9 @@ func TestListDocuments_HandleAuthorityMatchesDIDSite(t *testing.T) {
 func TestListDocuments_EmptyCollection(t *testing.T) {
 	pubURI := "at://" + pubDID + "/site.standard.publication/3abc"
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{"records": []any{}})
+		if err := json.NewEncoder(w).Encode(map[string]any{"records": []any{}}); err != nil {
+			t.Error(err)
+		}
 	})
 	client, _ := newClientAgainst(t, handler)
 

@@ -56,6 +56,12 @@ jobs:
       - name: Build frontend
         run: bun run --cwd ./frontend build
 
+      # Runs after the frontend build: frontend/embed.go embeds dist/.
+      - name: Lint Go
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+
       - name: Run Go race tests
         run: go test -race ./...
 
