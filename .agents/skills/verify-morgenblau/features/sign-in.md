@@ -1,6 +1,6 @@
 # Sign in and out
 
-A visitor who is not signed in lands on `/login`, which asks for an Atmosphere handle. In local development with a configured dev account, the page also offers `Log me in`, which signs in as that account and opens the digest. Signed-in readers log out from the account menu on the digest.
+A visitor who is not signed in lands on `/login`, which asks for an Atmosphere handle. In local development with a configured dev account, the page also offers `Log me in`, which signs in as that account and opens the digest. Signed-in readers log out from the account menu in the app header, on every app page.
 
 Help article: none
 
@@ -9,14 +9,15 @@ Help article: none
 - `login-page` `/login` renders the handle form.
 - `anon-redirect` any app page redirects an anonymous visitor to `/login`; any `/api/*` call answers 401.
 - `dev-login` `Log me in` signs in as the dev account and lands on `/`.
-- `logged-in-redirect` a signed-in reader who opens `/login` goes to `/`.
-- `logout` the account menu's `Log out` ends the session.
+- `logged-in-redirect` a signed-in reader who opens `/login` gets a `302` to `/`.
+- `account-menu` the popover shows the profile and an `Account` navigation (`General`, `Import`, `Export`, see `frontend/src/components/account-menu.tsx`).
+- `logout` the account menu's `Log out` is a form `POST /oauth/logout` that ends the session and lands on `/login`.
 
 ## How to reach it
 
 - Browser: `/login`, or any app path while signed out.
 - `Development login` panel on `/login`, button `Log me in` (only when the dev account is configured).
-- Digest header, button `Open account menu`, then `Log out`.
+- App header (`frontend/src/components/app-header.tsx`) on `/`, `/sources`, `/library` and `/settings/*`: button `Open account menu`, then `Log out`.
 - API: `GET /dev/login` reports availability, `POST /dev/login` signs in (the `$V login` lever).
 
 ## Drive and prove
@@ -29,8 +30,9 @@ Preconditions:
 - **Anonymous redirect.** `$V browser $S goto /settings`, then `eval "() => location.href"`: ends on `/login`. `$V api $S GET /api/digest --anon --out anon-digest`: status `401`.
 - **Dev login unavailable.** On a doctor-exit-3 run, `$V api $S GET /dev/login --anon --out dev-login`: `404`, and `find "Log me in"` on `/login` finds nothing.
 - **Dev login.** `$V login $S` first (PDS baseline). Then on `/login`, `find "Development login"` shows the panel; `click "getByRole('button', { name: 'Log me in' })"`. Poll `eval "() => location.href"` until it is the instance root. `snapshot` shows the date navigation `Digest date` and the button `Open account menu`.
-- **Signed-in redirect.** `goto /login`: ends on `/`.
-- **Logout.** `click "getByRole('button', { name: 'Open account menu' })"`, `snapshot`: the popover shows `@<handle>` and `Log out`. Click `Log out`. `goto /`: ends on `/login`. `$V api $S GET /api/profiles/me`: `401`, because the API jar shared the same server session. Run `$V login $S` again before `down` so cleanup can reach the PDS.
+- **Signed-in redirect.** `goto /login`: ends on `/`. Over HTTP, `curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b $E/run/cookies.txt <base_url>/login` prints `302 <base_url>/`.
+- **Account menu.** `click "getByRole('button', { name: 'Open account menu' })"`, `snapshot`: the popover shows `@<handle>`, the `Account` navigation and `Log out`. `click "getByRole('link', { name: 'Import' })"` lands on `/settings/import`.
+- **Logout.** From another app page (`goto /sources`), open the account menu and click `Log out`: ends on `/login`. `goto /`: ends on `/login`. `$V api $S GET /api/profiles/me --out after-logout`: `401`, because the API jar shared the same server session. Run `$V login $S` again before `down` so cleanup can reach the PDS.
 
 ## Evidence
 
