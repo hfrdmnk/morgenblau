@@ -22,16 +22,16 @@ Preconditions:
 
 - **Save.** `$V api $S POST /api/saves --data '{"itemUrl":"<url>"}' --out save`: `201` with an `rkey`. `inspect`: a `user_saves` row with that rkey and URL.
 - **Idempotent.** Repeat the POST: `200`, same `rkey`, still one row.
-- **List.** `GET /api/saves --out saves`: contains the URL. With a newsletter save from [newsletters](./newsletters.md) in place, it also holds that entry with `kind` `newsletter`; cleanup ignores it because it has no `rkey`.
+- **List.** `GET /api/saves --out saves`: contains the URL. With a newsletter save from [newsletters](./newsletters.md) in place, it also holds that entry with `kind` `newsletter` and no `rkey`.
 - **Unsave.** `DELETE /api/saves/<rkey>`: `204`; the row is gone.
 - **Negative.** `POST /api/saves --data '{}'`: `400` (`itemUrl is required`). `DELETE /api/saves/unknownrkey`: `404`. `GET /api/saves --anon`: `401`.
 
 ## Evidence
 
 - `save.json` + `.status`, `saves.json`
-- `inspect-before.json`, `inspect-after.json`, `cleanup.log`
+- `inspect-before.json`, `inspect-after.json`
 
 ## Gotchas
 
-- Real PDS writes on the dev account; `down` deletes saves not in the login baseline.
+- Saves are real writes to the run's own PDS, deleted with it by `down`.
 - A newsletter message's public web URL is still saved privately through [newsletters](./newsletters.md), never through this route.

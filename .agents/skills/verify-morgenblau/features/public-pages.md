@@ -9,7 +9,7 @@ Help article: none
 - `about` `/about` is a server-rendered page describing Morgenblau.
 - `health` `/api/health` answers `200` with `{"status":"up"}`, or still `200` with `{"status":"down","error":...}` when the database ping fails (`healthHandler` in `internal/server/routes.go`).
 - `oauth-metadata` `/oauth-client-metadata.json` and `/oauth-jwks.json` serve the OAuth client documents.
-- `dev-routes-local-only` `/dev/*` exists only when `APP_ENV=local`; `/dev/login` also needs `DEV_LOGIN_ENABLED=true` and a valid dev account (`LoadDevConfig` in `internal/session/dev.go`).
+- `dev-routes-local-only` `/dev/*` exists only when `APP_ENV=local`; `/dev/login` also needs `DEV_LOGIN_ENABLED=true` and a valid account (`LoadDevConfig` in `internal/session/dev.go`), which `up` creates on the run's PDS.
 
 ## How to reach it
 

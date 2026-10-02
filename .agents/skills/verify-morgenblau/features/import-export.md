@@ -21,7 +21,7 @@ Help article: none
 
 Preconditions:
 
-- Doctor exit `0`, `$V login $S` (records the PDS baseline before any import), browser signed in.
+- Doctor exit `0`, `$V login $S`, browser signed in.
 - An OPML fixture in the evidence dir, so the guarded `upload` accepts it: write `$E/sources.opml` with one folder `Example Folder` holding two `type="rss"` outlines whose `xmlUrl` are `https://example.com/verify-one.xml` and `https://example.com/verify-two.xml`. Their fetches fail; a feed failure never fails the sync.
 
 - **Prepare.** `$V api $S POST /api/subscriptions/import/prepare --data "$(jq -n --rawfile o $E/sources.opml '{provider:"opml", opml:$o}')" --out prepare`: two sources tagged `Example Folder`, no warnings.
@@ -36,10 +36,10 @@ Preconditions:
 
 - `sources.opml`, `prepare.json`, `reimport.json`, `export.json`, `.playwright-cli/morgenblau.opml`
 - `import-confirm.png`, `import-done.png`, `export-done.png`
-- `inspect-before.json`, `inspect-after.json`, `cleanup.log` (must list both fixture rkeys as `204`)
+- `inspect-before.json`, `inspect-after.json`
 
 ## Gotchas
 
-- Imports are real PDS writes. `down` deletes the imported subscriptions because their rkeys are not in the login baseline; check `cleanup.log`.
+- Imports are real writes to the run's own PDS, deleted with it by `down`.
 - `upload` only takes files inside the evidence dir, so keep the fixture there.
 - The import endpoint caps a batch at 5 sources to finish within the server's write deadline; a bigger fixture is split by the page, not by the API.

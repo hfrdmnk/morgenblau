@@ -6,8 +6,8 @@ Help article: none
 
 ## Sub-features
 
-- `foreign-newsletter-404` the dev account gets 404 for a second reader's source (read, edit, stop, enable), source entries, message entry and extract, image consent, move, save, unsave and inline asset.
-- `foreign-not-listed` the second reader's source is absent from the dev account's `GET /api/newsletters` and digest.
+- `foreign-newsletter-404` the run's account gets 404 for a second reader's source (read, edit, stop, enable), source entries, message entry and extract, image consent, move, save, unsave and inline asset.
+- `foreign-not-listed` the second reader's source is absent from the run account's `GET /api/newsletters` and digest.
 - `anon-401` the same URLs answer 401 without a session.
 
 ## How to reach it
@@ -47,5 +47,5 @@ Preconditions:
 
 ## Gotchas
 
-- The dev account is the only real signed-in reader, so the second reader exists only in the run DB. It cannot sign in; isolation is proven from the dev account's side.
+- Dev login signs in only the run's account, so the second reader exists only in the run DB. It cannot sign in; isolation is proven from the run account's side.
 - `$V foreign` and the arranged save are the only direct DB writes; they set up the second reader. Everything after them goes through SMTP and the API.

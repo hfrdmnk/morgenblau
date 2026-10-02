@@ -23,29 +23,29 @@ Help article: none
 
 Preconditions:
 
-- Doctor exit `0`, `$V login $S` (records the PDS baseline), browser signed in. Network access to the dev account's PDS and to the feed.
+- Doctor exit `0`, `$V login $S`, browser signed in. Network access to the feed.
 - A public feed URL for this run: the task's, else the user's own `https://dominikhofer.me/rss`, which they approved as the standing test feed. Record the one used in `$E/notes.md`. A loopback fixture feed is refused by the SSRF guard, and an add writes the PDS record before any fetch, so never probe with a bad feed URL.
 
-- **Sources page.** `goto /sources`, `snapshot`: regions `Feeds` and `Newsletters` with the dev account's feeds. `screenshot --filename=sources.png --full-page`.
+- **Sources page.** `goto /sources`, `snapshot`: regions `Feeds` and `Newsletters` with the run's feeds (none on a fresh run). `screenshot --filename=sources.png --full-page`.
 - **Dialog.** `click "getByRole('button', { name: 'Add a source' })"`: dialog `Add a source` with textbox `Website or feed URL`, a disabled `Find feeds`, and the `Newsletter email address`. `screenshot --filename=add-source-dialog.png`.
 - **Find and save.** `fill "getByRole('textbox', { name: 'Website or feed URL' })" "<feed url>"`, click `Find feeds`, wait a few seconds: list `Available feeds` with `Select <title>`. Click it (`0 selected` becomes `1 selected`), click `Save`. `inspect`: a `user_subscriptions` row for the URL; `/sources` lists it. `screenshot --filename=add-source-saved.png`.
 - **Resolve.** `$V api $S POST /api/subscriptions/resolve --data '{"url":"<feed url>"}' --out resolve`: `200`, the candidate, and the new subscription under `existingSubscriptions`.
 - **Read.** `GET /api/subscriptions/<rkey> --out sub`, `GET /api/subscriptions/<rkey>/entries --out entries`: fetched entries once `GET /api/jobs/active` is `null`.
 - **Add again.** `POST /api/subscriptions --data '{"feedUrl":"<feed url>"}' --out add-again`: `200`, the same `rkey`, no `jobId`.
 - **Edit.** `PATCH /api/subscriptions/<rkey> --data '{"title":"Example Feed","tags":["example"]}' --out patch`: `200`; `GET /api/subscriptions/tags` includes `example`. `PATCH` with `{"feedUrl":"<feed url>?verify=1"}` `--out patch-feedurl`: `200` with a `jobId`.
-- **Remove.** `DELETE /api/subscriptions/<rkey>`: `204`; the row is gone from `inspect` and from `/sources` after `reload`, and `down` has nothing left to delete for it.
+- **Remove.** `DELETE /api/subscriptions/<rkey>`: `204`; the row is gone from `inspect` and from `/sources` after `reload`.
 - **Negative.** `PATCH` the new subscription's `feedUrl` to another subscription's feed URL: `409` (run this before Remove). `PATCH /api/subscriptions/unknownrkey --data '{"title":"x"}'`: `404`. `POST /api/subscriptions --data '{}' --out add-invalid`: `400` with `errors["feedUrl"]`. `POST /api/subscriptions --data '[{"feedUrl":"<feed url>"}]' --out add-list`: `400` `invalid json`, and no new row or PDS record. `GET /api/subscriptions --anon`: `401`.
-- **Other kind for a followed site.** The dev account follows the standing site's RSS feed, so `POST /api/subscriptions/resolve --data '{"url":"https://dominikhofer.me"}' --out resolve-site` shows its Standardfeed candidate with `subscribedVia` (the dialog shows it disabled, `Already followed via another feed.`). Post that candidate as the dialog would, `--data '{"publication":"<its publication>","siteUrl":"<its siteUrl>"}' --out add-publication-conflict`: `409` with the site message, unchanged `inspect` counts, and nothing for `down` to delete.
+- **Other kind for a followed site.** Once the run follows the standing site's RSS feed (`https://dominikhofer.me/rss`, added above), `POST /api/subscriptions/resolve --data '{"url":"https://dominikhofer.me"}' --out resolve-site` shows its Standardfeed candidate with `subscribedVia` (the dialog shows it disabled, `Already followed via another feed.`). Post that candidate as the dialog would, `--data '{"publication":"<its publication>","siteUrl":"<its siteUrl>"}' --out add-publication-conflict`: `409` with the site message and unchanged `inspect` counts.
 
 ## Evidence
 
 - `notes.md` (the feed URL used), `sources.png`, `add-source-dialog.png`, `add-source-saved.png`
 - `resolve.json`, `sub.json`, `entries.json`, `add-again.json`, `patch.json`, `patch-feedurl.json`, `add-invalid.json`, `add-list.json`, `resolve-site.json`, `add-publication-conflict.json`
-- `inspect-before.json`, `inspect-after.json`, `cleanup.log` when `down` deleted anything
+- `inspect-before.json`, `inspect-after.json`
 
 ## Gotchas
 
-- These are real PDS writes on the dev account. `down` deletes subscriptions whose rkey was not in the login baseline; run `$V login $S` before any add, and `down` while the instance is still running.
+- These are real writes to the run's own PDS, deleted with it by `down`.
 - Standardfeed adds resolve the publication's identity over the network; a failure there is `blocked`, not `fail`.
 - A session without the Standardfeed scope gets `403` with `code: "reauth_required"` on Standardfeed writes; the dev login's password session is not scoped this way.
 - The dialog prefixes a bare host with `https://` before resolving (`frontend/src/lib/add-source.ts`).

@@ -24,7 +24,7 @@ Preconditions:
 
 - Doctor exit `0`. `$V inspect $S --out inspect-before` before login.
 
-- **Login sync.** `$V login $S` waits for the jobs to finish. `$V inspect $S --out inspect-after-login`: `user_subscriptions` and `user_saves` now mirror the dev account's PDS records (compare their counts with `GET /api/subscriptions` and `GET /api/saves`).
+- **Login sync.** `$V login $S` waits for the jobs to finish. `$V inspect $S --out inspect-after-login`: `user_subscriptions` and `user_saves` now mirror the run account's PDS records (none on a fresh run) (compare their counts with `GET /api/subscriptions` and `GET /api/saves`).
 - **Latest after login.** `GET /api/jobs/latest --out latest-after-login`: the login `sync_user` job, status `done`.
 - **Manual refresh.** `$V api $S POST /api/digest/refresh --out refresh`: `{jobId}`. Right after, `GET /api/jobs/active --out active-running` is that job (`running`) and `GET /api/digest` has `hasActiveJob` true. `GET /api/jobs/<jobId> --out job` until its status is `done` or `failed`; `GET /api/jobs/latest --out latest` agrees.
 - **Global refresh.** On a `--fetch-minutes 1` instance, save `sqlite3 -readonly $E/run/morgenblau.db "select max(last_fetched_at) from feeds"` to `fetched-1.txt`, wait past a minute, save `fetched-2.txt`: it advanced while `/api/jobs/active` stayed `null`. `server.log` shows `global feed fetch enabled interval=1m0s`.
@@ -38,6 +38,6 @@ Preconditions:
 
 ## Gotchas
 
-- A dev account with no subscriptions syncs to empty tables; that is a valid pass for reconciliation but proves no feed fetch.
+- A fresh run's account has no subscriptions, so the login sync reconciles empty tables and proves no feed fetch. Add a feed (see [subscriptions](./subscriptions.md)) before the manual refresh when the fetch matters.
 - Feed fetches reach the public internet. Individual feed failures do not fail the sync (LAWS.md, law 2); read the job state, not the fetch log.
 - The global refresher only walks feeds in the run's own DB, so turning it on touches nothing outside the run.

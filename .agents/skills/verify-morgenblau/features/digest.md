@@ -24,7 +24,7 @@ Preconditions:
 - Doctor exit `0`, `$V login $S`, browser signed in (see [sign-in](./sign-in.md)).
 - Digest content: a newsletter delivered today is the local, PDS-free way to get an entry. Create the address and deliver as in [newsletters](./newsletters.md) (`POST /api/newsletters/address`, `$V mail`), wait about 5 seconds for the processor.
 
-- **Empty day.** Before any delivery, `$V api $S GET "/api/digest?timezone=Europe/Zurich" --out digest-empty`: `entries` is empty unless the dev account's subscriptions published today. Record which.
+- **Empty day.** Before any delivery, `$V api $S GET "/api/digest?timezone=Europe/Zurich" --out digest-empty`: `entries` is empty, since the run's account starts with no subscriptions.
 - **Entry appears.** After delivery, sign the browser in (`/login`, `Log me in`), `goto /`, `find "Morgenblau local newsletter sample"`: a link to `/entry/<entrySlug>?from=<today>` with the sender line `sample@sender.example`. `screenshot --filename=digest-today.png`.
 - **API agrees.** `$V api $S GET "/api/digest?timezone=Europe/Zurich" --out digest` holds an entry with `contentType` `newsletter`, `title` `Morgenblau local newsletter sample`, and an `entrySlug`.
 - **Entry detail.** `$V api $S GET /api/entries/<entrySlug> --out entry`: `200` with the same title.
@@ -40,4 +40,4 @@ Preconditions:
 ## Gotchas
 
 - The digest groups by the browser's local day. Pass `timezone` explicitly on API calls and use the same zone as the browser, or a late-evening delivery lands on another day.
-- The dev account's real subscriptions sync on login, so entries from real feeds can appear next to the fixture. Assert on the fixture's title, not on counts.
+- Feeds the run adds bring real entries next to the fixture. Assert on the fixture's title, not on counts.

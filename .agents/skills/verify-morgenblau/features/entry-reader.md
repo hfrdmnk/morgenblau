@@ -22,7 +22,7 @@ Help article: none
 
 Preconditions:
 
-- Doctor exit `0`, `$V login $S`, a newsletter delivered today as in [digest](./digest.md), browser signed in. A blog post entry for `extract` comes from the dev account's subscriptions (`GET /api/digest`, `contentType` `blogpost` with a `url`); with none today, try an earlier `date`, else that sub-feature is `blocked`.
+- Doctor exit `0`, `$V login $S`, a newsletter delivered today as in [digest](./digest.md), browser signed in. A blog post entry for `extract` comes from a feed the run adds first, such as the standing feed in [subscriptions](./subscriptions.md) (`GET /api/digest`, `contentType` `blogpost` with a `url`); with none today, try an earlier `date`, else that sub-feature is `blocked`.
 
 - **Newsletter.** On `/`, `click "getByRole('link', { name: 'Morgenblau local newsletter sample' })"`: lands on `/entry/<entrySlug>?from=<today>`; `snapshot` shows the heading, `Remote images are blocked` and button `Load images`. `eval "() => [...document.querySelectorAll('article img')].map(i => [i.getAttribute('src'), i.naturalWidth])"`: the inline image is `/api/newsletter-assets/<token>` with a width above 0. `screenshot --filename=reader-newsletter-blocked.png`.
 - **Load images.** Click `Load images`: the notice is gone, the remote `img` now has its `src`, and `inspect` shows `remote_images_allowed` 1. `screenshot --filename=reader-newsletter-images.png`.
