@@ -61,6 +61,13 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --cwd ./frontend --frozen-lockfile
 
+      - name: Check verification harness
+        run: |
+          for script in .agents/setup .agents/resume .agents/skills/verify-morgenblau/bin/verify .agents/skills/verify-morgenblau/tools/test-harness.sh; do
+            bash -n "$script"
+          done
+          bash .agents/skills/verify-morgenblau/tools/test-harness.sh
+
       - name: Run frontend tests
         run: bun run --cwd ./frontend test
 

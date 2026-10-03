@@ -33,7 +33,7 @@ When in doubt, it is judgment. A mechanical fix that turns any check red is reve
 - Never run `make migrate-*`, `make dev` or anything that touches `./data/` or a PDS.
 - Never change the state or labels of an existing issue.
 
-Every `gh` call targets `--repo hfrdmnk/morgenblau` and runs as a collaborator: prefix it with `GH_TOKEN="$(gh auth token -u hfrdmnk)"` where that account is logged in. The shell may be zsh, so check exit codes with `$?` right after each command, never `PIPESTATUS`.
+Every repository-scoped `gh` call targets `--repo hfrdmnk/morgenblau` and runs as a collaborator. In Amp orbs, use the authenticated `gh` directly; a stored token lookup may fail even when repository access works. Elsewhere, prefix it with `GH_TOKEN="$(gh auth token -u hfrdmnk)"` where that account is logged in. Before publishing, confirm the identity with `gh api user --jq .login` and write access with `gh api repos/hfrdmnk/morgenblau --jq .permissions.push`; unavailable access is `blocked`, not a reason to request or print a token. The shell may be zsh, so check exit codes with `$?` right after each command, never `PIPESTATUS`.
 
 ## 1. Preflight
 

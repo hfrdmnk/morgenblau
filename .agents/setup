@@ -20,6 +20,17 @@ run_step() {
 	printf '[setup] %s completed in %ss\n' "$label" "$((SECONDS - started))"
 }
 
+install_system_tools() {
+	if ! command -v sqlite3 >/dev/null; then
+		sudo apt-get update -qq
+		sudo apt-get install -y sqlite3
+	fi
+	if ! command -v node >/dev/null || [[ "$(node -p 'process.versions.node.split(".")[0]')" -lt 22 ]]; then
+		printf 'Node 22+ is required for the verification PDS\n' >&2
+		return 1
+	fi
+}
+
 install_go() {
 	local version arch archive install_dir
 	version="$(awk '$1 == "go" { print $2; exit }' go.mod)"
@@ -67,6 +78,8 @@ install_dev_tools() {
 	local goose_version=v3.27.1
 	local sqlc_version=v1.31.1
 	local mprocs_version=v0.9.6
+	local lint_version archive_dir
+	lint_version="$(sed -n 's/^[[:space:]]*version: \(v[0-9.]*\)$/\1/p' .github/workflows/ci.yml)"
 	local archive air_arch goose_arch sqlc_arch mprocs_arch
 	case "$(uname -m)" in
 		x86_64)
@@ -107,6 +120,14 @@ install_dev_tools() {
 		tar -xzf "$archive" -C "$tmp_dir"
 		install -m 0755 "$tmp_dir/mprocs" "$bin_dir/mprocs"
 	fi
+
+	if ! command -v golangci-lint >/dev/null || ! golangci-lint version 2>&1 | grep -Fq "${lint_version#v}"; then
+		archive="$tmp_dir/golangci-lint.tar.gz"
+		archive_dir="golangci-lint-${lint_version#v}-linux-${air_arch}"
+		curl -fsSL "https://github.com/golangci/golangci-lint/releases/download/${lint_version}/${archive_dir}.tar.gz" -o "$archive"
+		tar -xzf "$archive" -C "$tmp_dir"
+		install -m 0755 "$tmp_dir/$archive_dir/golangci-lint" "$bin_dir/golangci-lint"
+	fi
 }
 
 install_dependencies() {
@@ -114,6 +135,10 @@ install_dependencies() {
 	bun install --cwd ./frontend --frozen-lockfile
 	bun install --cwd ./.agents/skills/verify-morgenblau/tools --frozen-lockfile
 	bun run --cwd ./frontend build
+	if ! bash -c 'source "$1"; browser_ready' _ "$repo_root/.agents/skills/verify-morgenblau/bin/verify" >/dev/null 2>&1; then
+		.agents/skills/verify-morgenblau/tools/node_modules/.bin/playwright-core install chrome --with-deps
+	fi
+	.agents/skills/verify-morgenblau/bin/verify doctor
 }
 
 prepare_local_state() {
@@ -127,6 +152,7 @@ prepare_local_state() {
 	git config core.hooksPath .githooks
 }
 
+run_step 'installing system tools' install_system_tools
 run_step 'installing Go' install_go
 run_step 'installing Bun' install_bun
 run_step 'installing development tools' install_dev_tools

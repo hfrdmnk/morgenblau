@@ -50,7 +50,7 @@ BROWSER_REFUSED_OPTIONS=" config profile persistent browser cdp endpoint extensi
 BROWSER_BOOLEAN_OPTIONS=" headed mobile persistent submit boxes clear full-page hires httpOnly secure static global
     with-deps dry-run list force only-shell no-shell cursor annotate kill hide all g help json raw version "
 
-ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
 cd "$ROOT"
 VERIFY_ROOT="$ROOT/.scratch/verify"
 PLAYWRIGHT_CLI="$ROOT/$TOOLS/node_modules/.bin/playwright-cli"
@@ -149,6 +149,30 @@ owned_pid() {
     alive "$pid" && [ "$(pid_start "$pid")" = "$(state "$dir" ".pid_starts.$name // empty")" ] && printf '%s' "$pid"
 }
 
+process_status() {
+    local dir="$1" name="$2" service properties
+    service="$(state "$dir" ".services.$name // empty")"
+    if [[ -z "$service" ]]; then
+        if [[ -n "$(owned_pid "$dir" "$name" || true)" ]]; then printf yes; else printf no; fi
+        return
+    fi
+    if ! properties="$(systemctl show "amp-svc-$service.service" --property=LoadState --property=ActiveState 2>/dev/null)"; then
+        printf unknown
+        return
+    fi
+    if grep -qx 'LoadState=not-found' <<<"$properties"; then
+        printf no
+    elif grep -qx 'LoadState=loaded' <<<"$properties"; then
+        case "$(sed -n 's/^ActiveState=//p' <<<"$properties")" in
+            active|activating|reloading) printf yes ;;
+            inactive|failed) printf no ;;
+            *) printf unknown ;;
+        esac
+    else
+        printf unknown
+    fi
+}
+
 kill_tree() {
     local pid="$1" signal="${2:-TERM}" child
     for child in $(pgrep -P "$pid" 2>/dev/null); do kill_tree "$child" "$signal"; done
@@ -183,6 +207,12 @@ set_state() {
     jq "$@" "$filter" "$dir/run/state.json" >"$tmp" && mv "$tmp" "$dir/run/state.json"
 }
 
+browser_ready() {
+    node -e 'const { chromium } = require(process.argv[1]);
+        (async () => { const browser = await chromium.launch({ channel: "chrome" }); await browser.close(); })()
+        .catch(() => { process.exitCode = 1; });' "$ROOT/$TOOLS/node_modules/playwright-core"
+}
+
 doctor() {
     local status=0 tool missing
     ok() { printf '  ok    %s\n' "$1"; }
@@ -195,6 +225,7 @@ doctor() {
         | while read -r dep; do [ -f "frontend/node_modules/$dep/package.json" ] || printf '%s ' "$dep"; done)"
     if [ -z "$missing" ]; then ok "frontend dependencies installed"; else bad "frontend dependencies missing (${missing% }); run: bun install --cwd ./frontend --frozen-lockfile"; fi
     if tools_installed; then ok "verify tools installed ($TOOLS)"; else bad "verify tools missing or outdated; run: bun install --cwd $TOOLS --frozen-lockfile"; fi
+    if browser_ready >/dev/null 2>&1; then ok "Chrome launches for the browser driver"; else bad "Chrome missing or unusable; run: $TOOLS/node_modules/.bin/playwright-core install chrome --with-deps"; fi
     if git check-ignore -q .scratch/verify; then ok ".scratch/verify is gitignored"; else bad ".scratch/verify is not gitignored"; fi
     ok "instances force APP_ENV=local, fresh secrets, a fresh DB under .scratch/verify, loopback-only listeners"
     [ "$status" = 0 ] || { printf 'doctor: FAIL\n'; return 1; }
@@ -209,20 +240,48 @@ doctor() {
     fi
 }
 
+start_process() {
+    local dir="$1" name="$2" cwd="$3" script="$1/run/$2.sh" pid_file="$1/run/$2.pid" service i
+    shift 3
+    rm -f "$pid_file"
+    {
+        printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+        printf 'exec > %q 2>&1\n' "$dir/$name.log"
+        printf 'cd %q\nprintf "%%s\\n" "$$" > %q\n' "$cwd" "$pid_file"
+        while [[ "$1" != -- ]]; do printf 'export %q\n' "$1"; shift; done
+        shift
+        printf 'exec '; printf '%q ' "$@"; printf '\n'
+    } >"$script"
+    chmod 700 "$script"
+    if [[ "${AMP_ORB:-}" == 1 ]]; then
+        service="verify-$(printf '%s' "$dir" | sha256sum | cut -c1-12)-$name"
+        set_state "$dir" '.services[$name] = $service' --arg name "$name" --arg service "$service"
+        amp orb service start "$service" --cwd "$cwd" --command "exec $(printf %q "$script")" >"$dir/$name-service.log" 2>&1 \
+            || die "could not start $service; see $dir/$name-service.log"
+        for i in $(seq 1 100); do
+            if [[ -s "$pid_file" ]]; then record_pid "$dir" "$name" "$(cat "$pid_file")"; return; fi
+            sleep 0.1
+        done
+        die "$service did not write its pid; see: amp orb service logs $service"
+    else
+        "$script" >"$dir/$name.log" 2>&1 &
+        record_pid "$dir" "$name" $!
+    fi
+}
+
 # The PDS's admin password and JWT secret are per run, since anything that knows them controls the account.
 start_pds() {
     local dir="$1" plc="$2" pds="$3"
     mkdir -p "$dir/run/pds"
-    (cd "$TOOLS" && PDS_DATA_DIR="$dir/run/pds" PDS_PORT="$pds" PLC_PORT="$plc" \
-        PDS_ADMIN_PASSWORD="$(openssl rand -hex 32)" PDS_JWT_SECRET="$(openssl rand -hex 32)" exec node boot.mjs) >"$dir/pds.log" 2>&1 &
-    record_pid "$dir" pds $!
+    start_process "$dir" pds "$ROOT/$TOOLS" PDS_DATA_DIR="$dir/run/pds" PDS_PORT="$pds" PLC_PORT="$plc" \
+        PDS_ADMIN_PASSWORD="$(openssl rand -hex 32)" PDS_JWT_SECRET="$(openssl rand -hex 32)" -- node boot.mjs
 }
 
 wait_for_pds() {
     local dir="$1" url="$2" i
     for i in $(seq 1 120); do
         curl -fsS -o /dev/null "$url/xrpc/com.atproto.server.describeServer" 2>/dev/null && return 0
-        [ -n "$(owned_pid "$dir" pds)" ] || return 1
+        [[ "$(process_status "$dir" pds)" == yes ]] || return 1
         sleep 0.5
     done
     return 1
@@ -257,14 +316,11 @@ abort_up() {
 }
 
 up() {
-    local slug="$1" fetch="${2:-0}" dir run http smtp vite plc="" pds="" claimed dev=false pds_url="" plc_url="" handle="" password="" scope server_pid i
+    local slug="$1" fetch="${2:-0}" dir run http smtp vite plc="" pds="" claimed dev=false pds_url="" plc_url="" handle="" password="" scope i
     [[ "$fetch" =~ ^[0-9]+$ ]] || die "--fetch-minutes takes a whole number of minutes"
     [[ "$slug" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "slug '$slug' must be lowercase letters, digits and dashes."
     dir="$VERIFY_ROOT/$(date +%F)-$slug"
     run="$dir/run"
-    if [ -f "$run/state.json" ] && [[ "$(state "$dir" .status)" =~ ^(up|starting)$ ]]; then
-        die "run '$slug' is already up at $(state "$dir" .base_url); run: verify down $slug"
-    fi
     if [ "$(node_major)" -ge "$NODE_MAJOR_MIN" ] && tools_installed; then dev=true; fi
     if [ "$dev" = true ]; then scope="$(local_oauth_scope)"; else scope="$(oauth_scope)"; fi
     mkdir -p "$run"
@@ -272,6 +328,9 @@ up() {
     trap 'exit 130' INT
     trap 'exit 143' TERM
     lock_ports
+    if [ -f "$run/state.json" ] && [[ "$(state "$dir" .status)" =~ ^(up|starting)$ ]]; then
+        die "run '$slug' is already up at $(state "$dir" .base_url); run: verify down $slug"
+    fi
     claimed="$(claimed_ports)"
     http="$(free_port 8100 "$claimed")"; claimed+=$'\n'"$http"
     smtp="$(free_port 2600 "$claimed")"; claimed+=$'\n'"$smtp"
@@ -285,17 +344,18 @@ up() {
         --argjson http "$http" --argjson smtp "$smtp" --argjson vite "$vite" --argjson dev "$dev" \
         --arg plc "$plc" --arg pds "$pds" --arg plc_url "$plc_url" --arg pds_url "$pds_url" \
         --arg domain "$NEWSLETTER_DOMAIN" --arg started "$(date -u +%FT%TZ)" --argjson epoch "$(date +%s)" \
+        --argjson startup_pid "$$" --arg startup_start "$(pid_start "$$")" \
         '{slug:$slug, dir:$dir, status:"starting", base_url:$base, http_port:$http, smtp:("127.0.0.1:"+($smtp|tostring)),
           vite_url:("http://127.0.0.1:"+($vite|tostring)), newsletter_domain:$domain, logged_in:false,
           pds:(if $dev then {url:$pds_url, plc_url:$plc_url} else null end),
           ports:([$http, $smtp, $vite] + ([$plc, $pds] | map(select(. != "") | tonumber))),
-          pids:{}, pid_starts:{}, started_at:$started, started_epoch:$epoch}' >"$run/state.json"
+          pids:{}, pid_starts:{}, services:{}, startup_pid:$startup_pid, startup_start:$startup_start,
+          started_at:$started, started_epoch:$epoch}' >"$run/state.json"
     unlock_ports
     trap "abort_up $(printf %q "$dir")" EXIT
 
     [ "$dev" = false ] || start_pds "$dir" "$plc" "$pds"
-    (cd frontend && exec ./node_modules/.bin/vite --port "$vite" --strictPort) >"$dir/vite.log" 2>&1 &
-    record_pid "$dir" vite $!
+    start_process "$dir" vite "$ROOT/frontend" -- ./node_modules/.bin/vite --port "$vite" --strictPort
 
     goose -dir internal/database/migrations sqlite3 "$run/morgenblau.db" up >"$run/migrate.log" 2>&1 \
         || die "migrations failed; see $run/migrate.log"
@@ -308,7 +368,7 @@ up() {
     fi
 
     # The run dir as working directory keeps godotenv from loading the checkout's .env into the instance.
-    (cd "$run" && PORT="$http" DB_PATH="$run/morgenblau.db" APP_ENV=local FETCH_INTERVAL_MINUTES="$fetch" \
+    start_process "$dir" server "$run" PORT="$http" DB_PATH="$run/morgenblau.db" APP_ENV=local FETCH_INTERVAL_MINUTES="$fetch" \
         VITE_URL="http://127.0.0.1:$vite" DEV_LOGIN_ENABLED="$dev" \
         ATPROTO_HANDLE="$handle" ATPROTO_PASSWORD="$password" ATPROTO_PDS="$pds_url" PLC_URL="$plc_url" \
         SESSION_COOKIE_KEY="$(openssl rand -base64 32)" SESSION_STORE_KEYS="$(openssl rand -base64 32)" \
@@ -316,20 +376,18 @@ up() {
         BLUESKY_CLIENT_ID= BLUESKY_REDIRECT= BLUESKY_OAUTH_CLIENT_NAME= BLUESKY_OAUTH_CLIENT_URI= \
         NEWSLETTER_DOMAIN="$NEWSLETTER_DOMAIN" SMTP_HOSTNAME="$NEWSLETTER_DOMAIN" SMTP_LISTEN_ADDR="127.0.0.1:$smtp" \
         SMTP_TLS_CERT_FILE= SMTP_TLS_KEY_FILE= SMTP_TLS_CERT_B64= SMTP_TLS_KEY_B64= \
-        exec "$run/morgenblau") >"$dir/server.log" 2>&1 &
-    server_pid=$!
-    record_pid "$dir" server "$server_pid"
+        -- "$run/morgenblau"
 
     for i in $(seq 1 60); do
+        [[ "$(process_status "$dir" server)" == yes ]] || die "server not running or status unavailable; see $dir/server.log or its orb service logs"
+        [[ "$(process_status "$dir" vite)" == yes ]] || die "vite not running or status unavailable; see $dir/vite.log or its orb service logs"
         if curl -fsS "http://127.0.0.1:$http/api/health" 2>/dev/null | grep -q '"up"' \
             && curl -fsS -o /dev/null "http://127.0.0.1:$vite/" 2>/dev/null; then
-            set_state "$dir" '.status = "up"'
+            set_state "$dir" '.status = "up" | del(.startup_pid, .startup_start)'
             trap - EXIT INT TERM
             jq . "$run/state.json"
             return 0
         fi
-        [ -n "$(owned_pid "$dir" server)" ] || die "server exited; see $dir/server.log"
-        [ -n "$(owned_pid "$dir" vite)" ] || die "vite exited; see $dir/vite.log"
         sleep 1
     done
     die "instance not healthy after 60s; see $dir/server.log and $dir/vite.log"
@@ -524,6 +582,7 @@ check_browser_url() {
 guard_browser_args() {
     local dir="$1" base="$2" count i=0 arg next value key literal=0 command position positions=()
     shift 2
+    BROWSER_COMMAND=""
     ARGS=("$@"); count=$#
     while [ "$i" -lt "$count" ]; do
         arg="${ARGS[$i]}"
@@ -562,6 +621,7 @@ guard_browser_args() {
         *[[:space:]]"$command"[[:space:]]*) ;;
         *) refuse "'$command' is not a page-level command (see BROWSER_COMMANDS in bin/verify)." ;;
     esac
+    BROWSER_COMMAND="$command"
     for ((position = 1; position < ${#positions[@]}; position++)); do
         case "$command" in
             open|goto|tab-new)
@@ -588,43 +648,74 @@ browser() {
         return
     fi
     guard_browser_args "$dir" "$(state "$dir" .base_url)" "$@"
+    if [[ "$BROWSER_COMMAND" == open ]]; then
+        config="$dir/run/playwright.config.json"
+        if [[ -f "$dir/run/account.json" ]]; then
+            jq '{secrets: {MORGENBLAU_VERIFY_PASSWORD: .password, MORGENBLAU_VERIFY_APP_PASSWORD: .app_password}}' "$dir/run/account.json" >"$config"
+        else
+            printf '%s\n' '{"secrets":{}}' >"$config"
+        fi
+        ARGS=("--config=$config" "${ARGS[@]}")
+    fi
     (cd "$dir" && playwright_cli -s="$(state "$dir" .slug)" ${ARGS[@]+"${ARGS[@]}"})
 }
 
-# playwright-cli echoes every fill value in its output, so this drops the output to keep the password out of the transcript and evidence; fill takes the value only as an argument.
 fill_password() {
     local dir="$1" target="$2"
     require_account "$dir"
-    if (cd "$dir" && playwright_cli -s="$(state "$dir" .slug)" fill "$target" "$(jq -r .password "$dir/run/account.json")") >/dev/null 2>&1; then
+    [[ -f "$dir/run/playwright.config.json" ]] || die "open the browser first so its secret redaction is configured"
+    if (cd "$dir" && playwright_cli -s="$(state "$dir" .slug)" fill "$target" MORGENBLAU_VERIFY_PASSWORD) >/dev/null 2>&1; then
         say "filled the run account password into $target"
     else
-        die "fill-password failed; its output is withheld because it echoes the password. Check the target with snapshot."
+        die "fill-password failed; check the target with snapshot, or reopen the browser first."
     fi
 }
 
 down_run() {
-    local dir="$1" dry="$2" name pid slug
+    local dir="$1" dry="$2" name pid slug service failed=false
     slug="$(state "$dir" .slug)"
     if [ "$dry" = true ]; then
-        say "would stop server $(owned_pid "$dir" server || true), vite $(owned_pid "$dir" vite || true) and PDS $(owned_pid "$dir" pds || true), close browser session $slug, delete the run DB, PDS data and account"
+        say "would stop the recorded services/processes, close browser session $slug, delete the run DB, PDS data and account"
         return 0
     fi
     (cd "$dir" && playwright_cli -s="$slug" close >/dev/null 2>&1) || true
     for name in server vite pds; do
-        pid="$(owned_pid "$dir" "$name" || true)"
-        if [ -n "$pid" ]; then stop_tree "$pid"; fi
+        service="$(state "$dir" ".services.$name // empty")"
+        if [[ -n "$service" ]]; then
+            if ! amp orb service stop "$service"; then say "could not stop $service"; failed=true; fi
+        else
+            pid="$(owned_pid "$dir" "$name" || true)"
+            if [ -n "$pid" ]; then stop_tree "$pid"; fi
+        fi
     done
+    [[ "$failed" == false ]] || die "some services could not stop; run data kept"
     rm -rf "$dir"/run/morgenblau.db* "$dir/run/cookies.txt" "$dir/run/as-cookies.txt" "$dir/run/morgenblau" "$dir/run/pds" "$dir/run/account.json"
+    rm -f "$dir"/run/{pds,vite,server}.{sh,pid} "$dir/run/playwright.config.json"
     set_state "$dir" '.status = "down" | .logged_in = false'
     say "down: $slug; evidence kept in $dir"
 }
 
 # Live runs may belong to another agent, so stale takes only runs with a dead process or past STALE_HOURS.
 stale_reason() {
-    local dir="$1" name
+    local dir="$1" name pid dead=""
+    if [[ "$(state "$dir" .status)" == starting ]]; then
+        pid="$(state "$dir" '.startup_pid // empty')"
+        if ! alive "$pid" || [[ "$(pid_start "$pid")" != "$(state "$dir" '.startup_start // empty')" ]]; then
+            printf 'its startup process is gone'
+            return 0
+        fi
+        return 1
+    fi
     for name in $(jq -r '.pids | keys[]' "$dir/run/state.json"); do
-        [ -n "$(owned_pid "$dir" "$name" || true)" ] || { printf 'its %s process is gone' "$name"; return 0; }
+        case "$(process_status "$dir" "$name")" in
+            no) dead="$name" ;;
+            unknown) printf 'its %s supervisor status is unavailable' "$name"; return 2 ;;
+        esac
     done
+    if [[ -n "$dead" ]]; then
+        printf 'its %s process is gone' "$dead"
+        return 0
+    fi
     if [ $(($(date +%s) - $(state "$dir" '.started_epoch // 0'))) -gt $((STALE_HOURS * 3600)) ]; then
         printf 'started over %s hours ago' "$STALE_HOURS"
         return 0
@@ -633,15 +724,20 @@ stale_reason() {
 }
 
 stale() {
-    local dry="${1-false}" state_file dir reason
+    local dry="${1-false}" state_file dir reason failed=false
     for state_file in "$VERIFY_ROOT"/*/run/state.json; do
         [ -f "$state_file" ] || continue
         dir="$(dirname "$(dirname "$state_file")")"
         [[ "$(state "$dir" .status)" =~ ^(up|starting)$ ]] || continue
-        reason="$(stale_reason "$dir")" || continue
-        say "stale: $(state "$dir" .slug) ($reason)"
-        down_run "$dir" "$dry"
+        if reason="$(stale_reason "$dir")"; then
+            say "stale: $(state "$dir" .slug) ($reason)"
+            down_run "$dir" "$dry"
+        elif [[ $? == 2 ]]; then
+            say "blocked: $(state "$dir" .slug) ($reason)"
+            failed=true
+        fi
     done
+    [[ "$failed" == false ]]
 }
 
 status() {
@@ -649,11 +745,13 @@ status() {
     for state_file in "$VERIFY_ROOT"/*/run/state.json; do
         [ -f "$state_file" ] || continue
         dir="$(dirname "$(dirname "$state_file")")"
-        jq -c --arg server "$([ -n "$(owned_pid "$dir" server || true)" ] && echo yes || echo no)" \
-            --arg pds "$([ -n "$(owned_pid "$dir" pds || true)" ] && echo yes || echo no)" \
+        jq -c --arg server "$(process_status "$dir" server)" \
+            --arg pds "$(process_status "$dir" pds)" \
             '{slug, status, base_url, logged_in, handle: .pds.handle, server_alive: $server, pds_alive: $pds, dir}' "$state_file"
     done
 }
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then return 0; fi
 
 cmd="${1-help}"
 [ $# -gt 0 ] && shift

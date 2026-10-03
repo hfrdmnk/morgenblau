@@ -202,6 +202,49 @@ func TestStartAuthFlow_RefusesInvalidMetadata(t *testing.T) {
 	}
 }
 
+func TestValidateAuthServer_BackChannelEndpoints(t *testing.T) {
+	const issuer = "http://localhost:2701"
+	for name, endpoint := range map[string]func(*oauth.AuthServerMetadata) *string{
+		"PAR":        func(m *oauth.AuthServerMetadata) *string { return &m.PushedAuthorizationRequestEndpoint },
+		"token":      func(m *oauth.AuthServerMetadata) *string { return &m.TokenEndpoint },
+		"revocation": func(m *oauth.AuthServerMetadata) *string { return &m.RevocationEndpoint },
+	} {
+		for label, raw := range map[string]string{
+			"public destination": "http://as.example.com:2701/oauth/endpoint",
+			"PLC port":           "http://localhost:2700/oauth/endpoint",
+			"unrelated port":     "http://127.0.0.1:2799/oauth/endpoint",
+			"userinfo":           "http://reader@localhost:2701/oauth/endpoint",
+			"fragment":           issuer + "/oauth/endpoint#fragment",
+			"HTTPS":              "https://localhost:2701/oauth/endpoint",
+			"missing port":       "http://localhost/oauth/endpoint",
+			"malformed":          issuer + "/%zz",
+			"empty":              "",
+		} {
+			t.Run(name+"/"+label, func(t *testing.T) {
+				m := metadata(issuer)
+				*endpoint(&m) = raw
+				err := validateAuthServer(m, issuer)
+				if name == "revocation" && raw == "" {
+					if err != nil {
+						t.Fatalf("optional revocation: %v", err)
+					}
+				} else if !errors.Is(err, oauth.ErrInvalidAuthServerMetadata) {
+					t.Fatalf("err = %v, want ErrInvalidAuthServerMetadata", err)
+				}
+			})
+		}
+		for _, raw := range []string{issuer + "/oauth/endpoint", "http://127.0.0.1:2701/custom/path", "http://[::1]:2701/custom/path"} {
+			t.Run(name+"/valid/"+raw, func(t *testing.T) {
+				m := metadata(issuer)
+				*endpoint(&m) = raw
+				if err := validateAuthServer(m, issuer); err != nil {
+					t.Fatalf("valid endpoint: %v", err)
+				}
+			})
+		}
+	}
+}
+
 func TestValidateAuthServer(t *testing.T) {
 	const issuer = "http://localhost:2701"
 	for name, tc := range map[string]struct {

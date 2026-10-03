@@ -111,6 +111,27 @@ func validateAuthServer(meta oauth.AuthServerMetadata, serverURL string) error {
 		return fmt.Errorf("%w: invalid auth endpoint URL: %s", oauth.ErrInvalidAuthServerMetadata, meta.AuthorizationEndpoint)
 	}
 
+	for _, endpoint := range []struct {
+		name string
+		url  string
+	}{
+		{"PAR", meta.PushedAuthorizationRequestEndpoint},
+		{"token", meta.TokenEndpoint},
+		{"revocation", meta.RevocationEndpoint},
+	} {
+		if endpoint.name == "revocation" && endpoint.url == "" {
+			continue
+		}
+		u, err := url.Parse(endpoint.url)
+		if err != nil {
+			return fmt.Errorf("%w: invalid %s endpoint URL", oauth.ErrInvalidAuthServerMetadata, endpoint.name)
+		}
+		u.Path, u.RawPath, u.RawQuery, u.ForceQuery = "", "", "", false
+		if _, port, err := safehttp.LoopbackOrigin(u.String()); err != nil || port != issuerPort {
+			return fmt.Errorf("%w: %s endpoint must be on the issuer's loopback port", oauth.ErrInvalidAuthServerMetadata, endpoint.name)
+		}
+	}
+
 	const placeholder = "https://issuer.invalid"
 	meta.Issuer = placeholder
 	meta.AuthorizationEndpoint = placeholder + authorize.Path
