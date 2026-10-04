@@ -16,11 +16,11 @@ import (
 
 func (s *Server) RegisterRoutes() http.Handler {
 	mux := s.routes()
-	gate := auth.New(s.sessions, s.store, s.sealer)
+	gate := auth.New(s.sessions, s.store, s.sealer, s.allowedDIDs)
 	root := http.NewServeMux()
 	devLogin := http.NotFoundHandler()
 	if os.Getenv("APP_ENV") == "local" && s.sessions.DevEnabled() {
-		devLogin = handler.DevLoginHandler(s.sessions, s.sealer, s.sync)
+		devLogin = handler.DevLoginHandler(s.sessions, s.sealer, s.sync, s.allowedDIDs)
 	}
 	root.Handle("/dev/login", devLogin)
 	if os.Getenv("APP_ENV") == "local" {
@@ -41,7 +41,7 @@ func (s *Server) routes() *http.ServeMux {
 	// Anyone can make login and callback fan out to DNS, PLC and authorization-server fetches; a real sign-in uses two requests.
 	signIn := ratelimit.New(10, time.Minute, ratelimit.ClientIP(os.Getenv("FLY_APP_NAME") != ""))
 	mux.Handle("POST /oauth/login", signIn.Wrap(handler.LoginHandler(s.oauthFlow)))
-	mux.Handle("GET /oauth/callback", signIn.Wrap(handler.CallbackHandler(s.oauthFlow, s.sealer, s.sync)))
+	mux.Handle("GET /oauth/callback", signIn.Wrap(handler.CallbackHandler(s.oauthFlow, s.sealer, s.sync, s.allowedDIDs)))
 	mux.Handle("POST /oauth/logout", handler.LogoutHandler(s.sessions, s.sealer, s.store))
 	var addresses api.ProfileAddressInitializer
 	if s.newsletters != nil {
@@ -129,13 +129,14 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), time.Second)
 	defer cancel()
 
+	w.Header().Set("Content-Type", "application/json")
 	status := map[string]string{"status": "up"}
 	if err := s.db.Reader.PingContext(ctx); err != nil {
 		status["status"] = "down"
 		status["error"] = err.Error()
+		w.WriteHeader(http.StatusServiceUnavailable)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(status); err != nil {
 		slog.Error("health: failed to write response", "err", err)
 	}

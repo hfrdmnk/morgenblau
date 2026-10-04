@@ -4,15 +4,22 @@ set -eu
 : "${FLY_APP:?set FLY_APP to the Fly application name}"
 : "${RENEWED_LINEAGE:?Certbot must set RENEWED_LINEAGE}"
 
+cert_b64="$(base64 < "$RENEWED_LINEAGE/fullchain.pem")"
+key_b64="$(base64 < "$RENEWED_LINEAGE/privkey.pem")"
+if [ -z "$cert_b64" ] || [ -z "$key_b64" ]; then
+  echo 'SMTP certificate and private key must not be empty' >&2
+  exit 1
+fi
+
 umask 077
 secrets_file="$(mktemp)"
 trap 'rm -f "$secrets_file"' EXIT HUP INT TERM
 
 {
   printf 'SMTP_TLS_CERT_B64='
-  base64 < "$RENEWED_LINEAGE/fullchain.pem" | tr -d '\n'
+  printf '%s' "$cert_b64" | tr -d '\n'
   printf '\nSMTP_TLS_KEY_B64='
-  base64 < "$RENEWED_LINEAGE/privkey.pem" | tr -d '\n'
+  printf '%s' "$key_b64" | tr -d '\n'
   printf '\n'
 } > "$secrets_file"
 

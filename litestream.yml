@@ -1,0 +1,17 @@
+snapshot:
+  interval: 24h
+  retention: 168h
+l0-retention: 24h
+shutdown-sync-timeout: 20s
+validation:
+  interval: 6h
+socket:
+  enabled: true
+  path: /data/litestream.sock
+heartbeat-url: ${LITESTREAM_HEARTBEAT_URL}
+heartbeat-interval: 5m
+dbs:
+  - path: ${DB_PATH}
+    replica:
+      url: ${LITESTREAM_REPLICA_URL}
+      sync-interval: 10s

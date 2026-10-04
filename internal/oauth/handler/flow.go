@@ -11,6 +11,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
+	"morgenblau/internal/middleware/auth"
 	"morgenblau/internal/oauth/cookie"
 )
 
@@ -59,7 +60,7 @@ func LoginHandler(app ClientApp) http.Handler {
 }
 
 // CallbackHandler completes the OAuth dance, sets the session cookie, and (if starter is set) fires a sync_user job so /consume's refresh pill updates immediately.
-func CallbackHandler(app ClientApp, sealer *cookie.Sealer, starter LoginSyncStarter) http.Handler {
+func CallbackHandler(app ClientApp, sealer *cookie.Sealer, starter LoginSyncStarter, allowed auth.Allowlist) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, err := app.ProcessCallback(r.Context(), r.URL.Query())
 		if err != nil {
@@ -70,6 +71,13 @@ func CallbackHandler(app ClientApp, sealer *cookie.Sealer, starter LoginSyncStar
 				slog.Warn("ProcessCallback failed", "err", err)
 			}
 			http.Error(w, "could not complete sign-in", http.StatusBadRequest)
+			return
+		}
+		if !allowed.Allows(sess.AccountDID) {
+			if err := app.Logout(r.Context(), sess.AccountDID, sess.SessionID); err != nil {
+				slog.Warn("denied alpha session cleanup failed", "err", err)
+			}
+			http.Error(w, "This account is not invited to the Morgenblau alpha.", http.StatusForbidden)
 			return
 		}
 		sealer.Set(w, sess.AccountDID.String(), sess.SessionID)

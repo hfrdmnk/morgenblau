@@ -1,6 +1,6 @@
 .git
 .github
-.env
+.env*
 .DS_Store
 .scratch
 data

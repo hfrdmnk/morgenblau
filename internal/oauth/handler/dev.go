@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"morgenblau/internal/middleware/auth"
 	"morgenblau/internal/oauth/cookie"
 	"morgenblau/internal/session"
 )
@@ -13,7 +14,7 @@ type DevLogin interface {
 	LoginDev(context.Context) (*session.Session, error)
 }
 
-func DevLoginHandler(login DevLogin, sealer *cookie.Sealer, starter LoginSyncStarter) http.Handler {
+func DevLoginHandler(login DevLogin, sealer *cookie.Sealer, starter LoginSyncStarter, allowed auth.Allowlist) http.Handler {
 	return http.NewCrossOriginProtection().Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		switch r.Method {
@@ -24,6 +25,10 @@ func DevLoginHandler(login DevLogin, sealer *cookie.Sealer, starter LoginSyncSta
 			sess, err := login.LoginDev(r.Context())
 			if err != nil {
 				http.Error(w, "Could not sign in to the development account. Check the server credentials and try again.", http.StatusBadGateway)
+				return
+			}
+			if !allowed.Allows(sess.Data.AccountDID) {
+				http.Error(w, "This account is not invited to the Morgenblau alpha.", http.StatusForbidden)
 				return
 			}
 			sealer.Set(w, sess.Data.AccountDID.String(), sess.Data.SessionID)

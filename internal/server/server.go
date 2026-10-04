@@ -27,6 +27,7 @@ import (
 	"morgenblau/internal/feedfinder"
 	"morgenblau/internal/fetcher"
 	"morgenblau/internal/jobs"
+	"morgenblau/internal/middleware/auth"
 	"morgenblau/internal/newsletter"
 	"morgenblau/internal/oauth/config"
 	"morgenblau/internal/oauth/cookie"
@@ -71,12 +72,18 @@ type Server struct {
 	feedfinder  *feedfinder.Finder
 	safeClient  *http.Client
 	newsletters *newsletter.Service
+	allowedDIDs auth.Allowlist
 
 	gcCancel context.CancelFunc
 }
 
 // NewServer returns a cleanup func the caller must run after Shutdown returns (draining sync writes, closing the DB); it can't hang off server.RegisterOnShutdown, since net/http fires those as unwaited detached goroutines.
 func NewServer() (*http.Server, func(context.Context) error, error) {
+	allowedDIDs, err := auth.LoadAllowlist(os.Getenv)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load alpha access: %w", err)
+	}
+
 	port := 8000
 	if raw := os.Getenv("PORT"); raw != "" {
 		p, err := strconv.Atoi(raw)
@@ -217,6 +224,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		feedfinder:  finder,
 		safeClient:  safeClient,
 		newsletters: newsletterService,
+		allowedDIDs: allowedDIDs,
 		gcCancel:    gcCancel,
 	}
 

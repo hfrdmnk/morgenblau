@@ -144,7 +144,7 @@ func TestCallback_HappyPath_SetsCookie_RedirectsHome(t *testing.T) {
 		SessionID:  "state-1",
 	}}
 	sealer := newSealer(t)
-	h := CallbackHandler(app, sealer, nil)
+	h := CallbackHandler(app, sealer, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/callback?state=s&code=c&iss=https://as.example.com", nil)
 	rr := httptest.NewRecorder()
@@ -178,7 +178,7 @@ func TestCallback_HappyPath_SetsCookie_RedirectsHome(t *testing.T) {
 func TestCallback_ProcessError_400_NoCookie(t *testing.T) {
 	app := &fakeApp{callbackErr: fmt.Errorf("invalid state")}
 	sealer := newSealer(t)
-	h := CallbackHandler(app, sealer, nil)
+	h := CallbackHandler(app, sealer, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/callback?state=bad", nil)
 	rr := httptest.NewRecorder()

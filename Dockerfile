@@ -16,6 +16,8 @@ COPY --from=frontend /src/frontend/dist ./frontend/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/morgenblau ./cmd/api
 RUN GOBIN=/out go install github.com/pressly/goose/v3/cmd/goose@v3.26.0
 
+FROM litestream/litestream:0.5.17 AS litestream
+
 FROM debian:bookworm-slim
 
 RUN apt-get update \
@@ -25,8 +27,10 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=build /out/morgenblau /app/morgenblau
 COPY --from=build /out/goose /app/goose
+COPY --from=litestream /usr/local/bin/litestream /app/litestream
 COPY internal/database/migrations /app/migrations
 COPY scripts/container-entrypoint.sh /app/container-entrypoint.sh
+COPY litestream.yml /etc/litestream.yml
 
 RUN mkdir -p /data && chown -R nobody:nogroup /app
 

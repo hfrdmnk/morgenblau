@@ -137,6 +137,8 @@ Existing URL-based saves remain `blue.morgen.feed.save` records. They are produc
 
 ATProto OAuth is the deployed login mechanism. The Go server is a confidential backend-for-frontend client; browsers never receive PDS tokens. The user's DID is the stable account key. Handles and profile presentation are resolved as needed.
 
+Alpha deployments may restrict admission by DID. `internal/middleware/auth/alpha.go` owns the environment policy; it must gate both verified sign-in and existing sessions, before authenticated application work starts. Public OAuth metadata remains reachable. Enabled alpha mode must refuse startup without a valid non-empty allowlist.
+
 Explicitly opted-in local development may sign into a dedicated development account with server-held ATProto credentials, without an OAuth callback. This grants real PDS access, including writes, and must be unavailable outside local mode. `internal/session/` owns the development gate, in-memory password-session lifecycle, and shared session representation. Password authority must not be represented as an OAuth scope grant. Development sessions do not survive server restart; the shortcut can establish a new session independently.
 
 OAuth session material is encrypted at rest. The browser receives only a sealed session reference in an HttpOnly cookie, secure in deployment. Session creation, encryption, refresh coordination, and scope requirements are owned by `internal/oauth/` and `internal/middleware/auth/`.

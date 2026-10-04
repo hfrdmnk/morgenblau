@@ -1,22 +1,34 @@
 app = "replace-with-your-morgenblau-app"
-primary_region = "zrh"
+primary_region = "fra"
+kill_signal = "SIGTERM"
+kill_timeout = 90
 
 [build]
   dockerfile = "Dockerfile"
 
+[deploy]
+  strategy = "rolling"
+
 [env]
   APP_ENV = "production"
+  ALPHA_ENABLED = "true"
   PORT = "8000"
   DB_PATH = "/data/morgenblau.db"
   FETCH_INTERVAL_MINUTES = "30"
-  NEWSLETTER_DOMAIN = "newsletter.example.com"
-  SMTP_HOSTNAME = "newsletter.example.com"
+  BLUESKY_CLIENT_ID = "https://app.morgen.blue/oauth-client-metadata.json"
+  BLUESKY_REDIRECT = "https://app.morgen.blue/oauth/callback"
+  BLUESKY_OAUTH_CLIENT_NAME = "Morgenblau"
+  BLUESKY_OAUTH_CLIENT_URI = "https://app.morgen.blue"
+  BLUESKY_OAUTH_SCOPE = "atproto include:blue.morgen.access repo:site.standard.graph.subscription"
+  NEWSLETTER_DOMAIN = "newsletters.morgen.blue"
+  SMTP_HOSTNAME = "mx.app.morgen.blue"
   SMTP_LISTEN_ADDR = ":2525"
 
 [[mounts]]
   source = "morgenblau_data"
   destination = "/data"
-  initial_size = "1gb"
+  initial_size = "3gb"
+  snapshot_retention = 7
 
 [[services]]
   protocol = "tcp"
@@ -32,6 +44,13 @@ primary_region = "zrh"
   [[services.ports]]
     port = 443
     handlers = ["tls", "http"]
+
+  [[services.http_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "60s"
+    method = "GET"
+    path = "/api/health"
 
 [[services]]
   protocol = "tcp"

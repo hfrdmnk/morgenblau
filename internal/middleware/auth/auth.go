@@ -31,7 +31,7 @@ type Middleware func(http.Handler) http.Handler
 const maxAPIBodyBytes = 1 << 20
 
 // New builds the gating middleware; every path is authed by default except the named public/infra routes.
-func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer) Middleware {
+func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, allowed Allowlist) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
@@ -45,7 +45,7 @@ func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer) Middlewar
 			var sess *session.Session
 			didStr, sid, ok := sealer.Get(r)
 			if ok {
-				if did, err := syntax.ParseDID(didStr); err == nil {
+				if did, err := syntax.ParseDID(didStr); err == nil && allowed.Allows(did) {
 					// Only requests that make authenticated PDS calls can trigger a
 					// lazy refresh or DPoP-nonce rotation mid-handler, so only they
 					// hold the lock, spanning next.ServeHTTP so refreshed tokens persist first.
