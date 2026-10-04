@@ -1,7 +1,12 @@
 .reader-body {
+    font-family: var(--font-sans);
     font-size: var(--text-lg);
     line-height: 1.8;
     overflow-wrap: anywhere;
+}
+
+.reader-body[data-font='serif'] {
+    font-family: var(--font-serif);
 }
 
 .reader-body :where(p, ul, ol, blockquote, pre, figure, table, dl) {

@@ -12,7 +12,7 @@ Newspaper describes the product model, not a visual costume. Avoid paper texture
 
 The interface is a quiet, tonal field built from Stone neutrals. It uses little elevation, few borders, and no decorative chrome. Ordinary actions remain neutral. The three vivid colors identify the primary product modes: atmosphere blue for Digest, sunrise orange for Sources, and aurora violet for Library. Their lighter companions exist only as gradient endpoints.
 
-Geist is the only product typeface. The major-second scale and the visual tokens live in [`frontend/src/index.css`](frontend/src/index.css); components choose size and weight independently.
+Geist is the interface typeface and default reader font. Newsreader is an optional reader-body face; titles and metadata remain Geist. The major-second scale and the visual tokens live in [`frontend/src/index.css`](frontend/src/index.css); components choose size and weight independently.
 
 ## Art direction
 

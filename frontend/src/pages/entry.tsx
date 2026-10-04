@@ -6,6 +6,7 @@ import { ArrowRightIcon, ExternalLinkIcon } from '@/components/icons';
 import { NewsletterImages } from '@/components/newsletter-images';
 import { ReaderNotice } from '@/components/reader-notice';
 import { Button } from '@/components/ui/button';
+import { useReaderFont } from '@/hooks/use-reader-font';
 import { api, ApiError } from '@/lib/api';
 import { parseDigestDate, toDateKey } from '@/lib/digest-dates';
 import { digestHref, PATHS } from '@/lib/paths';
@@ -179,7 +180,8 @@ function ArticleExtraction({ entry, onChange, initiallyExtracted, extractionFail
 }
 
 function ReaderBody({ entry }: { entry: ReaderEntry }) {
-    if (entry.body?.trim()) return <div className="reader-body" dangerouslySetInnerHTML={{ __html: readerBody(entry) }} />;
+    const [font] = useReaderFont();
+    if (entry.body?.trim()) return <div className="reader-body" data-font={font} dangerouslySetInnerHTML={{ __html: readerBody(entry) }} />;
     if (entry.contentType === 'video') return null;
     return <p className="text-muted-foreground">{httpURL(entry.url) ? 'There is no readable content here. Open the original to continue.' : 'No content is available for this entry.'}</p>;
 }

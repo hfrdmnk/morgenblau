@@ -2,11 +2,14 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/geist';
+@import '@fontsource-variable/newsreader/standard.css';
+@import '@fontsource-variable/newsreader/standard-italic.css';
 
 @custom-variant dark (&:is(.dark *));
 
 @theme static {
     --font-sans: 'Geist Variable', system-ui, sans-serif;
+    --font-serif: 'Newsreader Variable', Georgia, serif;
     --font-weight-normal: 400;
     --font-weight-medium: 500;
     --font-weight-semibold: 600;
