@@ -1,4 +1,4 @@
-app = "replace-with-your-morgenblau-app"
+app = "morgenblau"
 primary_region = "fra"
 kill_signal = "SIGTERM"
 kill_timeout = 90
