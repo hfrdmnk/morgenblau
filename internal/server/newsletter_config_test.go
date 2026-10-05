@@ -196,6 +196,11 @@ func clearNewsletterEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("APP_ENV", "local")
 	for _, key := range []string{
+		"SMTP_ACME_ENABLED",
+		"SMTP_CERT_CONTACT_EMAIL",
+		"SMTP_ACME_STORAGE",
+		"SMTP_ACME_CA",
+		"SMTP_ACME_CA_ROOT",
 		"NEWSLETTER_DOMAIN",
 		"SMTP_HOSTNAME",
 		"SMTP_LISTEN_ADDR",
@@ -207,6 +212,46 @@ func clearNewsletterEnv(t *testing.T) {
 		"SMTP_MAX_CONNECTIONS",
 	} {
 		t.Setenv(key, "")
+	}
+}
+
+func TestNewsletterAutomaticTLSConfiguration(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		env       map[string]string
+		wantError string
+	}{
+		{name: "automatic"},
+		{name: "invalid flag", env: map[string]string{"SMTP_ACME_ENABLED": "typo"}, wantError: "SMTP_ACME_ENABLED"},
+		{name: "missing contact", env: map[string]string{"SMTP_CERT_CONTACT_EMAIL": ""}, wantError: "SMTP_CERT_CONTACT_EMAIL"},
+		{name: "invalid contact", env: map[string]string{"SMTP_CERT_CONTACT_EMAIL": "not-an-address"}, wantError: "SMTP_CERT_CONTACT_EMAIL"},
+		{name: "static conflict", env: map[string]string{"SMTP_TLS_CERT_FILE": "fixture.pem", "SMTP_TLS_KEY_FILE": "fixture.key"}, wantError: "not both"},
+		{name: "disabled SMTP", env: map[string]string{"SMTP_LISTEN_ADDR": ""}, wantError: "enabled SMTP"},
+		{name: "wildcard", env: map[string]string{"SMTP_HOSTNAME": "*.example.com"}, wantError: "SMTP_HOSTNAME"},
+		{name: "nonpersistent storage", env: map[string]string{"SMTP_ACME_STORAGE": "/tmp/certs"}, wantError: "/data/"},
+		{name: "custom production CA", env: map[string]string{"SMTP_ACME_CA": "http://127.0.0.1/directory"}, wantError: "APP_ENV=local"},
+		{name: "production root override", env: map[string]string{"SMTP_ACME_CA_ROOT": "/tmp/root.pem"}, wantError: "APP_ENV=local"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clearNewsletterEnv(t)
+			t.Setenv("APP_ENV", "production")
+			t.Setenv("NEWSLETTER_DOMAIN", "news.example.com")
+			t.Setenv("SMTP_HOSTNAME", "mx.example.com")
+			t.Setenv("SMTP_LISTEN_ADDR", ":2525")
+			t.Setenv("SMTP_ACME_ENABLED", "true")
+			t.Setenv("SMTP_CERT_CONTACT_EMAIL", "operator@example.com")
+			for key, value := range tc.env {
+				t.Setenv(key, value)
+			}
+			cfg, err := loadNewsletterRuntimeConfig()
+			if tc.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+					t.Fatalf("error = %v, want %q", err, tc.wantError)
+				}
+			} else if err != nil || cfg.ACME == nil || cfg.ACME.Email != "operator@example.com" || cfg.ACME.Storage != "/data/certmagic" || cfg.TLSConfig != nil {
+				t.Fatalf("automatic config = %+v, error = %v", cfg, err)
+			}
+		})
 	}
 }
 

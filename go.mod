@@ -8,6 +8,7 @@ ignore ./frontend/node_modules
 require (
 	github.com/PuerkitoBio/goquery v1.8.0
 	github.com/bluesky-social/indigo v0.0.0-20260428083920-ce62b8fce9e0
+	github.com/caddyserver/certmagic v0.25.6
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-smtp v0.25.0
 	github.com/go-shiori/go-readability v0.0.0-20251205110129-5db1dc9836f0
@@ -16,8 +17,8 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/oklog/ulid/v2 v2.1.1
-	golang.org/x/net v0.57.0
-	golang.org/x/sync v0.22.0
+	golang.org/x/net v0.59.0
+	golang.org/x/sync v0.23.0
 	modernc.org/sqlite v1.50.1
 )
 
@@ -26,6 +27,7 @@ require (
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/caddyserver/zerossl v0.1.6 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/earthboundkid/versioninfo/v2 v2.24.1 // indirect
@@ -42,8 +44,11 @@ require (
 	github.com/ipfs/go-ipld-cbor v0.1.0 // indirect
 	github.com/ipfs/go-ipld-format v0.6.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
+	github.com/libdns/libdns v1.1.1 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mholt/acmez/v3 v3.1.7 // indirect
+	github.com/miekg/dns v1.1.73 // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/mmcdole/goxpp v1.1.1-0.20240225020742-a0c311522b23 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
@@ -65,11 +70,15 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/whyrusleeping/cbor-gen v0.2.1-0.20241030202151-b7a6831be65e // indirect
+	github.com/zeebo/blake3 v0.2.4 // indirect
 	gitlab.com/yawning/secp256k1-voi v0.0.0-20230925100816-f2616030848b // indirect
 	gitlab.com/yawning/tuplehash v0.0.0-20230713102510-df83abbf9a02 // indirect
-	golang.org/x/crypto v0.54.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
+	go.uber.org/zap v1.28.0 // indirect
+	go.uber.org/zap/exp v0.3.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect

@@ -30,6 +30,15 @@ if [ -n "$replica" ] && [ ! -e "$db_path" ]; then
   trap - EXIT
 fi
 
+case "${SMTP_ACME_ENABLED:-false}" in
+  true|TRUE|True|1|t|T)
+    cert_dir="${SMTP_ACME_STORAGE:-/data/certmagic}"
+    mkdir -p "$cert_dir"
+    chmod 700 "$cert_dir"
+    chown nobody:nogroup "$cert_dir"
+    ;;
+esac
+
 gosu nobody /app/goose -dir /app/migrations sqlite3 "$db_path" up
 
 if [ -n "$replica" ]; then

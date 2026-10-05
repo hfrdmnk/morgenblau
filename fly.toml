@@ -23,6 +23,8 @@ kill_timeout = 90
   NEWSLETTER_DOMAIN = "newsletters.morgen.blue"
   SMTP_HOSTNAME = "mx.app.morgen.blue"
   SMTP_LISTEN_ADDR = ":2525"
+  SMTP_ACME_ENABLED = "true"
+  SMTP_ACME_STORAGE = "/data/certmagic"
 
 [[mounts]]
   source = "morgenblau_data"
@@ -39,7 +41,6 @@ kill_timeout = 90
   [[services.ports]]
     port = 80
     handlers = ["http"]
-    force_https = true
 
   [[services.ports]]
     port = 443

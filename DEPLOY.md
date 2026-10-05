@@ -63,6 +63,7 @@ Append these lines in your editor, replacing the DID and bucket placeholders. Va
 ALPHA_ALLOWED_DIDS=did:plc:your-account-did,did:plc:another-invited-account
 LITESTREAM_REPLICA_URL=s3://your-private-bucket/morgenblau?endpoint=t3.storage.dev&region=auto
 LITESTREAM_ALLOW_EMPTY_REPLICA=true
+SMTP_CERT_CONTACT_EMAIL=you@example.com
 ```
 
 Use your account's stable DID, not its handle. You still sign in with your handle normally. `ALPHA_ENABLED=true` is already in `fly.toml`; an empty or malformed list then refuses startup. The callback checks the verified DID before setting a cookie or dispatching sync. Existing sessions are checked before resuming, so removing a DID takes effect after the Machine restarts.
@@ -77,7 +78,7 @@ fly secrets import --stage --app "$FLY_APP" < .env.production
 
 **Bootstrap is one-time only.** `LITESTREAM_ALLOW_EMPTY_REPLICA=true` permits a first database when the bucket is empty. Remove it after the backup check in step 5. Normally an absent local database must restore successfully before migrations run; inaccessible, empty, or broken backups must not silently become a new empty app.
 
-For the fastest RSS-only first deployment, temporarily set `NEWSLETTER_DOMAIN=""` and `SMTP_LISTEN_ADDR=""` in `fly.toml` and skip SMTP certificates. Complete step 3 and restore those settings before expecting inbound newsletters to work. You can defer the dedicated IPv4 until then.
+For an RSS-only deployment, set `NEWSLETTER_DOMAIN=""`, `SMTP_LISTEN_ADDR=""`, and `SMTP_ACME_ENABLED="false"` in `fly.toml`. Complete step 3 and restore those settings before expecting inbound newsletters to work. You can defer the dedicated IPv4 until then.
 
 ## 3. Configure DNS and the SMTP certificate
 
@@ -101,75 +102,23 @@ fly certs check app.morgen.blue --app "$FLY_APP"
 
 Follow any verification records Fly requests. Fly terminates HTTPS at its proxy, but **cannot substitute that certificate for the application's SMTP STARTTLS certificate**. The port 25 service intentionally has no TLS handler: SMTP starts in plaintext and upgrades via STARTTLS.
 
-Use a publicly trusted Let's Encrypt certificate for **`mx.app.morgen.blue`**, not a Cloudflare Origin CA certificate. Obtain it with [Certbot's Cloudflare DNS-01 plugin](https://certbot-dns-cloudflare.readthedocs.io/en/stable/); this needs no open challenge port and does not change your MX records.
+Morgenblau embeds [CertMagic](https://github.com/caddyserver/certmagic) to obtain and renew the publicly trusted Let's Encrypt certificate for **`mx.app.morgen.blue`**. `internal/server/smtp_certificates.go` owns issuance, renewal, readiness and shutdown. No Certbot host, Cloudflare API token, certificate-upload deploy token, or renewal timer is needed.
 
-Run the following on a trusted Debian/Ubuntu host where renewal can run reliably. It can be an existing host; a sleeping laptop is not a reliable renewal host. If you initially issue from your computer, maintain renewal manually until you move this setup to a reliable host. Do not run these commands inside the Fly app's ephemeral filesystem.
+`SMTP_ACME_ENABLED="true"` in `fly.toml` enables this path and signifies acceptance of [Let's Encrypt's subscriber agreement](https://letsencrypt.org/repository/). Set `SMTP_CERT_CONTACT_EMAIL` to an address you monitor. Leave all `SMTP_TLS_*` keypair settings unset; automatic and static TLS configurations conflict and refuse startup.
 
-```sh
-sudo apt-get update
-sudo apt-get install certbot python3-certbot-dns-cloudflare
-sudo install -d -m 700 /etc/letsencrypt/secrets
-sudo install -m 600 /dev/null /etc/letsencrypt/secrets/cloudflare.ini
-sudoedit /etc/letsencrypt/secrets/cloudflare.ini
-```
+Validation is **HTTP-01 only**. Public port 80 for `mx.app.morgen.blue` must reach the Go server on port 8000, preserving the host and challenge path. The dedicated IPv4 also routes HTTP without a Fly certificate for that hostname. Keep Fly managing **only `app.morgen.blue`**; do not add a Fly HTTPS certificate for the SMTP hostname. Cloudflare must remain DNS-only, and any CAA policy must permit Let's Encrypt. TLS-ALPN-01 and DNS-01 are not used.
 
-In [Cloudflare's API token settings](https://dash.cloudflare.com/profile/api-tokens), create a custom token with **Zone → DNS → Edit**, restricted to **Include → Specific zone → morgen.blue**. Do not use the Global API Key. Put the token in the private INI file, not the repository, shell history, or chat:
+Do not enable Fly's `force_https` on port 80: the app serves challenges before authentication and redirects. Ordinary HTTP requests redirect to the configured app HTTPS host; forwarded HTTPS is trusted only when `FLY_APP_NAME` indicates the established Fly proxy boundary. Do not expose backend port 8000 directly to untrusted clients. The anonymous database health route remains available on HTTP so Fly can route challenges **before** issuance finishes.
 
-```ini
-dns_cloudflare_api_token = YOUR_RESTRICTED_CLOUDFLARE_TOKEN
-```
+After HTTP starts listening, the app proactively provisions the single configured `SMTP_HOSTNAME`; request Host/SNI never triggers issuance for other names. SMTP sends no greeting until a valid certificate is available. Renewed certificates replace the active STARTTLS certificate without a deploy, including for clients without SNI. Unexpected SNI and expired certificates fail TLS; new SMTP connections wait while no valid certificate exists. A usable cached certificate stays available during renewal failures. Already established SMTP sessions are not forcibly terminated at expiry; SMTP remains an opportunistic STARTTLS receiver, not a TLS-required submission service.
 
-Issue the certificate; replace the contact email with a real address you monitor and review Let's Encrypt's terms when prompted:
+Certificate/account private keys live in `SMTP_ACME_STORAGE` (default `/data/certmagic`), a private persistent directory owned by the unprivileged app. The worker checks renewal each minute; failed attempts are time-bounded and retried with exponential backoff from one minute to at most six hours while HTTP stays up. Watch `SMTP certificate ready` and `SMTP certificate maintenance failed; retrying` logs and monitor the served expiry independently: database health does not prove SMTP readiness.
 
-```sh
-sudo certbot certonly --dns-cloudflare \
-  --dns-cloudflare-credentials /etc/letsencrypt/secrets/cloudflare.ini \
-  --dns-cloudflare-propagation-seconds 60 \
-  --cert-name mx.app.morgen.blue -d mx.app.morgen.blue \
-  --email you@example.com
-```
+SMTP TLS session resumption is disabled so every STARTTLS handshake checks the current identity and validity. An interrupted renewal's unusable keypair triggers a forced renewal without deleting the ACME account; storage-access failures remain failures, not a reason to discard keys. CertMagic's initially stored ACME Renewal Information (ARI) participates in scheduling, but this worker does not periodically refresh CA advice or detect revocation: later emergency/accelerated replacement instructions are not automatically picked up. Shutdown joins app-owned certificate work; CertMagic's process-global rate limiter and transient file-lock refreshers are not a fully stoppable embedded runtime and end with the process.
 
-For unattended uploads, install flyctl on this host and authenticate as in step 1. From the repository checkout, copy the upload script and flyctl into root-owned paths. Skip the second command if `fly` is already installed at `/usr/local/bin/fly`:
+**Litestream backs up SQLite, not certificate storage.** The volume survives deploys, and volume snapshots may recover certificate assets. If the volume is lost and only SQLite is restored, the app creates a new ACME account/certificate after DNS/port 80 work again. Mail is unavailable until issuance succeeds; CA rate limits or outages can prolong this. Keep an encrypted backup of `/data/certmagic` if you need to recover the existing keys/account; preserve owner and private permissions when restoring it. Never delete the cache as a routine renewal procedure.
 
-```sh
-sudo install -D -m 755 scripts/update-fly-smtp-cert.sh /usr/local/lib/morgenblau/update-fly-smtp-cert.sh
-sudo install -m 755 "$(command -v fly)" /usr/local/bin/fly
-sudo install -m 600 /dev/null /etc/letsencrypt/secrets/morgenblau-fly.token
-fly tokens create deploy --app "$FLY_APP" --name smtp-certificate-renewal --expiry 8760h \
-  | sudo tee /etc/letsencrypt/secrets/morgenblau-fly.token >/dev/null
-```
-
-This [app-scoped deploy token](https://fly.io/docs/security/tokens/) can manage the app, including its secrets; it is not limited to certificate uploads. Keep it private and rotate it before its one-year expiry. Certbot's root timer does not inherit your interactive Fly login or shell variables.
-
-Create the persistent deploy hook below, **replacing the app-name placeholder**. It ignores certificates for other services on the same host:
-
-```sh
-sudo install -d -m 755 /etc/letsencrypt/renewal-hooks/deploy
-sudo tee /etc/letsencrypt/renewal-hooks/deploy/morgenblau-smtp >/dev/null <<'SH'
-#!/bin/sh
-set -eu
-[ "$RENEWED_LINEAGE" = /etc/letsencrypt/live/mx.app.morgen.blue ] || exit 0
-export PATH=/usr/local/bin:/usr/bin:/bin
-export FLY_APP=your-globally-unique-app-name
-export FLY_API_TOKEN="$(cat /etc/letsencrypt/secrets/morgenblau-fly.token)"
-exec /usr/local/lib/morgenblau/update-fly-smtp-cert.sh
-SH
-sudo chmod 700 /etc/letsencrypt/renewal-hooks/deploy/morgenblau-smtp
-```
-
-Upload the first certificate before the newsletter-enabled deployment, then test DNS renewal without uploading a staging certificate:
-
-```sh
-sudo env RENEWED_LINEAGE=/etc/letsencrypt/live/mx.app.morgen.blue \
-  /etc/letsencrypt/renewal-hooks/deploy/morgenblau-smtp
-sudo certbot renew --cert-name mx.app.morgen.blue --dry-run
-sudo systemctl enable --now certbot.timer
-sudo systemctl list-timers certbot.timer
-```
-
-The dry run checks issuance, not the upload hook; the explicit hook invocation checks the Fly upload. The timer runs `certbot renew` and automatically invokes the installed hook after a successful renewal. Check `journalctl -u certbot.service` and monitor failures. If upload fails, fix the cause and rerun the explicit hook; a certificate renewed locally is not necessarily installed on Fly. If you must renew manually, run `sudo certbot renew` regularly on the computer with this setup and confirm the upload succeeds.
-
-The upload script imports base64 PEM secrets without putting their values in command arguments. Production startup validates hostname and expiry. An expired certificate will prevent the app from starting on its next restart. Secret imports restart the Machine; the volume survives.
+Explicit static PEM files or base64 PEM secrets remain supported with `SMTP_ACME_ENABLED="false"`. These require your own renewal and an app restart to load replacements; production startup checks identity and validity. `scripts/update-fly-smtp-cert.sh` is an optional legacy static upload helper, not part of normal deployment. When migrating an existing deployment to automatic mode, remove its static certificate secrets in the same planned deployment window and retire the old external renewal hook/tokens so they cannot reintroduce conflicting settings.
 
 ## 4. Deploy one Machine
 
@@ -203,9 +152,11 @@ For newsletters, create your private receiving address in the app, subscribe a t
 openssl s_client -starttls smtp -connect mx.app.morgen.blue:25 \
   -servername mx.app.morgen.blue -verify_hostname mx.app.morgen.blue \
   -verify_return_error </dev/null
+openssl s_client -starttls smtp -connect mx.app.morgen.blue:25 \
+  -noservername -verify_hostname mx.app.morgen.blue -verify_return_error </dev/null
 ```
 
-Expect successful certificate verification. If your local ISP blocks outbound port 25, test from another network. The product is a receiver, not an outgoing mail relay.
+Expect successful certificate verification in both cases. Also check that `http://app.morgen.blue/` redirects to HTTPS while `/api/health` remains healthy during provisioning. An unrecognized challenge token is not an issuance test; actual HTTP-01 validation is performed by the CA. If your local ISP blocks outbound port 25, test from another network. The product is a receiver, not an outgoing mail relay.
 
 Force a remote sync and restore to a **different path** on the Machine:
 
@@ -253,3 +204,19 @@ sqlite3 recovery.db 'PRAGMA foreign_key_check;'
 Foreign-key checking must return no rows. Available restore times are limited by the retained Litestream files; inspect the dry-run plan rather than assuming arbitrary per-transaction rollback. Retention and restore granularity are configured in `litestream.yml`.
 
 Treat replacement of a populated volume as maintenance: stop the app and replication, preserve the original DB **and WAL/SHM/metadata**, install the verified restored file using a maintenance Machine with no app writer, and use a **new backup prefix** before starting it. Restored files must be owned by `nobody:nogroup`, matching the unprivileged app and backup process. Never run two writers or upload a restored older DB into the active replica history. Deploy code compatible with the restored schema. This operation can discard newer private newsletters/saves and needs an explicit decision; it does not roll back PDS records, which will reconcile on sign-in.
+
+## Local certificate verification
+
+Never request real Let's Encrypt certificates to test the app. The opt-in `TestSMTPACMEIntegration` and `TestSMTPACMERecoveryAndNotDue` in `internal/server/smtp_certificates_test.go` drive issuance, renewal, served-certificate replacement, persistent reload and interrupted-renewal recovery against a disposable [Pebble](https://github.com/letsencrypt/pebble) CA. The ordinary race suite exercises SMTP ticket-reuse policy, TLS selection, expiry, readiness, storage failures, cancellation, retries and redirects without a CA.
+
+Start Pebble on loopback with `httpPort` matching an unused backend test port, `profiles.default.validityPeriod` of 12 seconds and `profiles.normal.validityPeriod` of 7776000 seconds (90 days). The tests select these profiles explicitly. Keep actual validation enabled: `PEBBLE_VA_ALWAYS_VALID=0`, `PEBBLE_VA_NOSLEEP=1`, `PEBBLE_AUTHZREUSE=0`. Supply its HTTPS server trust root and the generated issuing root from its management `/roots/0` endpoint as separate PEM files:
+
+```sh
+MORGENBLAU_TEST_ACME_CA=https://localhost:14000/dir \
+MORGENBLAU_TEST_ACME_HTTP_PORT=18080 \
+MORGENBLAU_TEST_ACME_ROOT=/path/to/pebble.minica.pem \
+MORGENBLAU_TEST_ACME_CERT_ROOT=/path/to/generated-issuing-root.pem \
+  go test -race ./internal/server -run 'TestSMTPACME(Integration|RecoveryAndNotDue)' -count=1 -v
+```
+
+For a running isolated app, use the `verify-morgenblau` skill and its newsletter receive/refused-recipient path. `SMTP_ACME_CA` and `SMTP_ACME_CA_ROOT` overrides work only in `APP_ENV=local`; keep test certificates in a disposable run directory, never `/data/certmagic` used by a real deployment. Stop the CA and instance and remove their private assets after verification.

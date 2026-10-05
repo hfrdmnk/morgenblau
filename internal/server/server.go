@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -109,6 +110,15 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		return nil, nil, fmt.Errorf("load newsletter config: %w", err)
 	}
 
+	appHost := ""
+	if os.Getenv("APP_ENV") != "local" {
+		appURL, err := url.Parse(strings.TrimSpace(os.Getenv("BLUESKY_CLIENT_ID")))
+		if err != nil || appURL.Scheme != "https" || appURL.Host == "" || appURL.User != nil {
+			return nil, nil, fmt.Errorf("BLUESKY_CLIENT_ID must be an HTTPS metadata URL outside APP_ENV=local")
+		}
+		appHost = appURL.Host
+	}
+
 	db, err := database.Open()
 	if err != nil {
 		return nil, nil, fmt.Errorf("open database: %w", err)
@@ -176,12 +186,26 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	orchestrator := internalsync.New(tracker, router, engine)
 	newsletterService := newsletter.NewService(db.Reader, db.Writer, newsletter.Config{Domain: effectiveNewsletterDomain(newsletterCfg)})
 
+	var certificates *smtpCertificates
+	if newsletterCfg.ACME != nil {
+		certificates, err = newSMTPCertificates(newsletterCfg.Hostname, port, *newsletterCfg.ACME)
+		if err != nil {
+			_ = orchestrator.Shutdown(context.Background())
+			_ = db.Close()
+			return nil, nil, fmt.Errorf("configure SMTP certificates: %w", err)
+		}
+		newsletterCfg.TLSConfig = certificates.tlsConfig()
+		newsletterCfg.certificates = certificates
+	}
 	var smtpServer *gosmtp.Server
 	var smtpDone chan error
 	if newsletterCfg.smtpEnabled() {
 		var smtpAddr net.Addr
 		smtpServer, smtpAddr, smtpDone, err = startNewsletterSMTP(newsletterService, newsletterCfg)
 		if err != nil {
+			if certificates != nil {
+				certificates.cache.Stop()
+			}
 			_ = orchestrator.Shutdown(context.Background())
 			_ = db.Close()
 			return nil, nil, fmt.Errorf("listen SMTP on %s: %w", newsletterCfg.ListenAddr, err)
@@ -235,10 +259,37 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
+	if appHost != "" {
+		server.Handler = redirectInsecureHTTP(server.Handler, appHost, os.Getenv("FLY_APP_NAME") != "")
+	}
+	certificateCtx, certificateCancel := context.WithCancel(context.Background())
+	certificateDone := make(chan struct{})
+	if certificates != nil {
+		server.Handler = certificates.issuer.HTTPChallengeHandler(server.Handler)
+		httpReady := make(chan struct{})
+		var listening sync.Once
+		server.BaseContext = func(net.Listener) context.Context {
+			listening.Do(func() { close(httpReady) })
+			return context.Background()
+		}
+		go func() { defer close(certificateDone); certificates.run(certificateCtx, httpReady) }()
+	} else {
+		close(certificateDone)
+	}
+	server.RegisterOnShutdown(certificateCancel)
 	server.RegisterOnShutdown(gcCancel)
 
 	cleanup := func(ctx context.Context) error {
 		gcCancel()
+		certificateCancel()
+		select {
+		case <-certificateDone:
+			if certificates != nil {
+				certificates.cache.Stop()
+			}
+		case <-ctx.Done():
+			return fmt.Errorf("SMTP certificate shutdown: %w", ctx.Err())
+		}
 		if smtpServer != nil {
 			if err := smtpServer.Close(); err != nil && !errors.Is(err, gosmtp.ErrServerClosed) {
 				slog.Warn("newsletter SMTP shutdown", "err", err)
@@ -295,6 +346,9 @@ func startNewsletterSMTP(service *newsletter.Service, cfg newsletterRuntimeConfi
 		return nil, nil, nil, err
 	}
 	addr := listener.Addr()
+	if cfg.certificates != nil {
+		listener = newCertificateSMTPListener(listener, cfg.certificates)
+	}
 	limited := newsletter.LimitSMTPListener(listener, cfg.MaxConnections)
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(limited) }()

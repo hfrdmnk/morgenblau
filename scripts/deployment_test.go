@@ -50,6 +50,9 @@ func TestEntrypointRestorePublication(t *testing.T) {
 			t.Setenv("RESTORE_MODE", tc.mode)
 			t.Setenv("APP_ENV", "production")
 			t.Setenv("DB_PATH", db)
+			certDir := filepath.Join(data, "certmagic")
+			t.Setenv("SMTP_ACME_ENABLED", "true")
+			t.Setenv("SMTP_ACME_STORAGE", certDir)
 			t.Setenv("LITESTREAM_REPLICA_URL", "file:///unused-fixture")
 			t.Setenv("LITESTREAM_ALLOW_EMPTY_REPLICA", "false")
 			if tc.bootstrap {
@@ -142,6 +145,10 @@ if [ ! -e "$DB_PATH" ]; then printf 'bootstrap' > "$DB_PATH"; fi
 				contents, err := os.ReadFile(db)
 				if err != nil || string(contents) != wantDB || string(calls) != wantCalls {
 					t.Fatalf("database = %q (%v), calls = %q; want %q, %q", contents, err, calls, wantDB, wantCalls)
+				}
+				info, err := os.Stat(certDir)
+				if err != nil || info.Mode().Perm() != 0o700 {
+					t.Fatalf("certificate storage: %v %v", info, err)
 				}
 			}
 			staging, err := filepath.Glob(filepath.Join(data, ".restore.*"))

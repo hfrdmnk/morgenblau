@@ -25,6 +25,24 @@ func TestAlphaConfigurationFailsBeforeOpeningDatabase(t *testing.T) {
 	}
 }
 
+func TestProductionHTTPRequiresCanonicalHTTPSBeforeOpeningDatabase(t *testing.T) {
+	for _, clientID := range []string{"", "http://app.example.com/metadata.json", "https://operator@app.example.com/metadata.json"} {
+		clearNewsletterEnv(t)
+		path := filepath.Join(t.TempDir(), "app.db")
+		t.Setenv("APP_ENV", "production")
+		t.Setenv("ALPHA_ENABLED", "false")
+		t.Setenv("BLUESKY_CLIENT_ID", clientID)
+		t.Setenv("DB_PATH", path)
+		_, _, err := NewServer()
+		if err == nil || !strings.Contains(err.Error(), "BLUESKY_CLIENT_ID") {
+			t.Fatalf("client ID %q: %v", clientID, err)
+		}
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatal("invalid canonical host opened database")
+		}
+	}
+}
+
 func TestHealthReturnsUnavailableWhenDatabaseIsClosed(t *testing.T) {
 	t.Setenv("DB_PATH", filepath.Join(t.TempDir(), "app.db"))
 	db, err := database.Open()

@@ -5,7 +5,10 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
+	"net"
+	"net/mail"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -21,8 +24,10 @@ type newsletterRuntimeConfig struct {
 	Hostname        string
 	ListenAddr      string
 	TLSConfig       *tls.Config
+	ACME            *smtpACMEConfig
 	MaxMessageBytes int64
 	MaxConnections  int
+	certificates    *smtpCertificates
 }
 
 func (c newsletterRuntimeConfig) smtpEnabled() bool {
@@ -58,10 +63,13 @@ func loadNewsletterRuntimeConfig() (newsletterRuntimeConfig, error) {
 	if cfg.MaxConnections, err = positiveIntEnv("SMTP_MAX_CONNECTIONS", cfg.MaxConnections); err != nil {
 		return newsletterRuntimeConfig{}, err
 	}
+	if cfg.ACME, err = loadSMTPACMEConfig(cfg); err != nil {
+		return newsletterRuntimeConfig{}, err
+	}
 	if cfg.TLSConfig, err = loadSMTPTLSConfig(); err != nil {
 		return newsletterRuntimeConfig{}, err
 	}
-	if cfg.smtpEnabled() && os.Getenv("APP_ENV") != "local" {
+	if cfg.smtpEnabled() && cfg.ACME == nil && os.Getenv("APP_ENV") != "local" {
 		if cfg.TLSConfig == nil {
 			return newsletterRuntimeConfig{}, fmt.Errorf("SMTP TLS certificate is required outside APP_ENV=local")
 		}
@@ -70,6 +78,75 @@ func loadNewsletterRuntimeConfig() (newsletterRuntimeConfig, error) {
 		}
 	}
 	return cfg, nil
+}
+
+type smtpACMEConfig struct {
+	Email, Storage, CA, CARoot string
+}
+
+func loadSMTPACMEConfig(cfg newsletterRuntimeConfig) (*smtpACMEConfig, error) {
+	raw := strings.TrimSpace(os.Getenv("SMTP_ACME_ENABLED"))
+	enabled := false
+	if raw != "" {
+		var err error
+		enabled, err = strconv.ParseBool(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid SMTP_ACME_ENABLED: %w", err)
+		}
+	}
+	if !enabled {
+		return nil, nil
+	}
+	if !cfg.smtpEnabled() {
+		return nil, fmt.Errorf("SMTP_ACME_ENABLED requires enabled SMTP")
+	}
+	for _, name := range []string{"SMTP_TLS_CERT_FILE", "SMTP_TLS_KEY_FILE", "SMTP_TLS_CERT_B64", "SMTP_TLS_KEY_B64"} {
+		if strings.TrimSpace(os.Getenv(name)) != "" {
+			return nil, fmt.Errorf("configure automatic or static SMTP TLS, not both")
+		}
+	}
+	if net.ParseIP(cfg.Hostname) != nil || !validSMTPHostname(cfg.Hostname) {
+		return nil, fmt.Errorf("SMTP_HOSTNAME must be a DNS hostname without wildcards")
+	}
+	c := &smtpACMEConfig{
+		Email:   strings.TrimSpace(os.Getenv("SMTP_CERT_CONTACT_EMAIL")),
+		Storage: strings.TrimSpace(os.Getenv("SMTP_ACME_STORAGE")),
+		CA:      strings.TrimSpace(os.Getenv("SMTP_ACME_CA")),
+		CARoot:  strings.TrimSpace(os.Getenv("SMTP_ACME_CA_ROOT")),
+	}
+	if address, err := mail.ParseAddress(c.Email); err != nil || address.Address != c.Email {
+		return nil, fmt.Errorf("SMTP_CERT_CONTACT_EMAIL must be a contact email address")
+	}
+	if c.Storage == "" {
+		c.Storage = "/data/certmagic"
+	}
+	c.Storage = filepath.Clean(c.Storage)
+	if os.Getenv("APP_ENV") != "local" {
+		if !strings.HasPrefix(c.Storage, "/data/") {
+			return nil, fmt.Errorf("SMTP_ACME_STORAGE must be under /data/")
+		}
+		if c.CA != "" || c.CARoot != "" {
+			return nil, fmt.Errorf("SMTP_ACME_CA and SMTP_ACME_CA_ROOT require APP_ENV=local")
+		}
+	}
+	return c, nil
+}
+
+func validSMTPHostname(host string) bool {
+	if len(host) == 0 || len(host) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(host, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, ch := range label {
+			if ch != '-' && (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validateSMTPTLSCertificate(cfg *tls.Config, hostname string, now time.Time) error {
@@ -84,7 +161,7 @@ func validateSMTPTLSCertificate(cfg *tls.Config, hostname string, now time.Time)
 			return fmt.Errorf("parse leaf: %w", err)
 		}
 	}
-	if now.Before(leaf.NotBefore) || now.After(leaf.NotAfter) {
+	if now.Before(leaf.NotBefore) || !now.Before(leaf.NotAfter) {
 		return fmt.Errorf("is not valid at the current time")
 	}
 	if err := leaf.VerifyHostname(hostname); err != nil {
