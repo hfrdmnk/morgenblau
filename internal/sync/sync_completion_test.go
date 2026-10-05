@@ -44,7 +44,7 @@ func TestSyncUserReachesDoneOnlyThroughFinishSync(t *testing.T) {
 		}
 	}
 	if !seen["Engine.finishSync"] {
-		t.Error("Engine.finishSync no longer marks sync_user jobs done")
+		t.Error("keep sync_user completion in Engine.finishSync: done must prove every reconciliation pass committed (law 2)")
 	}
 }
 
@@ -71,7 +71,7 @@ func TestCommitProofIsMintedOnlyByReconcileCollection(t *testing.T) {
 		}
 	}
 	if !minted {
-		t.Error("reconcileCollection no longer mints a commit proof")
+		t.Error("mint the commit proof in reconcileCollection after commit: without that proof, done cannot certify a caught-up index (law 2)")
 	}
 }
 

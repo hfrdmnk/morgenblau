@@ -93,6 +93,13 @@ func TestNewsletterTablesAreQueriedOnlyThroughSQLFiles(t *testing.T) {
 }
 
 func newsletterScopeProblems(sql string) []string {
+	return ownerScopeProblems(sql, sqlTableRefs(sql))
+}
+
+func ownerScopeProblems(sql string, refs []tableRef) []string {
+	if len(refs) == 0 {
+		return nil
+	}
 	var problems []string
 	if columns := sqlInsertCols.FindStringSubmatch(sql); columns != nil {
 		if !slices.Contains(splitColumns(columns[1]), "did") {
@@ -109,7 +116,6 @@ func newsletterScopeProblems(sql string) []string {
 		}
 		return find(parent[key])
 	}
-	refs := sqlTableRefs(sql)
 	occurrences := map[string]int{}
 	for _, ref := range refs {
 		occurrences[ref.alias]++

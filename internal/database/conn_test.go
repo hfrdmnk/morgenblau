@@ -96,7 +96,7 @@ END;`); err != nil {
 		t.Fatalf("statement failed before COMMIT: %v", statementErr)
 	}
 	if err == nil {
-		t.Fatal("WithTx returned nil although COMMIT failed")
+		t.Fatal("propagate the COMMIT error from WithTx: sync and mirror callers must not report success for uncommitted data")
 	}
 	if _, err := db.New(dbs.Writer).GetFeed(ctx, "https://d.example.com/feed"); !errors.Is(err, sql.ErrNoRows) {
 		t.Errorf("row survived the failed commit: err=%v", err)
@@ -135,7 +135,7 @@ func TestOpenUsesFullSynchronousDurability(t *testing.T) {
 			t.Fatalf("%s synchronous pragma: %v", name, err)
 		}
 		if mode != 2 {
-			t.Fatalf("%s synchronous pragma = %d, want FULL (2)", name, mode)
+			t.Fatalf("%s synchronous pragma = %d, want FULL (2); acknowledged commits must survive a power loss", name, mode)
 		}
 	}
 }

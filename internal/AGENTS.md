@@ -19,7 +19,7 @@ paths:
 - **SSRF:** any client that fetches attacker-influenceable URLs or resolves handles/DIDs goes through `internal/safehttp` or `internal/atidentity`. When constructing a library client, audit its defaults and override its HTTP client and identity directory.
 - **Transactions:** SQLite has one writer pool (single connection) and one reader pool; wire handlers and jobs to the correct one. Multi-statement write batches run in one transaction via the `database` package's Tx helper. Never touch the non-transaction writer queries from inside an open transaction, and do all network I/O before the transaction opens.
 - **Encryption:** tokens, keys, and session material are AEAD-encrypted before they touch the database. Keys come from env and support rotation: the first key encrypts, all keys are tried on decrypt. Never persist credentials in plaintext.
-- **HTTP surface:** the auth middleware size-limits `/api/` bodies; decode with `api.decodeJSON`. Handlers in `internal/api` write errors only through `writeError` with a `respond.go` code, or `writeFieldErrors` for a form's field map (`TestAPIErrorsUseTheRespondEnvelope`). Unrouted `/api/` requests and the auth middleware's 401 answer with the same `{code, message}` envelope; the OAuth HTML-flow handlers are the only plain-text exception. Missing-or-not-owned resources return 404 on every verb; only the reauth contract uses 403 + `reauth_required`.
+- **HTTP surface:** `internal/api/respond.go` owns request decoding and the `{code, message}` error contract; use its helpers (`TestAPIErrorsUseTheRespondEnvelope`). `internal/middleware/auth/` owns `/api/` body limits. Missing-or-not-owned resources return 404 on every verb; only reauth uses 403 + `reauth_required`. OAuth HTML-flow handlers are the only plain-text error exception.
 
 ## PDS mutations
 
@@ -28,5 +28,5 @@ paths:
 
 ## Testing
 
-- Red-Green TDD: write the failing test first. Handlers test against hand-rolled fakes of their own narrow interfaces with `httptest`; storage tests open a real SQLite file in `t.TempDir()` (`TestStorageTestsUseAFileNotMemory`). Concurrent code runs under `-race`.
+- Red-Green TDD: write the failing test first. Handlers test against hand-rolled fakes of their own narrow interfaces with `httptest`; `TestStorageTestsUseAFileNotMemory` owns the storage-fixture rule. Concurrent code runs under `-race`.
 - Fixtures follow the Testing rule in the root `AGENTS.md`.

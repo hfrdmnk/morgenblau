@@ -20,12 +20,12 @@ func TestNewOAuthApp_InstallsGuardedClientAndDir(t *testing.T) {
 	app := newOAuthApp(&cfg, nil, client, dir)
 
 	if app.Client != client {
-		t.Errorf("app.Client = %p, want guarded client %p", app.Client, client)
+		t.Errorf("app.Client = %p, want guarded client %p; OAuth discovery must retain SSRF protection for attacker-influenced URLs", app.Client, client)
 	}
 	if app.Client == http.DefaultClient {
-		t.Error("app.Client is still http.DefaultClient (unguarded)")
+		t.Error("install the guarded OAuth client: http.DefaultClient can follow discovery URLs into private networks")
 	}
 	if app.Dir != dir {
-		t.Error("app.Dir is not the guarded directory")
+		t.Error("install the guarded identity directory: handle and DID resolution must retain SSRF protection")
 	}
 }

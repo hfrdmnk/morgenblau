@@ -44,7 +44,7 @@ export default defineConfig([
           paths: [
             {
               name: 'lucide-react',
-              message: 'Replace Lucide icons with local Basicons SVGs.',
+              message: 'Replace Lucide icons with local Basicons SVGs so the interface uses one consistent icon style.',
             },
           ],
         },

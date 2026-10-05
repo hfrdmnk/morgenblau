@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/joho/godotenv/autoload"
@@ -75,6 +76,7 @@ type Server struct {
 	allowedDIDs auth.Allowlist
 
 	gcCancel context.CancelFunc
+	gcWG     sync.WaitGroup
 }
 
 // NewServer returns a cleanup func the caller must run after Shutdown returns (draining sync writes, closing the DB); it can't hang off server.RegisterOnShutdown, since net/http fires those as unwaited detached goroutines.
@@ -162,12 +164,8 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	}
 	sessions := session.NewManager(oauthApp, devConfig, safeClient)
 
-	gcCtx, gcCancel := context.WithCancel(context.Background())
-	go runAuthRequestGC(gcCtx, st)
-
 	profileCache := profiles.New(identityDir, profiles.PDSFetcher{Client: safeClient})
 	tracker := jobs.New()
-	go runJobsGC(gcCtx, tracker)
 	fetcherInst := fetcher.New()
 	pipeline := internalsync.NewFeedPipeline(fetcherInst, qw).WithTxRunner(db.Writer)
 	stdClient := standardfeed.NewClient(identityDir, safeClient)
@@ -184,7 +182,6 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		var smtpAddr net.Addr
 		smtpServer, smtpAddr, smtpDone, err = startNewsletterSMTP(newsletterService, newsletterCfg)
 		if err != nil {
-			gcCancel()
 			_ = orchestrator.Shutdown(context.Background())
 			_ = db.Close()
 			return nil, nil, fmt.Errorf("listen SMTP on %s: %w", newsletterCfg.ListenAddr, err)
@@ -198,15 +195,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	processorDone := make(chan error, 1)
 	go func() { processorDone <- newsletterService.RunProcessor(processorCtx) }()
 
-	if fetchMinutes > 0 {
-		interval := time.Duration(fetchMinutes) * time.Minute
-		refresher := internalsync.NewGlobalRefresher(qr, router)
-		go runGlobalFetch(gcCtx, refresher, interval)
-		slog.Info("global feed fetch enabled", "interval", interval)
-	} else {
-		slog.Info("global feed fetch disabled (FETCH_INTERVAL_MINUTES <= 0)")
-	}
-
+	gcCtx, gcCancel := context.WithCancel(context.Background())
 	srv := &Server{
 		port:        port,
 		db:          db,
@@ -228,6 +217,17 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		gcCancel:    gcCancel,
 	}
 
+	srv.gcWG.Go(func() { runAuthRequestGC(gcCtx, st) })
+	srv.gcWG.Go(func() { runJobsGC(gcCtx, tracker) })
+	if fetchMinutes > 0 {
+		interval := time.Duration(fetchMinutes) * time.Minute
+		refresher := internalsync.NewGlobalRefresher(qr, router)
+		srv.gcWG.Go(func() { runGlobalFetch(gcCtx, refresher, interval) })
+		slog.Info("global feed fetch enabled", "interval", interval)
+	} else {
+		slog.Info("global feed fetch disabled (FETCH_INTERVAL_MINUTES <= 0)")
+	}
+
 	server := &http.Server{
 		Addr:         net.JoinHostPort(listenHost, strconv.Itoa(srv.port)),
 		Handler:      srv.RegisterRoutes(),
@@ -235,10 +235,10 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
-	// Fire-and-forget is fine here: GC/global-sweep tickers hold no writes worth draining.
 	server.RegisterOnShutdown(gcCancel)
 
 	cleanup := func(ctx context.Context) error {
+		gcCancel()
 		if smtpServer != nil {
 			if err := smtpServer.Close(); err != nil && !errors.Is(err, gosmtp.ErrServerClosed) {
 				slog.Warn("newsletter SMTP shutdown", "err", err)
@@ -264,10 +264,25 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		if err := orchestrator.Shutdown(ctx); err != nil {
 			slog.Warn("sync orchestrator shutdown", "err", err)
 		}
-		return db.Close()
+		return srv.closeDatabase(ctx)
 	}
 
 	return server, cleanup, nil
+}
+
+func (s *Server) closeDatabase(ctx context.Context) error {
+	s.gcCancel()
+	done := make(chan struct{})
+	go func() {
+		s.gcWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return s.db.Close()
+	case <-ctx.Done():
+		return fmt.Errorf("drain background workers before closing database: %w", ctx.Err())
+	}
 }
 
 func startNewsletterSMTP(service *newsletter.Service, cfg newsletterRuntimeConfig) (*gosmtp.Server, net.Addr, chan error, error) {
