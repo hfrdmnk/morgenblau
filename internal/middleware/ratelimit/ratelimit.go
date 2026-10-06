@@ -5,6 +5,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"sync"
 	"time"
@@ -52,18 +53,68 @@ func (l *Limiter) allow(key string) (time.Duration, bool) {
 	return 0, true
 }
 
-// ClientIP keys requests by client address. Fly's proxy terminates every connection and sets Fly-Client-IP, so behind Fly the socket address is the proxy's; elsewhere the header is client-controlled and ignored.
+// ClientIP trusts forwarded addresses only behind Fly; Cloudflare provenance comes from Fly-Client-IP, never the socket address of Fly's proxy.
 func ClientIP(behindFly bool) func(*http.Request) string {
 	return func(r *http.Request) string {
 		if behindFly {
-			if ip := r.Header.Get("Fly-Client-IP"); ip != "" {
-				return ip
+			if ip := headerIP(r.Header, "Fly-Client-IP"); ip.IsValid() {
+				for _, prefix := range cloudflarePrefixes {
+					if prefix.Contains(ip) {
+						if client := headerIP(r.Header, "CF-Connecting-IP"); client.IsValid() {
+							return client.String()
+						}
+						break
+					}
+				}
+				return ip.String()
 			}
 		}
-		host, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			return r.RemoteAddr
+		host := r.RemoteAddr
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
 		}
-		return host
+		return parseIP(host).String()
 	}
+}
+
+func headerIP(header http.Header, name string) netip.Addr {
+	values := header.Values(name)
+	if len(values) != 1 {
+		return netip.Addr{}
+	}
+	return parseIP(values[0])
+}
+
+func parseIP(value string) netip.Addr {
+	ip, err := netip.ParseAddr(value)
+	if err != nil || ip.Zone() != "" {
+		return netip.Addr{}
+	}
+	return ip.Unmap()
+}
+
+// Maintainers update these with https://www.cloudflare.com/ips-v4 and https://www.cloudflare.com/ips-v6 (checked 2026-10-05); keep request handling independent of network availability.
+var cloudflarePrefixes = [...]netip.Prefix{
+	netip.MustParsePrefix("173.245.48.0/20"),
+	netip.MustParsePrefix("103.21.244.0/22"),
+	netip.MustParsePrefix("103.22.200.0/22"),
+	netip.MustParsePrefix("103.31.4.0/22"),
+	netip.MustParsePrefix("141.101.64.0/18"),
+	netip.MustParsePrefix("108.162.192.0/18"),
+	netip.MustParsePrefix("190.93.240.0/20"),
+	netip.MustParsePrefix("188.114.96.0/20"),
+	netip.MustParsePrefix("197.234.240.0/22"),
+	netip.MustParsePrefix("198.41.128.0/17"),
+	netip.MustParsePrefix("162.158.0.0/15"),
+	netip.MustParsePrefix("104.16.0.0/13"),
+	netip.MustParsePrefix("104.24.0.0/14"),
+	netip.MustParsePrefix("172.64.0.0/13"),
+	netip.MustParsePrefix("131.0.72.0/22"),
+	netip.MustParsePrefix("2400:cb00::/32"),
+	netip.MustParsePrefix("2606:4700::/32"),
+	netip.MustParsePrefix("2803:f800::/32"),
+	netip.MustParsePrefix("2405:b500::/32"),
+	netip.MustParsePrefix("2405:8100::/32"),
+	netip.MustParsePrefix("2a06:98c0::/29"),
+	netip.MustParsePrefix("2c0f:f248::/32"),
 }

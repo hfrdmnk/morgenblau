@@ -25,13 +25,15 @@ Install [flyctl](https://fly.io/docs/flyctl/install/), sign in, and run these co
 fly auth login
 export FLY_APP=your-globally-unique-app-name
 fly apps create "$FLY_APP"
-fly volumes create morgenblau_data --region fra --size 3 --app "$FLY_APP"
+fly volumes create morgenblau_data --region fra --size 3 --snapshot-retention 7 --app "$FLY_APP"
 fly ips allocate-v4 --app "$FLY_APP"
 fly ips allocate-v6 --app "$FLY_APP"
 fly storage create --app "$FLY_APP"
 ```
 
 Set `app` in `fly.toml` to that name. Leave the bucket **private**; it holds newsletter content and encrypted OAuth sessions. Save the Tigris credentials in your password manager when they are printed: Fly cannot show their original values later. `fly storage create` attaches bucket credentials to the app automatically.
+
+The mount's `snapshot_retention` in `fly.toml` applies only to new volumes created by `fly deploy`; explicitly created volumes need the flag above. Check existing volumes separately. To change retention for future snapshots, use `fly volumes update <volume-id> --snapshot-retention 7 --app "$FLY_APP"`; existing snapshots keep their original retention. See [Fly's snapshot guidance](https://fly.io/docs/volumes/snapshots/).
 
 The dedicated IPv4 is needed for raw TCP port 25, not just HTTP. Start with the committed 512 MB size; watch memory usage and increase it to 1024 MB if necessary. Check [Fly pricing](https://fly.io/docs/about/pricing/) and [Tigris pricing](https://www.tigrisdata.com/docs/pricing/) for the selected organization/region. Budget for the always-on VM, volume, dedicated IPv4, snapshots, and object storage; this is not a free-tier deployment.
 
@@ -86,33 +88,40 @@ Run `fly ips list --app "$FLY_APP"`. In Cloudflare's **DNS → Records** for `mo
 
 | Type | Name | Value | Proxy status |
 | --- | --- | --- | --- |
-| A | `app.morgen.blue` | Dedicated Fly IPv4 | DNS only (grey cloud) |
-| AAAA | `app.morgen.blue` | Fly IPv6 | DNS only (grey cloud) |
+| A | `app.morgen.blue` | Dedicated Fly IPv4 | Proxied (orange cloud) |
+| AAAA | `app.morgen.blue` | Fly IPv6 | Proxied (orange cloud) |
 | A | `mx.app.morgen.blue` | Dedicated Fly IPv4 | DNS only (grey cloud) |
 | MX | `newsletters.morgen.blue` | Priority 10, `mx.app.morgen.blue` | Not applicable |
 
-Start with the app records DNS-only too, so Fly handles HTTPS directly without Cloudflare challenges interfering with OAuth. Cloudflare's normal proxy **does not proxy SMTP**. An MX target must resolve directly to address records, not a CNAME. Publish no SMTP AAAA record until you have tested that path. Leave the landing page's proxy setting and root email records alone.
+The app uses Cloudflare's proxy with SSL/TLS mode **Full (strict)**: Cloudflare connects over HTTPS to Fly and validates Fly's origin certificate. **Flexible** sends origin traffic over HTTP and causes the app's HTTPS redirect to loop. See [Fly's Cloudflare guidance](https://fly.io/docs/networking/understanding-cloudflare/).
+
+Keep **Bot Fight Mode off**: OAuth metadata and JWKS must be fetchable by authorization servers without browser challenges, and the callback must remain reachable. Free Bot Fight Mode is zone-wide and cannot be bypassed with a path-specific WAF Skip rule. Do not put Cloudflare Access or other challenge rules in front of OAuth endpoints. Do not add rules that cache authenticated API responses or OAuth callbacks; the DID gate, not the CDN, protects private app data.
+
+Cloudflare's normal proxy **does not proxy SMTP**. Keep the SMTP hostname DNS-only; MX records are not proxied. An MX target must resolve directly to address records, not a CNAME. Publish no SMTP AAAA record until you have tested that path. Leave the landing page's proxy setting and root email records alone.
 
 Provision the HTTPS certificate for the app:
 
 ```sh
 fly certs add app.morgen.blue --app "$FLY_APP"
+fly certs setup app.morgen.blue --app "$FLY_APP"
 fly certs check app.morgen.blue --app "$FLY_APP"
 ```
 
-Follow any verification records Fly requests. Fly terminates HTTPS at its proxy, but **cannot substitute that certificate for the application's SMTP STARTTLS certificate**. The port 25 service intentionally has no TLS handler: SMTP starts in plaintext and upgrades via STARTTLS.
+For this proxied setup, add the `_acme-challenge.app.morgen.blue` CNAME and `_fly-ownership.app.morgen.blue` TXT records using the exact values from Fly's setup output; keep the challenge CNAME DNS-only. These records support Fly's app HTTPS certificate, not the application's SMTP certificate. Fly terminates origin HTTPS at its proxy, but **cannot substitute that certificate for the application's SMTP STARTTLS certificate**. The port 25 service intentionally has no TLS handler: SMTP starts in plaintext and upgrades via STARTTLS.
 
 Morgenblau embeds [CertMagic](https://github.com/caddyserver/certmagic) to obtain and renew the publicly trusted Let's Encrypt certificate for **`mx.app.morgen.blue`**. `internal/server/smtp_certificates.go` owns issuance, renewal, readiness and shutdown. No Certbot host, Cloudflare API token, certificate-upload deploy token, or renewal timer is needed.
 
 `SMTP_ACME_ENABLED="true"` in `fly.toml` enables this path and signifies acceptance of [Let's Encrypt's subscriber agreement](https://letsencrypt.org/repository/). Set `SMTP_CERT_CONTACT_EMAIL` to an address you monitor. Leave all `SMTP_TLS_*` keypair settings unset; automatic and static TLS configurations conflict and refuse startup.
 
-Validation is **HTTP-01 only**. Public port 80 for `mx.app.morgen.blue` must reach the Go server on port 8000, preserving the host and challenge path. The dedicated IPv4 also routes HTTP without a Fly certificate for that hostname. Keep Fly managing **only `app.morgen.blue`**; do not add a Fly HTTPS certificate for the SMTP hostname. Cloudflare must remain DNS-only, and any CAA policy must permit Let's Encrypt. TLS-ALPN-01 and DNS-01 are not used.
+Validation is **HTTP-01 only**. Public port 80 for `mx.app.morgen.blue` must reach the Go server on port 8000, preserving the host and challenge path. The dedicated IPv4 also routes HTTP without a Fly certificate for that hostname. Keep Fly managing **only `app.morgen.blue`**; do not add a Fly HTTPS certificate for the SMTP hostname. The SMTP hostname must remain DNS-only in Cloudflare, and any CAA policy must permit Let's Encrypt. TLS-ALPN-01 and DNS-01 are not used for SMTP.
 
 Do not enable Fly's `force_https` on port 80: the app serves challenges before authentication and redirects. Ordinary HTTP requests redirect to the configured app HTTPS host; forwarded HTTPS is trusted only when `FLY_APP_NAME` indicates the established Fly proxy boundary. Do not expose backend port 8000 directly to untrusted clients. The anonymous database health route remains available on HTTP so Fly can route challenges **before** issuance finishes.
 
 After HTTP starts listening, the app proactively provisions the single configured `SMTP_HOSTNAME`; request Host/SNI never triggers issuance for other names. SMTP sends no greeting until a valid certificate is available. Renewed certificates replace the active STARTTLS certificate without a deploy, including for clients without SNI. Unexpected SNI and expired certificates fail TLS; new SMTP connections wait while no valid certificate exists. A usable cached certificate stays available during renewal failures. Already established SMTP sessions are not forcibly terminated at expiry; SMTP remains an opportunistic STARTTLS receiver, not a TLS-required submission service.
 
 Certificate/account private keys live in `SMTP_ACME_STORAGE` (default `/data/certmagic`), a private persistent directory owned by the unprivileged app. The worker checks renewal each minute; failed attempts are time-bounded and retried with exponential backoff from one minute to at most six hours while HTTP stays up. Watch `SMTP certificate ready` and `SMTP certificate maintenance failed; retrying` logs and monitor the served expiry independently: database health does not prove SMTP readiness.
+
+An initial HTTP-01 validation can fail while DNS or Fly routing converges; this is a possible cause, not an established diagnosis or an expected first-attempt failure. Let the worker retry, but investigate persistent failures rather than assuming they are normal. Restarting resets the retry backoff. Preserve certificate/account storage across deploys instead of repeatedly using fresh volumes. [Let's Encrypt rate limits](https://letsencrypt.org/docs/rate-limits/) have different scopes: failed authorizations are per identifier and account, duplicate issuance is per exact identifier set across accounts, and new account registration is limited by IP. A fresh account need not share the old account's failed-authorization bucket, but is not a general rate-limit workaround.
 
 SMTP TLS session resumption is disabled so every STARTTLS handshake checks the current identity and validity. An interrupted renewal's unusable keypair triggers a forced renewal without deleting the ACME account; storage-access failures remain failures, not a reason to discard keys. CertMagic's initially stored ACME Renewal Information (ARI) participates in scheduling, but this worker does not periodically refresh CA advice or detect revocation: later emergency/accelerated replacement instructions are not automatically picked up. Shutdown joins app-owned certificate work; CertMagic's process-global rate limiter and transient file-lock refreshers are not a fully stoppable embedded runtime and end with the process.
 
@@ -146,7 +155,15 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://app.morgen.blue/api/digest
 
 Expect `{"status":"up"}`, public metadata/JWKS, and `401` for anonymous digest access. Open the app in your browser and sign in with an allowed account. An uninvited account must receive `403` after OAuth, with no admitted session. Do not put a blanket password/challenge in front of OAuth metadata or callbacks: the authorization server must be able to reach them. The DID gate protects app data; the sign-in page, assets, and public about page remain public.
 
-For newsletters, create your private receiving address in the app, subscribe a test newsletter, and confirm its message appears. Check STARTTLS from your computer:
+For newsletters, create your private receiving address in the app, subscribe a test newsletter, and confirm its message appears. Use **OpenSSL 3** for the STARTTLS checks below (`openssl version` confirms which executable is in use). macOS's built-in LibreSSL may lack `-verify_hostname` and `-noservername`; do not drop these verification flags. With Homebrew:
+
+```sh
+brew install openssl@3
+export PATH="$(brew --prefix openssl@3)/bin:$PATH"
+openssl version
+```
+
+Check STARTTLS from your computer:
 
 ```sh
 openssl s_client -starttls smtp -connect mx.app.morgen.blue:25 \
