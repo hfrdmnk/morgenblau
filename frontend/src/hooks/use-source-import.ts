@@ -15,10 +15,13 @@ export type ImportState =
     | { kind: 'importing'; completed: number; total: number }
     | { kind: 'done'; outcome: ImportOutcome };
 
-async function readOPML(file?: File): Promise<string | undefined> {
+type ImportProvider = 'opml' | 'youtube' | 'skyreader' | 'glean';
+
+async function prepareImportBody(provider: ImportProvider, file?: File) {
+    const field = provider === 'youtube' ? 'csv' : 'opml';
     if (file && file.size > 512 * 1024)
-        throw new Error('Choose an OPML file smaller than 512 KB.');
-    return file?.text();
+        throw new Error(`${field.toUpperCase()} files must be smaller than 512 KB.`);
+    return { provider, [field]: await file?.text() };
 }
 
 function preparationError(error: unknown) {
@@ -41,21 +44,17 @@ export function useSourceImport() {
     const request = useRef<AbortController | null>(null);
     useEffect(() => () => request.current?.abort(), []);
 
-    async function prepare(
-        provider: 'opml' | 'skyreader' | 'glean',
-        file?: File,
-    ) {
+    async function prepare(provider: ImportProvider, file?: File) {
         if (request.current) return;
         const controller = new AbortController();
         request.current = controller;
         setState({ kind: 'preparing', provider });
         try {
-            const opml = await readOPML(file);
             const plan = await api<ImportPlan>(
                 '/api/subscriptions/import/prepare',
                 {
                     method: 'POST',
-                    body: { provider, opml },
+                    body: await prepareImportBody(provider, file),
                     signal: controller.signal,
                 },
             );

@@ -2,6 +2,12 @@ import { Dialog } from '@base-ui/react/dialog';
 import { useRef } from 'react';
 
 import { UploadIcon } from '@/components/icons';
+import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { useSourceImport, type ImportState } from '@/hooks/use-source-import';
 import { DataSettings } from '@/layouts/data-settings';
@@ -25,7 +31,7 @@ export function ImportSources() {
             <div className="mt-12 space-y-10">
                 <section aria-labelledby="opml-title">
                     <h2 id="opml-title" className="text-lg font-medium">
-                        OPML file
+                        From an OPML file
                     </h2>
                     <p className="mt-2 max-w-lg text-sm text-muted-foreground">
                         Upload an export from Reeder, NetNewsWire, or another
@@ -56,6 +62,12 @@ export function ImportSources() {
                             : 'Choose OPML file'}
                     </Button>
                 </section>
+
+                <YouTubeImport
+                    busy={busy}
+                    loading={preparingProvider === 'youtube'}
+                    onFile={(file) => void prepare('youtube', file)}
+                />
 
                 <section aria-labelledby="apps-title">
                     <h2 id="apps-title" className="text-lg font-medium">
@@ -125,6 +137,62 @@ export function ImportSources() {
                 }
             />
         </DataSettings>
+    );
+}
+
+function YouTubeImport({
+    busy,
+    loading,
+    onFile,
+}: {
+    busy: boolean;
+    loading: boolean;
+    onFile: (file: File) => void;
+}) {
+    const input = useRef<HTMLInputElement>(null);
+    return (
+        <section aria-labelledby="youtube-title">
+            <h2 id="youtube-title" className="text-lg font-medium">
+                From YouTube
+            </h2>
+            <input
+                ref={input}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                aria-label="YouTube subscriptions CSV"
+                onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (file) onFile(file);
+                }}
+            />
+            <Button
+                variant="secondary"
+                className="mt-4"
+                disabled={busy}
+                aria-describedby="youtube-help"
+                onClick={() => input.current?.click()}
+            >
+                <UploadIcon />
+                {loading ? 'Loading' : 'Import YouTube subscriptions'}
+            </Button>
+            <p
+                id="youtube-help"
+                className="mt-2 max-w-lg text-sm text-muted-foreground"
+            >
+                Export your YouTube subscriptions from{' '}
+                <a
+                    href="https://takeout.google.com/takeout/custom/youtube"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-4"
+                >
+                    Google Takeout
+                </a>
+                , then extract and upload the subscriptions CSV file.
+            </p>
+        </section>
     );
 }
 
@@ -244,18 +312,22 @@ function ImportConfirmation({
                 and primary status; incoming tags are merged with yours.
             </Dialog.Description>
             {plan.warnings.length > 0 && (
-                <details className="mt-4 text-sm text-muted-foreground">
-                    <summary className="cursor-pointer">
-                        Import warnings ({plan.warnings.length})
-                    </summary>
-                    <ul className="mt-3 list-disc space-y-2 pl-5">
-                        {plan.warnings.map((warning, index) => (
-                            <li key={index} className="break-words">
-                                {warning}
-                            </li>
-                        ))}
-                    </ul>
-                </details>
+                <Accordion className="mt-4 text-muted-foreground">
+                    <AccordionItem value="warnings">
+                        <AccordionTrigger>
+                            Import warnings ({plan.warnings.length})
+                        </AccordionTrigger>
+                        <AccordionContent>
+                            <ul className="list-disc space-y-2 pl-5">
+                                {plan.warnings.map((warning, index) => (
+                                    <li key={index} className="break-words">
+                                        {warning}
+                                    </li>
+                                ))}
+                            </ul>
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
             )}
             <div className="mt-6 flex justify-end gap-2">
                 <Dialog.Close render={<Button variant="ghost" />}>

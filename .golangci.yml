@@ -40,7 +40,7 @@ linters:
         linters:
           - forbidigo
       # Import errors double as user-facing copy; splitting message from error is a refactor.
-      - path: internal/api/subscriptions_(import|opml)\.go
+      - path: internal/api/subscriptions_(import|opml|youtube)\.go
         text: ST1005
         linters:
           - staticcheck

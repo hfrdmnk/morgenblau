@@ -29,12 +29,19 @@ func SubscriptionsImportPrepareHandler(pds atprepo.Lister) http.Handler {
 		var body struct {
 			Provider string `json:"provider"`
 			OPML     string `json:"opml"`
+			CSV      string `json:"csv"`
 		}
 		if !decodeJSON(w, r, &body) {
 			return
 		}
-		if body.Provider == "opml" {
-			plan, err := parseOPML(body.OPML)
+		if body.Provider == "opml" || body.Provider == "youtube" {
+			var plan importPlan
+			var err error
+			if body.Provider == "youtube" {
+				plan, err = parseYouTubeCSV(body.CSV)
+			} else {
+				plan, err = parseOPML(body.OPML)
+			}
 			if err != nil {
 				writeError(w, 400, codeInvalidRequest, err.Error())
 				return
@@ -49,7 +56,7 @@ func SubscriptionsImportPrepareHandler(pds atprepo.Lister) http.Handler {
 		case "glean":
 			collection = "at.glean.subscription"
 		default:
-			writeError(w, 400, codeInvalidRequest, "Choose OPML, Skyreader, or Glean")
+			writeError(w, 400, codeInvalidRequest, "Choose OPML, YouTube, Skyreader, or Glean")
 			return
 		}
 		records, err := pds.ListRecords(r.Context(), sess, syntax.NSID(collection))

@@ -85,6 +85,8 @@ Fetch failures remain quiet in the digest. Source management can show fetch heal
 
 OPML import/export covers RSS/Atom subscriptions, including YouTube feeds. It excludes native Standardfeed subscriptions, which remain in the PDS, and email subscriptions. Newsletter CSV export is a possible later addition, outside v1.
 
+YouTube subscriptions can also be imported from an extracted Google Takeout CSV as ordinary public feed subscriptions. `internal/api/subscriptions_youtube.go` owns the conversion; the shared source importer owns confirmation, duplicate handling, and PDS writes.
+
 </feed-sources>
 
 ---
