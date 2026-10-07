@@ -263,7 +263,14 @@ func (q *Queries) UpdateFeedEntryExtractedBody(ctx context.Context, arg UpdateFe
 
 const upsertFeedEntry = `-- name: UpsertFeedEntry :exec
 INSERT INTO feed_entries (feed_url, guid, entry_slug, url, title, content_html, content_type, published_at, fetched_at, metadata)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (
+    ?1, ?2, ?3, ?4,
+    ?5, ?6, ?7,
+    COALESCE(NULLIF(CAST(?8 AS TEXT), ''),
+        (SELECT published_at FROM feed_entries WHERE feed_url = ?1 AND guid = ?2),
+        ?9),
+    ?9, ?10
+)
 ON CONFLICT (feed_url, guid) DO UPDATE SET
     url          = excluded.url,
     title        = excluded.title,

@@ -48,6 +48,9 @@ func TestChooseTime(t *testing.T) {
 		{name: "raw bluesky offset", item: &gofeed.Item{Published: "24 May 2026 20:02 +0200"}, want: bskyOffset},
 		{name: "raw bluesky utc", item: &gofeed.Item{Published: "25 May 2026 14:43 +0000"}, want: bskyUTC},
 		{name: "raw updated fallback", item: &gofeed.Item{Updated: "24 May 2026 20:02 +0200"}, want: bskyOffset},
+		{name: "padded atom date", item: &gofeed.Item{Updated: "2025-11-08  T00:00:00Z"}, want: time.Date(2025, 11, 8, 0, 0, 0, 0, time.UTC)},
+		{name: "padded atom offset", item: &gofeed.Item{Published: "2025-11-08 \tT23:30:00-05:00"}, want: time.Date(2025, 11, 9, 4, 30, 0, 0, time.UTC)},
+		{name: "invalid padded atom date", item: &gofeed.Item{Updated: "2025-11-32  T00:00:00Z"}, want: fallback},
 		{name: "raw malformed", item: &gofeed.Item{Published: "not a date"}, want: fallback},
 	}
 	for _, tt := range cases {

@@ -1,6 +1,13 @@
 -- name: UpsertFeedEntry :exec
 INSERT INTO feed_entries (feed_url, guid, entry_slug, url, title, content_html, content_type, published_at, fetched_at, metadata)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (
+    sqlc.arg(feed_url), sqlc.arg(guid), sqlc.arg(entry_slug), sqlc.arg(url),
+    sqlc.arg(title), sqlc.arg(content_html), sqlc.arg(content_type),
+    COALESCE(NULLIF(CAST(sqlc.arg(published_at) AS TEXT), ''),
+        (SELECT published_at FROM feed_entries WHERE feed_url = sqlc.arg(feed_url) AND guid = sqlc.arg(guid)),
+        sqlc.arg(fetched_at)),
+    sqlc.arg(fetched_at), sqlc.arg(metadata)
+)
 ON CONFLICT (feed_url, guid) DO UPDATE SET
     url          = excluded.url,
     title        = excluded.title,

@@ -188,7 +188,11 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 			if guid == "" {
 				continue
 			}
-			published := chooseTime(item, p.now())
+			published := chooseTime(item, time.Time{})
+			publishedAt := ""
+			if !published.IsZero() {
+				publishedAt = published.UTC().Format(time.RFC3339)
+			}
 			body := chooseBody(item)
 			sanitized := p.sanitizer.Sanitize(body)
 			ct := classifyContentType(feedURL, item)
@@ -210,7 +214,7 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 				Title:       nilIfEmpty(strings.TrimSpace(item.Title)),
 				ContentHtml: nilIfEmpty(sanitized),
 				ContentType: ct,
-				PublishedAt: published.UTC().Format(time.RFC3339),
+				PublishedAt: publishedAt,
 				FetchedAt:   nowStr,
 				Metadata:    metaJSON,
 			}); err != nil {
@@ -233,14 +237,15 @@ func chooseGUID(item *gofeed.Item) string {
 }
 
 func chooseTime(item *gofeed.Item, fallback time.Time) time.Time {
+	// gofeed may substitute UpdatedParsed for an unparseable Atom publication date.
+	if t, ok := parseRawDate(item.Published); ok {
+		return t
+	}
 	if item.PublishedParsed != nil {
 		return *item.PublishedParsed
 	}
 	if item.UpdatedParsed != nil {
 		return *item.UpdatedParsed
-	}
-	if t, ok := parseRawDate(item.Published); ok {
-		return t
 	}
 	if t, ok := parseRawDate(item.Updated); ok {
 		return t
@@ -258,6 +263,12 @@ func parseRawDate(s string) (time.Time, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return time.Time{}, false
+	}
+	// Some Atom generators leave padding between the calendar date and T.
+	if date, clock, ok := strings.Cut(s, "T"); ok {
+		if t, err := time.Parse(time.RFC3339, strings.TrimSpace(date)+"T"+clock); err == nil {
+			return t, true
+		}
 	}
 	for _, f := range extraDateFormats {
 		if t, err := time.Parse(f, s); err == nil {

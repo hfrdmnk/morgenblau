@@ -67,6 +67,49 @@ func openMigrationDB(t *testing.T, path string) *sql.DB {
 	return db
 }
 
+func TestPublicationDateRepairInvalidatesAllRSSValidators(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "repair.db")
+	db := openMigrationDB(t, path)
+	runGoose(t, path, "up-to", "20260920000005")
+	for _, fixture := range []struct {
+		name, kind, published string
+	}{
+		{"fallback", "rss", "2026-10-05T12:00:00Z"},
+		{"skewed", "rss", "2026-10-05T12:00:02Z"},
+		{"dated", "rss", "2025-11-08T00:00:00Z"},
+		{"native", "standardfeed", "2026-10-05T12:00:00Z"},
+	} {
+		url := "https://" + fixture.name + ".example.com/feed"
+		if _, err := db.Exec(`INSERT INTO feeds (feed_url, kind, etag, last_modified, created_at, updated_at) VALUES (?, ?, 'validator', 'modified', 'created', 'updated')`, url, fixture.kind); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO feed_entries (feed_url, guid, entry_slug, url, content_type, published_at, fetched_at) VALUES (?, 'post', ?, ?, 'blogpost', ?, '2026-10-05T12:00:00Z')`, url, fixture.name, url+"/post", fixture.published); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runGoose(t, path, "up")
+	for _, name := range []string{"fallback", "skewed", "dated", "native"} {
+		var etag, modified sql.NullString
+		if err := db.QueryRow(`SELECT etag, last_modified FROM feeds WHERE feed_url = ?`, "https://"+name+".example.com/feed").Scan(&etag, &modified); err != nil {
+			t.Fatal(err)
+		}
+		if name != "native" {
+			if etag.Valid || modified.Valid {
+				t.Errorf("%s: validators retained: %v, %v", name, etag, modified)
+			}
+		} else if etag != (sql.NullString{String: "validator", Valid: true}) || modified != (sql.NullString{String: "modified", Valid: true}) {
+			t.Errorf("%s: validators changed: %v, %v", name, etag, modified)
+		}
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM feed_entries`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 4 {
+		t.Errorf("entry count = %d, want 4", count)
+	}
+}
+
 func runGoose(t *testing.T, databasePath string, args ...string) {
 	t.Helper()
 	if err := runGooseCommand(databasePath, args...); err != nil {

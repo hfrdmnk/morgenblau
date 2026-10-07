@@ -82,6 +82,58 @@ func seedCatalogFeed(t *testing.T, dbs *database.DB, feedURL string) {
 	}
 }
 
+func TestFeedPipeline_PublicationDateRepairAndStability(t *testing.T) {
+	var mu sync.Mutex
+	date := ""
+	published := ""
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		_, _ = w.Write([]byte(`<feed xmlns="http://www.w3.org/2005/Atom"><title>Example Publication</title><id>https://site.example.com/</id><entry><id>post</id><link href="https://site.example.com/post"/><published>` + published + `</published><updated>` + date + `</updated></entry></feed>`))
+	}))
+	defer srv.Close()
+	feedURL := srv.URL + "/feed.xml"
+	dbs := openPipelineTestDB(t)
+	seedCatalogFeed(t, dbs, feedURL)
+	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	p := NewFeedPipeline(fetcher.New(fetcher.WithSafeHTTPOptions(safehttp.WithAllowLoopback())), db.New(dbs.Writer)).
+		WithFaviconDiscoverer(&fakeFaviconDiscoverer{}).WithTxRunner(dbs.Writer)
+	p.now = func() time.Time { return now }
+	check := func(want string) {
+		t.Helper()
+		if err := p.FetchAndStore(context.Background(), feedURL); err != nil {
+			t.Fatal(err)
+		}
+		entry, err := db.New(dbs.Reader).GetFeedEntryBySlug(context.Background(), EntrySlug(feedURL, "post"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if entry.PublishedAt != want {
+			t.Errorf("published_at = %s, want %s", entry.PublishedAt, want)
+		}
+	}
+	check("2026-10-05T12:00:00Z")
+	now = now.Add(24 * time.Hour)
+	check("2026-10-05T12:00:00Z")
+
+	mu.Lock()
+	date = "2025-11-08  T00:00:00Z"
+	mu.Unlock()
+	check("2025-11-08T00:00:00Z")
+	mu.Lock()
+	date = "not a date"
+	mu.Unlock()
+	check("2025-11-08T00:00:00Z")
+	mu.Lock()
+	date = "2025-11-09T23:30:00-05:00"
+	mu.Unlock()
+	check("2025-11-10T04:30:00Z")
+	mu.Lock()
+	published = "2025-11-08  T00:00:00Z"
+	mu.Unlock()
+	check("2025-11-08T00:00:00Z")
+}
+
 func TestFeedPipeline_FetchAndStore_BackoffPersistsAcrossCallsThenRecovers(t *testing.T) {
 	var mu sync.Mutex
 	hits := 0
