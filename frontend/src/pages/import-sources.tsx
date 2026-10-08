@@ -1,5 +1,6 @@
 import { Dialog } from '@base-ui/react/dialog';
 import { useRef } from 'react';
+import { Link } from 'wouter';
 
 import { UploadIcon } from '@/components/icons';
 import {
@@ -10,8 +11,10 @@ import {
 } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { useSourceImport, type ImportState } from '@/hooks/use-source-import';
+import { useSources, type FeedSource } from '@/hooks/use-sources';
 import { DataSettings } from '@/layouts/data-settings';
-import type { ImportOutcome, ImportPlan } from '@/lib/source-import';
+import { PATHS } from '@/lib/paths';
+import type { ImportOutcome, ImportPlan, ImportSource } from '@/lib/source-import';
 
 export function ImportSources() {
     const { state, prepare, startImport, cancel } = useSourceImport();
@@ -239,57 +242,65 @@ function ImportDialogContent({
     onConfirm: (plan: ImportPlan) => void;
     onRetry: (outcome: ImportOutcome) => void;
 }) {
+    if (state.kind === 'confirm') {
+        return <ImportConfirmation plan={state.plan} onConfirm={() => onConfirm(state.plan)} />;
+    }
+    if (state.kind === 'done') {
+        return <ImportReceipt outcome={state.outcome} onRetry={() => onRetry(state.outcome)} />;
+    }
     return (
         <>
-            {state.kind === 'confirm' && (
-                <ImportConfirmation
-                    plan={state.plan}
-                    onConfirm={() => onConfirm(state.plan)}
+            <Dialog.Title className="text-xl font-medium">
+                Importing sources
+            </Dialog.Title>
+            <Dialog.Description
+                className="mt-3 text-sm text-muted-foreground"
+                role="status"
+            >
+                {state.completed} of {state.total} processed. Keep this
+                page open.
+            </Dialog.Description>
+            <div
+                className="mt-6 h-1.5 overflow-hidden rounded-sm bg-secondary/50"
+                role="progressbar"
+                aria-valuenow={state.completed}
+                aria-valuemin={0}
+                aria-valuemax={state.total}
+                aria-label="Sources processed"
+            >
+                <div
+                    className="h-full w-full rounded-sm bg-neutral transition-transform duration-(--motion-duration-overlay) ease-in-out motion-reduce:transition-none"
+                    style={{ transform: `translateX(${(state.completed / state.total - 1) * 100}%)` }}
                 />
+            </div>
+        </>
+    );
+}
+
+function ImportReceipt({ outcome, onRetry }: { outcome: ImportOutcome; onRetry: () => void }) {
+    const paused = outcome.remaining.length > 0;
+    return (
+        <>
+            <Dialog.Title className="mb-3 text-xl font-medium">
+                {paused ? 'Import paused' : 'Subscriptions saved'}
+            </Dialog.Title>
+            {outcome.imported.length > 0 && (
+                <Dialog.Description className="mb-4 text-sm text-muted-foreground">
+                    {paused
+                        ? 'Successfully imported subscriptions are saved.'
+                        : 'Your subscriptions are saved.'} Their posts are checked separately.
+                    You can close this window; collection continues automatically.
+                </Dialog.Description>
             )}
-            {state.kind === 'importing' && (
-                <>
-                    <Dialog.Title className="text-xl font-medium">
-                        Importing sources
-                    </Dialog.Title>
-                    <Dialog.Description
-                        className="mt-3 text-sm text-muted-foreground"
-                        role="status"
-                    >
-                        {state.completed} of {state.total} processed. Keep this
-                        page open.
-                    </Dialog.Description>
-                    <div
-                        className="mt-6 h-1.5 overflow-hidden rounded-sm bg-secondary/50"
-                        role="progressbar"
-                        aria-valuenow={state.completed}
-                        aria-valuemin={0}
-                        aria-valuemax={state.total}
-                        aria-label="Sources processed"
-                    >
-                        <div
-                            className="h-full w-full rounded-sm bg-neutral transition-transform duration-(--motion-duration-overlay) ease-in-out motion-reduce:transition-none"
-                            style={{ transform: `translateX(${(state.completed / state.total - 1) * 100}%)` }}
-                        />
-                    </div>
-                </>
-            )}
-            {state.kind === 'done' && (
-                <>
-                    <Dialog.Title className="mb-3 text-xl font-medium">
-                        Import paused
-                    </Dialog.Title>
-                    <ImportResult
-                        outcome={state.outcome}
-                        onRetry={() => onRetry(state.outcome)}
-                    />
-                    <Dialog.Close
-                        render={<Button variant="ghost" className="mt-6" />}
-                    >
-                        Close
-                    </Dialog.Close>
-                </>
-            )}
+            <ImportResult outcome={outcome} onRetry={onRetry} />
+            <div className="mt-6 flex justify-end gap-2">
+                <Dialog.Close nativeButton={false} render={<Button variant="ghost" nativeButton={false} render={<Link href={PATHS.sources} />} />}>
+                    View sources
+                </Dialog.Close>
+                <Dialog.Close render={<Button variant="secondary" />}>
+                    Done
+                </Dialog.Close>
+            </div>
         </>
     );
 }
@@ -356,6 +367,7 @@ function ImportResult({
                 <p className="text-destructive">{outcome.error}</p>
             )}
             <ImportFailures failures={outcome.failures} />
+            {outcome.imported.length > 0 && <ImportCollection sources={outcome.imported} />}
             {outcome.remaining.length > 0 && (
                 <>
                     <p className="text-muted-foreground">
@@ -369,6 +381,38 @@ function ImportResult({
                 </>
             )}
         </div>
+    );
+}
+
+function ImportCollection({ sources }: { sources: ImportSource[] }) {
+    const state = useSources<FeedSource[]>('/api/subscriptions', 2_000);
+    if (state.status !== 'loaded') {
+        const messages = {
+            loading: 'Checking posts…',
+            error: 'Couldn’t check post availability. Your subscriptions are saved.',
+        };
+        return <p role="status" className="text-muted-foreground">{messages[state.status]}</p>;
+    }
+    const byURL = new Map(state.data.map((source) => [source.feedUrl, source]));
+    const unavailable = sources.filter((source) => byURL.get(source.feedUrl)?.fetchStatus === 'unavailable');
+    if (unavailable.length === 0) return null;
+    return (
+        <Accordion className="text-muted-foreground">
+            <AccordionItem value="collection">
+                <AccordionTrigger>
+                    Posts not fetching for {unavailable.length} {unavailable.length === 1 ? 'source' : 'sources'}
+                </AccordionTrigger>
+                <AccordionContent>
+                    <ul className="list-disc space-y-2 pl-5">
+                        {unavailable.map((source) => (
+                            <li key={source.feedUrl} className="break-words">
+                                {source.title || source.feedUrl}
+                            </li>
+                        ))}
+                    </ul>
+                </AccordionContent>
+            </AccordionItem>
+        </Accordion>
     );
 }
 

@@ -75,6 +75,8 @@ type SubscriptionWire struct {
 	Frequency       string   `json:"frequency,omitempty"`
 	LastPublishedAt string   `json:"lastPublishedAt,omitempty"`
 	LastFetchedAt   string   `json:"lastFetchedAt,omitempty"`
+	FetchStatus     string   `json:"fetchStatus,omitempty"`
+	NextFetchAt     string   `json:"nextFetchAt,omitempty"`
 	Muted           bool     `json:"muted,omitempty"`
 	Primary         bool     `json:"primary"`
 	Tags            []string `json:"tags,omitempty"`
@@ -137,7 +139,7 @@ type subscriptionStatsFields struct {
 }
 
 func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) SubscriptionWire {
-	return subscriptionStatsRowToWire(subscriptionStatsFields{
+	wire := subscriptionStatsRowToWire(subscriptionStatsFields{
 		Rkey:                row.Rkey,
 		AtUri:               row.AtUri,
 		FeedUrl:             row.FeedUrl,
@@ -157,6 +159,15 @@ func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) Subscrip
 		Count56d:            row.Count56d,
 		Count84d:            row.Count84d,
 	}, now)
+	wire.FetchStatus = "waiting"
+	if wire.LastFetchedAt != "" {
+		wire.FetchStatus = "ready"
+	}
+	if row.ConsecutiveFailures > 0 {
+		wire.FetchStatus = "unavailable"
+		wire.NextFetchAt = derefStr(row.NextFetchAt)
+	}
+	return wire
 }
 
 func subscriptionStatsRowToWire(f subscriptionStatsFields, now time.Time) SubscriptionWire {

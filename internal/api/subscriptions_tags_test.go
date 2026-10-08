@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"morgenblau/internal/database/db"
 )
@@ -113,6 +114,52 @@ func TestSubscriptionsList_RoundTripsPrimaryAndTags(t *testing.T) {
 	}
 	if len(got[0].Tags) != 2 || got[0].Tags[0] != "News" {
 		t.Errorf("tags = %v", got[0].Tags)
+	}
+}
+
+func TestSourceFetchHealth_FirstFailureAndRecovery(t *testing.T) {
+	row := db.ListUserSourcesWithStatsRow{
+		FeedUrl:             "https://publication.example.com/feed.xml",
+		LastFetchedAt:       ptrString("2026-10-08T07:00:00Z"),
+		NextFetchAt:         ptrString("2026-10-08T08:05:00Z"),
+		ConsecutiveFailures: 1,
+	}
+	for _, failures := range []int64{1, 0} {
+		row.ConsecutiveFailures = failures
+		if failures == 0 {
+			row.NextFetchAt = nil
+		}
+		body, err := json.Marshal(sourceRowToWire(row, time.Now()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatal(err)
+		}
+		want := "ready"
+		if failures > 0 {
+			want = "unavailable"
+			if got["nextFetchAt"] != "2026-10-08T08:05:00Z" {
+				t.Errorf("retry eligibility lost: %s", body)
+			}
+		} else if _, present := got["nextFetchAt"]; present {
+			t.Errorf("recovered feed still has a retry time: %s", body)
+		}
+		if got["fetchStatus"] != want {
+			t.Errorf("failures = %d: wire = %s", failures, body)
+		}
+		if got["lastFetchedAt"] != "2026-10-08T07:00:00Z" {
+			t.Errorf("last successful fetch lost: %s", body)
+		}
+	}
+	row.LastFetchedAt = nil
+	body, err := json.Marshal(sourceRowToWire(row, time.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"fetchStatus":"waiting"`) {
+		t.Errorf("never-fetched feed must not look successful: %s", body)
 	}
 }
 

@@ -71,7 +71,9 @@ export function useSourceImport() {
 
     async function startImport(
         plan: ImportPlan,
-        previous = { added: 0, updated: 0, unchanged: 0 },
+        previous: Pick<ImportOutcome, 'added' | 'updated' | 'unchanged' | 'imported'> = {
+            added: 0, updated: 0, unchanged: 0, imported: [],
+        },
     ) {
         if (request.current) return;
         const controller = new AbortController();
@@ -99,17 +101,17 @@ export function useSourceImport() {
             added: previous.added + outcome.added,
             updated: previous.updated + outcome.updated,
             unchanged: previous.unchanged + outcome.unchanged,
+            imported: [...previous.imported, ...outcome.imported],
         };
+        setState({ kind: 'done', outcome: combined });
         if (combined.remaining.length > 0) {
-            setState({ kind: 'done', outcome: combined });
             toast.error('Import paused', {
                 description: 'Some sources could not be imported. Retry them in the dialog.',
             });
         } else {
-            toast.success('Import complete', {
-                description: `${combined.added} added, ${combined.updated} updated, ${combined.unchanged} already up to date.`,
+            toast.success('Subscriptions saved', {
+                description: 'Their posts are checked separately. You can follow collection in the dialog.',
             });
-            setState({ kind: 'idle' });
         }
     }
 

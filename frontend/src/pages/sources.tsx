@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'wouter';
 
+import { FeedHealth } from '@/components/feed-health';
 import { Button } from '@/components/ui/button';
 import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-sources';
 import { PATHS } from '@/lib/paths';
@@ -16,7 +17,7 @@ export function Sources() {
 }
 
 function FeedList() {
-    const state = useSources<FeedSource[]>('/api/subscriptions');
+    const state = useSources<FeedSource[]>('/api/subscriptions', 15_000);
     return (
         <SourceSection title="Feeds">
             {state.status === 'loaded' ? (
@@ -26,7 +27,7 @@ function FeedList() {
                             <SourceRow key={source.rkey} title={source.title}
                                 identity={source.siteUrl || source.feedUrl} favicon={source.faviconUrl}
                                 primary={source.primary}>
-                                {source.muted ? <p className="mt-2 text-sm text-subtle-foreground">Updates unavailable. Retrying automatically.</p> : null}
+                                <FeedHealth source={source} />
                             </SourceRow>
                         ))}
                     </ul>
@@ -88,8 +89,8 @@ function SourceRow({ title, identity, favicon, primary, children }: {
             <div className="mt-2 flex items-center gap-2.5 text-sm text-subtle-foreground">
                 {favicon ? <img alt="" src={favicon} loading="lazy" referrerPolicy="no-referrer" className="size-4 shrink-0 rounded-sm object-cover" onError={(event) => { event.currentTarget.hidden = true; }} /> : null}
                 <span className="min-w-0 break-all">{identity.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
+                {children}
             </div>
-            {children}
         </li>
     );
 }

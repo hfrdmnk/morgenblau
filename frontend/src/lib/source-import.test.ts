@@ -66,6 +66,7 @@ test('imports sequential five-source batches and aggregates distinct outcomes', 
         unchanged: 3,
         failures: [],
         remaining: [],
+        imported: sources,
     });
 });
 
@@ -87,6 +88,7 @@ test('partial failure retries only failed and unattempted sources', async () => 
     );
     expect(calls).toBe(1);
     expect(result.remaining).toEqual([sources[2], ...sources.slice(5)]);
+    expect(result.imported).toEqual([sources[0], sources[1], sources[3], sources[4]]);
     expect(result.added).toBe(3);
     expect(result.updated).toBe(1);
 });
@@ -118,6 +120,7 @@ test('lost batch response retains all uncertain sources without losing earlier s
         expect(notifications).toBe(1);
         expect(result.added).toBe(5);
         expect(result.remaining).toEqual(sources.slice(5));
+        expect(result.imported).toEqual(sources.slice(0, 5));
         expect(result.error).toContain('retry safely');
     } finally {
         subscriptionChanges.removeEventListener('change', listener);

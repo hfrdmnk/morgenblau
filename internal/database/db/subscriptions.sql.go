@@ -226,6 +226,7 @@ SELECT
     f.site_url, f.icon_url,
     f.title AS catalog_title,
     f.last_fetched_at,
+    f.next_fetch_at,
     COALESCE(f.consecutive_failures, 0) AS consecutive_failures,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
     COALESCE((SELECT MIN(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
@@ -264,6 +265,7 @@ type ListUserSourcesWithStatsRow struct {
 	IconUrl             *string     `json:"icon_url"`
 	CatalogTitle        *string     `json:"catalog_title"`
 	LastFetchedAt       *string     `json:"last_fetched_at"`
+	NextFetchAt         *string     `json:"next_fetch_at"`
 	ConsecutiveFailures int64       `json:"consecutive_failures"`
 	LastPublishedAt     interface{} `json:"last_published_at"`
 	FirstPublishedAt    interface{} `json:"first_published_at"`
@@ -308,6 +310,7 @@ func (q *Queries) ListUserSourcesWithStats(ctx context.Context, arg ListUserSour
 			&i.IconUrl,
 			&i.CatalogTitle,
 			&i.LastFetchedAt,
+			&i.NextFetchAt,
 			&i.ConsecutiveFailures,
 			&i.LastPublishedAt,
 			&i.FirstPublishedAt,

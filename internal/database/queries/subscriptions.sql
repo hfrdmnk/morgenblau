@@ -104,6 +104,7 @@ SELECT
     f.site_url, f.icon_url,
     f.title AS catalog_title,
     f.last_fetched_at,
+    f.next_fetch_at,
     COALESCE(f.consecutive_failures, 0) AS consecutive_failures,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
     COALESCE((SELECT MIN(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,

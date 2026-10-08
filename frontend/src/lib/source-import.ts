@@ -17,6 +17,7 @@ type ImportBatch = {
 };
 export type ImportOutcome = ImportBatch & {
     remaining: ImportSource[];
+    imported: ImportSource[];
     error?: string;
 };
 
@@ -31,6 +32,7 @@ export async function importSources(
         unchanged: 0,
         failures: [],
         remaining: [],
+        imported: [],
     };
     for (let offset = 0; offset < sources.length; offset += 5) {
         const batch = sources.slice(offset, offset + 5);
@@ -44,14 +46,13 @@ export async function importSources(
             outcome.updated += result.updated;
             outcome.unchanged += result.unchanged;
             outcome.failures.push(...result.failures);
+            const failed = new Set(result.failures.map((failure) => failure.feedUrl));
+            outcome.imported.push(...batch.filter((source) => !failed.has(source.feedUrl)));
             if (result.added + result.updated + result.unchanged > 0) {
                 subscriptionChanges.dispatchEvent(new Event('change'));
             }
             onProgress(outcome.added + outcome.updated + outcome.unchanged);
             if (result.failures.length) {
-                const failed = new Set(
-                    result.failures.map((failure) => failure.feedUrl),
-                );
                 outcome.remaining = [
                     ...batch.filter((source) => failed.has(source.feedUrl)),
                     ...sources.slice(offset + 5),

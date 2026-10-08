@@ -6,7 +6,7 @@ Help article: none
 
 ## Sub-features
 
-- `import-page` `/settings/import` (`frontend/src/pages/import-sources.tsx`): `Choose OPML file` (a hidden file input), `Import from Skyreader`, `Import from Glean`. Preparing opens a dialog `Import <n> sources?` with `Cancel` and `Import sources`; success toasts `Import complete` with added, updated and unchanged counts; failures show `Import paused` with `Retry remaining sources`.
+- `import-page` `/settings/import` (`frontend/src/pages/import-sources.tsx`): preparing opens a confirmation dialog; successful imports keep a `Subscriptions saved` receipt open with counts. Subscription failures show `Import paused` with `Retry remaining sources`; feed availability is separate. `ImportCollection` polls health for confirmed sources and lists only unavailable feeds in a `Posts not fetching for <n> sources` accordion. `View sources` is a ghost button that closes the receipt and navigates to Sources.
 - `prepare` `POST /api/subscriptions/import/prepare` with `{provider:"opml", opml}` parses the file; `skyreader` and `glean` list that app's records on the reader's PDS. Returns `{sources, warnings}`.
 - `import` `POST /api/subscriptions/import` with `{sources}` (1 to 5 per call; the page batches by 5, `frontend/src/lib/source-import.ts`) returns `{added, updated, unchanged, failures}`.
 - `export-page` `/settings/export`: `Download OPML` saves `morgenblau.opml` and toasts `Your OPML download is ready.`
@@ -25,7 +25,8 @@ Preconditions:
 - An OPML fixture in the evidence dir, so the guarded `upload` accepts it: write `$E/sources.opml` with one folder `Example Folder` holding two `type="rss"` outlines whose `xmlUrl` are `https://example.com/verify-one.xml` and `https://example.com/verify-two.xml`. Their fetches fail; a feed failure never fails the sync.
 
 - **Prepare.** `$V api $S POST /api/subscriptions/import/prepare --data "$(jq -n --rawfile o $E/sources.opml '{provider:"opml", opml:$o}')" --out prepare`: two sources tagged `Example Folder`, no warnings.
-- **Import in the UI.** Open the account menu, click `Import`. `click "getByRole('button', { name: 'Choose OPML file' })"` reports a file chooser; `upload sources.opml`. Dialog `Import 2 sources?`; `screenshot --filename=import-confirm.png`; click `Import sources`. Poll `snapshot` for the toast `Import complete` / `2 added, 0 updated, 0 already up to date.`; `screenshot --filename=import-done.png`. `inspect`: two `user_subscriptions` rows on the fixture URLs; `sqlite3 -readonly` on `user_subscriptions.tags` shows `["Example Folder"]`.
+- **Import in the UI.** Open the account menu, click `Import`. `click "getByRole('button', { name: 'Choose OPML file' })"` reports a file chooser; `upload sources.opml`. Dialog `Import 2 sources?`; `screenshot --filename=import-confirm.png`; click `Import sources`. Poll `snapshot` for the retained `Subscriptions saved` dialog and `2 added, 0 updated, 0 already up to date.`; `screenshot --filename=import-done.png`. `inspect`: two `user_subscriptions` rows on the fixture URLs; `sqlite3 -readonly` on `user_subscriptions.tags` shows `["Example Folder"]`.
+- **Collection feedback.** Wait until `GET /api/jobs/active` is `null`. Expand `Posts not fetching for 2 sources`: it lists only both fixture feed names, without per-feed timestamps or retry details. Save `import-collection.png`; click the `View sources` button and assert navigation to `/sources` with no open dialog. Repeat with one unavailable feed to prove singular wording, and with only the standing reachable feed from [subscriptions](./subscriptions.md) to prove there is no warning accordion, even when other subscriptions are unavailable. Check the collapsed and expanded receipt at a narrow viewport for overflow.
 - **Idempotent.** `$V api $S POST /api/subscriptions/import --data "$(jq -c '{sources}' $E/prepare.json)" --out reimport`: `unchanged` 2, no new rows.
 - **Export in the UI.** `goto /settings/export`, click `Download OPML`: the driver reports `Downloaded file morgenblau.opml` into `$E/.playwright-cli/`; it holds an `Example Folder` outline with both fixture feeds. `screenshot --filename=export-done.png`.
 - **Export API.** `POST /api/subscriptions/export --out export`: `opml` contains both fixture URLs.
@@ -35,7 +36,7 @@ Preconditions:
 ## Evidence
 
 - `sources.opml`, `prepare.json`, `reimport.json`, `export.json`, `.playwright-cli/morgenblau.opml`
-- `import-confirm.png`, `import-done.png`, `export-done.png`
+- `import-confirm.png`, `import-done.png`, `import-collection.png`, `export-done.png`
 - `inspect-before.json`, `inspect-after.json`
 
 ## Gotchas

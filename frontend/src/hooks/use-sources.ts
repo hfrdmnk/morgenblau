@@ -11,6 +11,9 @@ export type FeedSource = {
     faviconUrl?: string;
     primary: boolean;
     muted?: boolean;
+    fetchStatus: 'waiting' | 'ready' | 'unavailable';
+    lastFetchedAt?: string;
+    nextFetchAt?: string;
 };
 
 export type NewsletterSource = {
@@ -25,28 +28,38 @@ type State<T> =
     | { status: 'loaded'; data: T }
     | { status: 'error' };
 
-export function useSources<T>(path: string) {
+export function useSources<T>(path: string, pollInterval = 0) {
     const [state, setState] = useState<State<T>>({ status: 'loading' });
     const [attempt, setAttempt] = useState(0);
 
     useEffect(() => {
         const controller = new AbortController();
+        let timer: ReturnType<typeof setTimeout>;
         const refresh = () => setAttempt((value) => value + 1);
         if (path === '/api/subscriptions') {
             subscriptionChanges.addEventListener('change', refresh);
         }
-        api<T>(path, { signal: controller.signal })
-            .then((data) => {
+        async function load() {
+            try {
+                const data = await api<T>(path, { signal: controller.signal });
                 if (!controller.signal.aborted) setState({ status: 'loaded', data });
-            })
-            .catch(() => {
-                if (!controller.signal.aborted) setState({ status: 'error' });
-            });
+            } catch {
+                if (!controller.signal.aborted) {
+                    setState((previous) => previous.status === 'loaded' ? previous : { status: 'error' });
+                }
+            } finally {
+                if (pollInterval > 0 && !controller.signal.aborted) {
+                    timer = setTimeout(load, pollInterval);
+                }
+            }
+        }
+        void load();
         return () => {
             controller.abort();
+            clearTimeout(timer);
             subscriptionChanges.removeEventListener('change', refresh);
         };
-    }, [path, attempt]);
+    }, [path, attempt, pollInterval]);
 
     function retry() {
         setState({ status: 'loading' });
