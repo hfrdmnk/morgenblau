@@ -85,6 +85,8 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe, privateReaders 
 			writeError(w, http.StatusBadRequest, codeInvalidRequest, err.Error())
 			return
 		}
+		// Sampling first prevents a completed job from making an earlier entry snapshot look final.
+		hasActive := jobsSrc != nil && jobsSrc.ActiveForUser(sess.Data.AccountDID) != nil
 		rows, err := reader.ListDigestForUser(r.Context(), db.ListDigestForUserParams{
 			Did:           did,
 			PublishedAt:   day.Format(time.RFC3339),
@@ -119,8 +121,6 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe, privateReaders 
 				return left.After(right)
 			})
 		}
-
-		hasActive := jobsSrc != nil && jobsSrc.ActiveForUser(sess.Data.AccountDID) != nil
 
 		writeJSON(w, DigestResponse{
 			Date:         responseDate,

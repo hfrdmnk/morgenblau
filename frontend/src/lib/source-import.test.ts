@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 
+import { subscriptionChanges } from './add-source';
 import { importSources } from './source-import';
 
 const realFetch = globalThis.fetch;
@@ -20,6 +21,24 @@ function stubFetch(
 const sources = Array.from({ length: 12 }, (_, i) => ({
     feedUrl: `https://example.com/feed/${i}`,
 }));
+
+test('confirmed added, updated and unchanged imports notify; failed imports do not', async () => {
+    let notifications = 0;
+    const listener = () => notifications++;
+    subscriptionChanges.addEventListener('change', listener);
+    try {
+        for (const status of ['added', 'updated', 'unchanged']) {
+            stubFetch(async () => Response.json({ added: 0, updated: 0, unchanged: 0, [status]: 1, failures: [] }));
+            await importSources(sources.slice(0, 1), new AbortController().signal, () => {});
+        }
+        expect(notifications).toBe(3);
+        stubFetch(async () => Response.json({ added: 0, updated: 0, unchanged: 0, failures: [{ feedUrl: sources[0].feedUrl, message: 'Unavailable' }] }));
+        await importSources(sources.slice(0, 1), new AbortController().signal, () => {});
+        expect(notifications).toBe(3);
+    } finally {
+        subscriptionChanges.removeEventListener('change', listener);
+    }
+});
 
 test('imports sequential five-source batches and aggregates distinct outcomes', async () => {
     const lengths: number[] = [];
@@ -74,8 +93,14 @@ test('partial failure retries only failed and unattempted sources', async () => 
 
 test('lost batch response retains all uncertain sources without losing earlier success', async () => {
     let calls = 0;
+    let notifications = 0;
+    const listener = () => notifications++;
+    subscriptionChanges.addEventListener('change', listener);
     stubFetch(async () => {
-        if (++calls === 2) throw new TypeError('Network error');
+        if (++calls === 2) {
+            expect(notifications).toBe(1);
+            throw new TypeError('Network error');
+        }
         return Response.json({
             added: 5,
             updated: 0,
@@ -83,13 +108,18 @@ test('lost batch response retains all uncertain sources without losing earlier s
             failures: [],
         });
     });
-    const result = await importSources(
-        sources,
-        new AbortController().signal,
-        () => {},
-    );
-    expect(calls).toBe(2);
-    expect(result.added).toBe(5);
-    expect(result.remaining).toEqual(sources.slice(5));
-    expect(result.error).toContain('retry safely');
+    try {
+        const result = await importSources(
+            sources,
+            new AbortController().signal,
+            () => {},
+        );
+        expect(calls).toBe(2);
+        expect(notifications).toBe(1);
+        expect(result.added).toBe(5);
+        expect(result.remaining).toEqual(sources.slice(5));
+        expect(result.error).toContain('retry safely');
+    } finally {
+        subscriptionChanges.removeEventListener('change', listener);
+    }
 });

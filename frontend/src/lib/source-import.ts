@@ -1,3 +1,4 @@
+import { subscriptionChanges } from '@/lib/add-source';
 import { api, describeMutationError } from '@/lib/api';
 
 export type ImportSource = {
@@ -43,6 +44,9 @@ export async function importSources(
             outcome.updated += result.updated;
             outcome.unchanged += result.unchanged;
             outcome.failures.push(...result.failures);
+            if (result.added + result.updated + result.unchanged > 0) {
+                subscriptionChanges.dispatchEvent(new Event('change'));
+            }
             onProgress(outcome.added + outcome.updated + outcome.unchanged);
             if (result.failures.length) {
                 const failed = new Set(

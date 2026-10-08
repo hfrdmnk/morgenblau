@@ -18,11 +18,16 @@ import (
 type fakeDigestReader struct {
 	gotParams db.ListDigestForUserParams
 	rows      []db.ListDigestForUserRow
+	afterRead func()
 }
 
 func (f *fakeDigestReader) ListDigestForUser(_ context.Context, arg db.ListDigestForUserParams) ([]db.ListDigestForUserRow, error) {
 	f.gotParams = arg
-	return f.rows, nil
+	rows := f.rows
+	if f.afterRead != nil {
+		f.afterRead()
+	}
+	return rows, nil
 }
 
 type stubJobsProbe struct{ active *jobs.Job }
@@ -227,6 +232,46 @@ func TestDigest_HasActiveJob_FlagSetWhenJobInFlight(t *testing.T) {
 	_ = json.Unmarshal(rr.Body.Bytes(), &got)
 	if !got.HasActiveJob {
 		t.Error("HasActiveJob = false, want true")
+	}
+}
+
+func TestDigest_JobCompletingAfterEntrySnapshotRequiresAnotherRead(t *testing.T) {
+	did := syntax.DID("did:plc:example")
+	tracker := jobs.New()
+	job := tracker.Create(jobs.KindFetchOneFeed, did, jobs.TriggerAddFeed)
+	title := "Example imported video"
+	reader := &fakeDigestReader{}
+	reader.afterRead = func() {
+		reader.rows = []db.ListDigestForUserRow{{
+			ID: 42, EntrySlug: "example-video", FeedUrl: "https://feed.example.com/videos.xml",
+			Url: "https://video.example.com/watch", Title: &title, ContentType: "video",
+			PublishedAt: "2026-10-08T09:00:00Z",
+		}}
+		tracker.SetDone(job.ID)
+		reader.afterRead = nil
+	}
+	h := DigestHandler(reader, tracker)
+	read := func() DigestResponse {
+		t.Helper()
+		req := withSession(httptest.NewRequest(http.MethodGet, "/api/digest?date=2026-10-08", nil), did.String(), "sid-1")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+		}
+		var got DigestResponse
+		if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	first := read()
+	if len(first.Entries) != 0 || !first.HasActiveJob {
+		t.Fatalf("stale snapshot must request another read: %+v", first)
+	}
+	next := read()
+	if next.HasActiveJob || len(next.Entries) != 1 || next.Entries[0].Title == nil || *next.Entries[0].Title != title {
+		t.Fatalf("idle response must include the committed video: %+v", next)
 	}
 }
 
