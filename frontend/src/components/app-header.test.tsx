@@ -1,7 +1,10 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { afterAll, afterEach, expect, setSystemTime, test } from 'bun:test';
 
+const nativeEventTarget = EventTarget;
 GlobalRegistrator.register({ url: 'http://app.example.com/' });
+// The shared source event bus outlives this file's DOM window.
+Object.assign(globalThis, { EventTarget: nativeEventTarget });
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { Link, Router, useLocation } = await import('wouter');
