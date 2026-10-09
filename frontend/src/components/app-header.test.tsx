@@ -10,6 +10,15 @@ const { useAppLocation, useNavigationScrollRestoration } = await import('@/hooks
 const { DataSettings } = await import('@/layouts/data-settings');
 const { AppProfileContext } = await import('@/lib/app-profile-context');
 
+// Wouter's module may be cached from a different Happy DOM window.
+for (const method of ['pushState', 'replaceState'] as const) {
+    const original = window.history[method].bind(window.history);
+    window.history[method] = (...args: Parameters<History[typeof method]>) => {
+        original(args[0], args[1], args[2]);
+        window.dispatchEvent(new Event('popstate'));
+    };
+}
+
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let unmount = () => {};
 
