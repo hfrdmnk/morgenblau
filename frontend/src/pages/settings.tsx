@@ -7,7 +7,7 @@ export function Settings() {
     const [readerFont, setReaderFont, fontError] = useReaderFont();
 
     return (
-        <DataSettings page="general">
+        <DataSettings>
             <h1 className="text-2xl font-medium">General settings</h1>
             <div className="mt-12 max-w-xl space-y-12">
                 <fieldset>

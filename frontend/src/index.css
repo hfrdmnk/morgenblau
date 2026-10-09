@@ -215,3 +215,116 @@
     min-height: 100dvh;
     place-items: center;
 }
+
+.app-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding-top: calc(1.5rem + env(safe-area-inset-top));
+    background: var(--background);
+}
+
+.app-header::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    inset-inline: 0;
+    height: 2rem;
+    background: linear-gradient(var(--background), transparent);
+    pointer-events: none;
+}
+
+.app-shell > main {
+    margin-inline: auto;
+    padding-top: 2rem;
+    padding-bottom: calc(8rem + env(safe-area-inset-bottom));
+}
+
+.app-shell > .page-placeholder {
+    min-height: calc(100dvh - 4rem - env(safe-area-inset-top));
+}
+
+.app-mode-nav {
+    position: fixed;
+    z-index: 30;
+    inset-inline: 1rem;
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    max-width: 22rem;
+    margin-inline: auto;
+    padding: 0.5rem 0.25rem;
+    border: 1px solid color-mix(in oklab, var(--popover) 65%, transparent);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--background) 85%, transparent);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 4px 20px color-mix(in oklab, var(--foreground) 8%, transparent);
+}
+
+.app-mode-link {
+    display: flex;
+    min-height: 3rem;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    font-size: var(--text-xs);
+}
+
+.app-mode-artwork {
+    display: flex;
+    height: 1.5rem;
+    align-items: center;
+    justify-content: center;
+}
+
+@media (min-width: 48rem) {
+    .app-header {
+        position: static;
+        padding-top: 2.5rem;
+    }
+
+    .app-header::after {
+        display: none;
+    }
+
+    .app-shell > main {
+        width: min(48rem, calc(100% - 20rem));
+        padding-top: 6rem;
+        padding-bottom: 5rem;
+    }
+
+    .app-shell > .page-placeholder {
+        min-height: calc(100dvh - 5rem);
+    }
+
+    .app-mode-nav {
+        top: 50%;
+        right: auto;
+        bottom: auto;
+        left: 3.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        box-shadow: none;
+        transform: translateY(-50%);
+    }
+
+    .app-mode-link {
+        min-height: 2rem;
+        align-items: flex-start;
+        font-size: var(--text-sm);
+    }
+
+    .app-mode-artwork {
+        display: none;
+    }
+}

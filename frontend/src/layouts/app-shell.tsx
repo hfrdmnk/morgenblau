@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AppHeader } from '@/components/app-header';
 import { ErrorState } from '@/components/status-state';
 import { Button } from '@/components/ui/button';
+import { useNavigationScrollRestoration } from '@/hooks/use-app-location';
 import { api, ApiError } from '@/lib/api';
 import {
     AppProfileContext,
@@ -39,6 +40,7 @@ async function loadProfile(signal: AbortSignal): Promise<AppProfileState | null>
 export function AppShell({ children }: { children: ReactNode }) {
     const [attempt, setAttempt] = useState(0);
     const [state, setState] = useState<AppProfileState>({ kind: 'loading' });
+    useNavigationScrollRestoration();
 
     useEffect(() => {
         const controller = new AbortController();
@@ -76,7 +78,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     return (
         <AppProfileContext.Provider value={state}>
-            <div className="min-h-dvh bg-background">
+            <div className="app-shell min-h-dvh bg-background">
                 <AppHeader />
                 {children}
             </div>

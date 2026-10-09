@@ -24,7 +24,7 @@ export function ImportSources() {
         state.kind === 'preparing' ? state.provider : null;
 
     return (
-        <DataSettings page="import">
+        <DataSettings>
             <h1 className="text-2xl font-medium">Import sources</h1>
             <p className="mt-3 max-w-xl text-muted-foreground">
                 Bring your feeds with you. Folders become tags, and sources you

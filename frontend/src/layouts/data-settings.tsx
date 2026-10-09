@@ -1,43 +1,25 @@
 import type { ReactNode } from 'react';
 import { Link } from 'wouter';
 
-import { PATHS } from '@/lib/paths';
-import { cn } from '@/lib/utils';
+import { ArrowRightIcon } from '@/components/icons';
+import type { AppNavigationState } from '@/hooks/use-app-location';
+import { appMode, PATHS } from '@/lib/paths';
 
-const labels = { general: 'General', import: 'Import', export: 'Export' };
-
-export function DataSettings({
-    page,
-    children,
-}: {
-    page: 'general' | 'import' | 'export';
-    children: ReactNode;
-}) {
+export function DataSettings({ children }: { children: ReactNode }) {
+    const state: AppNavigationState | null = window.history.state;
+    const returnTo = state?.settingsReturn ?? { href: PATHS.digest, scrollY: 0 };
+    const label = appMode(returnTo.href.split('?')[0])?.label ?? 'Digest';
     return (
-        <>
-            <nav
-                aria-label="Settings"
-                className="flex justify-center gap-6 px-5 pt-12 text-sm sm:px-8"
+        <main className="mx-auto w-full max-w-3xl px-5 pb-20 pt-16 sm:px-8 md:pt-24">
+            <Link
+                href={returnTo.href}
+                state={{ scrollY: returnTo.scrollY }}
+                className="mb-6 inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
             >
-                {(['general', 'import', 'export'] as const).map((item) => (
-                    <Link
-                        key={item}
-                        href={PATHS[item]}
-                        aria-current={page === item ? 'page' : undefined}
-                        className={cn(
-                            'rounded-sm py-1',
-                            page === item
-                                ? 'font-medium text-foreground'
-                                : 'text-subtle-foreground hover:text-foreground',
-                        )}
-                    >
-                        {labels[item]}
-                    </Link>
-                ))}
-            </nav>
-            <main className="mx-auto w-full max-w-3xl px-5 pb-20 pt-16 sm:px-8 md:pt-24">
-                {children}
-            </main>
-        </>
+                <ArrowRightIcon className="size-4 rotate-180" />
+                Back to {label}
+            </Link>
+            {children}
+        </main>
     );
 }

@@ -40,7 +40,7 @@ export function ExportSources() {
     }
 
     return (
-        <DataSettings page="export">
+        <DataSettings>
             <h1 className="text-2xl font-medium">Export sources</h1>
             <p className="mt-3 max-w-xl text-muted-foreground">
                 Take your feeds to another reader, or keep a copy for yourself.
