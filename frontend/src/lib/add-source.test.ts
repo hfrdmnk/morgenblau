@@ -262,18 +262,36 @@ test('a pointed-at post must be a web address before anything is generated', asy
     ).rejects.toThrow('Enter the address of one post on that page.');
 });
 
-test('generation failures read calmly by cause', () => {
+test('generation failures read calmly by cause, in house copy', () => {
     const limited = new ApiError(429, 'rate_limited', 'You have generated a lot of feeds.');
     expect(generationError(limited)).toBe('Too many generated feeds this hour. Try again later.');
-    expect(generationError(new ApiError(502, 'upstream_error', 'Couldn’t read that page'))).toBe(
-        'Couldn’t reach that site. Try again later.',
+    expect(generationError(new ApiError(403, 'rate_limited', 'Daily cap reached'))).toBe(
+        'Too many generated feeds this hour. Try again later.',
     );
-    expect(generationError(new ApiError(503, 'unavailable', 'Feed generation isn’t available yet'))).toBe(
-        'Feed generation isn’t available yet',
+    expect(generationError(new ApiError(502, 'upstream_error', "Couldn't read that page"))).toBe(
+        'Couldn’t read that page.',
+    );
+    expect(generationError(new ApiError(503, 'unavailable', "Feed generation isn't available yet"))).toBe(
+        'Feed generation isn’t available right now.',
+    );
+    expect(generationError(new ApiError(500, 'internal_error', 'internal error'))).toBe(
+        'Couldn’t generate a feed. Try again.',
+    );
+    expect(generationError(new ApiError(400, 'invalid_request', 'Enter a web address that starts with http:// or https://'))).toBe(
+        'Enter a website URL.',
     );
     expect(generationError(new TypeError('Failed to fetch'))).toBe('Couldn’t generate a feed. Try again.');
-    expect(canRetryGeneration(limited)).toBe(false);
+});
+
+test('only a passing fault offers to generate again', () => {
     expect(canRetryGeneration(new ApiError(502, 'upstream_error', 'x'))).toBe(true);
+    expect(canRetryGeneration(new ApiError(500, 'internal_error', 'x'))).toBe(true);
+    expect(canRetryGeneration(new ApiError(504, undefined, 'x'))).toBe(true);
+    expect(canRetryGeneration(new TypeError('Failed to fetch'))).toBe(true);
+    expect(canRetryGeneration(new ApiError(429, 'rate_limited', 'x'))).toBe(false);
+    expect(canRetryGeneration(new ApiError(400, 'invalid_request', 'x'))).toBe(false);
+    expect(canRetryGeneration(new ApiError(503, 'unavailable', 'x'))).toBe(false);
+    expect(canRetryGeneration(new Error('Enter a website URL.'))).toBe(false);
 });
 
 test('a generated feed is offered by its health', () => {
@@ -312,11 +330,11 @@ test('only a bad post address is the reader’s to fix', () => {
         invalid: true,
     });
     expect(anchorError(new ApiError(400, 'invalid_request', 'Enter a web address'))).toEqual({
-        message: 'Enter a web address',
+        message: 'Enter the address of one post on that page.',
         invalid: true,
     });
-    expect(anchorError(new ApiError(503, 'unavailable', 'Feed generation isn’t available yet'))).toEqual({
-        message: 'Feed generation isn’t available yet',
+    expect(anchorError(new ApiError(503, 'unavailable', "Feed generation isn't available yet"))).toEqual({
+        message: 'Feed generation isn’t available right now.',
         invalid: false,
     });
     expect(anchorError(new TypeError('Failed to fetch')).invalid).toBe(false);

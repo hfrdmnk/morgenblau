@@ -211,15 +211,16 @@ function FeedDiscovery({
                         <NewsletterAddress onNavigate={onClose} />
                     ) : (
                         <div>
-                            <div aria-live="polite">
-                                <DiscoveryStatus
-                                    state={state}
-                                    instant={instant}
-                                    saving={saving}
-                                    onSavingChange={onSavingChange}
-                                    onSaved={onClose}
-                                />
-                            </div>
+                            <p className="sr-only" role="status">
+                                {foundFeeds(state)}
+                            </p>
+                            <DiscoveryStatus
+                                state={state}
+                                instant={instant}
+                                saving={saving}
+                                onSavingChange={onSavingChange}
+                                onSaved={onClose}
+                            />
                             <Button
                                 className="mt-3 -ml-2.5 text-muted-foreground"
                                 disabled={saving}
@@ -238,6 +239,12 @@ function FeedDiscovery({
             </div>
         </>
     );
+}
+
+function foundFeeds(state: DiscoveryState) {
+    if (state.stage !== 2 || state.result.candidates.length === 0) return '';
+    const count = state.result.candidates.length;
+    return count === 1 ? '1 feed found.' : `${count} feeds found.`;
 }
 
 function DiscoveryForm({

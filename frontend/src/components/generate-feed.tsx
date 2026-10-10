@@ -1,12 +1,12 @@
 import { motion } from 'motion/react';
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 
 import { LoadingIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Link } from '@/components/ui/link';
-import { useGeneration } from '@/hooks/use-generation';
+import { useGeneration, type GenerationStep } from '@/hooks/use-generation';
 import {
     addSource,
     anchorError,
@@ -18,14 +18,20 @@ import { classifyMutationError, describeMutationError } from '@/lib/api';
 import { PATHS } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 
-// A sample is enough to recognize the site's posts and keeps Add source on screen.
-const PREVIEW_POSTS = 5;
+// A sample is enough to recognize the site's posts and keeps Add source on screen, with the post field still in view when unsure.
+const PREVIEW_POSTS = { sure: 5, unsure: 3 };
 
+// Listing pages print a day, which the server keeps as midnight UTC.
 const postDate = new Intl.DateTimeFormat(undefined, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    timeZone: 'UTC',
 });
+
+function postCount(count: number) {
+    return count === 1 ? '1 post' : `${count} posts`;
+}
 
 type SaveProps = {
     saving: boolean;
@@ -39,35 +45,80 @@ export function GenerateFeed({
     ...save
 }: SaveProps & { url: string; instant: boolean }) {
     const { state, generate, pointAt } = useGeneration(url);
+    const root = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (state.step !== 'offer') settleFocus(root.current, focusOrder(state));
+    }, [state]);
     return (
-        <motion.div
-            key={state.step}
-            initial={{ opacity: instant ? 1 : 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: instant ? 0 : 0.2 }}
-        >
-            {state.step === 'offer' && <GenerateOffer onGenerate={generate} />}
-            {state.step === 'pending' && (
-                <Pending>
-                    Reading the page and a few of its posts. This can take a
-                    little while.
-                </Pending>
-            )}
-            {state.step === 'failed' && (
-                <GenerationFailed
-                    message={state.message}
-                    onRetry={state.retry ? generate : undefined}
-                />
-            )}
-            {state.step === 'preview' && (
-                <GeneratedPreview
-                    source={state.source}
-                    onPointAt={pointAt}
-                    {...save}
-                />
-            )}
-        </motion.div>
+        <div className="outline-none" ref={root} tabIndex={-1}>
+            <p className="sr-only" role="status">
+                {resultStatus(state)}
+            </p>
+            <motion.div
+                key={state.step}
+                initial={{ opacity: instant ? 1 : 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: instant ? 0 : 0.2 }}
+            >
+                {state.step === 'offer' && (
+                    <GenerateOffer onGenerate={generate} />
+                )}
+                {state.step === 'pending' && (
+                    <Pending>
+                        Reading the page and a few of its posts. This can take
+                        a little while.
+                    </Pending>
+                )}
+                {state.step === 'failed' && (
+                    <GenerationFailed
+                        message={state.message}
+                        onRetry={state.retry ? generate : undefined}
+                    />
+                )}
+                {state.step === 'preview' && (
+                    <GeneratedPreview
+                        source={state.source}
+                        onPointAt={pointAt}
+                        {...save}
+                    />
+                )}
+            </motion.div>
+        </div>
     );
+}
+
+function resultStatus(state: GenerationStep) {
+    if (state.step !== 'preview') return '';
+    const { source } = state;
+    if (!generatedVerdict(source).subscribable) return '';
+    return state.anchored
+        ? `Found ${postCount(source.itemCount)} like that one.`
+        : `Generated feed, ${postCount(source.itemCount)} found.`;
+}
+
+function focusOrder(state: GenerationStep) {
+    if (state.step === 'failed') return ['retry'];
+    if (state.step !== 'preview') return [];
+    return state.anchored ? ['add', 'anchor'] : ['heading', 'anchor'];
+}
+
+// Each step unmounts the control that started it, and the dialog would park focus on its popup after a long wait.
+function settleFocus(root: HTMLElement | null, order: string[]) {
+    if (!root) return;
+    const active = document.activeElement;
+    const ours =
+        !active ||
+        !active.isConnected ||
+        active === document.body ||
+        active.contains(root) ||
+        root.contains(active);
+    if (!ours) return;
+    const target = order
+        .map((name) =>
+            root.querySelector<HTMLElement>(`[data-focus="${name}"]`),
+        )
+        .find(Boolean);
+    (target ?? root).focus();
 }
 
 function GenerateOffer({ onGenerate }: { onGenerate: () => void }) {
@@ -116,6 +167,7 @@ function GenerationFailed({
             {onRetry && (
                 <Button
                     className="mt-3"
+                    data-focus="retry"
                     onClick={onRetry}
                     size="sm"
                     variant="secondary"
@@ -153,16 +205,13 @@ function GeneratedPreview({
                 This site blocks feed readers.
             </p>
         );
+    const unsure = verdict.askAnchor && verdict.subscribable;
     return (
         <>
-            {source.items.length > 0 && <PostPreview source={source} />}
-            {verdict.askAnchor && (
-                <AnchorForm
-                    key={source.id + source.itemCount}
-                    found={verdict.subscribable}
-                    anchoring={anchoring}
-                    disabled={save.saving}
-                    onSubmit={pointAt}
+            {source.items.length > 0 && (
+                <PostPreview
+                    source={source}
+                    limit={unsure ? PREVIEW_POSTS.unsure : PREVIEW_POSTS.sure}
                 />
             )}
             {verdict.subscribable && (
@@ -172,11 +221,26 @@ function GeneratedPreview({
                     {...save}
                 />
             )}
+            {verdict.askAnchor && (
+                <AnchorForm
+                    key={source.id + source.itemCount}
+                    found={verdict.subscribable}
+                    anchoring={anchoring}
+                    disabled={save.saving}
+                    onSubmit={pointAt}
+                />
+            )}
         </>
     );
 }
 
-function PostPreview({ source }: { source: GeneratedSource }) {
+function PostPreview({
+    source,
+    limit,
+}: {
+    source: GeneratedSource;
+    limit: number;
+}) {
     const headingId = useId();
     const host = source.siteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
     return (
@@ -184,8 +248,10 @@ function PostPreview({ source }: { source: GeneratedSource }) {
             <p className="mb-2 text-xs text-muted-foreground">Generated feed</p>
             <div className="rounded-lg bg-background p-4">
                 <h3
-                    className="truncate text-sm font-medium"
+                    className="truncate text-sm font-medium outline-none"
+                    data-focus="heading"
                     id={headingId}
+                    tabIndex={-1}
                     title={source.title}
                 >
                     {source.title}
@@ -197,14 +263,12 @@ function PostPreview({ source }: { source: GeneratedSource }) {
                     {host}
                 </p>
                 <ul className="mt-4 space-y-2.5">
-                    {source.items.slice(0, PREVIEW_POSTS).map((item) => (
+                    {source.items.slice(0, limit).map((item) => (
                         <PostRow item={item} key={item.url} />
                     ))}
                 </ul>
                 <p className="mt-4 text-xs text-muted-foreground">
-                    {source.itemCount === 1
-                        ? '1 post found'
-                        : `${source.itemCount} posts found`}
+                    {postCount(source.itemCount)} found
                 </p>
             </div>
         </section>
@@ -236,10 +300,12 @@ function AddGeneratedSource({
     onSavingChange,
     onSaved,
 }: SaveProps & { source: GeneratedSource; anchoring: boolean }) {
-    const [error, setError] = useState<{
+    const [failure, setFailure] = useState<{
+        source: GeneratedSource;
         message: string;
         reauth: boolean;
     } | null>(null);
+    const error = failure?.source === source ? failure : null;
 
     async function save() {
         onSavingChange(true);
@@ -250,13 +316,14 @@ function AddGeneratedSource({
                     'New posts appear in your newspaper as the site publishes them.',
             });
             onSaved();
-        } catch (failure) {
-            setError({
+        } catch (problem) {
+            setFailure({
+                source,
                 message: describeMutationError(
-                    failure,
+                    problem,
                     'The save couldn’t be confirmed.',
                 ),
-                reauth: classifyMutationError(failure) === 'reauth',
+                reauth: classifyMutationError(problem) === 'reauth',
             });
         } finally {
             onSavingChange(false);
@@ -279,6 +346,7 @@ function AddGeneratedSource({
                 </p>
                 <Button
                     aria-busy={saving}
+                    data-focus="add"
                     disabled={saving || anchoring || Boolean(error)}
                     onClick={save}
                 >
@@ -297,7 +365,7 @@ function AddGeneratedSource({
 }
 
 const ANCHOR_PROMPT = {
-    unsure: 'This list looks unsure. Paste the address of one post from this page, and Morgenblau will look for posts like it.',
+    unsure: 'Morgenblau isn’t sure these are the site’s posts. Paste the address of one post from this page to find more like it.',
     empty: 'No posts found on this page yet. Paste the address of one post from it, and Morgenblau will look for posts like it.',
 };
 
@@ -339,8 +407,10 @@ function AnchorForm({
                 <Input
                     aria-describedby={error ? `${inputId}-error` : undefined}
                     aria-invalid={Boolean(error?.invalid)}
+                    aria-busy={anchoring}
                     autoCapitalize="none"
-                    disabled={disabled || anchoring}
+                    data-focus="anchor"
+                    disabled={disabled}
                     id={inputId}
                     inputMode="url"
                     onChange={(event) => {
@@ -348,6 +418,7 @@ function AnchorForm({
                         setError(null);
                     }}
                     placeholder="example.com/posts/one-post"
+                    readOnly={anchoring}
                     spellCheck={false}
                     value={anchor}
                 />
@@ -377,6 +448,7 @@ function UsePostButton({
             aria-busy={anchoring}
             className="sm:w-32"
             disabled={disabled || anchoring}
+            focusableWhenDisabled={anchoring}
             type="submit"
             variant="secondary"
         >

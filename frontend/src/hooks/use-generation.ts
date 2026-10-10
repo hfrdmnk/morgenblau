@@ -7,11 +7,11 @@ import {
     type GeneratedSource,
 } from '@/lib/add-source';
 
-type GenerationStep =
+export type GenerationStep =
     | { step: 'offer' }
     | { step: 'pending' }
     | { step: 'failed'; message: string; retry: boolean }
-    | { step: 'preview'; source: GeneratedSource };
+    | { step: 'preview'; source: GeneratedSource; anchored: boolean };
 
 export function useGeneration(url: string) {
     const [state, setState] = useState<GenerationStep>({ step: 'offer' });
@@ -29,7 +29,11 @@ export function useGeneration(url: string) {
         const controller = begin();
         setState({ step: 'pending' });
         const next = await generateSource(url, undefined, controller.signal).then(
-            (source): GenerationStep => ({ step: 'preview', source }),
+            (source): GenerationStep => ({
+                step: 'preview',
+                source,
+                anchored: false,
+            }),
             (error): GenerationStep => ({
                 step: 'failed',
                 message: generationError(error),
@@ -43,7 +47,8 @@ export function useGeneration(url: string) {
     async function pointAt(anchor: string) {
         const controller = begin();
         const source = await generateSource(url, anchor, controller.signal);
-        if (!controller.signal.aborted) setState({ step: 'preview', source });
+        if (!controller.signal.aborted)
+            setState({ step: 'preview', source, anchored: true });
     }
 
     return { state, generate, pointAt };

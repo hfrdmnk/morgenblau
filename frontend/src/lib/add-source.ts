@@ -98,31 +98,46 @@ export function generateSource(
     });
 }
 
+const RATE_LIMITED = 'Too many generated feeds this hour. Try again later.';
+
+// Server messages are terse logs, so every failure reads in the dialog's own words.
 export function generationError(error: unknown) {
     if (error instanceof ApiError) {
-        if (error.status === 429)
-            return 'Too many generated feeds this hour. Try again later.';
-        if (error.status === 502)
-            return 'Couldn’t reach that site. Try again later.';
+        if (error.status === 429 || error.code === 'rate_limited')
+            return RATE_LIMITED;
+        if (error.status === 400) return 'Enter a website URL.';
+        if (error.status === 502) return 'Couldn’t read that page.';
+        if (error.status === 503)
+            return 'Feed generation isn’t available right now.';
+        if (error.status < 500) return error.message;
     }
-    return error instanceof Error && !(error instanceof TypeError)
+    return error instanceof Error &&
+        !(error instanceof TypeError) &&
+        !(error instanceof ApiError)
         ? error.message
         : 'Couldn’t generate a feed. Try again.';
 }
 
 // Only a bad address is the reader's to fix; a busy or unreachable server is not.
 export function anchorError(error: unknown) {
+    const invalid =
+        error instanceof ApiError
+            ? error.status === 400
+            : !(error instanceof TypeError);
     return {
-        message: generationError(error),
-        invalid:
-            error instanceof ApiError
-                ? error.status === 400
-                : !(error instanceof TypeError),
+        message:
+            error instanceof ApiError && invalid
+                ? 'Enter the address of one post on that page.'
+                : generationError(error),
+        invalid,
     };
 }
 
+// A limit, an unavailable generator or a bad address answers the same way at once.
 export function canRetryGeneration(error: unknown) {
-    return !(error instanceof ApiError && error.status === 429);
+    if (error instanceof ApiError)
+        return error.status >= 500 && error.status !== 503;
+    return error instanceof TypeError;
 }
 
 export function generatedVerdict(source: GeneratedSource) {
