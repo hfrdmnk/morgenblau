@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'wouter';
 
-import { FeedHealth } from '@/components/feed-health';
+import { FeedHealth, GeneratedNote } from '@/components/feed-health';
 import { Button } from '@/components/ui/button';
 import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-sources';
 import { PATHS } from '@/lib/paths';
@@ -26,7 +26,7 @@ function FeedList() {
                         {state.data.map((source) => (
                             <SourceRow key={source.rkey} title={source.title}
                                 identity={source.siteUrl || source.feedUrl} favicon={source.faviconUrl}
-                                primary={source.primary}>
+                                primary={source.primary} note={<GeneratedNote source={source} />}>
                                 <FeedHealth source={source} />
                             </SourceRow>
                         ))}
@@ -77,8 +77,8 @@ function NewsletterRows({ sources, stopped = false }: { sources: NewsletterSourc
     );
 }
 
-function SourceRow({ title, identity, favicon, primary, children }: {
-    title?: string; identity: string; favicon?: string; primary: boolean; children?: ReactNode;
+function SourceRow({ title, identity, favicon, primary, note, children }: {
+    title?: string; identity: string; favicon?: string; primary: boolean; note?: ReactNode; children?: ReactNode;
 }) {
     return (
         <li>
@@ -91,6 +91,7 @@ function SourceRow({ title, identity, favicon, primary, children }: {
                 <span className="min-w-0 break-all">{identity.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
                 {children}
             </div>
+            {note}
         </li>
     );
 }

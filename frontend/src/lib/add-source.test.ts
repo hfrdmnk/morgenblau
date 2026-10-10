@@ -1,8 +1,15 @@
 import { afterEach, expect, test } from 'bun:test';
 
+import { ApiError } from './api';
 import {
     addSource,
+    anchorError,
+    canRetryGeneration,
     discoverSources,
+    generatedCandidate,
+    generatedVerdict,
+    generateSource,
+    generationError,
     newsletterAddress,
     saveSources,
     sourceKey,
@@ -212,4 +219,105 @@ test('subscription permission failure preserves the reauthentication signal', as
     await expect(
         addSource({ feedUrl: 'https://example.com/rss' }),
     ).rejects.toMatchObject({ isReauth: true });
+});
+
+const generated = {
+    id: 'abc',
+    feedUrl: 'https://app.example.com/web/abc',
+    title: 'Example Publication',
+    siteUrl: 'https://news.example.com/',
+    health: 'ok' as const,
+    healthReason: '',
+    needsAnchor: false,
+    items: [
+        { url: 'https://news.example.com/posts/first', title: 'First post', date: '2026-10-09T08:00:00Z' },
+    ],
+    itemCount: 12,
+};
+
+test('generating a feed posts the page, and the post the reader pointed at', async () => {
+    const signal = new AbortController().signal;
+    const bodies: unknown[] = [];
+    respond((url, init) => {
+        expect(url).toBe('/api/web-sources');
+        expect(init?.method).toBe('POST');
+        expect(init?.signal).toBe(signal);
+        bodies.push(JSON.parse(String(init?.body)));
+        return Response.json(generated);
+    });
+    expect(await generateSource('https://news.example.com/', undefined, signal)).toEqual(generated);
+    await generateSource('https://news.example.com/', ' news.example.com/posts/first ', signal);
+    expect(bodies).toEqual([
+        { url: 'https://news.example.com/' },
+        { url: 'https://news.example.com/', anchorUrl: 'https://news.example.com/posts/first' },
+    ]);
+});
+
+test('a pointed-at post must be a web address before anything is generated', async () => {
+    respond(() => {
+        throw new Error('must not request');
+    });
+    await expect(
+        generateSource('https://news.example.com/', 'javascript:alert(1)', new AbortController().signal),
+    ).rejects.toThrow('Enter the address of one post on that page.');
+});
+
+test('generation failures read calmly by cause', () => {
+    const limited = new ApiError(429, 'rate_limited', 'You have generated a lot of feeds.');
+    expect(generationError(limited)).toBe('Too many generated feeds this hour. Try again later.');
+    expect(generationError(new ApiError(502, 'upstream_error', 'Couldn’t read that page'))).toBe(
+        'Couldn’t reach that site. Try again later.',
+    );
+    expect(generationError(new ApiError(503, 'unavailable', 'Feed generation isn’t available yet'))).toBe(
+        'Feed generation isn’t available yet',
+    );
+    expect(generationError(new TypeError('Failed to fetch'))).toBe('Couldn’t generate a feed. Try again.');
+    expect(canRetryGeneration(limited)).toBe(false);
+    expect(canRetryGeneration(new ApiError(502, 'upstream_error', 'x'))).toBe(true);
+});
+
+test('a generated feed is offered by its health', () => {
+    expect(generatedVerdict(generated)).toEqual({ subscribable: true, askAnchor: false, blocked: false });
+    expect(generatedVerdict({ ...generated, needsAnchor: true })).toEqual({ subscribable: true, askAnchor: true, blocked: false });
+    expect(generatedVerdict({ ...generated, health: 'needs_attention' })).toEqual({ subscribable: true, askAnchor: true, blocked: false });
+    expect(generatedVerdict({ ...generated, health: 'blocked_by_site', needsAnchor: true })).toEqual({ subscribable: false, askAnchor: false, blocked: true });
+    expect(generatedVerdict({ ...generated, health: 'broken', items: [], itemCount: 0 })).toEqual({ subscribable: false, askAnchor: true, blocked: false });
+    expect(generatedVerdict({ ...generated, items: [], itemCount: 0 })).toEqual({ subscribable: false, askAnchor: true, blocked: false });
+});
+
+test('a generated feed subscribes through the ordinary add path with its title and site', async () => {
+    const bodies: unknown[] = [];
+    respond((url, init) => {
+        expect(url).toBe('/api/subscriptions');
+        bodies.push(JSON.parse(String(init?.body)));
+        return Response.json({ rkey: '3example' });
+    });
+    await addSource(generatedCandidate(generated));
+    expect(bodies).toEqual([
+        { feedUrl: 'https://app.example.com/web/abc', title: 'Example Publication', siteUrl: 'https://news.example.com/' },
+    ]);
+});
+
+test('generation takes the page as the reader typed it', async () => {
+    respond((_url, init) => {
+        expect(JSON.parse(String(init?.body))).toEqual({ url: 'https://news.example.com/blog' });
+        return Response.json(generated);
+    });
+    await generateSource('  news.example.com/blog ', undefined, new AbortController().signal);
+});
+
+test('only a bad post address is the reader’s to fix', () => {
+    expect(anchorError(new Error('Enter the address of one post on that page.'))).toEqual({
+        message: 'Enter the address of one post on that page.',
+        invalid: true,
+    });
+    expect(anchorError(new ApiError(400, 'invalid_request', 'Enter a web address'))).toEqual({
+        message: 'Enter a web address',
+        invalid: true,
+    });
+    expect(anchorError(new ApiError(503, 'unavailable', 'Feed generation isn’t available yet'))).toEqual({
+        message: 'Feed generation isn’t available yet',
+        invalid: false,
+    });
+    expect(anchorError(new TypeError('Failed to fetch')).invalid).toBe(false);
 });

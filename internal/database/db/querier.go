@@ -92,6 +92,7 @@ type Querier interface {
 	// One row per subscription with feed metadata and windowed entry stats. The
 	// four window cutoffs (7d, 28d, 56d, 84d as ISO timestamps) and "now" are
 	// passed in by the handler so all rows share a single clock.
+	// Own generated feeds are web_feed_prefix || id; matching on the extracted id keeps the primary-key lookup.
 	ListUserSourcesWithStats(ctx context.Context, arg ListUserSourcesWithStatsParams) ([]ListUserSourcesWithStatsRow, error)
 	// Ordered by rkey (a TID, so creation order) to make "first-seen casing wins"
 	// deterministic across a tag case-collision.

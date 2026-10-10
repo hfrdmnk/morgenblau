@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -30,6 +31,8 @@ type fakeIndex struct {
 	siteURLs            map[string]*string    // feedURL → feeds.site_url for the sibling join
 	lastFetchedAt       map[string]*string    // feedURL → feeds.last_fetched_at for the stats join
 	consecutiveFailures map[string]int64      // feedURL → feeds.consecutive_failures for the stats join
+	webHealth           map[string][2]string  // feedURL → web_sources (health, health_reason) for own generated feeds
+	lastWebFeedPrefix   string
 }
 
 func newFakeIndex() *fakeIndex {
@@ -39,6 +42,7 @@ func newFakeIndex() *fakeIndex {
 		siteURLs:            map[string]*string{},
 		lastFetchedAt:       map[string]*string{},
 		consecutiveFailures: map[string]int64{},
+		webHealth:           map[string][2]string{},
 	}
 }
 
@@ -72,8 +76,13 @@ func (f *fakeIndex) ListUserSubscriptions(_ context.Context, did string) ([]db.U
 func (f *fakeIndex) ListUserSourcesWithStats(_ context.Context, arg db.ListUserSourcesWithStatsParams) ([]db.ListUserSourcesWithStatsRow, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.lastWebFeedPrefix = arg.WebFeedPrefix
 	out := make([]db.ListUserSourcesWithStatsRow, 0)
 	for _, r := range f.rows[arg.Did] {
+		var webHealth, webHealthReason *string
+		if h, ok := f.webHealth[r.FeedUrl]; ok && arg.WebFeedPrefix != "" && strings.HasPrefix(r.FeedUrl, arg.WebFeedPrefix) {
+			webHealth, webHealthReason = &h[0], &h[1]
+		}
 		out = append(out, db.ListUserSourcesWithStatsRow{
 			Did:                 r.Did,
 			Rkey:                r.Rkey,
@@ -89,6 +98,8 @@ func (f *fakeIndex) ListUserSourcesWithStats(_ context.Context, arg db.ListUserS
 			CatalogTitle:        f.catalogTitles[r.FeedUrl],
 			LastFetchedAt:       f.lastFetchedAt[r.FeedUrl],
 			ConsecutiveFailures: f.consecutiveFailures[r.FeedUrl],
+			WebHealth:           webHealth,
+			WebHealthReason:     webHealthReason,
 		})
 	}
 	return out, nil

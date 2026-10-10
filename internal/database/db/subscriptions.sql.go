@@ -233,20 +233,26 @@ SELECT
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?1 AND fe.published_at < ?2) AS count_7d,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?3 AND fe.published_at < ?2) AS count_28d,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?4 AND fe.published_at < ?2) AS count_56d,
-    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?5 AND fe.published_at < ?2) AS count_84d
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?5 AND fe.published_at < ?2) AS count_84d,
+    ws.health AS web_health,
+    ws.health_reason AS web_health_reason
 FROM user_subscriptions us
 LEFT JOIN feeds f ON f.feed_url = us.feed_url
-WHERE us.did = ?6
+LEFT JOIN web_sources ws ON CAST(?6 AS TEXT) <> ''
+    AND substr(us.feed_url, 1, length(?6)) = ?6
+    AND ws.id = substr(us.feed_url, length(?6) + 1)
+WHERE us.did = ?7
 ORDER BY COALESCE(NULLIF(us.title, ''), f.title, us.feed_url) COLLATE NOCASE ASC
 `
 
 type ListUserSourcesWithStatsParams struct {
-	Cutoff7d  string `json:"cutoff_7d"`
-	Now       string `json:"now"`
-	Cutoff28d string `json:"cutoff_28d"`
-	Cutoff56d string `json:"cutoff_56d"`
-	Cutoff84d string `json:"cutoff_84d"`
-	Did       string `json:"did"`
+	Cutoff7d      string `json:"cutoff_7d"`
+	Now           string `json:"now"`
+	Cutoff28d     string `json:"cutoff_28d"`
+	Cutoff56d     string `json:"cutoff_56d"`
+	Cutoff84d     string `json:"cutoff_84d"`
+	WebFeedPrefix string `json:"web_feed_prefix"`
+	Did           string `json:"did"`
 }
 
 type ListUserSourcesWithStatsRow struct {
@@ -273,11 +279,14 @@ type ListUserSourcesWithStatsRow struct {
 	Count28d            int64       `json:"count_28d"`
 	Count56d            int64       `json:"count_56d"`
 	Count84d            int64       `json:"count_84d"`
+	WebHealth           *string     `json:"web_health"`
+	WebHealthReason     *string     `json:"web_health_reason"`
 }
 
 // One row per subscription with feed metadata and windowed entry stats. The
 // four window cutoffs (7d, 28d, 56d, 84d as ISO timestamps) and "now" are
 // passed in by the handler so all rows share a single clock.
+// Own generated feeds are web_feed_prefix || id; matching on the extracted id keeps the primary-key lookup.
 func (q *Queries) ListUserSourcesWithStats(ctx context.Context, arg ListUserSourcesWithStatsParams) ([]ListUserSourcesWithStatsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listUserSourcesWithStats,
 		arg.Cutoff7d,
@@ -285,6 +294,7 @@ func (q *Queries) ListUserSourcesWithStats(ctx context.Context, arg ListUserSour
 		arg.Cutoff28d,
 		arg.Cutoff56d,
 		arg.Cutoff84d,
+		arg.WebFeedPrefix,
 		arg.Did,
 	)
 	if err != nil {
@@ -318,6 +328,8 @@ func (q *Queries) ListUserSourcesWithStats(ctx context.Context, arg ListUserSour
 			&i.Count28d,
 			&i.Count56d,
 			&i.Count84d,
+			&i.WebHealth,
+			&i.WebHealthReason,
 		); err != nil {
 			return nil, err
 		}

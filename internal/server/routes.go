@@ -51,7 +51,11 @@ func (s *Server) routes() *http.ServeMux {
 
 	// POST/PATCH/DELETE routes below reach the PDS (auth.holdsSessionLock must match); mutations commit once through gated, OPML import once per source.
 	gated := api.CommitGate{Repo: s.pds}
-	mux.Handle("GET /api/subscriptions", api.SubscriptionsListHandler(s.qr))
+	webFeedPrefix := ""
+	if s.webSources != nil {
+		webFeedPrefix = s.webSources.FeedURL("")
+	}
+	mux.Handle("GET /api/subscriptions", api.SubscriptionsListHandler(s.qr, webFeedPrefix))
 	mux.Handle("POST /api/subscriptions/resolve", api.SubscriptionsResolveHandler(s.qr, s.feedfinder))
 	mux.Handle("POST /api/subscriptions", api.OneCommitPerRequest(api.SubscriptionsCreateHandler(s.qr, s.qw, gated, s.sync)))
 	mux.Handle("POST /api/subscriptions/import/prepare", api.SubscriptionsImportPrepareHandler(s.pds))

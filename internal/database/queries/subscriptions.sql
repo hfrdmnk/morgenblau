@@ -111,9 +111,15 @@ SELECT
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_7d) AND fe.published_at < sqlc.arg(now)) AS count_7d,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_28d) AND fe.published_at < sqlc.arg(now)) AS count_28d,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_56d) AND fe.published_at < sqlc.arg(now)) AS count_56d,
-    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_84d) AND fe.published_at < sqlc.arg(now)) AS count_84d
+    (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_84d) AND fe.published_at < sqlc.arg(now)) AS count_84d,
+    ws.health AS web_health,
+    ws.health_reason AS web_health_reason
 FROM user_subscriptions us
 LEFT JOIN feeds f ON f.feed_url = us.feed_url
+-- Own generated feeds are web_feed_prefix || id; matching on the extracted id keeps the primary-key lookup.
+LEFT JOIN web_sources ws ON CAST(sqlc.arg(web_feed_prefix) AS TEXT) <> ''
+    AND substr(us.feed_url, 1, length(sqlc.arg(web_feed_prefix))) = sqlc.arg(web_feed_prefix)
+    AND ws.id = substr(us.feed_url, length(sqlc.arg(web_feed_prefix)) + 1)
 WHERE us.did = sqlc.arg(did)
 ORDER BY COALESCE(NULLIF(us.title, ''), f.title, us.feed_url) COLLATE NOCASE ASC;
 

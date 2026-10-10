@@ -23,7 +23,7 @@ func TestSubscriptionsList_FromIndex(t *testing.T) {
 			FeedUrl: "https://example.test/feed.xml",
 		},
 	}
-	h := SubscriptionsListHandler(idx)
+	h := SubscriptionsListHandler(idx, "")
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -54,7 +54,7 @@ func TestSubscriptionsList_Standardfeed_CatalogTitleFallback(t *testing.T) {
 	}
 	idx.catalogTitles[testPublication] = ptrString("Publication Name")
 
-	h := SubscriptionsListHandler(idx)
+	h := SubscriptionsListHandler(idx, "")
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -94,7 +94,7 @@ func TestSubscriptionsList_RoundTripsPrimaryAndTags(t *testing.T) {
 			Tags:      &tags,
 		},
 	}
-	h := SubscriptionsListHandler(idx)
+	h := SubscriptionsListHandler(idx, "")
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -172,7 +172,7 @@ func TestSubscriptionsList_MutedAtTwentyConsecutiveFailures(t *testing.T) {
 	idx.consecutiveFailures["https://a.example/feed.xml"] = 20
 	idx.consecutiveFailures["https://b.example/feed.xml"] = 19
 
-	h := SubscriptionsListHandler(idx)
+	h := SubscriptionsListHandler(idx, "")
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -203,7 +203,7 @@ func TestSubscriptionsList_BelowThresholdOmitsMutedFromJSON(t *testing.T) {
 	}
 	idx.consecutiveFailures["https://a.example/feed.xml"] = 19
 
-	h := SubscriptionsListHandler(idx)
+	h := SubscriptionsListHandler(idx, "")
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -223,7 +223,7 @@ func TestSubscriptionsList_CarriesLastFetchedAt(t *testing.T) {
 	}
 	idx.lastFetchedAt["https://a.example/feed.xml"] = ptrString("2026-07-12T08:00:00Z")
 
-	h := SubscriptionsListHandler(idx)
+	h := SubscriptionsListHandler(idx, "")
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -245,7 +245,7 @@ func TestSubscriptionsList_CarriesLastFetchedAt(t *testing.T) {
 	}
 	reqNone := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:bob", "sid-1")
 	rrNone := httptest.NewRecorder()
-	SubscriptionsListHandler(idxNone).ServeHTTP(rrNone, reqNone)
+	SubscriptionsListHandler(idxNone, "").ServeHTTP(rrNone, reqNone)
 
 	if rrNone.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rrNone.Code, rrNone.Body.String())
@@ -329,5 +329,45 @@ func TestSubscriptionsTags_EmptyIsArrayNotNull(t *testing.T) {
 	}
 	if body := strings.TrimSpace(rr.Body.String()); body != `{"tags":[]}` {
 		t.Errorf("body = %q, want {\"tags\":[]}", body)
+	}
+}
+
+func TestSubscriptionsList_GeneratedFeedsCarryTheirHealth(t *testing.T) {
+	const prefix = "https://app.example.com/web/"
+	idx := newFakeIndex()
+	idx.rows["did:plc:alice"] = map[string]db.UserSubscription{
+		prefix + "unsure":                   {Did: "did:plc:alice", Rkey: "1", FeedUrl: prefix + "unsure"},
+		prefix + "fine":                     {Did: "did:plc:alice", Rkey: "2", FeedUrl: prefix + "fine"},
+		"https://news.example.com/feed.xml": {Did: "did:plc:alice", Rkey: "3", FeedUrl: "https://news.example.com/feed.xml"},
+	}
+	idx.webHealth[prefix+"unsure"] = [2]string{"needs_attention", "the list looks unsure"}
+	idx.webHealth[prefix+"fine"] = [2]string{"ok", ""}
+
+	rr := httptest.NewRecorder()
+	SubscriptionsListHandler(idx, prefix).ServeHTTP(rr,
+		withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if idx.lastWebFeedPrefix != prefix {
+		t.Errorf("handler queried with web feed prefix %q, want %q", idx.lastWebFeedPrefix, prefix)
+	}
+	var got []map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	byRkey := map[string]map[string]any{}
+	for _, s := range got {
+		byRkey[s["rkey"].(string)] = s
+	}
+	want := map[string]any{"health": "needs_attention", "healthReason": "the list looks unsure"}
+	if g, _ := byRkey["1"]["generated"].(map[string]any); g == nil || g["health"] != want["health"] || g["healthReason"] != want["healthReason"] {
+		t.Errorf("unsure generated feed = %v, want generated %v", byRkey["1"], want)
+	}
+	if g, _ := byRkey["2"]["generated"].(map[string]any); g == nil || g["health"] != "ok" {
+		t.Errorf("healthy generated feed must still say it is generated: %v", byRkey["2"])
+	}
+	if _, present := byRkey["3"]["generated"]; present {
+		t.Errorf("an ordinary feed is not generated: %v", byRkey["3"])
 	}
 }

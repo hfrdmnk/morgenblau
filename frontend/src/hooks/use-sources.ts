@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { subscriptionChanges } from '@/lib/add-source';
+import { subscriptionChanges, type GeneratedHealth } from '@/lib/add-source';
 import { api } from '@/lib/api';
 
 export type FeedSource = {
@@ -14,6 +14,7 @@ export type FeedSource = {
     fetchStatus: 'waiting' | 'ready' | 'unavailable';
     lastFetchedAt?: string;
     nextFetchAt?: string;
+    generated?: { health: GeneratedHealth; healthReason: string };
 };
 
 export type NewsletterSource = {

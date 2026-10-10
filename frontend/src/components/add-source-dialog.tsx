@@ -23,6 +23,7 @@ import {
     LoadingIcon,
     PlusIcon,
 } from '@/components/icons';
+import { GenerateFeed } from '@/components/generate-feed';
 import { NewsletterAddress } from '@/components/newsletter-address';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -143,7 +144,7 @@ export function AddSourceDialog() {
 type DiscoveryState =
     | { stage: 0 }
     | { stage: 1 }
-    | { stage: 2; result: SourceDiscovery }
+    | { stage: 2; result: SourceDiscovery; url: string }
     | { stage: 3; error: string };
 
 function FeedDiscovery({
@@ -173,7 +174,7 @@ function FeedDiscovery({
         request.current = controller;
         setState({ stage: 1 });
         const next = await discoverSources(url, controller.signal).then(
-            (result): DiscoveryState => ({ stage: 2, result }),
+            (result): DiscoveryState => ({ stage: 2, result, url }),
             (error): DiscoveryState => ({
                 stage: 3,
                 error: discoveryError(error),
@@ -393,6 +394,7 @@ function DiscoveryStatus({
         return (
             <ResolvedSources
                 result={state.result}
+                url={state.url}
                 instant={instant}
                 {...actions}
             />
@@ -402,10 +404,12 @@ function DiscoveryStatus({
 
 function ResolvedSources({
     result,
+    url,
     instant,
     ...actions
 }: {
     result: SourceDiscovery;
+    url: string;
     instant: boolean;
     saving: boolean;
     onSavingChange: (saving: boolean) => void;
@@ -418,10 +422,7 @@ function ResolvedSources({
             transition={{ duration: instant ? 0 : TIMING.enter }}
         >
             {result.candidates.length === 0 ? (
-                <p className="rounded-lg bg-background p-4 text-sm text-muted-foreground">
-                    No feeds found. Try the site’s homepage or a direct RSS or
-                    Atom feed URL.
-                </p>
+                <GenerateFeed url={url} instant={instant} {...actions} />
             ) : (
                 <FeedResults result={result} {...actions} />
             )}

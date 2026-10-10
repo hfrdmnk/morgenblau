@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, ApiError } from './api';
 
 export const subscriptionChanges = new EventTarget();
 
@@ -34,28 +34,115 @@ export function discoveryError(error: unknown) {
         : 'Couldn’t look for feeds. Try again.';
 }
 
-export function discoverSources(input: string, signal: AbortSignal) {
+function webURL(input: string) {
     const trimmed = input.trim();
-    const value = /^[a-z][a-z\d+.-]*:/i.test(trimmed)
-        ? trimmed
-        : `https://${trimmed}`;
     let url: URL;
     try {
-        url = new URL(value);
-        if (
-            !['https:', 'http:'].includes(url.protocol) ||
-            url.username ||
-            url.password
-        )
-            throw new Error();
+        url = new URL(
+            /^[a-z][a-z\d+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`,
+        );
     } catch {
-        return Promise.reject(new Error('Enter a website or feed URL.'));
+        return undefined;
     }
+    return ['https:', 'http:'].includes(url.protocol) &&
+        !url.username &&
+        !url.password
+        ? url.href
+        : undefined;
+}
+
+export function discoverSources(input: string, signal: AbortSignal) {
+    const url = webURL(input);
+    if (!url) return Promise.reject(new Error('Enter a website or feed URL.'));
     return api<SourceDiscovery>('/api/subscriptions/resolve', {
         method: 'POST',
-        body: { url: url.href },
+        body: { url },
         signal,
     });
+}
+
+export type GeneratedHealth =
+    | 'ok'
+    | 'needs_attention'
+    | 'blocked_by_site'
+    | 'broken';
+
+export type GeneratedSource = {
+    id: string;
+    feedUrl: string;
+    title: string;
+    siteUrl: string;
+    health: GeneratedHealth;
+    healthReason: string;
+    needsAnchor: boolean;
+    items: { url: string; title: string; date: string | null }[];
+    itemCount: number;
+};
+
+export function generateSource(
+    input: string,
+    anchor: string | undefined,
+    signal: AbortSignal,
+) {
+    const url = webURL(input);
+    if (!url) return Promise.reject(new Error('Enter a website URL.'));
+    const anchorUrl = anchor === undefined ? undefined : webURL(anchor);
+    if (anchor !== undefined && !anchorUrl)
+        return Promise.reject(
+            new Error('Enter the address of one post on that page.'),
+        );
+    return api<GeneratedSource>('/api/web-sources', {
+        method: 'POST',
+        body: anchorUrl ? { url, anchorUrl } : { url },
+        signal,
+    });
+}
+
+export function generationError(error: unknown) {
+    if (error instanceof ApiError) {
+        if (error.status === 429)
+            return 'Too many generated feeds this hour. Try again later.';
+        if (error.status === 502)
+            return 'Couldn’t reach that site. Try again later.';
+    }
+    return error instanceof Error && !(error instanceof TypeError)
+        ? error.message
+        : 'Couldn’t generate a feed. Try again.';
+}
+
+// Only a bad address is the reader's to fix; a busy or unreachable server is not.
+export function anchorError(error: unknown) {
+    return {
+        message: generationError(error),
+        invalid:
+            error instanceof ApiError
+                ? error.status === 400
+                : !(error instanceof TypeError),
+    };
+}
+
+export function canRetryGeneration(error: unknown) {
+    return !(error instanceof ApiError && error.status === 429);
+}
+
+export function generatedVerdict(source: GeneratedSource) {
+    const blocked = source.health === 'blocked_by_site';
+    const found = source.health !== 'broken' && source.itemCount > 0;
+    return {
+        subscribable: !blocked && found,
+        askAnchor:
+            !blocked &&
+            (!found || source.needsAnchor || source.health !== 'ok'),
+        blocked,
+    };
+}
+
+export function generatedCandidate(source: GeneratedSource): SourceCandidate {
+    return {
+        feedUrl: source.feedUrl,
+        title: source.title,
+        siteUrl: source.siteUrl,
+    };
 }
 
 export async function addSource(candidate: SourceCandidate) {

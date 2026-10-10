@@ -14,6 +14,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/mmcdole/gofeed"
 
+	dbqueries "morgenblau/internal/database/db"
 	"morgenblau/internal/fetcher"
 	"morgenblau/internal/middleware/auth"
 	"morgenblau/internal/safehttp"
@@ -199,5 +200,32 @@ func TestIsOwnWebFeed(t *testing.T) {
 		if got := own(raw); got != want {
 			t.Errorf("isOwnWebFeed(%q) = %v, want %v", raw, got, want)
 		}
+	}
+}
+
+func TestSourceListMarksOwnGeneratedFeeds(t *testing.T) {
+	dbs := openMigratedRouteDB(t)
+	svc := websource.NewService(dbs.Reader, dbs.Writer, nil, websource.Config{PublicBaseURL: "https://app.example.com", PollInterval: time.Minute})
+	for _, stmt := range []string{
+		`INSERT INTO web_sources (id, listing_key, listing_url, site_url, title, recipe, health, health_reason, created_by_did, created_at, updated_at, setup_at)
+		VALUES ('abc', 'https://news.example.com', 'https://news.example.com/', 'https://news.example.com/', 'Example Publication', '{}', 'needs_attention', 'the list looks unsure', 'did:plc:reader', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z')`,
+		`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES ('https://app.example.com/web/abc', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z')`,
+		`INSERT INTO user_subscriptions (did, rkey, at_uri, feed_url, created_at, updated_at)
+		VALUES ('did:plc:reader', '3gen', 'at://did:plc:reader/blue.morgen.feed.subscription/3gen', 'https://app.example.com/web/abc', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z')`,
+	} {
+		if _, err := dbs.Writer.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	srv := &Server{db: dbs, qr: dbqueries.New(dbs.Reader), webSources: svc}
+
+	did, _ := syntax.ParseDID("did:plc:reader")
+	req := httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil)
+	req = req.WithContext(auth.WithSession(req.Context(), &session.Session{Data: &session.Data{AccountDID: did, SessionID: "sid-1"}}))
+	rr := httptest.NewRecorder()
+	srv.routes().ServeHTTP(rr, req)
+	want := `"generated":{"health":"needs_attention","healthReason":"the list looks unsure"}`
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), want) {
+		t.Errorf("GET /api/subscriptions = %d %s, want it to contain %s", rr.Code, rr.Body, want)
 	}
 }

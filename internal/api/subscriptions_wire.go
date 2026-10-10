@@ -80,6 +80,13 @@ type SubscriptionWire struct {
 	Muted           bool     `json:"muted,omitempty"`
 	Primary         bool     `json:"primary"`
 	Tags            []string `json:"tags,omitempty"`
+	// Generated is set only for this server's own /web/ feeds; their health is the generator's, not the fetch's.
+	Generated *GeneratedHealthWire `json:"generated,omitempty"`
+}
+
+type GeneratedHealthWire struct {
+	Health       string `json:"health"`
+	HealthReason string `json:"healthReason"`
 }
 
 func rowToWire(row db.UserSubscription) SubscriptionWire {
@@ -166,6 +173,9 @@ func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) Subscrip
 	if row.ConsecutiveFailures > 0 {
 		wire.FetchStatus = "unavailable"
 		wire.NextFetchAt = derefStr(row.NextFetchAt)
+	}
+	if row.WebHealth != nil {
+		wire.Generated = &GeneratedHealthWire{Health: *row.WebHealth, HealthReason: derefStr(row.WebHealthReason)}
 	}
 	return wire
 }

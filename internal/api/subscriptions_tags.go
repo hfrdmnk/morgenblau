@@ -18,7 +18,8 @@ type SourcesReader interface {
 }
 
 // SubscriptionsListHandler returns subscriptions joined with feed metadata; the frequency bucket is computed here, not in SQL, so the rule lives in one place.
-func SubscriptionsListHandler(reader SourcesReader) http.Handler {
+// webFeedPrefix is this server's generated-feed URL up to the id; empty marks no subscription as generated.
+func SubscriptionsListHandler(reader SourcesReader, webFeedPrefix string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -26,12 +27,13 @@ func SubscriptionsListHandler(reader SourcesReader) http.Handler {
 		}
 		now := time.Now().UTC()
 		params := db.ListUserSourcesWithStatsParams{
-			Did:       sess.Data.AccountDID.String(),
-			Now:       now.Format(time.RFC3339),
-			Cutoff7d:  now.AddDate(0, 0, -7).Format(time.RFC3339),
-			Cutoff28d: now.AddDate(0, 0, -28).Format(time.RFC3339),
-			Cutoff56d: now.AddDate(0, 0, -56).Format(time.RFC3339),
-			Cutoff84d: now.AddDate(0, 0, -84).Format(time.RFC3339),
+			Did:           sess.Data.AccountDID.String(),
+			Now:           now.Format(time.RFC3339),
+			Cutoff7d:      now.AddDate(0, 0, -7).Format(time.RFC3339),
+			Cutoff28d:     now.AddDate(0, 0, -28).Format(time.RFC3339),
+			Cutoff56d:     now.AddDate(0, 0, -56).Format(time.RFC3339),
+			Cutoff84d:     now.AddDate(0, 0, -84).Format(time.RFC3339),
+			WebFeedPrefix: webFeedPrefix,
 		}
 		rows, err := reader.ListUserSourcesWithStats(r.Context(), params)
 		if err != nil {
