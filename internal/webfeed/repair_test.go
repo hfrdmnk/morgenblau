@@ -204,3 +204,58 @@ func TestAcceptanceRule(t *testing.T) {
 		})
 	}
 }
+
+// doubtedPoll is the page with the recipe's current extraction, as a poll hands it to repair after a weekly check doubted it.
+func doubtedPoll(t *testing.T, s *testSite, rec Recipe, body string) *PollResult {
+	t.Helper()
+	items, err := Apply(rec, []byte(body), s.url("/blog"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &PollResult{Verdict: PollOK, Items: items, page: &fetchedPage{body: []byte(body), url: s.url("/blog")}}
+}
+
+func TestRepairOfADoubtedListNeedsADifferentList(t *testing.T) {
+	archive := `<section class="more">` + archiveList("archive", 8) + `</section>`
+	posts := page("Blog", siteNav+blogList(8)+siteFooter)
+	t.Run("a different list closes the doubt", func(t *testing.T) {
+		s := newTestSite(t)
+		s.addBlog(8)
+		s.set("/blog", page("Blog", siteNav+archive+siteFooter))
+		wrong := setupRecipe(t, s, "/blog")
+		body := page("Blog", siteNav+blogList(8)+archive+siteFooter)
+		polled := doubtedPoll(t, s, wrong.Recipe, body)
+		if len(polled.Items) == 0 || slices.Contains(itemURLs(polled.Items), s.url("/blog/"+slugify(postTitles[0]))) {
+			t.Fatalf("doubted extraction = %v, want the archive only", itemURLs(polled.Items))
+		}
+		got, err := Repair(context.Background(), polled, RepairInput{Recipe: wrong.Recipe, History: historyFrom(wrong), Doubted: true}, s.opts())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.Accepted || got.Step != RepairHeuristic || got.Rule != AcceptDifferent || got.FalseAlarm {
+			t.Fatalf("repair accepted %v step %q rule %q (tried %v)", got.Accepted, got.Step, got.Rule, got.Tried)
+		}
+		if !slices.Contains(itemURLs(got.Items), s.url("/blog/"+slugify(postTitles[0]))) {
+			t.Errorf("items = %v, want the posts list", itemURLs(got.Items))
+		}
+	})
+	t.Run("the same list again does not", func(t *testing.T) {
+		s := newTestSite(t)
+		s.addBlog(8)
+		s.set("/blog", posts)
+		res := setupRecipe(t, s, "/blog")
+		judge := &countingJudge{}
+		opts := s.opts()
+		opts.Judge = judge
+		got, err := Repair(context.Background(), doubtedPoll(t, s, res.Recipe, posts), RepairInput{Recipe: res.Recipe, History: historyFrom(res), Doubted: true, AllowModel: true}, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Accepted {
+			t.Fatalf("repair reproduced the doubted list and was accepted by %q at %q", got.Rule, got.Step)
+		}
+		if !slices.Equal(got.Tried, []RepairStep{RepairHeuristic, RepairJudge}) || !got.UsedModel {
+			t.Errorf("tried %v (model %v), want the doubted posts skipped as anchors and the model step tried", got.Tried, got.UsedModel)
+		}
+	})
+}

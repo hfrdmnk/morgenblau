@@ -147,7 +147,7 @@ func newDriftEnv(t *testing.T, watcher webfeed.Watcher) *driftEnv {
 	env := newTestEnv(t)
 	web := driftSite()
 	gen := NewWebfeedGenerator(webfeed.Options{Client: web.client()}, watcher)
-	svc := NewService(env.reader, env.writer, gen, Config{PublicBaseURL: testBase, PollInterval: 30 * time.Minute})
+	svc := NewService(env.reader, env.writer, gen, Config{PublicBaseURL: testBase, PollInterval: 30 * time.Minute, ModelDailyUSD: 1})
 	svc.now = func() time.Time { return env.now }
 	preview, err := svc.Create(context.Background(), testDID, driftListing, "")
 	if err != nil {
@@ -217,6 +217,7 @@ func TestDriftBench(t *testing.T) {
 	cases := []struct {
 		name    string
 		page    fakePage
+		robots  string
 		health  Health
 		reason  string
 		served  []string
@@ -248,6 +249,8 @@ func TestDriftBench(t *testing.T) {
 			health: HealthBroken, reason: "the site showed an error page", served: setupItems},
 		{name: "server error", page: fakePage{status: http.StatusInternalServerError, body: "oops"},
 			health: HealthBroken, reason: "the site returned an error", served: setupItems},
+		{name: "robots.txt now disallows the listing", page: fakePage{body: driftPage("Blog", driftList(0, 10, "blog"))}, robots: "User-agent: *\nDisallow: /blog\n",
+			health: HealthBlockedBySite, reason: "this site asks feed readers not to read this page", served: setupItems},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -256,6 +259,9 @@ func TestDriftBench(t *testing.T) {
 				t.Fatalf("served after setup = %v", got)
 			}
 			d.web.setPage(driftListing, tc.page)
+			if tc.robots != "" {
+				d.web.setPage("https://blog.example.com/robots.txt", fakePage{ctype: "text/plain", body: tc.robots})
+			}
 			d.poll(t)
 
 			row := readSource(t, d.testEnv, d.id)
@@ -366,9 +372,25 @@ func TestWeeklyCheckRunsOnceAWeekAndItsAlarmGoesThroughTheLadder(t *testing.T) {
 	if got := d.served(t); slices.Contains(got, driftURL(0, "blog")) {
 		t.Errorf("published new posts while the weekly alarm stands: %v", got)
 	}
+	rows = repairRows(t, d.testEnv, d.id)
+	if len(rows) != 2 || rows[1].cause != "weekly_check" || rows[1].outcome != "unresolved" || rows[1].step != "heuristic" {
+		t.Errorf("repairs = %+v, want the open alarm to retry the ladder on the next poll", rows)
+	}
+	if w.calls != 2 {
+		t.Errorf("watcher calls = %d, want the next check to wait for its day", w.calls)
+	}
+
+	d.advance(24 * time.Hour)
+	d.poll(t)
+	if w.calls != 3 {
+		t.Errorf("watcher calls = %d, want the check back a day after its alarm", w.calls)
+	}
+	if row := readSource(t, d.testEnv, d.id); row.health != string(HealthNeedsAttention) {
+		t.Errorf("a check that still doubts the list closed the alarm: health = %s", row.health)
+	}
 
 	w.broken = false
-	d.advance(7 * 24 * time.Hour)
+	d.advance(24 * time.Hour)
 	d.poll(t)
 	if row := readSource(t, d.testEnv, d.id); row.health != string(HealthOK) {
 		t.Errorf("a healthy weekly check left health = %s", row.health)

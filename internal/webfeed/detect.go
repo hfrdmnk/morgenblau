@@ -19,6 +19,7 @@ const (
 // Detector reasons, as codes; the server words them for readers.
 const (
 	ReasonUnreachable   = "unreachable"
+	ReasonRobots        = "robots"
 	ReasonHTTPStatus    = "http_status"
 	ReasonNotHTML       = "not_html"
 	ReasonChallenge     = "challenge"

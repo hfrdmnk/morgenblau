@@ -200,8 +200,13 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	}
 	slog.Info("feed generation", "model", webModel)
 	webPollInterval := time.Duration(webPollMinutes) * time.Minute
+	webModelUSD, err := webModelDailyUSD(os.Getenv)
+	if err != nil {
+		_ = db.Close()
+		return nil, nil, err
+	}
 	webSources := websource.NewService(db.Reader, db.Writer, webGenerator, websource.Config{
-		PublicBaseURL: publicBase, PollInterval: webPollInterval,
+		PublicBaseURL: publicBase, PollInterval: webPollInterval, ModelDailyUSD: webModelUSD,
 		// Each generation can cost model calls, so a reader gets a bounded number per hour.
 		Limiter: ratelimit.New(20, time.Hour, nil),
 	})

@@ -275,3 +275,21 @@ func TestLoopbackOrigin(t *testing.T) {
 		}
 	}
 }
+
+func TestLanguageTag_KeepsOnlyABCP47Shape(t *testing.T) {
+	for in, want := range map[string]string{
+		"en":                "en",
+		" de-AT ":           "de-AT",
+		"zh-Hant-TW":        "zh-Hant-TW",
+		"":                  "",
+		"de, en;q=0.5":      "",
+		"en\r\nX-Evil: yes": "",
+		"en_US":             "",
+		"toolongsubtag9":    "",
+		"-en":               "",
+	} {
+		if got := LanguageTag(in); got != want {
+			t.Errorf("LanguageTag(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

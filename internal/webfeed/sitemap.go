@@ -23,11 +23,16 @@ func (s *session) sitemapSetup(ctx context.Context, res *Result, listing *url.UR
 	var found []sitemapURL
 	var source string
 	fetches := 0
+	seen := map[string]bool{}
 	for len(queue) > 0 && fetches < maxSitemapFetches {
 		next := queue[0]
 		queue = queue[1:]
+		if seen[next] {
+			continue
+		}
+		seen[next] = true
 		fetches++
-		r := s.get(ctx, next)
+		r := s.fetchOnce(ctx, next, s.maxBody)
 		if r.err != nil || r.status != http.StatusOK {
 			continue
 		}
@@ -96,6 +101,7 @@ func (s *session) sitemapSetup(ctx context.Context, res *Result, listing *url.UR
 			return 0
 		})
 	}
+	items = capItems(items)
 	rec.Mode = ModeSitemap
 	rec.FeedURL = source
 	rec.Streams = []Stream{{URLTemplate: tmpl, TitleHints: TitleHints{Source: "slug"}}}

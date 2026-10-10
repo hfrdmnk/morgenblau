@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // historyFrom is the good-poll record a setup leaves behind, the way the server stores it.
@@ -189,5 +190,57 @@ func TestPollReportsAnUnreachableSiteAsBroken(t *testing.T) {
 	got, err := Poll(context.Background(), PollInput{Recipe: recipe}, opts)
 	if err != nil || got.Verdict != PollBroken || got.Reason != ReasonUnreachable {
 		t.Fatalf("poll = %+v, %v", got, err)
+	}
+}
+
+func TestPollHonorsRobotsWithoutFetchingTheListing(t *testing.T) {
+	s := newTestSite(t)
+	s.addBlog(8)
+	res := setupRecipe(t, s, "/blog")
+	s.set("/robots.txt", "User-agent: *\nDisallow: /blog\n")
+	before := s.hits["/blog"]
+	got, err := Poll(context.Background(), PollInput{Recipe: res.Recipe, History: historyFrom(res)}, s.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Verdict != PollBroken || got.Reason != ReasonRobots || !got.Blocked {
+		t.Fatalf("verdict %q reason %q blocked %v, want broken by robots.txt", got.Verdict, got.Reason, got.Blocked)
+	}
+	if s.hits["/blog"] != before {
+		t.Error("the poll fetched a listing robots.txt disallows")
+	}
+}
+
+func TestPollReadsRobotsFromADailyCache(t *testing.T) {
+	s := newTestSite(t)
+	s.addBlog(8)
+	res := setupRecipe(t, s, "/blog")
+	now := time.Date(2026, 10, 10, 9, 0, 0, 0, time.UTC)
+	cache := NewRobotsCache()
+	cache.now = func() time.Time { return now }
+	opts := s.opts()
+	opts.Robots = cache
+	poll := func() *PollResult {
+		t.Helper()
+		got, err := Poll(context.Background(), PollInput{Recipe: res.Recipe, History: historyFrom(res)}, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	robotsBefore := s.hits["/robots.txt"]
+	poll()
+	poll()
+	if n := s.hits["/robots.txt"] - robotsBefore; n != 1 {
+		t.Fatalf("robots.txt fetched %d times for two polls, want 1", n)
+	}
+	s.set("/robots.txt", "User-agent: *\nDisallow: /blog\n")
+	now = now.Add(23 * time.Hour)
+	if got := poll(); got.Verdict == PollBroken {
+		t.Fatalf("a cached robots.txt was refetched within the day: %+v", got)
+	}
+	now = now.Add(2 * time.Hour)
+	if got := poll(); got.Verdict != PollBroken || got.Reason != ReasonRobots {
+		t.Fatalf("verdict %q %q after a day, want the new robots.txt honored", got.Verdict, got.Reason)
 	}
 }

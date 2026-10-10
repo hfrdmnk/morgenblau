@@ -15,7 +15,12 @@ CREATE TABLE web_sources (
     created_by_did       TEXT NOT NULL,
     created_at           TEXT NOT NULL,
     updated_at           TEXT NOT NULL,
+    -- The setup in force: when it ran, its own verdict and a counter a poll checks so it never writes over a newer one.
     setup_at             TEXT NOT NULL,
+    setup_health         TEXT NOT NULL CHECK (setup_health IN ('ok', 'needs_attention', 'blocked_by_site', 'broken')),
+    setup_seq            INTEGER NOT NULL DEFAULT 0,
+    -- The last setup run, kept or not, so a reader retrying at once does not pay for another.
+    setup_tried_at       TEXT NOT NULL,
     last_polled_at       TEXT,
     next_poll_at         TEXT,
     etag                 TEXT,
@@ -27,6 +32,7 @@ CREATE TABLE web_sources (
 );
 
 CREATE INDEX web_sources_next_poll_at_idx ON web_sources (next_poll_at);
+CREATE INDEX web_sources_created_by_idx ON web_sources (created_by_did, created_at);
 
 CREATE TABLE web_source_items (
     source_id     TEXT NOT NULL REFERENCES web_sources (id) ON DELETE CASCADE,
@@ -70,10 +76,21 @@ CREATE TABLE web_source_repairs (
 );
 
 CREATE INDEX web_source_repairs_source_idx ON web_source_repairs (source_id, attempted_at);
+
+-- Every model call's cost across all sources, for the global daily budget; it outlives the sources it was spent on.
+CREATE TABLE web_model_spend (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    spent_at TEXT NOT NULL,
+    kind     TEXT NOT NULL CHECK (kind IN ('setup', 'repair', 'check')),
+    usd      REAL NOT NULL
+);
+
+CREATE INDEX web_model_spend_spent_at_idx ON web_model_spend (spent_at);
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
+DROP TABLE IF EXISTS web_model_spend;
 DROP TABLE IF EXISTS web_source_repairs;
 DROP TABLE IF EXISTS web_source_polls;
 DROP TABLE IF EXISTS web_source_items;

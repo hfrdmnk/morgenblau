@@ -340,7 +340,7 @@ func TestSubscriptionsList_GeneratedFeedsCarryTheirHealth(t *testing.T) {
 		prefix + "fine":                     {Did: "did:plc:alice", Rkey: "2", FeedUrl: prefix + "fine"},
 		"https://news.example.com/feed.xml": {Did: "did:plc:alice", Rkey: "3", FeedUrl: "https://news.example.com/feed.xml"},
 	}
-	idx.webHealth[prefix+"unsure"] = [2]string{"needs_attention", "the list looks unsure"}
+	idx.webHealth[prefix+"unsure"] = [2]string{"needs_attention", "Morgenblau isn't sure which links are posts"}
 	idx.webHealth[prefix+"fine"] = [2]string{"ok", ""}
 
 	rr := httptest.NewRecorder()
@@ -360,7 +360,7 @@ func TestSubscriptionsList_GeneratedFeedsCarryTheirHealth(t *testing.T) {
 	for _, s := range got {
 		byRkey[s["rkey"].(string)] = s
 	}
-	want := map[string]any{"health": "needs_attention", "healthReason": "the list looks unsure"}
+	want := map[string]any{"health": "needs_attention", "healthReason": "Morgenblau isn't sure which links are posts"}
 	if g, _ := byRkey["1"]["generated"].(map[string]any); g == nil || g["health"] != want["health"] || g["healthReason"] != want["healthReason"] {
 		t.Errorf("unsure generated feed = %v, want generated %v", byRkey["1"], want)
 	}

@@ -54,8 +54,11 @@ func applyStreams(r Recipe, body []byte, pageURL string) ([]Item, error) {
 		items[i] = Item{URL: e.URL, Title: e.Title, Date: e.Date}
 	}
 	sortItems(items, r.Order)
-	return items, nil
+	return capItems(items), nil
 }
+
+// capItems keeps the first MaxItems, the newest in date order.
+func capItems(items []Item) []Item { return items[:min(len(items), MaxItems)] }
 
 // refind locates a stream: the exact container hint, then the same structure under rehashed classes, then any list of its URL shape.
 func refind(clusters []*cluster, st Stream) []*cluster {
@@ -151,7 +154,7 @@ func applySitemap(r Recipe, body []byte) ([]Item, error) {
 			}
 		}
 	}
-	return items, nil
+	return capItems(items), nil
 }
 
 func applyCSSRecipe(r Recipe, body []byte, pageURL string) ([]Item, error) {
@@ -168,5 +171,5 @@ func applyCSSRecipe(r Recipe, body []byte, pageURL string) ([]Item, error) {
 	}
 	items = slices.DeleteFunc(items, func(it Item) bool { return slices.Contains(r.ExcludeURLs, it.URL) })
 	sortItems(items, r.Order)
-	return items, nil
+	return capItems(items), nil
 }

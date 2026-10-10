@@ -120,8 +120,8 @@ func TestEverythingElseStillGoesThroughTheSafeTransport(t *testing.T) {
 func TestWebSourceRoutesAreRegistered(t *testing.T) {
 	dbs := openMigratedRouteDB(t)
 	svc := websource.NewService(dbs.Reader, dbs.Writer, nil, websource.Config{PublicBaseURL: "https://app.example.com", PollInterval: time.Minute})
-	if _, err := dbs.Writer.Exec(`INSERT INTO web_sources (id, listing_key, listing_url, site_url, title, recipe, health, created_by_did, created_at, updated_at, setup_at)
-		VALUES ('abc', 'https://news.example.com', 'https://news.example.com/', 'https://news.example.com/', 'Example Publication', '{}', 'ok', 'did:plc:reader', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z')`); err != nil {
+	if _, err := dbs.Writer.Exec(`INSERT INTO web_sources (id, listing_key, listing_url, site_url, title, recipe, health, created_by_did, created_at, updated_at, setup_at, setup_health, setup_tried_at)
+		VALUES ('abc', 'news.example.com', 'https://news.example.com/', 'https://news.example.com/', 'Example Publication', '{}', 'ok', 'did:plc:reader', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z', 'ok', '2026-10-10T09:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := dbs.Writer.Exec(`INSERT INTO web_source_items (source_id, url, title, first_seen_at, history, position)
@@ -207,8 +207,8 @@ func TestSourceListMarksOwnGeneratedFeeds(t *testing.T) {
 	dbs := openMigratedRouteDB(t)
 	svc := websource.NewService(dbs.Reader, dbs.Writer, nil, websource.Config{PublicBaseURL: "https://app.example.com", PollInterval: time.Minute})
 	for _, stmt := range []string{
-		`INSERT INTO web_sources (id, listing_key, listing_url, site_url, title, recipe, health, health_reason, created_by_did, created_at, updated_at, setup_at)
-		VALUES ('abc', 'https://news.example.com', 'https://news.example.com/', 'https://news.example.com/', 'Example Publication', '{}', 'needs_attention', 'the list looks unsure', 'did:plc:reader', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z')`,
+		`INSERT INTO web_sources (id, listing_key, listing_url, site_url, title, recipe, health, health_reason, created_by_did, created_at, updated_at, setup_at, setup_health, setup_tried_at)
+		VALUES ('abc', 'news.example.com', 'https://news.example.com/', 'https://news.example.com/', 'Example Publication', '{}', 'needs_attention', 'Morgenblau isn''t sure which links are posts', 'did:plc:reader', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z', 'needs_attention', '2026-10-10T09:00:00Z')`,
 		`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES ('https://app.example.com/web/abc', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z')`,
 		`INSERT INTO user_subscriptions (did, rkey, at_uri, feed_url, created_at, updated_at)
 		VALUES ('did:plc:reader', '3gen', 'at://did:plc:reader/blue.morgen.feed.subscription/3gen', 'https://app.example.com/web/abc', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z')`,
@@ -224,7 +224,7 @@ func TestSourceListMarksOwnGeneratedFeeds(t *testing.T) {
 	req = req.WithContext(auth.WithSession(req.Context(), &session.Session{Data: &session.Data{AccountDID: did, SessionID: "sid-1"}}))
 	rr := httptest.NewRecorder()
 	srv.routes().ServeHTTP(rr, req)
-	want := `"generated":{"health":"needs_attention","healthReason":"the list looks unsure"}`
+	want := `"generated":{"health":"needs_attention","healthReason":"Morgenblau isn't sure which links are posts"}`
 	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), want) {
 		t.Errorf("GET /api/subscriptions = %d %s, want it to contain %s", rr.Code, rr.Body, want)
 	}

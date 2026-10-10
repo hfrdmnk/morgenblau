@@ -14,6 +14,8 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/mmcdole/gofeed"
+
+	"morgenblau/internal/safehttp"
 )
 
 const (
@@ -32,9 +34,6 @@ var (
 
 // feedWord needs rss, atom or feed as a whole word so "feedback" and "anatomy" never trigger a probe.
 var feedWord = regexp.MustCompile(`(?i)(?:^|[^a-z])(?:rss|atom|feeds?)(?:[^a-z]|$)`)
-
-// languageTag rejects lang values that are not a BCP 47 shape, which would otherwise ride into a request header.
-var languageTag = regexp.MustCompile(`^[A-Za-z]{1,8}(?:-[A-Za-z0-9]{1,8})*$`)
 
 type probeSource int
 
@@ -62,10 +61,7 @@ func (f *Finder) discoverFeed(ctx context.Context, doc *goquery.Document, base *
 	ctx, cancel := context.WithTimeout(ctx, probeBudget)
 	defer cancel()
 
-	lang := strings.TrimSpace(doc.Find("html").First().AttrOr("lang", ""))
-	if !languageTag.MatchString(lang) {
-		lang = ""
-	}
+	lang := safehttp.LanguageTag(doc.Find("html").First().AttrOr("lang", ""))
 	feeds := f.probeAll(ctx, feedProbes(doc, base), lang)
 	if len(feeds) == 0 {
 		return nil

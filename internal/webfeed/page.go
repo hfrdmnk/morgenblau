@@ -8,6 +8,8 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/net/html"
+
+	"morgenblau/internal/safehttp"
 )
 
 // pageDoc is one parsed listing page with its usable links.
@@ -46,7 +48,7 @@ func parsePage(body []byte, pageURL string) (*pageDoc, error) {
 	p := &pageDoc{url: u, doc: doc, order: map[*html.Node]int{}}
 	p.title = collapse(doc.Find("head title").First().Text())
 	if lang, ok := doc.Find("html").Attr("lang"); ok {
-		p.lang = strings.TrimSpace(lang)
+		p.lang = safehttp.LanguageTag(lang)
 	}
 	base := u
 	if href, ok := doc.Find("head base[href]").Attr("href"); ok {

@@ -6,10 +6,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
+	"sync"
+	"time"
+
+	"morgenblau/internal/safehttp"
 )
 
 // PollInput is what one poll needs from earlier ones: the recipe, the conditional-GET validators, the link-set hash and the good-poll history, newest first.
@@ -62,6 +66,12 @@ func Poll(ctx context.Context, in PollInput, opts Options) (*PollResult, error) 
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedMode, r.Mode)
 	}
 	s := newSession(opts)
+	if !s.robotsAllow(ctx, target, opts.Robots) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return broken(&PollResult{}, ReasonRobots, true), nil
+	}
 	resp, etag, lastModified := s.pollFetch(ctx, target, r.Lang, in)
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -146,7 +156,7 @@ func (s *session) pollFetch(ctx context.Context, rawURL, lang string, in PollInp
 	}
 	req.Header.Set("User-Agent", s.userAgent)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	if lang != "" {
+	if lang := safehttp.LanguageTag(lang); lang != "" {
 		req.Header.Set("Accept-Language", lang)
 	}
 	if !in.Unconditional {
@@ -168,7 +178,7 @@ func (s *session) pollFetch(ctx context.Context, rawURL, lang string, in PollInp
 	if resp.Request != nil && resp.Request.URL != nil {
 		r.url = resp.Request.URL.String()
 	}
-	r.body, r.err = io.ReadAll(io.LimitReader(resp.Body, s.maxBody))
+	r.body, r.err = s.readBody(resp.Body, s.maxBody)
 	return r, resp.Header.Get("ETag"), resp.Header.Get("Last-Modified")
 }
 
@@ -193,4 +203,62 @@ func hashKeys(keys []string) string {
 	keys = slices.Compact(slices.Sorted(slices.Values(keys)))
 	sum := sha256.Sum256([]byte(strings.Join(keys, "\n")))
 	return hex.EncodeToString(sum[:16])
+}
+
+// robotsAllow reports whether robots.txt lets us fetch rawURL, through cache when one is given.
+func (s *session) robotsAllow(ctx context.Context, rawURL string, cache *RobotsCache) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return true
+	}
+	origin := u.Scheme + "://" + u.Host
+	var rb robots
+	if cache != nil {
+		rb = cache.get(ctx, s, origin)
+	} else {
+		rb = s.robotsFor(ctx, origin)
+	}
+	return rb.allowed(u.RequestURI())
+}
+
+const robotsTTL = 24 * time.Hour
+
+// RobotsCache holds each origin's robots.txt rules for a day; it is safe for concurrent use.
+type RobotsCache struct {
+	mu      sync.Mutex
+	entries map[string]robotsEntry
+	now     func() time.Time
+}
+
+type robotsEntry struct {
+	rules   robots
+	fetched time.Time
+}
+
+func NewRobotsCache() *RobotsCache {
+	return &RobotsCache{entries: map[string]robotsEntry{}, now: time.Now}
+}
+
+func (c *RobotsCache) get(ctx context.Context, s *session, origin string) robots {
+	now := c.now()
+	c.mu.Lock()
+	e, ok := c.entries[origin]
+	c.mu.Unlock()
+	if ok && now.Sub(e.fetched) < robotsTTL {
+		return e.rules
+	}
+	rules := s.robotsFor(ctx, origin)
+	if ctx.Err() != nil {
+		return rules
+	}
+	c.mu.Lock()
+	c.entries[origin] = robotsEntry{rules: rules, fetched: now}
+	// Expired entries go on write, so the map stays as small as the set of sites still polled.
+	for k, old := range c.entries {
+		if now.Sub(old.fetched) >= robotsTTL {
+			delete(c.entries, k)
+		}
+	}
+	c.mu.Unlock()
+	return rules
 }

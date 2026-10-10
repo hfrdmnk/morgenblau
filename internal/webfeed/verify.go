@@ -22,13 +22,16 @@ type articleInfo struct {
 	siteName  string
 	published time.Time
 	isArticle bool
-	page      *pageDoc
-	clean     string // ogTitle or h1 without the site-name affix
+	// page is the parsed post, held only while extracting; lists and prose keep what isHub needs.
+	page  *pageDoc
+	lists [][]string
+	prose int
+	clean string // ogTitle or h1 without the site-name affix
 }
 
 func (s *session) article(ctx context.Context, rawURL string) *articleInfo {
 	info := &articleInfo{url: rawURL}
-	r := s.get(ctx, rawURL)
+	r := s.fetchOnce(ctx, rawURL, maxArticleBody)
 	if r.err != nil || r.status >= 400 || !r.isHTML() || isChallenge(r.body) {
 		return info
 	}
@@ -37,6 +40,7 @@ func (s *session) article(ctx context.Context, rawURL string) *articleInfo {
 		return info
 	}
 	info.ok, info.page = true, p
+	defer func() { info.page = nil }()
 	doc := p.doc
 	meta := func(names ...string) string {
 		for _, n := range names {
@@ -83,7 +87,32 @@ func (s *session) article(ctx context.Context, rawURL string) *articleInfo {
 			}
 		}
 	}
+	if !info.isArticle && info.published.IsZero() {
+		info.summarizeLists()
+	}
 	return info
+}
+
+// summarizeLists keeps the URL shapes of the page's main lists and its prose length, all isHub needs once the page is dropped.
+func (a *articleInfo) summarizeLists() {
+	self := urlKey(a.url)
+	for _, c := range a.page.clusters() {
+		if c.sideList() {
+			continue
+		}
+		var ts []string
+		for _, e := range c.entries {
+			if urlKey(e.URL) != self {
+				ts = append(ts, URLTemplate(e.URL))
+			}
+		}
+		a.lists = append(a.lists, ts)
+	}
+	a.page.doc.Find("p").Each(func(_ int, sel *goquery.Selection) {
+		if sel.Closest("a").Length() == 0 && sel.Find("a").Length() == 0 {
+			a.prose += len(collapse(sel.Text()))
+		}
+	})
 }
 
 var reArticleType = regexp.MustCompile(`"@type"\s*:\s*\[?\s*"[A-Za-z]*(Article|Posting)"`)
@@ -120,41 +149,34 @@ func (a *articleInfo) isHub(template string) bool {
 	if !a.ok || a.isArticle || !a.published.IsZero() {
 		return false
 	}
-	self := urlKey(a.url)
 	biggest := 0
-	for _, c := range a.page.clusters() {
-		if c.sideList() {
-			continue
-		}
+	for _, ts := range a.lists {
 		n := 0
-		for _, e := range c.entries {
-			if urlKey(e.URL) != self && matchTemplate(template, URLTemplate(e.URL)) {
+		for _, t := range ts {
+			if matchTemplate(template, t) {
 				n++
 			}
 		}
 		biggest = max(biggest, n)
 	}
-	return biggest >= 6 && (biggest >= 12 || a.prose() < 1500)
+	// prose counts paragraph text outside links, the body an article has and a listing lacks.
+	return biggest >= 6 && (biggest >= 12 || a.prose < 1500)
 }
 
-// prose counts paragraph text outside links, the body an article has and a listing lacks.
-func (a *articleInfo) prose() int {
-	n := 0
-	a.page.doc.Find("p").Each(func(_ int, sel *goquery.Selection) {
-		if sel.Closest("a").Length() == 0 && sel.Find("a").Length() == 0 {
-			n += len(collapse(sel.Text()))
-		}
-	})
-	return n
-}
-
-// fetchArticles fetches post pages at most maxArticleConcurrency at a time.
+// fetchArticles fetches post pages at most maxArticleConcurrency at a time; a page asked for again is not refetched.
 func (s *session) fetchArticles(ctx context.Context, urls []string) map[string]*articleInfo {
 	out := make(map[string]*articleInfo, len(urls))
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, maxArticleConcurrency)
 	for _, u := range urls {
+		s.mu.Lock()
+		cached, ok := s.articles[u]
+		s.mu.Unlock()
+		if ok {
+			out[u] = cached
+			continue
+		}
 		wg.Go(func() {
 			select {
 			case sem <- struct{}{}:
@@ -166,6 +188,9 @@ func (s *session) fetchArticles(ctx context.Context, urls []string) map[string]*
 			mu.Lock()
 			out[u] = info
 			mu.Unlock()
+			s.mu.Lock()
+			s.articles[u] = info
+			s.mu.Unlock()
 		})
 	}
 	wg.Wait()

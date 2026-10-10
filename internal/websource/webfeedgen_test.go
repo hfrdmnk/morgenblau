@@ -2,6 +2,7 @@ package websource
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -19,7 +20,7 @@ func (fixedJudge) Judge(context.Context, webfeed.JudgeInput) (webfeed.Verdict, w
 func TestWebfeedGeneratorSetupMapsTheResult(t *testing.T) {
 	web := driftSite()
 	gen := NewWebfeedGenerator(webfeed.Options{Client: web.client()}, nil)
-	got, err := gen.Setup(context.Background(), driftListing, "")
+	got, err := gen.Setup(context.Background(), driftListing, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +44,7 @@ func TestWebfeedGeneratorSetupMapsTheResult(t *testing.T) {
 func TestWebfeedGeneratorSetupWordsItsDoubtsForReaders(t *testing.T) {
 	thin := driftSite()
 	thin.set(driftListing, driftPage("Blog", driftList(2, 4, "blog")))
-	got, err := NewWebfeedGenerator(webfeed.Options{Client: thin.client()}, nil).Setup(context.Background(), driftListing, "")
+	got, err := NewWebfeedGenerator(webfeed.Options{Client: thin.client()}, nil).Setup(context.Background(), driftListing, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,12 +54,54 @@ func TestWebfeedGeneratorSetupWordsItsDoubtsForReaders(t *testing.T) {
 
 	closed := driftSite()
 	closed.setPage("https://blog.example.com/robots.txt", fakePage{ctype: "text/plain", body: "User-agent: *\nDisallow: /blog\n"})
-	got, err = NewWebfeedGenerator(webfeed.Options{Client: closed.client()}, nil).Setup(context.Background(), driftListing, "")
+	got, err = NewWebfeedGenerator(webfeed.Options{Client: closed.client()}, nil).Setup(context.Background(), driftListing, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Health != HealthBlockedBySite || got.NeedsAnchor || got.HealthReason != "this site blocks feed readers" {
 		t.Errorf("robots-closed listing = %s %v %q", got.Health, got.NeedsAnchor, got.HealthReason)
+	}
+
+	for _, reasons := range [][]string{{"unsure"}, {"something new"}} {
+		if got := setupReason(HealthNeedsAttention, reasons); got != "Morgenblau isn't sure which links are posts" {
+			t.Errorf("setupReason(%v) = %q", reasons, got)
+		}
+	}
+}
+
+// twoListsPage has two undated lists of different URL shapes and nothing to tell them apart, so the heuristic wants the judge.
+func twoListsPage() string {
+	var b strings.Builder
+	b.WriteString(`<main><div class="col-a">`)
+	for i := range 5 {
+		fmt.Fprintf(&b, `<div class="item"><a href="/guides/%s">%s</a></div>`, driftSlug(driftTitles[i]), driftTitles[i])
+	}
+	b.WriteString(`</div><div class="col-b">`)
+	for i := 5; i < 10; i++ {
+		fmt.Fprintf(&b, `<div class="item"><a href="/stories/%s">%s</a></div>`, driftSlug(driftTitles[i]), driftTitles[i])
+	}
+	b.WriteString(`</div></main>`)
+	return driftPage("Resources", b.String())
+}
+
+func TestWebfeedGeneratorSetupLeavesTheModelOutWhenTold(t *testing.T) {
+	web := driftSite()
+	web.set(driftListing, twoListsPage())
+	judge := &countingJudge{}
+	gen := NewWebfeedGenerator(webfeed.Options{Client: web.client(), Judge: judge}, nil)
+	if _, err := gen.Setup(context.Background(), driftListing, "", true); err != nil {
+		t.Fatal(err)
+	}
+	if judge.calls.Load() == 0 {
+		t.Fatal("the fixture never asks the judge, so it proves nothing")
+	}
+	before := judge.calls.Load()
+	got, err := gen.Setup(context.Background(), driftListing, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if judge.calls.Load() != before || got.Cost.USD != 0 {
+		t.Errorf("judge calls %d -> %d, cost %+v; want no model call over budget", before, judge.calls.Load(), got.Cost)
 	}
 }
 
@@ -66,7 +109,7 @@ func TestWebfeedGeneratorPollNeverReachesTheModel(t *testing.T) {
 	web := driftSite()
 	judge := &countingJudge{}
 	gen := NewWebfeedGenerator(webfeed.Options{Client: web.client(), Judge: judge}, nil)
-	setup, err := gen.Setup(context.Background(), driftListing, "")
+	setup, err := gen.Setup(context.Background(), driftListing, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}

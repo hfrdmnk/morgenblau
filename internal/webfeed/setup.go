@@ -24,13 +24,19 @@ type Options struct {
 	UserAgent string
 	// MaxBody caps each response body in bytes.
 	MaxBody int64
+	// MaxSetupBytes caps the bytes one setup or poll reads across all its fetches.
+	MaxSetupBytes int64
+	// Robots lets polls reuse each site's robots.txt for a day; nil fetches it on every poll.
+	Robots *RobotsCache
 }
 
 // Result is a finished setup: the recipe to store, the items it yields now, and the self-check verdict.
 type Result struct {
-	Recipe        Recipe
-	Title         string
-	Items         []Item
+	Recipe Recipe
+	Title  string
+	Items  []Item
+	// Excerpts are the items' teasers on the listing, keyed by item URL.
+	Excerpts      map[string]string
 	Health        Health
 	HealthReasons []string
 	// Candidates are the top lists the heuristic found, in the order the judge saw them.
@@ -59,8 +65,16 @@ func Setup(ctx context.Context, listingURL string, opts Options) (*Result, error
 			return nil, err
 		}
 	}
-	res.listing = nil
+	res.release()
 	return res, nil
+}
+
+// release takes the teasers from the parsed listing and drops it, the biggest thing a setup holds.
+func (r *Result) release() {
+	if r.listing != nil {
+		r.Excerpts = listingExcerpts(r.listing, r.Items)
+	}
+	r.listing = nil
 }
 
 // SetupAnchored re-runs setup choosing the lists that contain the reader's example post or share its URL shape.
@@ -70,7 +84,7 @@ func SetupAnchored(ctx context.Context, listingURL, anchorPostURL string, opts O
 	}
 	res, err := setup(ctx, listingURL, anchorPostURL, opts)
 	if res != nil {
-		res.listing = nil
+		res.release()
 	}
 	return res, err
 }
@@ -195,6 +209,10 @@ func setup(ctx context.Context, listingURL, anchorURL string, opts Options) (*Re
 		rec.Order = OrderPage
 	}
 	sortItems(items, rec.Order)
+	if len(items) > MaxItems {
+		items = capItems(items)
+		sig = ComputeSignals(items, streamTemplates(streams))
+	}
 
 	rec.Streams = streams
 	rec.ExcludeURLs = append(rec.ExcludeURLs, excludes...)

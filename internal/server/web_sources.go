@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -66,8 +67,22 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
-// modelTimeout bounds one model call; api.anthropic.com is a fixed host, so the client needs no SSRF guard.
-const modelTimeout = 90 * time.Second
+// modelCallTimeout bounds one model call with its retries; a setup runs up to three in a row inside websource.SetupTimeout.
+// api.anthropic.com is a fixed host, so the client needs no SSRF guard.
+const modelCallTimeout = 25 * time.Second
+
+// webModelDailyUSD reads WEB_MODEL_DAILY_USD, the most the model may cost in any 24 hours; 0 keeps every step heuristic.
+func webModelDailyUSD(getenv func(string) string) (float64, error) {
+	raw := strings.TrimSpace(getenv("WEB_MODEL_DAILY_USD"))
+	if raw == "" {
+		return 1, nil
+	}
+	usd, err := strconv.ParseFloat(raw, 64)
+	if err != nil || usd < 0 || math.IsNaN(usd) || math.IsInf(usd, 0) {
+		return 0, fmt.Errorf("WEB_MODEL_DAILY_USD must be a dollar amount of 0 or more, got %q", raw)
+	}
+	return usd, nil
+}
 
 // newWebGenerator builds feed generation over client, which must be SSRF-safe; with an API key, Haiku judges unsure
 // setups, induces recipes, runs the daily model repair and the weekly check.
@@ -76,7 +91,7 @@ func newWebGenerator(client webfeed.Doer, apiKey string) (websource.Generator, b
 	if apiKey == "" {
 		return websource.NewWebfeedGenerator(opts, nil), false, nil
 	}
-	model, err := claude.New(claude.Config{APIKey: apiKey, HTTPClient: &http.Client{Timeout: modelTimeout}})
+	model, err := claude.New(claude.Config{APIKey: apiKey, HTTPClient: &http.Client{Timeout: modelCallTimeout}, CallTimeout: modelCallTimeout})
 	if err != nil {
 		return nil, false, err
 	}

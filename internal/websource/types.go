@@ -10,8 +10,9 @@ import (
 
 // Generator derives a feed from a listing page; WebfeedGenerator implements it over internal/webfeed.
 type Generator interface {
-	// Setup reads the listing (anchored on one post when anchorURL is set) and returns the recipe and the posts found now.
-	Setup(ctx context.Context, listingURL, anchorURL string) (Generated, error)
+	// Setup reads the listing (anchored on one post when anchorURL is set) and returns the recipe and the posts found now;
+	// allowModel false keeps it to the free heuristic.
+	Setup(ctx context.Context, listingURL, anchorURL string, allowModel bool) (Generated, error)
 	// Poll re-reads the listing with the stored recipe, judges the result against prev and repairs a suspect one.
 	Poll(ctx context.Context, recipe json.RawMessage, prev PollState) (PollOutcome, error)
 }
@@ -89,6 +90,8 @@ type PollState struct {
 	AllowModelRepair bool
 	// CheckDue asks for the weekly second opinion on this poll.
 	CheckDue bool
+	// WeeklyAlarm says a weekly check doubts the current list and nothing has answered it yet.
+	WeeklyAlarm bool
 }
 
 // PollOutcome carries the full current extraction in Items; the service publishes only the ones it has not seen.
@@ -107,8 +110,9 @@ type PollOutcome struct {
 	Fingerprint  Fingerprint
 	// Repair is set when this poll ran the repair ladder; an accepted repair arrives as VerdictOK with its recipe and items.
 	Repair *RepairReport
-	// Checked says the weekly check ran on this poll.
-	Checked bool
+	// Checked says the weekly check ran on this poll; CheckUSD is what it cost.
+	Checked  bool
+	CheckUSD float64
 }
 
 type RepairCause string
@@ -180,4 +184,8 @@ var (
 	ErrInvalidURL  = errors.New("websource: invalid url")
 	ErrGeneration  = errors.New("websource: generation failed")
 	ErrUnavailable = errors.New("websource: feed generation is not available")
+	// ErrBusy means every setup slot stayed taken until the setup deadline.
+	ErrBusy = errors.New("websource: feed generation is busy")
+	// ErrSetupInFlight means this reader's previous setup is still running.
+	ErrSetupInFlight = errors.New("websource: a setup for this reader is still running")
 )

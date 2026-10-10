@@ -15,14 +15,49 @@ import (
 )
 
 type fakeWebSources struct {
-	preview websource.Preview
-	err     error
-	calls   []string
+	preview  websource.Preview
+	err      error
+	calls    []string
+	onCreate func(ctx context.Context)
 }
 
-func (f *fakeWebSources) Create(_ context.Context, did, listingURL, anchorURL string) (websource.Preview, error) {
+func (f *fakeWebSources) Create(ctx context.Context, did, listingURL, anchorURL string) (websource.Preview, error) {
 	f.calls = append(f.calls, did+"|"+listingURL+"|"+anchorURL)
+	if f.onCreate != nil {
+		f.onCreate(ctx)
+	}
 	return f.preview, f.err
+}
+
+// deadlineRecorder is a ResponseWriter that lets http.ResponseController move its write deadline, as the server's does.
+type deadlineRecorder struct {
+	*httptest.ResponseRecorder
+	deadline time.Time
+}
+
+func (d *deadlineRecorder) SetWriteDeadline(t time.Time) error {
+	d.deadline = t
+	return nil
+}
+
+func TestWebSourcesCreate_SetupOutlivesTheRequestAndTheServerWriteTimeout(t *testing.T) {
+	reqCtx, closeDialog := context.WithCancel(context.Background())
+	defer closeDialog()
+	var setupCtxErr error
+	svc := &fakeWebSources{preview: websource.Preview{Source: websource.Source{ID: "abc", Health: websource.HealthOK}}, onCreate: func(ctx context.Context) {
+		closeDialog()
+		setupCtxErr = ctx.Err()
+	}}
+	req := withSession(httptest.NewRequest(http.MethodPost, "/api/web-sources", strings.NewReader(`{"url":"https://news.example.com/"}`)).WithContext(reqCtx), "did:plc:reader", "sid-1")
+	rr := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+	start := time.Now()
+	WebSourcesCreateHandler(svc).ServeHTTP(rr, req)
+	if setupCtxErr != nil {
+		t.Errorf("closing the dialog cancelled a paid setup: %v", setupCtxErr)
+	}
+	if rr.deadline.Before(start.Add(websource.SetupTimeout)) {
+		t.Errorf("write deadline %v after the request, want past the %v setup deadline", rr.deadline.Sub(start), websource.SetupTimeout)
+	}
 }
 
 func postWebSource(t *testing.T, svc WebSourceCreator, body string) *httptest.ResponseRecorder {
@@ -100,6 +135,8 @@ func TestWebSourcesCreate_Errors(t *testing.T) {
 		{"invalid url", `{"url":"ftp://news.example.com/"}`, fmt.Errorf("%w: ftp", websource.ErrInvalidURL), http.StatusBadRequest, codeInvalidRequest},
 		{"generation failed", `{"url":"https://news.example.com/"}`, fmt.Errorf("%w: refused", websource.ErrGeneration), http.StatusBadGateway, codeUpstreamError},
 		{"not configured", `{"url":"https://news.example.com/"}`, websource.ErrUnavailable, http.StatusServiceUnavailable, codeUnavailable},
+		{"every setup slot busy", `{"url":"https://news.example.com/"}`, websource.ErrBusy, http.StatusServiceUnavailable, codeUnavailable},
+		{"this reader's setup still running", `{"url":"https://news.example.com/"}`, websource.ErrSetupInFlight, http.StatusTooManyRequests, codeRateLimited},
 		{"storage failure", `{"url":"https://news.example.com/"}`, errors.New("disk full"), http.StatusInternalServerError, codeInternalError},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

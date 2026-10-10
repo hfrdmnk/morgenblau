@@ -1,14 +1,10 @@
 package websource
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
-	"sync"
 
 	"morgenblau/internal/webfeed"
 )
@@ -21,14 +17,19 @@ type WebfeedGenerator struct {
 }
 
 // NewWebfeedGenerator takes options with an SSRF-safe client; nil Judge, Inducer or watcher leave those steps out.
+// Polls share one robots.txt cache unless opts brings its own.
 func NewWebfeedGenerator(opts webfeed.Options, watcher webfeed.Watcher) *WebfeedGenerator {
+	if opts.Robots == nil {
+		opts.Robots = webfeed.NewRobotsCache()
+	}
 	return &WebfeedGenerator{opts: opts, watcher: watcher}
 }
 
-func (g *WebfeedGenerator) Setup(ctx context.Context, listingURL, anchorURL string) (Generated, error) {
-	listing := &listingCapture{next: g.opts.Client, target: listingURL}
+func (g *WebfeedGenerator) Setup(ctx context.Context, listingURL, anchorURL string, allowModel bool) (Generated, error) {
 	opts := g.opts
-	opts.Client = listing
+	if !allowModel {
+		opts = g.freeOpts()
+	}
 	var res *webfeed.Result
 	var err error
 	if anchorURL != "" {
@@ -43,11 +44,6 @@ func (g *WebfeedGenerator) Setup(ctx context.Context, listingURL, anchorURL stri
 	if err != nil {
 		return Generated{}, err
 	}
-	body, finalURL := listing.result()
-	var excerpts map[string]string
-	if body != nil {
-		excerpts = webfeed.ListingExcerpts(body, finalURL, res.Items)
-	}
 	health := Health(res.Health)
 	gen := Generated{
 		Recipe:       recipe,
@@ -55,7 +51,7 @@ func (g *WebfeedGenerator) Setup(ctx context.Context, listingURL, anchorURL stri
 		Health:       health,
 		HealthReason: setupReason(health, res.HealthReasons),
 		NeedsAnchor:  health == HealthNeedsAttention,
-		Items:        toItems(res.Items, excerpts),
+		Items:        toItems(res.Items, res.Excerpts),
 		Fingerprint:  fingerprint(res.Items, res.Recipe),
 		Cost:         setupCost(res.Recipe.Setup),
 	}
@@ -73,7 +69,7 @@ func (g *WebfeedGenerator) Poll(ctx context.Context, raw json.RawMessage, prev P
 	check := prev.CheckDue && g.watcher != nil
 	polled, err := webfeed.Poll(ctx, webfeed.PollInput{
 		Recipe: recipe, ETag: prev.ETag, LastModified: prev.LastModified, LinkSetHash: prev.LinkSetHash,
-		History: history, Unconditional: check,
+		History: history, Unconditional: check || prev.WeeklyAlarm,
 	}, g.freeOpts())
 	if err != nil {
 		return PollOutcome{}, err
@@ -87,6 +83,9 @@ func (g *WebfeedGenerator) Poll(ctx context.Context, raw json.RawMessage, prev P
 		out.Verdict, out.Reason, out.Blocked = VerdictBroken, brokenReason(polled.Reason, polled.Blocked), polled.Blocked
 		return out, nil
 	case webfeed.PollSuspect:
+		if prev.WeeklyAlarm {
+			return g.repair(ctx, out, polled, recipe, history, prev, RepairCauseWeeklyCheck, polled.Reason)
+		}
 		return g.repair(ctx, out, polled, recipe, history, prev, RepairCauseDetector, polled.Reason)
 	}
 	if polled.NotModified {
@@ -96,10 +95,17 @@ func (g *WebfeedGenerator) Poll(ctx context.Context, raw json.RawMessage, prev P
 	if check && polled.Page() != nil {
 		out.Checked = true
 		rec, err := webfeed.WeeklyCheck(ctx, g.watcher, recipe.ListingURL, polled.Page(), historyItems(history), polled.Items)
+		out.CheckUSD = rec.USD
 		slog.Info("web source weekly check", "listing", recipe.ListingURL, "broken", rec.Broken, "reason", rec.Reason, "usd", rec.USD, "err", err)
 		if err == nil && rec.Broken {
 			return g.repair(ctx, out, polled, recipe, history, prev, RepairCauseWeeklyCheck, "weekly_check")
 		}
+		if err == nil {
+			prev.WeeklyAlarm = false
+		}
+	}
+	if prev.WeeklyAlarm && polled.Page() != nil {
+		return g.repair(ctx, out, polled, recipe, history, prev, RepairCauseWeeklyCheck, "weekly_check")
 	}
 	out.Verdict = VerdictOK
 	out.Items = toItems(polled.Items, polled.Excerpts)
@@ -110,7 +116,9 @@ func (g *WebfeedGenerator) Poll(ctx context.Context, raw json.RawMessage, prev P
 // repair runs the ladder on the page the poll fetched; an accepted repair publishes like an ok poll with its new recipe.
 func (g *WebfeedGenerator) repair(ctx context.Context, out PollOutcome, polled *webfeed.PollResult, recipe webfeed.Recipe,
 	history []webfeed.GoodPoll, prev PollState, cause RepairCause, reason string) (PollOutcome, error) {
-	res, err := webfeed.Repair(ctx, polled, webfeed.RepairInput{Recipe: recipe, History: history, AllowModel: prev.AllowModelRepair}, g.opts)
+	res, err := webfeed.Repair(ctx, polled, webfeed.RepairInput{
+		Recipe: recipe, History: history, AllowModel: prev.AllowModelRepair, Doubted: cause == RepairCauseWeeklyCheck,
+	}, g.opts)
 	if err != nil {
 		return PollOutcome{}, err
 	}
@@ -166,16 +174,20 @@ func setupReason(h Health, reasons []string) string {
 		case "template_share":
 			return "many links do not look like posts"
 		case "unsure":
-			return "the list looks unsure"
+			return unsureReason
 		case "judge_none":
 			return "no list on the page looks like posts"
 		}
 	}
-	return "the list looks unsure"
+	return unsureReason
 }
+
+const unsureReason = "Morgenblau isn't sure which links are posts"
 
 func brokenReason(code string, blocked bool) string {
 	switch code {
+	case webfeed.ReasonRobots:
+		return "this site asks feed readers not to read this page"
 	case webfeed.ReasonChallenge:
 		return "the site showed a bot check instead of the page"
 	case webfeed.ReasonHTTPStatus:
@@ -256,42 +268,4 @@ func setupCost(r webfeed.SetupRecord) Cost {
 	}
 	_, c.USD = r.ModelCost()
 	return c
-}
-
-// listingCapture keeps the listing body setup fetched, so excerpts cost no second request.
-type listingCapture struct {
-	next   webfeed.Doer
-	target string
-
-	mu       sync.Mutex
-	body     []byte
-	finalURL string
-}
-
-const maxCapturedListing = 5 << 20
-
-func (c *listingCapture) Do(req *http.Request) (*http.Response, error) {
-	resp, err := c.next.Do(req)
-	if err != nil || req.URL.String() != c.target || resp.StatusCode != http.StatusOK {
-		return resp, err
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxCapturedListing))
-	resp.Body.Close()
-	if err != nil {
-		return nil, err
-	}
-	resp.Body = io.NopCloser(bytes.NewReader(body))
-	c.mu.Lock()
-	c.body, c.finalURL = body, req.URL.String()
-	if resp.Request != nil && resp.Request.URL != nil {
-		c.finalURL = resp.Request.URL.String()
-	}
-	c.mu.Unlock()
-	return resp, nil
-}
-
-func (c *listingCapture) result() ([]byte, string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.body, c.finalURL
 }

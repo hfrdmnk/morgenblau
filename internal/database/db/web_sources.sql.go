@@ -40,12 +40,12 @@ func (q *Queries) CountWebSourceItems(ctx context.Context, sourceID string) (int
 const createWebSource = `-- name: CreateWebSource :execrows
 INSERT INTO web_sources (
     id, listing_key, listing_url, site_url, title, recipe, health, health_reason,
-    needs_anchor, setup_cost, created_by_did, created_at, updated_at, setup_at, next_poll_at
+    needs_anchor, setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_tried_at, next_poll_at
 ) VALUES (
     ?1, ?2, ?3, ?4, ?5,
     ?6, ?7, ?8, ?9,
     ?10, ?11, ?12, ?12, ?12,
-    ?13
+    ?7, ?12, ?13
 )
 ON CONFLICT (listing_key) DO NOTHING
 `
@@ -88,15 +88,6 @@ func (q *Queries) CreateWebSource(ctx context.Context, arg CreateWebSourceParams
 	return result.RowsAffected()
 }
 
-const deleteWebSourceItems = `-- name: DeleteWebSourceItems :exec
-DELETE FROM web_source_items WHERE source_id = ?
-`
-
-func (q *Queries) DeleteWebSourceItems(ctx context.Context, sourceID string) error {
-	_, err := q.db.ExecContext(ctx, deleteWebSourceItems, sourceID)
-	return err
-}
-
 const deleteWebSourcePolls = `-- name: DeleteWebSourcePolls :exec
 DELETE FROM web_source_polls WHERE source_id = ?
 `
@@ -120,18 +111,23 @@ func (q *Queries) GetLastModelRepairAt(ctx context.Context, sourceID string) (st
 	return attempted_at, err
 }
 
-const getLastWeeklyAlarmAt = `-- name: GetLastWeeklyAlarmAt :one
-SELECT attempted_at FROM web_source_repairs
-WHERE source_id = ?1 AND cause = 'weekly_check' AND outcome = 'unresolved'
+const getLastWeeklyRepair = `-- name: GetLastWeeklyRepair :one
+SELECT attempted_at, outcome FROM web_source_repairs
+WHERE source_id = ?1 AND cause = 'weekly_check'
 ORDER BY id DESC
 LIMIT 1
 `
 
-func (q *Queries) GetLastWeeklyAlarmAt(ctx context.Context, sourceID string) (string, error) {
-	row := q.db.QueryRowContext(ctx, getLastWeeklyAlarmAt, sourceID)
-	var attempted_at string
-	err := row.Scan(&attempted_at)
-	return attempted_at, err
+type GetLastWeeklyRepairRow struct {
+	AttemptedAt string `json:"attempted_at"`
+	Outcome     string `json:"outcome"`
+}
+
+func (q *Queries) GetLastWeeklyRepair(ctx context.Context, sourceID string) (GetLastWeeklyRepairRow, error) {
+	row := q.db.QueryRowContext(ctx, getLastWeeklyRepair, sourceID)
+	var i GetLastWeeklyRepairRow
+	err := row.Scan(&i.AttemptedAt, &i.Outcome)
+	return i, err
 }
 
 const getOldestWebSourceItemDate = `-- name: GetOldestWebSourceItemDate :one
@@ -149,7 +145,7 @@ func (q *Queries) GetOldestWebSourceItemDate(ctx context.Context, sourceID strin
 }
 
 const getWebSource = `-- name: GetWebSource :one
-SELECT id, listing_key, listing_url, site_url, title, recipe, health, health_reason, needs_anchor, setup_cost, created_by_did, created_at, updated_at, setup_at, last_polled_at, next_poll_at, etag, last_modified, link_set_hash, consecutive_failures, last_checked_at FROM web_sources WHERE id = ?
+SELECT id, listing_key, listing_url, site_url, title, recipe, health, health_reason, needs_anchor, setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_seq, setup_tried_at, last_polled_at, next_poll_at, etag, last_modified, link_set_hash, consecutive_failures, last_checked_at FROM web_sources WHERE id = ?
 `
 
 func (q *Queries) GetWebSource(ctx context.Context, id string) (WebSource, error) {
@@ -170,6 +166,9 @@ func (q *Queries) GetWebSource(ctx context.Context, id string) (WebSource, error
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SetupAt,
+		&i.SetupHealth,
+		&i.SetupSeq,
+		&i.SetupTriedAt,
 		&i.LastPolledAt,
 		&i.NextPollAt,
 		&i.Etag,
@@ -182,7 +181,7 @@ func (q *Queries) GetWebSource(ctx context.Context, id string) (WebSource, error
 }
 
 const getWebSourceByListingKey = `-- name: GetWebSourceByListingKey :one
-SELECT id, listing_key, listing_url, site_url, title, recipe, health, health_reason, needs_anchor, setup_cost, created_by_did, created_at, updated_at, setup_at, last_polled_at, next_poll_at, etag, last_modified, link_set_hash, consecutive_failures, last_checked_at FROM web_sources WHERE listing_key = ?
+SELECT id, listing_key, listing_url, site_url, title, recipe, health, health_reason, needs_anchor, setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_seq, setup_tried_at, last_polled_at, next_poll_at, etag, last_modified, link_set_hash, consecutive_failures, last_checked_at FROM web_sources WHERE listing_key = ?
 `
 
 func (q *Queries) GetWebSourceByListingKey(ctx context.Context, listingKey string) (WebSource, error) {
@@ -203,6 +202,9 @@ func (q *Queries) GetWebSourceByListingKey(ctx context.Context, listingKey strin
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SetupAt,
+		&i.SetupHealth,
+		&i.SetupSeq,
+		&i.SetupTriedAt,
 		&i.LastPolledAt,
 		&i.NextPollAt,
 		&i.Etag,
@@ -212,6 +214,21 @@ func (q *Queries) GetWebSourceByListingKey(ctx context.Context, listingKey strin
 		&i.LastCheckedAt,
 	)
 	return i, err
+}
+
+const insertModelSpend = `-- name: InsertModelSpend :exec
+INSERT INTO web_model_spend (spent_at, kind, usd) VALUES (?, ?, ?)
+`
+
+type InsertModelSpendParams struct {
+	SpentAt string  `json:"spent_at"`
+	Kind    string  `json:"kind"`
+	Usd     float64 `json:"usd"`
+}
+
+func (q *Queries) InsertModelSpend(ctx context.Context, arg InsertModelSpendParams) error {
+	_, err := q.db.ExecContext(ctx, insertModelSpend, arg.SpentAt, arg.Kind, arg.Usd)
+	return err
 }
 
 const insertWebSourceItem = `-- name: InsertWebSourceItem :exec
@@ -308,8 +325,9 @@ func (q *Queries) InsertWebSourceRepair(ctx context.Context, arg InsertWebSource
 }
 
 const listDueWebSources = `-- name: ListDueWebSources :many
-SELECT ws.id, ws.listing_key, ws.listing_url, ws.site_url, ws.title, ws.recipe, ws.health, ws.health_reason, ws.needs_anchor, ws.setup_cost, ws.created_by_did, ws.created_at, ws.updated_at, ws.setup_at, ws.last_polled_at, ws.next_poll_at, ws.etag, ws.last_modified, ws.link_set_hash, ws.consecutive_failures, ws.last_checked_at FROM web_sources ws
-WHERE ws.next_poll_at IS NOT NULL
+SELECT ws.id, ws.listing_key, ws.listing_url, ws.site_url, ws.title, ws.recipe, ws.health, ws.health_reason, ws.needs_anchor, ws.setup_cost, ws.created_by_did, ws.created_at, ws.updated_at, ws.setup_at, ws.setup_health, ws.setup_seq, ws.setup_tried_at, ws.last_polled_at, ws.next_poll_at, ws.etag, ws.last_modified, ws.link_set_hash, ws.consecutive_failures, ws.last_checked_at FROM web_sources ws
+WHERE ws.setup_health = 'ok'
+  AND ws.next_poll_at IS NOT NULL
   AND ws.next_poll_at <= ?1
   AND EXISTS (SELECT 1 FROM feeds f WHERE f.feed_url = ?2 || ws.id)
 ORDER BY ws.next_poll_at, ws.id
@@ -323,6 +341,7 @@ type ListDueWebSourcesParams struct {
 }
 
 // A web source counts as followed once its feed URL is in the shared feeds catalog, the same set the global refresher fetches.
+// A setup that doubted its own list is never polled: polls would trust the list it doubted.
 func (q *Queries) ListDueWebSources(ctx context.Context, arg ListDueWebSourcesParams) ([]WebSource, error) {
 	rows, err := q.db.QueryContext(ctx, listDueWebSources, arg.Now, arg.FeedUrlPrefix, arg.Limit)
 	if err != nil {
@@ -347,6 +366,9 @@ func (q *Queries) ListDueWebSources(ctx context.Context, arg ListDueWebSourcesPa
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SetupAt,
+			&i.SetupHealth,
+			&i.SetupSeq,
+			&i.SetupTriedAt,
 			&i.LastPolledAt,
 			&i.NextPollAt,
 			&i.Etag,
@@ -503,6 +525,65 @@ func (q *Queries) ListWebSourcePolls(ctx context.Context, arg ListWebSourcePolls
 	return items, nil
 }
 
+const listWebSourcesCreatedSince = `-- name: ListWebSourcesCreatedSince :many
+SELECT created_at FROM web_sources
+WHERE created_by_did = ?1 AND created_at > ?2
+ORDER BY created_at
+LIMIT ?3
+`
+
+type ListWebSourcesCreatedSinceParams struct {
+	Did   string `json:"did"`
+	Since string `json:"since"`
+	Limit int64  `json:"limit"`
+}
+
+func (q *Queries) ListWebSourcesCreatedSince(ctx context.Context, arg ListWebSourcesCreatedSinceParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listWebSourcesCreatedSince, arg.Did, arg.Since, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var created_at string
+		if err := rows.Scan(&created_at); err != nil {
+			return nil, err
+		}
+		items = append(items, created_at)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markWebSourceSetupTried = `-- name: MarkWebSourceSetupTried :exec
+UPDATE web_sources SET setup_tried_at = ?1 WHERE id = ?2
+`
+
+type MarkWebSourceSetupTriedParams struct {
+	TriedAt string `json:"tried_at"`
+	ID      string `json:"id"`
+}
+
+func (q *Queries) MarkWebSourceSetupTried(ctx context.Context, arg MarkWebSourceSetupTriedParams) error {
+	_, err := q.db.ExecContext(ctx, markWebSourceSetupTried, arg.TriedAt, arg.ID)
+	return err
+}
+
+const pruneModelSpend = `-- name: PruneModelSpend :exec
+DELETE FROM web_model_spend WHERE spent_at < ?1
+`
+
+func (q *Queries) PruneModelSpend(ctx context.Context, before string) error {
+	_, err := q.db.ExecContext(ctx, pruneModelSpend, before)
+	return err
+}
+
 const pruneWebSourcePolls = `-- name: PruneWebSourcePolls :exec
 DELETE FROM web_source_polls
 WHERE web_source_polls.source_id = ?1
@@ -547,6 +628,9 @@ UPDATE web_sources SET
     setup_cost = ?8,
     updated_at = ?9,
     setup_at = ?9,
+    setup_health = ?5,
+    setup_seq = setup_seq + 1,
+    setup_tried_at = ?9,
     next_poll_at = ?10,
     last_polled_at = NULL,
     etag = NULL,
@@ -588,7 +672,18 @@ func (q *Queries) ReplaceWebSourceSetup(ctx context.Context, arg ReplaceWebSourc
 	return err
 }
 
-const updateWebSourcePoll = `-- name: UpdateWebSourcePoll :exec
+const sumModelSpendSince = `-- name: SumModelSpendSince :one
+SELECT CAST(COALESCE(SUM(usd), 0) AS REAL) AS usd FROM web_model_spend WHERE spent_at >= ?1
+`
+
+func (q *Queries) SumModelSpendSince(ctx context.Context, since string) (float64, error) {
+	row := q.db.QueryRowContext(ctx, sumModelSpendSince, since)
+	var usd float64
+	err := row.Scan(&usd)
+	return usd, err
+}
+
+const updateWebSourcePoll = `-- name: UpdateWebSourcePoll :execrows
 UPDATE web_sources SET
     recipe = ?1,
     health = ?2,
@@ -601,7 +696,7 @@ UPDATE web_sources SET
     consecutive_failures = ?9,
     last_checked_at = COALESCE(?10, last_checked_at),
     updated_at = ?11
-WHERE id = ?12
+WHERE id = ?12 AND setup_seq = ?13
 `
 
 type UpdateWebSourcePollParams struct {
@@ -617,10 +712,12 @@ type UpdateWebSourcePollParams struct {
 	LastCheckedAt       *string `json:"last_checked_at"`
 	UpdatedAt           string  `json:"updated_at"`
 	ID                  string  `json:"id"`
+	SetupSeq            int64   `json:"setup_seq"`
 }
 
-func (q *Queries) UpdateWebSourcePoll(ctx context.Context, arg UpdateWebSourcePollParams) error {
-	_, err := q.db.ExecContext(ctx, updateWebSourcePoll,
+// Matches nothing when a setup replaced the source while the poll ran, so the poll's writes are dropped.
+func (q *Queries) UpdateWebSourcePoll(ctx context.Context, arg UpdateWebSourcePollParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateWebSourcePoll,
 		arg.Recipe,
 		arg.Health,
 		arg.HealthReason,
@@ -633,6 +730,10 @@ func (q *Queries) UpdateWebSourcePoll(ctx context.Context, arg UpdateWebSourcePo
 		arg.LastCheckedAt,
 		arg.UpdatedAt,
 		arg.ID,
+		arg.SetupSeq,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

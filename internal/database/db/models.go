@@ -155,6 +155,13 @@ type UserSubscription struct {
 	UpdatedAt   string  `json:"updated_at"`
 }
 
+type WebModelSpend struct {
+	ID      int64   `json:"id"`
+	SpentAt string  `json:"spent_at"`
+	Kind    string  `json:"kind"`
+	Usd     float64 `json:"usd"`
+}
+
 type WebSource struct {
 	ID                  string  `json:"id"`
 	ListingKey          string  `json:"listing_key"`
@@ -170,6 +177,9 @@ type WebSource struct {
 	CreatedAt           string  `json:"created_at"`
 	UpdatedAt           string  `json:"updated_at"`
 	SetupAt             string  `json:"setup_at"`
+	SetupHealth         string  `json:"setup_health"`
+	SetupSeq            int64   `json:"setup_seq"`
+	SetupTriedAt        string  `json:"setup_tried_at"`
 	LastPolledAt        *string `json:"last_polled_at"`
 	NextPollAt          *string `json:"next_poll_at"`
 	Etag                *string `json:"etag"`

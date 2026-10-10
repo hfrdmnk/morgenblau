@@ -30,7 +30,6 @@ type Querier interface {
 	DeleteUnsavedNewsletterMessages(ctx context.Context, arg DeleteUnsavedNewsletterMessagesParams) error
 	DeleteUserSave(ctx context.Context, arg DeleteUserSaveParams) error
 	DeleteUserSubscription(ctx context.Context, arg DeleteUserSubscriptionParams) error
-	DeleteWebSourceItems(ctx context.Context, sourceID string) error
 	DeleteWebSourcePolls(ctx context.Context, sourceID string) error
 	EnableNewsletterSource(ctx context.Context, arg EnableNewsletterSourceParams) error
 	GetAuthRequest(ctx context.Context, state string) (GetAuthRequestRow, error)
@@ -42,7 +41,7 @@ type Querier interface {
 	// the proxy only streams URLs the sync pipeline has already vetted.
 	GetFeedIconURL(ctx context.Context, feedUrl string) (*string, error)
 	GetLastModelRepairAt(ctx context.Context, sourceID string) (string, error)
-	GetLastWeeklyAlarmAt(ctx context.Context, sourceID string) (string, error)
+	GetLastWeeklyRepair(ctx context.Context, sourceID string) (GetLastWeeklyRepairRow, error)
 	GetNewsletterAddress(ctx context.Context, did string) (NewsletterAddress, error)
 	GetNewsletterAddressByLocalPart(ctx context.Context, localPart string) (NewsletterAddress, error)
 	GetNewsletterGlobalStorageBytes(ctx context.Context) (int64, error)
@@ -68,12 +67,14 @@ type Querier interface {
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserSubscriptionByFeedURLParams) (UserSubscription, error)
 	GetWebSource(ctx context.Context, id string) (WebSource, error)
 	GetWebSourceByListingKey(ctx context.Context, listingKey string) (WebSource, error)
+	InsertModelSpend(ctx context.Context, arg InsertModelSpendParams) error
 	InsertWebSourceItem(ctx context.Context, arg InsertWebSourceItemParams) error
 	InsertWebSourcePoll(ctx context.Context, arg InsertWebSourcePollParams) error
 	InsertWebSourceRepair(ctx context.Context, arg InsertWebSourceRepairParams) error
 	ListAllFeedURLs(ctx context.Context) ([]string, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
 	// A web source counts as followed once its feed URL is in the shared feeds catalog, the same set the global refresher fetches.
+	// A setup that doubted its own list is never polled: polls would trust the list it doubted.
 	ListDueWebSources(ctx context.Context, arg ListDueWebSourcesParams) ([]WebSource, error)
 	// Entries from a single feed, newest first, bounded by limit. The join to
 	// user_subscriptions doubles as an ownership filter; the handler still
@@ -111,9 +112,12 @@ type Querier interface {
 	ListWebSourceFeedItems(ctx context.Context, arg ListWebSourceFeedItemsParams) ([]ListWebSourceFeedItemsRow, error)
 	ListWebSourceKnownItems(ctx context.Context, sourceID string) ([]ListWebSourceKnownItemsRow, error)
 	ListWebSourcePolls(ctx context.Context, arg ListWebSourcePollsParams) ([]WebSourcePoll, error)
+	ListWebSourcesCreatedSince(ctx context.Context, arg ListWebSourcesCreatedSinceParams) ([]string, error)
 	MarkNewsletterReceiptFailed(ctx context.Context, arg MarkNewsletterReceiptFailedParams) error
+	MarkWebSourceSetupTried(ctx context.Context, arg MarkWebSourceSetupTriedParams) error
 	MoveNewsletterMessage(ctx context.Context, arg MoveNewsletterMessageParams) error
 	PatchNewsletterSource(ctx context.Context, arg PatchNewsletterSourceParams) error
+	PruneModelSpend(ctx context.Context, before string) error
 	PruneWebSourcePolls(ctx context.Context, arg PruneWebSourcePollsParams) error
 	PruneWebSourceRepairs(ctx context.Context, arg PruneWebSourceRepairsParams) error
 	PutAuthRequest(ctx context.Context, arg PutAuthRequestParams) error
@@ -121,13 +125,15 @@ type Querier interface {
 	ReplaceWebSourceSetup(ctx context.Context, arg ReplaceWebSourceSetupParams) error
 	SetFeedIconURL(ctx context.Context, arg SetFeedIconURLParams) error
 	SetNewsletterSourceStatus(ctx context.Context, arg SetNewsletterSourceStatusParams) error
+	SumModelSpendSince(ctx context.Context, since string) (float64, error)
 	TouchNewsletterSource(ctx context.Context, arg TouchNewsletterSourceParams) error
 	UpdateFeedEntryExtractedBody(ctx context.Context, arg UpdateFeedEntryExtractedBodyParams) error
 	// SPEC <feed-sources> failure handling; success (UpdateFeedFetchState) resets both.
 	UpdateFeedFetchFailure(ctx context.Context, arg UpdateFeedFetchFailureParams) error
 	// SPEC <feed-sources> failure handling: success resets the backoff counter and clears the skip stamp.
 	UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchStateParams) error
-	UpdateWebSourcePoll(ctx context.Context, arg UpdateWebSourcePollParams) error
+	// Matches nothing when a setup replaced the source while the poll ran, so the poll's writes are dropped.
+	UpdateWebSourcePoll(ctx context.Context, arg UpdateWebSourcePollParams) (int64, error)
 	// kind defaults to 'rss' via NULLIF so pre-standardfeed callers passing the
 	// zero value keep working; it is never changed on conflict. title is the
 	// cached publication name; COALESCE keeps rss callers (nil) from clobbering it.

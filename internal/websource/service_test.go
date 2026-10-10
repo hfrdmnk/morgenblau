@@ -29,25 +29,43 @@ type pollCall struct {
 }
 
 type fakeGenerator struct {
-	mu        sync.Mutex
-	generated Generated
-	setupErr  error
-	setups    []string
-	anchors   []string
-	outcomes  []PollOutcome
-	pollErr   error
-	polls     []pollCall
+	mu          sync.Mutex
+	generated   Generated
+	setupErr    error
+	setups      []string
+	anchors     []string
+	allowModel  []bool
+	setupCtxs   []context.Context
+	outcomes    []PollOutcome
+	pollErr     error
+	polls       []pollCall
+	beforeSetup func(ctx context.Context)
+	duringPoll  func()
 }
 
-func (f *fakeGenerator) Setup(_ context.Context, listingURL, anchorURL string) (Generated, error) {
+func (f *fakeGenerator) Setup(ctx context.Context, listingURL, anchorURL string, allowModel bool) (Generated, error) {
+	if f.beforeSetup != nil {
+		f.beforeSetup(ctx)
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.setups = append(f.setups, listingURL)
 	f.anchors = append(f.anchors, anchorURL)
+	f.allowModel = append(f.allowModel, allowModel)
+	f.setupCtxs = append(f.setupCtxs, ctx)
 	return f.generated, f.setupErr
 }
 
+func (f *fakeGenerator) setupCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.setups)
+}
+
 func (f *fakeGenerator) Poll(_ context.Context, recipe json.RawMessage, prev PollState) (PollOutcome, error) {
+	if f.duringPoll != nil {
+		f.duringPoll()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.polls = append(f.polls, pollCall{recipe: recipe, prev: prev})
@@ -90,7 +108,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 	t.Cleanup(func() { reader.Close(); writer.Close() })
 	env := &testEnv{gen: &fakeGenerator{generated: exampleGenerated()}, reader: reader, writer: writer, now: testNow}
-	env.service = NewService(reader, writer, env.gen, Config{PublicBaseURL: testBase, PollInterval: 30 * time.Minute})
+	env.service = NewService(reader, writer, env.gen, Config{PublicBaseURL: testBase, PollInterval: 30 * time.Minute, ModelDailyUSD: 1})
 	env.service.now = func() time.Time { return env.now }
 	return env
 }
@@ -254,7 +272,7 @@ func TestCreateReusesTheSourceForTheSameSite(t *testing.T) {
 	}
 }
 
-func TestCreateWithAnchorRerunsSetupAndReplacesItems(t *testing.T) {
+func TestCreateWithAnchorRerunsSetupAndMergesItems(t *testing.T) {
 	env := newTestEnv(t)
 	env.gen.generated.Health = HealthNeedsAttention
 	env.gen.generated.NeedsAnchor = true
@@ -282,12 +300,15 @@ func TestCreateWithAnchorRerunsSetupAndReplacesItems(t *testing.T) {
 	if got := env.gen.anchors; !slices.Equal(got, []string{"", "https://news.example.com/stories/a"}) {
 		t.Errorf("anchors passed to setup = %v", got)
 	}
-	if anchored.Source.Health != HealthOK || anchored.Source.NeedsAnchor || anchored.ItemCount != 1 {
+	if anchored.Source.Health != HealthOK || anchored.Source.NeedsAnchor || anchored.ItemCount != 4 {
 		t.Errorf("anchored preview = %+v", anchored)
 	}
 	items := storedItems(t, env, first.Source.ID)
-	if len(items) != 1 || !items["https://news.example.com/stories/a"].history {
-		t.Errorf("items = %+v, want only the anchored setup's history", items)
+	if len(items) != 4 || !items["https://news.example.com/stories/a"].history || !items["https://news.example.com/posts/third"].history {
+		t.Errorf("items = %+v, want the anchored setup's history joined to the items readers already saw", items)
+	}
+	if got := pollCount(t, env, first.Source.ID); got != 1 {
+		t.Errorf("good polls = %d, want only the anchored setup's", got)
 	}
 	var recipe string
 	if err := env.reader.QueryRow(`SELECT recipe FROM web_sources WHERE id = ?`, first.Source.ID).Scan(&recipe); err != nil {
@@ -360,10 +381,13 @@ func TestCreateWithoutGeneratorIsUnavailable(t *testing.T) {
 
 func TestListingKeyNormalizesTheSite(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
-		{"https://news.example.com/", "https://news.example.com"},
-		{"https://WWW.News.Example.com/blog/#top", "https://news.example.com/blog"},
-		{"http://news.example.com/blog?page=1", "http://news.example.com/blog?page=1"},
-		{"https://news.example.com:8443/blog//", "https://news.example.com:8443/blog"},
+		{"https://news.example.com/", "news.example.com"},
+		{"https://WWW.News.Example.com/blog/#top", "news.example.com/blog"},
+		{"http://news.example.com/blog", "news.example.com/blog"},
+		{"http://news.example.com/blog?page=1", "news.example.com/blog?page=1"},
+		{"https://news.example.com/blog?utm_source=x&ref=y&UTM_Medium=z", "news.example.com/blog"},
+		{"https://news.example.com/blog?ref=y&section=world", "news.example.com/blog?section=world"},
+		{"https://news.example.com:8443/blog//", "news.example.com:8443/blog"},
 	} {
 		u, err := parseHTTPURL(tc.in)
 		if err != nil {

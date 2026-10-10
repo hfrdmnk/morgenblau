@@ -21,7 +21,11 @@ type Doer interface {
 }
 
 const (
-	defaultMaxBody        = 5 << 20
+	defaultMaxBody = 5 << 20
+	// A post's title and dates sit in its head and first screen; the rest of a long page is not worth the memory.
+	maxArticleBody        = 512 << 10
+	maxRobotsBody         = 512 << 10
+	defaultMaxSetupBytes  = 24 << 20
 	maxArticleConcurrency = 4
 )
 
@@ -41,41 +45,63 @@ type session struct {
 	mu        sync.Mutex
 	lang      string
 	cache     map[string]*response
+	articles  map[string]*articleInfo
+	// budget is what is left of MaxSetupBytes; fetches reserve from it before reading.
+	budget int64
 }
 
+// errBudget stops a fetch once the session has read all it may.
+var errBudget = errors.New("webfeed: setup byte budget spent")
+
 func newSession(opts Options) *session {
-	s := &session{client: opts.Client, userAgent: opts.UserAgent, maxBody: opts.MaxBody, cache: map[string]*response{}}
+	s := &session{client: opts.Client, userAgent: opts.UserAgent, maxBody: opts.MaxBody, budget: opts.MaxSetupBytes,
+		cache: map[string]*response{}, articles: map[string]*articleInfo{}}
 	if s.userAgent == "" {
 		s.userAgent = safehttp.UserAgent
 	}
 	if s.maxBody <= 0 {
 		s.maxBody = defaultMaxBody
 	}
+	if s.budget <= 0 {
+		s.budget = defaultMaxSetupBytes
+	}
 	return s
 }
 
 func (s *session) setLang(lang string) {
 	s.mu.Lock()
-	s.lang = lang
+	s.lang = safehttp.LanguageTag(lang)
 	s.mu.Unlock()
 }
 
+// cacheKey includes the language, since Accept-Language can change what a page returns.
+func cacheKey(lang, rawURL string) string { return lang + " " + rawURL }
+
+// get fetches through the session cache, for pages a setup may ask for twice.
 func (s *session) get(ctx context.Context, rawURL string) *response {
 	s.mu.Lock()
-	if r, ok := s.cache[rawURL]; ok {
+	lang := s.lang
+	if r, ok := s.cache[cacheKey(lang, rawURL)]; ok {
 		s.mu.Unlock()
 		return r
 	}
-	lang := s.lang
 	s.mu.Unlock()
-	r := s.fetch(ctx, rawURL, lang)
+	r := s.fetch(ctx, rawURL, lang, s.maxBody)
 	s.mu.Lock()
-	s.cache[rawURL] = r
+	s.cache[cacheKey(lang, rawURL)] = r
 	s.mu.Unlock()
 	return r
 }
 
-func (s *session) fetch(ctx context.Context, rawURL, lang string) *response {
+// fetchOnce fetches without caching, for bodies that are read once and dropped.
+func (s *session) fetchOnce(ctx context.Context, rawURL string, limit int64) *response {
+	s.mu.Lock()
+	lang := s.lang
+	s.mu.Unlock()
+	return s.fetch(ctx, rawURL, lang, limit)
+}
+
+func (s *session) fetch(ctx context.Context, rawURL, lang string, limit int64) *response {
 	r := &response{url: rawURL}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -84,8 +110,12 @@ func (s *session) fetch(ctx context.Context, rawURL, lang string) *response {
 	}
 	req.Header.Set("User-Agent", s.userAgent)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	if lang != "" {
+	if lang := safehttp.LanguageTag(lang); lang != "" {
 		req.Header.Set("Accept-Language", lang)
+	}
+	if s.remaining() <= 0 {
+		r.err = errBudget
+		return r
 	}
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -98,8 +128,30 @@ func (s *session) fetch(ctx context.Context, rawURL, lang string) *response {
 	if resp.Request != nil && resp.Request.URL != nil {
 		r.url = resp.Request.URL.String()
 	}
-	r.body, r.err = io.ReadAll(io.LimitReader(resp.Body, s.maxBody))
+	r.body, r.err = s.readBody(resp.Body, limit)
 	return r
+}
+
+// readBody reads at most limit bytes, reserved from the session budget up front so parallel fetches cannot overspend it.
+func (s *session) readBody(body io.Reader, limit int64) ([]byte, error) {
+	s.mu.Lock()
+	n := min(limit, s.budget)
+	s.budget -= n
+	s.mu.Unlock()
+	if n <= 0 {
+		return nil, errBudget
+	}
+	b, err := io.ReadAll(io.LimitReader(body, n))
+	s.mu.Lock()
+	s.budget += n - int64(len(b))
+	s.mu.Unlock()
+	return b, err
+}
+
+func (s *session) remaining() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.budget
 }
 
 // challengeTitles are bot-wall page titles; matched on the title only, since the words appear in ordinary pages' scripts.
@@ -276,7 +328,7 @@ func robotsMatch(pattern, path string) bool {
 
 // robotsFor fetches robots.txt; an unreachable or failing file allows the fetch, since a reader asked for this one page.
 func (s *session) robotsFor(ctx context.Context, origin string) robots {
-	r := s.get(ctx, origin+"/robots.txt")
+	r := s.fetchOnce(ctx, origin+"/robots.txt", maxRobotsBody)
 	if r.err != nil || r.status != http.StatusOK || r.isHTML() {
 		return robots{}
 	}
@@ -312,6 +364,9 @@ func parseSitemap(body []byte) (sitemap, error) {
 	case "urlset":
 		for _, u := range doc.URLs {
 			su := sitemapURL{loc: strings.TrimSpace(u.Loc)}
+			if URLTemplate(su.loc) == "" {
+				continue
+			}
 			if t, ok := parseDateAttr(u.Lastmod); ok {
 				su.lastmod = t
 			}
@@ -319,7 +374,9 @@ func parseSitemap(body []byte) (sitemap, error) {
 		}
 	case "sitemapindex":
 		for _, c := range doc.Sitemaps {
-			sm.children = append(sm.children, strings.TrimSpace(c.Loc))
+			if loc := strings.TrimSpace(c.Loc); URLTemplate(loc) != "" {
+				sm.children = append(sm.children, loc)
+			}
 		}
 	default:
 		return sitemap{}, errors.New("sitemap: not a urlset or sitemapindex")

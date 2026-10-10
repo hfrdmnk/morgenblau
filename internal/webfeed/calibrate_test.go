@@ -43,6 +43,8 @@ func TestHubPagesAreListsNotArticlesWithRelatedPosts(t *testing.T) {
 	}{"article with related posts": {articleHTML, false}, "archive page": {hubHTML, true}} {
 		p := mustPage(t, c.html, "https://example.com/blog/some-page")
 		info := &articleInfo{url: "https://example.com/blog/some-page", ok: true, page: p}
+		info.summarizeLists()
+		info.page = nil
 		if got := info.isHub("example.com/blog/*"); got != c.want {
 			t.Errorf("%s: isHub = %v, want %v", name, got, c.want)
 		}

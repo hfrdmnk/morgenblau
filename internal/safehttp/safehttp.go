@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -17,6 +18,18 @@ import (
 // UserAgent identifies Morgenblau's outbound bot traffic so operators can attribute and contact us.
 // It carries no Go-http-client token because some sites refuse every request that does.
 const UserAgent = "Morgenblau/0.1 (+https://app.morgen.blue/about; bot@morgen.blue)"
+
+// languageTag is the BCP 47 shape; anything else must not ride from a page into a request header.
+var languageTag = regexp.MustCompile(`^[A-Za-z]{1,8}(?:-[A-Za-z0-9]{1,8})*$`)
+
+// LanguageTag returns a page's lang value fit for Accept-Language, or "" when it is not a BCP 47 shape.
+func LanguageTag(lang string) string {
+	lang = strings.TrimSpace(lang)
+	if !languageTag.MatchString(lang) {
+		return ""
+	}
+	return lang
+}
 
 // ErrBlockedAddress is returned when a resolved IP fails the safety check.
 var ErrBlockedAddress = errors.New("safehttp: blocked address")

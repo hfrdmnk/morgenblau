@@ -17,7 +17,7 @@ func TestSourceListCarriesGeneratedFeedHealthOnlyForOwnWebFeeds(t *testing.T) {
 	const prefix = "https://app.example.com/web/"
 	if _, err := q.CreateWebSource(ctx, db.CreateWebSourceParams{
 		ID: "generated", ListingKey: "news.example.com/", ListingUrl: "https://news.example.com/", SiteUrl: "https://news.example.com/",
-		Title: "Example Publication", Recipe: "{}", Health: "needs_attention", HealthReason: "the list looks unsure",
+		Title: "Example Publication", Recipe: "{}", Health: "needs_attention", HealthReason: "Morgenblau isn't sure which links are posts",
 		SetupCost: "{}", CreatedByDid: "did:plc:creator", CreatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestSourceListCarriesGeneratedFeedHealthOnlyForOwnWebFeeds(t *testing.T) {
 	}
 	for _, row := range rows {
 		if row.Rkey == "generated" {
-			if row.WebHealth == nil || *row.WebHealth != "needs_attention" || row.WebHealthReason == nil || *row.WebHealthReason != "the list looks unsure" {
+			if row.WebHealth == nil || *row.WebHealth != "needs_attention" || row.WebHealthReason == nil || *row.WebHealthReason != "Morgenblau isn't sure which links are posts" {
 				t.Errorf("generated feed lost its health: %+v", row)
 			}
 			continue

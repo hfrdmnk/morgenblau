@@ -43,6 +43,9 @@ type webSourceWire struct {
 	ItemCount    int                 `json:"itemCount"`
 }
 
+// webSourceWriteTimeout outlasts websource.SetupTimeout, so a slow setup ends in an answer rather than a dropped connection.
+const webSourceWriteTimeout = websource.SetupTimeout + 10*time.Second
+
 // WebSourcesCreateHandler generates (or reuses) the site's web source and returns a preview; it writes only server-owned storage, never the PDS.
 func WebSourcesCreateHandler(svc WebSourceCreator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -59,12 +62,26 @@ func WebSourcesCreateHandler(svc WebSourceCreator) http.Handler {
 			writeError(w, http.StatusBadRequest, codeInvalidRequest, "url is required")
 			return
 		}
-		preview, err := svc.Create(r.Context(), sess.Data.AccountDID.String(), body.URL, strings.TrimSpace(body.AnchorURL))
+		// Past the server's WriteTimeout the reader would get a dropped connection after the model was paid for.
+		if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(webSourceWriteTimeout)); err != nil {
+			slog.Warn("/api/web-sources: cannot extend the write deadline", "err", err)
+		}
+		// Closing the dialog must not abandon a setup that is already spending; the service bounds it with its own deadline.
+		ctx := context.WithoutCancel(r.Context())
+		preview, err := svc.Create(ctx, sess.Data.AccountDID.String(), body.URL, strings.TrimSpace(body.AnchorURL))
 		var limited *websource.RateLimitError
 		switch {
 		case errors.As(err, &limited):
 			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(limited.RetryAfter.Seconds()))))
-			writeError(w, http.StatusTooManyRequests, codeRateLimited, "You've generated a lot of feeds in the last hour. Try again later.")
+			writeError(w, http.StatusTooManyRequests, codeRateLimited, "You've generated a lot of feeds recently. Try again later.")
+			return
+		case errors.Is(err, websource.ErrSetupInFlight):
+			w.Header().Set("Retry-After", "10")
+			writeError(w, http.StatusTooManyRequests, codeRateLimited, "Morgenblau is still generating your last feed. Try again when it finishes.")
+			return
+		case errors.Is(err, websource.ErrBusy):
+			w.Header().Set("Retry-After", "30")
+			writeError(w, http.StatusServiceUnavailable, codeUnavailable, "Feed generation is busy. Try again in a minute.")
 			return
 		case errors.Is(err, websource.ErrInvalidURL):
 			writeError(w, http.StatusBadRequest, codeInvalidRequest, "Enter a web address that starts with http:// or https://")

@@ -2,6 +2,9 @@ package webfeed
 
 import "time"
 
+// MaxItems caps the posts one source yields, whatever the page or sitemap lists.
+const MaxItems = 200
+
 // Item is one post a recipe yields.
 type Item struct {
 	URL   string    `json:"url"`

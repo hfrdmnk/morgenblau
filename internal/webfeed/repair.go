@@ -23,6 +23,8 @@ const (
 	AcceptTemplate = "template"
 	AcceptTitles   = "titles"
 	AcceptModel    = "model"
+	// AcceptDifferent closes a doubt about the current list: a healthy list other than the doubted one.
+	AcceptDifferent = "different_list"
 )
 
 const (
@@ -36,6 +38,8 @@ type RepairInput struct {
 	History []GoodPoll
 	// AllowModel lets the judge step run; the caller enforces its once-a-day budget.
 	AllowModel bool
+	// Doubted says a weekly check doubted the poll's current list, so its posts and history cannot vouch for a repair.
+	Doubted bool
 }
 
 // RepairResult reports the ladder: the accepted recipe and its items, or the steps that were tried and rejected.
@@ -65,8 +69,18 @@ func Repair(ctx context.Context, polled *PollResult, in RepairInput, opts Option
 		return out, nil
 	}
 	pg := polled.page
+	accept := func(step RepairStep, rec Recipe, items []Item) bool { return out.accept(step, rec, items, in.History) }
+	steps := []RepairStep{RepairKnownURLs, RepairTemplate, RepairHeuristic}
+	if in.Doubted {
+		// The known posts and their template are what the check doubted, so only a fresh pick can answer it.
+		steps = []RepairStep{RepairHeuristic}
+		doubted := hashInput(itemURLKeys(polled.Items))
+		accept = func(step RepairStep, rec Recipe, items []Item) bool {
+			return out.acceptOther(step, rec, items, doubted)
+		}
+	}
 	if in.Recipe.Mode != ModeSitemap {
-		for _, step := range []RepairStep{RepairKnownURLs, RepairTemplate, RepairHeuristic} {
+		for _, step := range steps {
 			rec, ok := reinfer(step, pg, in)
 			if !ok {
 				continue
@@ -76,7 +90,7 @@ func Repair(ctx context.Context, polled *PollResult, in RepairInput, opts Option
 				return nil, err
 			}
 			out.Tried = append(out.Tried, step)
-			if out.accept(step, rec, items, in.History) {
+			if accept(step, rec, items) {
 				out.Excerpts = ListingExcerpts(pg.body, pg.url, items)
 				return out, nil
 			}
@@ -95,7 +109,10 @@ func Repair(ctx context.Context, polled *PollResult, in RepairInput, opts Option
 	out.Tried = append(out.Tried, RepairJudge)
 	out.UsedModel = true
 	out.ModelCalls, out.ModelUSD = res.Recipe.Setup.ModelCost()
-	if res.Health != HealthBlockedBySite && out.accept(RepairJudge, res.Recipe, res.Items, in.History) {
+	if in.Doubted && res.Health != HealthOK {
+		return out, nil
+	}
+	if res.Health != HealthBlockedBySite && accept(RepairJudge, res.Recipe, res.Items) {
 		out.Excerpts = ListingExcerpts(pg.body, pg.url, res.Items)
 	}
 	return out, nil
@@ -108,12 +125,30 @@ func (out *RepairResult) accept(step RepairStep, rec Recipe, items []Item, histo
 	if rule == "" {
 		return false
 	}
+	out.take(step, rule, rec, items, dominant)
+	out.FalseAlarm = slices.Equal(hashInput(itemURLKeys(items)), hashInput(urlKeys(history[0].URLs)))
+	return true
+}
+
+// acceptOther takes a list that differs from the doubted one and would pass setup's own self-check.
+func (out *RepairResult) acceptOther(step RepairStep, rec Recipe, items []Item, doubted []string) bool {
+	if len(items) < acceptMinItems || slices.Equal(hashInput(itemURLKeys(items)), doubted) {
+		return false
+	}
+	templates := streamTemplates(rec.Streams)
+	if h, _ := ComputeSignals(items, templates).setupVerdict(); h != HealthOK {
+		return false
+	}
+	out.take(step, AcceptDifferent, rec, items, DominantTemplate(items, templates))
+	return true
+}
+
+func (out *RepairResult) take(step RepairStep, rule string, rec Recipe, items []Item, dominant string) {
+	templates := streamTemplates(rec.Streams)
 	sig := ComputeSignals(items, templates)
 	rec.Fingerprint = Fingerprint{Count: sig.Count, URLTemplates: templates, DateFrac: round2(sig.DateFrac), TitleShape: round2(sig.TitleShape)}
 	out.Accepted, out.Step, out.Rule = true, step, rule
 	out.Recipe, out.Items, out.URLTemplate = rec, items, dominant
-	out.FalseAlarm = slices.Equal(hashInput(itemURLKeys(items)), hashInput(urlKeys(history[0].URLs)))
-	return true
 }
 
 // acceptRepair names the first acceptance rule a repair passes, or "" to escalate. Titles carry a site through a URL

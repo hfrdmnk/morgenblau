@@ -1,12 +1,12 @@
 -- name: CreateWebSource :execrows
 INSERT INTO web_sources (
     id, listing_key, listing_url, site_url, title, recipe, health, health_reason,
-    needs_anchor, setup_cost, created_by_did, created_at, updated_at, setup_at, next_poll_at
+    needs_anchor, setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_tried_at, next_poll_at
 ) VALUES (
     sqlc.arg(id), sqlc.arg(listing_key), sqlc.arg(listing_url), sqlc.arg(site_url), sqlc.arg(title),
     sqlc.arg(recipe), sqlc.arg(health), sqlc.arg(health_reason), sqlc.arg(needs_anchor),
     sqlc.arg(setup_cost), sqlc.arg(created_by_did), sqlc.arg(created_at), sqlc.arg(created_at), sqlc.arg(created_at),
-    sqlc.narg(next_poll_at)
+    sqlc.arg(health), sqlc.arg(created_at), sqlc.narg(next_poll_at)
 )
 ON CONFLICT (listing_key) DO NOTHING;
 
@@ -28,6 +28,9 @@ UPDATE web_sources SET
     setup_cost = sqlc.arg(setup_cost),
     updated_at = sqlc.arg(updated_at),
     setup_at = sqlc.arg(updated_at),
+    setup_health = sqlc.arg(health),
+    setup_seq = setup_seq + 1,
+    setup_tried_at = sqlc.arg(updated_at),
     next_poll_at = sqlc.narg(next_poll_at),
     last_polled_at = NULL,
     etag = NULL,
@@ -37,7 +40,11 @@ UPDATE web_sources SET
     last_checked_at = NULL
 WHERE id = sqlc.arg(id);
 
--- name: UpdateWebSourcePoll :exec
+-- name: MarkWebSourceSetupTried :exec
+UPDATE web_sources SET setup_tried_at = sqlc.arg(tried_at) WHERE id = sqlc.arg(id);
+
+-- name: UpdateWebSourcePoll :execrows
+-- Matches nothing when a setup replaced the source while the poll ran, so the poll's writes are dropped.
 UPDATE web_sources SET
     recipe = sqlc.arg(recipe),
     health = sqlc.arg(health),
@@ -50,19 +57,18 @@ UPDATE web_sources SET
     consecutive_failures = sqlc.arg(consecutive_failures),
     last_checked_at = COALESCE(sqlc.narg(last_checked_at), last_checked_at),
     updated_at = sqlc.arg(updated_at)
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id) AND setup_seq = sqlc.arg(setup_seq);
 
 -- name: ListDueWebSources :many
 -- A web source counts as followed once its feed URL is in the shared feeds catalog, the same set the global refresher fetches.
+-- A setup that doubted its own list is never polled: polls would trust the list it doubted.
 SELECT ws.* FROM web_sources ws
-WHERE ws.next_poll_at IS NOT NULL
+WHERE ws.setup_health = 'ok'
+  AND ws.next_poll_at IS NOT NULL
   AND ws.next_poll_at <= sqlc.arg(now)
   AND EXISTS (SELECT 1 FROM feeds f WHERE f.feed_url = sqlc.arg(feed_url_prefix) || ws.id)
 ORDER BY ws.next_poll_at, ws.id
 LIMIT sqlc.arg(limit);
-
--- name: DeleteWebSourceItems :exec
-DELETE FROM web_source_items WHERE source_id = ?;
 
 -- name: InsertWebSourceItem :exec
 INSERT INTO web_source_items (source_id, url, title, published_at, excerpt, first_seen_at, history, position)
@@ -129,8 +135,23 @@ WHERE source_id = sqlc.arg(source_id) AND used_model = 1 AND attempted_at >= sql
 -- name: PruneWebSourceRepairs :exec
 DELETE FROM web_source_repairs WHERE source_id = sqlc.arg(source_id) AND attempted_at < sqlc.arg(before);
 
--- name: GetLastWeeklyAlarmAt :one
-SELECT attempted_at FROM web_source_repairs
-WHERE source_id = sqlc.arg(source_id) AND cause = 'weekly_check' AND outcome = 'unresolved'
+-- name: GetLastWeeklyRepair :one
+SELECT attempted_at, outcome FROM web_source_repairs
+WHERE source_id = sqlc.arg(source_id) AND cause = 'weekly_check'
 ORDER BY id DESC
 LIMIT 1;
+
+-- name: ListWebSourcesCreatedSince :many
+SELECT created_at FROM web_sources
+WHERE created_by_did = sqlc.arg(did) AND created_at > sqlc.arg(since)
+ORDER BY created_at
+LIMIT sqlc.arg(limit);
+
+-- name: InsertModelSpend :exec
+INSERT INTO web_model_spend (spent_at, kind, usd) VALUES (?, ?, ?);
+
+-- name: SumModelSpendSince :one
+SELECT CAST(COALESCE(SUM(usd), 0) AS REAL) AS usd FROM web_model_spend WHERE spent_at >= sqlc.arg(since);
+
+-- name: PruneModelSpend :exec
+DELETE FROM web_model_spend WHERE spent_at < sqlc.arg(before);
