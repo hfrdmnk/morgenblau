@@ -351,10 +351,29 @@ func TestWeeklyCheckRunsOnceAWeekAndItsAlarmGoesThroughTheLadder(t *testing.T) {
 	d.advance(7 * 24 * time.Hour)
 	d.poll(t)
 	rows := repairRows(t, d.testEnv, d.id)
-	if len(rows) != 1 || rows[0].cause != "weekly_check" || rows[0].outcome != "false_alarm" || rows[0].step != "known_urls" {
-		t.Fatalf("repairs = %+v, want the alarm closed by a free re-infer that reproduced the posts", rows)
+	if len(rows) != 1 || rows[0].cause != "weekly_check" || rows[0].outcome != "unresolved" {
+		t.Fatalf("repairs = %+v, want the alarm left standing when re-finding only reproduces the doubted posts", rows)
 	}
+	if row := readSource(t, d.testEnv, d.id); row.health != string(HealthNeedsAttention) {
+		t.Errorf("health after the alarm = %s", row.health)
+	}
+
+	d.web.set(driftListing, driftPage("Blog", driftList(0, 10, "blog")))
+	d.poll(t)
+	if row := readSource(t, d.testEnv, d.id); row.health != string(HealthNeedsAttention) {
+		t.Errorf("an ordinary poll closed the weekly alarm: health = %s", row.health)
+	}
+	if got := d.served(t); slices.Contains(got, driftURL(0, "blog")) {
+		t.Errorf("published new posts while the weekly alarm stands: %v", got)
+	}
+
+	w.broken = false
+	d.advance(7 * 24 * time.Hour)
+	d.poll(t)
 	if row := readSource(t, d.testEnv, d.id); row.health != string(HealthOK) {
-		t.Errorf("health = %s", row.health)
+		t.Errorf("a healthy weekly check left health = %s", row.health)
+	}
+	if got := d.served(t); !slices.Contains(got, driftURL(0, "blog")) {
+		t.Errorf("new posts missing after the alarm closed: %v", got)
 	}
 }

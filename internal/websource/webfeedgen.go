@@ -121,7 +121,8 @@ func (g *WebfeedGenerator) repair(ctx context.Context, out PollOutcome, polled *
 	out.Repair = report
 	slog.Info("web source repair", "listing", recipe.ListingURL, "cause", cause, "reason", reason, "tried", res.Tried,
 		"accepted", res.Accepted, "step", res.Step, "rule", res.Rule, "false_alarm", res.FalseAlarm, "model", res.UsedModel, "usd", res.ModelUSD)
-	if !res.Accepted {
+	// The weekly check doubts the very posts a free re-infer anchors on, so reproducing them cannot close its alarm.
+	if !res.Accepted || (cause == RepairCauseWeeklyCheck && res.FalseAlarm) {
 		out.Verdict, out.Reason = VerdictSuspect, unresolvedReason(cause)
 		return out, nil
 	}

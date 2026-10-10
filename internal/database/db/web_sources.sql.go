@@ -120,6 +120,20 @@ func (q *Queries) GetLastModelRepairAt(ctx context.Context, sourceID string) (st
 	return attempted_at, err
 }
 
+const getLastWeeklyAlarmAt = `-- name: GetLastWeeklyAlarmAt :one
+SELECT attempted_at FROM web_source_repairs
+WHERE source_id = ?1 AND cause = 'weekly_check' AND outcome = 'unresolved'
+ORDER BY id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLastWeeklyAlarmAt(ctx context.Context, sourceID string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getLastWeeklyAlarmAt, sourceID)
+	var attempted_at string
+	err := row.Scan(&attempted_at)
+	return attempted_at, err
+}
+
 const getOldestWebSourceItemDate = `-- name: GetOldestWebSourceItemDate :one
 SELECT published_at FROM web_source_items
 WHERE source_id = ? AND published_at IS NOT NULL

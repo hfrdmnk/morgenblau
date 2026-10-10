@@ -42,6 +42,7 @@ type Querier interface {
 	// the proxy only streams URLs the sync pipeline has already vetted.
 	GetFeedIconURL(ctx context.Context, feedUrl string) (*string, error)
 	GetLastModelRepairAt(ctx context.Context, sourceID string) (string, error)
+	GetLastWeeklyAlarmAt(ctx context.Context, sourceID string) (string, error)
 	GetNewsletterAddress(ctx context.Context, did string) (NewsletterAddress, error)
 	GetNewsletterAddressByLocalPart(ctx context.Context, localPart string) (NewsletterAddress, error)
 	GetNewsletterGlobalStorageBytes(ctx context.Context) (int64, error)

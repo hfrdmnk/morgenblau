@@ -264,6 +264,15 @@ func (s *Service) pollOne(ctx context.Context, src db.WebSource) error {
 	if out.Checked {
 		update.LastCheckedAt = ptr(formatTime(now))
 	}
+	if out.Verdict == VerdictOK && !out.Checked {
+		open, err := s.weeklyAlarmOpen(ctx, src)
+		if err != nil {
+			return err
+		}
+		if open {
+			out = PollOutcome{Verdict: VerdictSuspect, Reason: src.HealthReason, Repair: out.Repair}
+		}
+	}
 	publish := false
 	switch out.Verdict {
 	case VerdictOK:
@@ -380,6 +389,19 @@ func (s *Service) pollState(ctx context.Context, src db.WebSource, now time.Time
 		state.CheckDue = now.Sub(at) >= checkEvery
 	}
 	return state, nil
+}
+
+// weeklyAlarmOpen reports an unresolved weekly-check alarm that no later healthy check or fresh setup has answered.
+// Only those can close it: ordinary polls trust the same list the check doubted.
+func (s *Service) weeklyAlarmOpen(ctx context.Context, src db.WebSource) (bool, error) {
+	at, err := s.read.GetLastWeeklyAlarmAt(ctx, src.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return src.LastCheckedAt != nil && at >= *src.LastCheckedAt && at >= src.SetupAt, nil
 }
 
 // unpublished drops items already in the feed and items dated before its oldest one, which defends against decoy lists

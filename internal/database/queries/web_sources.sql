@@ -128,3 +128,9 @@ WHERE source_id = sqlc.arg(source_id) AND used_model = 1 AND attempted_at >= sql
 
 -- name: PruneWebSourceRepairs :exec
 DELETE FROM web_source_repairs WHERE source_id = sqlc.arg(source_id) AND attempted_at < sqlc.arg(before);
+
+-- name: GetLastWeeklyAlarmAt :one
+SELECT attempted_at FROM web_source_repairs
+WHERE source_id = sqlc.arg(source_id) AND cause = 'weekly_check' AND outcome = 'unresolved'
+ORDER BY id DESC
+LIMIT 1;
