@@ -11,6 +11,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"morgenblau/internal/claude"
+	"morgenblau/internal/webfeed"
+	"morgenblau/internal/websource"
 )
 
 // publicBaseURL is the origin readers and feed readers reach this server on; generated feed URLs hang off it.
@@ -61,6 +65,24 @@ func ownWebFeeds(base string, feeds http.Handler, next http.RoundTripper) http.R
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+// modelTimeout bounds one model call; api.anthropic.com is a fixed host, so the client needs no SSRF guard.
+const modelTimeout = 90 * time.Second
+
+// newWebGenerator builds feed generation over client, which must be SSRF-safe; with an API key, Haiku judges unsure
+// setups, induces recipes, runs the daily model repair and the weekly check.
+func newWebGenerator(client webfeed.Doer, apiKey string) (websource.Generator, bool, error) {
+	opts := webfeed.Options{Client: client}
+	if apiKey == "" {
+		return websource.NewWebfeedGenerator(opts, nil), false, nil
+	}
+	model, err := claude.New(claude.Config{APIKey: apiKey, HTTPClient: &http.Client{Timeout: modelTimeout}})
+	if err != nil {
+		return nil, false, err
+	}
+	opts.Judge, opts.Inducer = model, model
+	return websource.NewWebfeedGenerator(opts, model), true, nil
+}
 
 // webPoller is the slice of *websource.Service the poll loop drives.
 type webPoller interface {

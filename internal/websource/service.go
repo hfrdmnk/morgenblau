@@ -24,6 +24,12 @@ const (
 	maxExcerptRunes = 280
 	maxBackoff      = 24 * time.Hour
 	pollBatch       = 50
+	modelRepairGap  = 24 * time.Hour
+	checkEvery      = 7 * 24 * time.Hour
+	// An unresolved site records a repair every poll; a month is enough to read its story.
+	keepRepairs = 30 * 24 * time.Hour
+	// More model repairs than this in a week means the page fights the recipe; someone should look.
+	weeklyModelRepairs = 3
 	// An unhealthy verdict younger than this is returned as is, so a reader retrying at once does not regenerate.
 	staleSetup = 10 * time.Minute
 )
@@ -237,7 +243,8 @@ func (s *Service) PollDue(ctx context.Context) (int, error) {
 }
 
 func (s *Service) pollOne(ctx context.Context, src db.WebSource) error {
-	prev, err := s.pollState(ctx, src)
+	now := s.now().UTC()
+	prev, err := s.pollState(ctx, src, now)
 	if err != nil {
 		return err
 	}
@@ -246,13 +253,16 @@ func (s *Service) pollOne(ctx context.Context, src db.WebSource) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		out = PollOutcome{Verdict: VerdictBroken, Reason: "poll failed: " + err.Error()}
+		slog.Warn("web source poll failed", "id", src.ID, "err", err)
+		out = PollOutcome{Verdict: VerdictBroken, Reason: "the site could not be reached"}
 	}
 
-	now := s.now().UTC()
 	update := db.UpdateWebSourcePollParams{
 		ID: src.ID, Recipe: src.Recipe, LastPolledAt: ptr(formatTime(now)), UpdatedAt: formatTime(now),
 		Etag: src.Etag, LastModified: src.LastModified, LinkSetHash: src.LinkSetHash,
+	}
+	if out.Checked {
+		update.LastCheckedAt = ptr(formatTime(now))
 	}
 	publish := false
 	switch out.Verdict {
@@ -271,18 +281,45 @@ func (s *Service) pollOne(ctx context.Context, src db.WebSource) error {
 		update.NextPollAt = ptr(formatTime(now.Add(s.interval)))
 	default:
 		update.Health, update.HealthReason = string(HealthBroken), out.Reason
+		if out.Blocked {
+			update.Health = string(HealthBlockedBySite)
+		}
 		update.ConsecutiveFailures = src.ConsecutiveFailures + 1
 		update.NextPollAt = ptr(formatTime(now.Add(s.backoff(update.ConsecutiveFailures))))
 	}
 
 	return database.WithTx(ctx, s.writer, func(q *db.Queries) error {
+		if r := out.Repair; r != nil {
+			if err := q.InsertWebSourceRepair(ctx, db.InsertWebSourceRepairParams{
+				SourceID: src.ID, AttemptedAt: formatTime(now), Cause: string(r.Cause), Outcome: string(r.Outcome),
+				Step: r.Step, Rule: r.Rule, Reason: r.Reason, UsedModel: boolInt(r.UsedModel), Usd: r.USD,
+			}); err != nil {
+				return err
+			}
+			if err := q.PruneWebSourceRepairs(ctx, db.PruneWebSourceRepairsParams{SourceID: src.ID, Before: formatTime(now.Add(-keepRepairs))}); err != nil {
+				return err
+			}
+			if r.UsedModel {
+				n, err := q.CountModelRepairsSince(ctx, db.CountModelRepairsSinceParams{SourceID: src.ID, Since: formatTime(now.Add(-checkEvery))})
+				if err != nil {
+					return err
+				}
+				if n > weeklyModelRepairs {
+					slog.Warn("web source repair budget exceeded", "id", src.ID, "model_repairs_7d", n, "listing", src.ListingUrl)
+					update.HealthReason = joinReasons(update.HealthReason, "the page changed often this week")
+				}
+			}
+		}
 		if publish {
 			items := dedupeItems(out.Items)
-			fresh, err := unpublished(ctx, q, src.ID, items)
+			fresh, moved, err := unpublished(ctx, q, src.ID, items)
 			if err != nil {
 				return err
 			}
 			if err := insertItems(ctx, q, src.ID, fresh, now, false); err != nil {
+				return err
+			}
+			if err := insertItems(ctx, q, src.ID, moved, now, true); err != nil {
 				return err
 			}
 			if err := recordPoll(ctx, q, src.ID, now, items, out.Fingerprint); err != nil {
@@ -293,6 +330,13 @@ func (s *Service) pollOne(ctx context.Context, src db.WebSource) error {
 	})
 }
 
+func joinReasons(a, b string) string {
+	if a == "" {
+		return b
+	}
+	return a + "; " + b
+}
+
 func (s *Service) backoff(failures int64) time.Duration {
 	d := s.interval
 	for i := int64(0); i < failures && d < maxBackoff; i++ {
@@ -301,7 +345,7 @@ func (s *Service) backoff(failures int64) time.Duration {
 	return min(d, maxBackoff)
 }
 
-func (s *Service) pollState(ctx context.Context, src db.WebSource) (PollState, error) {
+func (s *Service) pollState(ctx context.Context, src db.WebSource, now time.Time) (PollState, error) {
 	rows, err := s.read.ListWebSourcePolls(ctx, db.ListWebSourcePollsParams{SourceID: src.ID, Limit: historyPolls})
 	if err != nil {
 		return PollState{}, err
@@ -318,35 +362,60 @@ func (s *Service) pollState(ctx context.Context, src db.WebSource) (PollState, e
 		}
 		state.History = append(state.History, rec)
 	}
+
+	state.AllowModelRepair = true
+	switch last, err := s.read.GetLastModelRepairAt(ctx, src.ID); {
+	case err == nil:
+		at, perr := time.Parse(timeLayout, last)
+		state.AllowModelRepair = perr == nil && now.Sub(at) >= modelRepairGap
+	case !errors.Is(err, sql.ErrNoRows):
+		return PollState{}, err
+	}
+
+	since := src.SetupAt
+	if src.LastCheckedAt != nil {
+		since = *src.LastCheckedAt
+	}
+	if at, err := time.Parse(timeLayout, since); err == nil {
+		state.CheckDue = now.Sub(at) >= checkEvery
+	}
 	return state, nil
 }
 
-// unpublished drops items already in the feed and items dated before its oldest one, which defends against decoy lists that share the stream's URL shape.
-func unpublished(ctx context.Context, q *db.Queries, sourceID string, items []Item) ([]Item, error) {
-	urls, err := q.ListWebSourceItemURLs(ctx, sourceID)
+// unpublished drops items already in the feed and items dated before its oldest one, which defends against decoy lists
+// that share the stream's URL shape. A new URL carrying a known title is a post the site moved; it joins as history so a
+// URL migration does not refill today's newspaper.
+func unpublished(ctx context.Context, q *db.Queries, sourceID string, items []Item) (fresh, moved []Item, err error) {
+	known, err := q.ListWebSourceKnownItems(ctx, sourceID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	known := make(map[string]bool, len(urls))
-	for _, u := range urls {
-		known[u] = true
+	urls := make(map[string]bool, len(known))
+	titles := make(map[string]bool, len(known))
+	for _, k := range known {
+		urls[k.Url] = true
+		titles[normTitle(k.Title)] = true
 	}
 	var oldest time.Time
 	switch raw, err := q.GetOldestWebSourceItemDate(ctx, sourceID); {
 	case err == nil && raw != nil:
 		oldest, _ = time.Parse(timeLayout, *raw)
 	case err != nil && !errors.Is(err, sql.ErrNoRows):
-		return nil, err
+		return nil, nil, err
 	}
-	var fresh []Item
 	for _, it := range items {
-		if known[it.URL] || (!it.Date.IsZero() && !oldest.IsZero() && it.Date.Before(oldest)) {
-			continue
+		switch {
+		case urls[it.URL] || (!it.Date.IsZero() && !oldest.IsZero() && it.Date.Before(oldest)):
+		case titles[normTitle(it.Title)]:
+			moved = append(moved, it)
+		default:
+			fresh = append(fresh, it)
 		}
-		fresh = append(fresh, it)
 	}
-	return fresh, nil
+	return fresh, moved, nil
 }
+
+func normTitle(t string) string { return strings.ToLower(strings.Join(strings.Fields(t), " ")) }
 
 func dedupeItems(items []Item) []Item {
 	seen := make(map[string]bool, len(items))

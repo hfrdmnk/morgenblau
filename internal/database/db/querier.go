@@ -10,6 +10,7 @@ import (
 
 type Querier interface {
 	AllowNewsletterRemoteImages(ctx context.Context, arg AllowNewsletterRemoteImagesParams) error
+	CountModelRepairsSince(ctx context.Context, arg CountModelRepairsSinceParams) (int64, error)
 	CountWebSourceItems(ctx context.Context, sourceID string) (int64, error)
 	CreateManualNewsletterSource(ctx context.Context, arg CreateManualNewsletterSourceParams) error
 	CreateNewsletterAddress(ctx context.Context, arg CreateNewsletterAddressParams) error
@@ -40,6 +41,7 @@ type Querier interface {
 	// Returns the stored icon URL for a feed. Drives the favicon-proxy SSRF guard:
 	// the proxy only streams URLs the sync pipeline has already vetted.
 	GetFeedIconURL(ctx context.Context, feedUrl string) (*string, error)
+	GetLastModelRepairAt(ctx context.Context, sourceID string) (string, error)
 	GetNewsletterAddress(ctx context.Context, did string) (NewsletterAddress, error)
 	GetNewsletterAddressByLocalPart(ctx context.Context, localPart string) (NewsletterAddress, error)
 	GetNewsletterGlobalStorageBytes(ctx context.Context) (int64, error)
@@ -67,6 +69,7 @@ type Querier interface {
 	GetWebSourceByListingKey(ctx context.Context, listingKey string) (WebSource, error)
 	InsertWebSourceItem(ctx context.Context, arg InsertWebSourceItemParams) error
 	InsertWebSourcePoll(ctx context.Context, arg InsertWebSourcePollParams) error
+	InsertWebSourceRepair(ctx context.Context, arg InsertWebSourceRepairParams) error
 	ListAllFeedURLs(ctx context.Context) ([]string, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
 	// A web source counts as followed once its feed URL is in the shared feeds catalog, the same set the global refresher fetches.
@@ -105,12 +108,13 @@ type Querier interface {
 	ListUserSubscriptionsWithSiteURL(ctx context.Context, did string) ([]ListUserSubscriptionsWithSiteURLRow, error)
 	// Newest first: an item's own date, else the time a later poll first saw it; undated history keeps page order at the end.
 	ListWebSourceFeedItems(ctx context.Context, arg ListWebSourceFeedItemsParams) ([]ListWebSourceFeedItemsRow, error)
-	ListWebSourceItemURLs(ctx context.Context, sourceID string) ([]string, error)
+	ListWebSourceKnownItems(ctx context.Context, sourceID string) ([]ListWebSourceKnownItemsRow, error)
 	ListWebSourcePolls(ctx context.Context, arg ListWebSourcePollsParams) ([]WebSourcePoll, error)
 	MarkNewsletterReceiptFailed(ctx context.Context, arg MarkNewsletterReceiptFailedParams) error
 	MoveNewsletterMessage(ctx context.Context, arg MoveNewsletterMessageParams) error
 	PatchNewsletterSource(ctx context.Context, arg PatchNewsletterSourceParams) error
 	PruneWebSourcePolls(ctx context.Context, arg PruneWebSourcePollsParams) error
+	PruneWebSourceRepairs(ctx context.Context, arg PruneWebSourceRepairsParams) error
 	PutAuthRequest(ctx context.Context, arg PutAuthRequestParams) error
 	PutSession(ctx context.Context, arg PutSessionParams) error
 	ReplaceWebSourceSetup(ctx context.Context, arg ReplaceWebSourceSetupParams) error

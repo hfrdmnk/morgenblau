@@ -193,8 +193,12 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 
 	profileCache := profiles.New(identityDir, profiles.PDSFetcher{Client: safeClient})
 	tracker := jobs.New()
-	// internal/webfeed plugs in here through an adapter to websource.Generator; nil answers create with 503 and keeps polling off.
-	var webGenerator websource.Generator
+	webGenerator, webModel, err := newWebGenerator(safeClient, os.Getenv("ANTHROPIC_API_KEY"))
+	if err != nil {
+		_ = db.Close()
+		return nil, nil, fmt.Errorf("configure feed generation: %w", err)
+	}
+	slog.Info("feed generation", "model", webModel)
 	webPollInterval := time.Duration(webPollMinutes) * time.Minute
 	webSources := websource.NewService(db.Reader, db.Writer, webGenerator, websource.Config{
 		PublicBaseURL: publicBase, PollInterval: webPollInterval,
@@ -279,11 +283,11 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	} else {
 		slog.Info("global feed fetch disabled (FETCH_INTERVAL_MINUTES <= 0)")
 	}
-	if webPollMinutes > 0 && webGenerator != nil {
+	if webPollMinutes > 0 {
 		srv.gcWG.Go(func() { runWebPoll(gcCtx, webSources, min(time.Minute, webPollInterval)) })
 		slog.Info("web source polling enabled", "interval", webPollInterval)
 	} else {
-		slog.Info("web source polling disabled", "generator", webGenerator != nil, "interval_minutes", webPollMinutes)
+		slog.Info("web source polling disabled (WEB_POLL_INTERVAL_MINUTES <= 0)")
 	}
 
 	server := &http.Server{

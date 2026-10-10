@@ -33,7 +33,8 @@ UPDATE web_sources SET
     etag = NULL,
     last_modified = NULL,
     link_set_hash = NULL,
-    consecutive_failures = 0
+    consecutive_failures = 0,
+    last_checked_at = NULL
 WHERE id = sqlc.arg(id);
 
 -- name: UpdateWebSourcePoll :exec
@@ -47,6 +48,7 @@ UPDATE web_sources SET
     last_modified = sqlc.narg(last_modified),
     link_set_hash = sqlc.narg(link_set_hash),
     consecutive_failures = sqlc.arg(consecutive_failures),
+    last_checked_at = COALESCE(sqlc.narg(last_checked_at), last_checked_at),
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id);
 
@@ -67,8 +69,8 @@ INSERT INTO web_source_items (source_id, url, title, published_at, excerpt, firs
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (source_id, url) DO NOTHING;
 
--- name: ListWebSourceItemURLs :many
-SELECT url FROM web_source_items WHERE source_id = ?;
+-- name: ListWebSourceKnownItems :many
+SELECT url, title FROM web_source_items WHERE source_id = ?;
 
 -- name: GetOldestWebSourceItemDate :one
 SELECT published_at FROM web_source_items
@@ -109,3 +111,20 @@ WHERE web_source_polls.source_id = sqlc.arg(source_id)
   AND web_source_polls.id NOT IN (
     SELECT kept.id FROM web_source_polls kept WHERE kept.source_id = sqlc.arg(source_id) ORDER BY kept.id DESC LIMIT sqlc.arg(keep)
   );
+
+-- name: InsertWebSourceRepair :exec
+INSERT INTO web_source_repairs (source_id, attempted_at, cause, outcome, step, rule, reason, used_model, usd)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: GetLastModelRepairAt :one
+SELECT attempted_at FROM web_source_repairs
+WHERE source_id = ? AND used_model = 1
+ORDER BY attempted_at DESC
+LIMIT 1;
+
+-- name: CountModelRepairsSince :one
+SELECT COUNT(*) FROM web_source_repairs
+WHERE source_id = sqlc.arg(source_id) AND used_model = 1 AND attempted_at >= sqlc.arg(since);
+
+-- name: PruneWebSourceRepairs :exec
+DELETE FROM web_source_repairs WHERE source_id = sqlc.arg(source_id) AND attempted_at < sqlc.arg(before);

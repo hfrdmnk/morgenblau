@@ -8,11 +8,11 @@ import (
 	"time"
 )
 
-// Generator derives a feed from a listing page; internal/webfeed implements it behind an adapter wired in internal/server.
+// Generator derives a feed from a listing page; WebfeedGenerator implements it over internal/webfeed.
 type Generator interface {
 	// Setup reads the listing (anchored on one post when anchorURL is set) and returns the recipe and the posts found now.
 	Setup(ctx context.Context, listingURL, anchorURL string) (Generated, error)
-	// Poll re-reads the listing with the stored recipe and judges the result against prev.
+	// Poll re-reads the listing with the stored recipe, judges the result against prev and repairs a suspect one.
 	Poll(ctx context.Context, recipe json.RawMessage, prev PollState) (PollOutcome, error)
 }
 
@@ -78,18 +78,26 @@ type PollRecord struct {
 	Fingerprint
 }
 
-// PollState is what the generator needs from earlier polls: conditional-GET validators, the link-set hash and the good-poll history, newest first.
+// PollState is what the generator needs from earlier polls: conditional-GET validators, the link-set hash and the
+// good-poll history, newest first, plus the service's budget decisions for this poll.
 type PollState struct {
 	ETag         string
 	LastModified string
 	LinkSetHash  string
 	History      []PollRecord
+	// AllowModelRepair is false while the site's one model repair a day is spent.
+	AllowModelRepair bool
+	// CheckDue asks for the weekly second opinion on this poll.
+	CheckDue bool
 }
 
 // PollOutcome carries the full current extraction in Items; the service publishes only the ones it has not seen.
+// Reason is shown to readers on the Sources page, so it is plain language.
 type PollOutcome struct {
-	Verdict      Verdict
-	Reason       string
+	Verdict Verdict
+	Reason  string
+	// Blocked marks a broken poll the site refused, which readers see as "This site blocks feed readers".
+	Blocked      bool
 	NotModified  bool
 	Items        []Item
 	Recipe       json.RawMessage
@@ -97,6 +105,37 @@ type PollOutcome struct {
 	LastModified string
 	LinkSetHash  string
 	Fingerprint  Fingerprint
+	// Repair is set when this poll ran the repair ladder; an accepted repair arrives as VerdictOK with its recipe and items.
+	Repair *RepairReport
+	// Checked says the weekly check ran on this poll.
+	Checked bool
+}
+
+type RepairCause string
+
+const (
+	RepairCauseDetector    RepairCause = "detector"
+	RepairCauseWeeklyCheck RepairCause = "weekly_check"
+)
+
+type RepairOutcome string
+
+const (
+	RepairAccepted   RepairOutcome = "accepted"
+	RepairFalseAlarm RepairOutcome = "false_alarm"
+	RepairUnresolved RepairOutcome = "unresolved"
+)
+
+// RepairReport is one run of the repair ladder, kept for the daily model budget and the false-alarm record.
+type RepairReport struct {
+	Cause   RepairCause
+	Outcome RepairOutcome
+	// Step is the accepted rung, or the last one tried; Rule is the acceptance rule that held.
+	Step      string
+	Rule      string
+	Reason    string
+	UsedModel bool
+	USD       float64
 }
 
 type Source struct {

@@ -21,7 +21,9 @@ CREATE TABLE web_sources (
     etag                 TEXT,
     last_modified        TEXT,
     link_set_hash        TEXT,
-    consecutive_failures INTEGER NOT NULL DEFAULT 0
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    -- The weekly model check counts from here, or from setup_at before the first one.
+    last_checked_at      TEXT
 );
 
 CREATE INDEX web_sources_next_poll_at_idx ON web_sources (next_poll_at);
@@ -52,10 +54,27 @@ CREATE TABLE web_source_polls (
 );
 
 CREATE INDEX web_source_polls_source_idx ON web_source_polls (source_id, id);
+
+-- Every run of the repair ladder: the model step's daily and weekly budgets count here, and free false alarms stay on record.
+CREATE TABLE web_source_repairs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id    TEXT NOT NULL REFERENCES web_sources (id) ON DELETE CASCADE,
+    attempted_at TEXT NOT NULL,
+    cause        TEXT NOT NULL CHECK (cause IN ('detector', 'weekly_check')),
+    outcome      TEXT NOT NULL CHECK (outcome IN ('accepted', 'false_alarm', 'unresolved')),
+    step         TEXT NOT NULL DEFAULT '',
+    rule         TEXT NOT NULL DEFAULT '',
+    reason       TEXT NOT NULL DEFAULT '',
+    used_model   INTEGER NOT NULL DEFAULT 0,
+    usd          REAL NOT NULL DEFAULT 0
+);
+
+CREATE INDEX web_source_repairs_source_idx ON web_source_repairs (source_id, attempted_at);
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
+DROP TABLE IF EXISTS web_source_repairs;
 DROP TABLE IF EXISTS web_source_polls;
 DROP TABLE IF EXISTS web_source_items;
 DROP TABLE IF EXISTS web_sources;

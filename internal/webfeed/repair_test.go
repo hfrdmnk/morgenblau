@@ -1,0 +1,206 @@
+package webfeed
+
+import (
+	"context"
+	"fmt"
+	"slices"
+	"strings"
+	"sync/atomic"
+	"testing"
+)
+
+// countingJudge picks one candidate and counts its calls.
+type countingJudge struct {
+	calls atomic.Int32
+	pick  int
+}
+
+func (j *countingJudge) Judge(context.Context, JudgeInput) (Verdict, Usage, error) {
+	j.calls.Add(1)
+	return Verdict{Pick: []int{j.pick}, Order: OrderPage}, Usage{InputTokens: 2500, OutputTokens: 600, USD: 0.0005}, nil
+}
+
+// shoutedTitles upper-cases every post title, which trips the title-shape rule without moving a single post.
+func shoutedTitles(list string) string {
+	for _, t := range postTitles {
+		list = strings.ReplaceAll(list, ">"+t+"<", ">"+strings.ToUpper(t)+"<")
+	}
+	return list
+}
+
+func archiveList(class string, n int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, `<ul class="%s">`, class)
+	for i := range n {
+		fmt.Fprintf(&b, `<li class="old"><h2><a href="/blog/older-post-number-%d">Older post number %d from the archive</a></h2></li>`, i, i)
+	}
+	b.WriteString(`</ul>`)
+	return b.String()
+}
+
+// renamedList is the blog list with every title rewritten except the first, under a new URL scheme.
+func renamedList(n int) string {
+	var b strings.Builder
+	b.WriteString(`<main><h1>Articles</h1><ul class="articles">`)
+	for i := range n {
+		t := fmt.Sprintf("A completely different headline number %d", i)
+		if i == 0 {
+			t = postTitles[0]
+		}
+		fmt.Fprintf(&b, `<li class="article"><h2><a href="/articles/%s">%s</a></h2><time datetime="2024-03-%02d">March %d, 2024</time></li>`, slugify(t), t, 20-i, 20-i)
+	}
+	b.WriteString(`</ul></main>`)
+	return b.String()
+}
+
+func tagCloud() string {
+	var b strings.Builder
+	b.WriteString(`<main><h1>Topics</h1><div class="topics">`)
+	for _, t := range []string{"design", "engineering", "culture", "product", "news", "events"} {
+		fmt.Fprintf(&b, `<a class="topic" href="/tags/%s">%s</a>`, t, t)
+	}
+	b.WriteString(`</div></main>`)
+	return b.String()
+}
+
+func TestRepairLadder(t *testing.T) {
+	listing := siteNav + blogList(8) + siteFooter
+	cases := []struct {
+		name       string
+		after      string
+		allowModel bool
+		judge      bool
+		accepted   bool
+		step       RepairStep
+		rule       string
+		falseAlarm bool
+		usedModel  bool
+		tried      []RepairStep
+		items      int
+		itemPrefix string
+	}{
+		{name: "list cut to three", after: siteNav + blogList(3) + siteFooter,
+			accepted: true, step: RepairKnownURLs, rule: AcceptKnownURL, tried: []RepairStep{RepairKnownURLs}, items: 3, itemPrefix: "/blog/"},
+		{name: "titles restyled in capitals", after: siteNav + shoutedTitles(blogList(8)) + siteFooter,
+			accepted: true, step: RepairKnownURLs, rule: AcceptKnownURL, falseAlarm: true, tried: []RepairStep{RepairKnownURLs}, items: 8, itemPrefix: "/blog/"},
+		{name: "url scheme changed, titles carry it", after: siteNav + movedList(8, "posts") + siteFooter,
+			accepted: true, step: RepairHeuristic, rule: AcceptTitles, tried: []RepairStep{RepairHeuristic}, items: 8, itemPrefix: "/posts/"},
+		{name: "titles rewritten and moved, no model allowed", after: siteNav + renamedList(8) + siteFooter, judge: true,
+			tried: []RepairStep{RepairHeuristic}},
+		{name: "titles rewritten and moved, the model step keeps the overlap", after: siteNav + renamedList(8) + siteFooter, judge: true, allowModel: true,
+			accepted: true, step: RepairJudge, rule: AcceptModel, usedModel: true, tried: []RepairStep{RepairHeuristic, RepairJudge}, items: 8, itemPrefix: "/articles/"},
+		{name: "only topic links left", after: siteNav + tagCloud() + siteFooter, allowModel: true,
+			tried: []RepairStep{RepairHeuristic}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestSite(t)
+			s.addBlog(8)
+			s.set("/blog", page("Blog", listing))
+			res := setupRecipe(t, s, "/blog")
+			after := tc.after
+			if !strings.HasPrefix(after, "<!doctype") {
+				after = page("Blog", after)
+			}
+			s.set("/blog", after)
+			ctx := context.Background()
+			polled, err := Poll(ctx, PollInput{Recipe: res.Recipe, History: historyFrom(res)}, s.opts())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if polled.Verdict != PollSuspect {
+				t.Fatalf("poll verdict %q (%s), want suspect", polled.Verdict, polled.Reason)
+			}
+			opts := s.opts()
+			judge := &countingJudge{}
+			if tc.judge {
+				opts.Judge = judge
+			}
+			got, err := Repair(ctx, polled, RepairInput{Recipe: res.Recipe, History: historyFrom(res), AllowModel: tc.allowModel}, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Accepted != tc.accepted || got.Rule != tc.rule || got.FalseAlarm != tc.falseAlarm || got.UsedModel != tc.usedModel {
+				t.Fatalf("repair accepted %v rule %q false alarm %v model %v, want %v %q %v %v (tried %v)",
+					got.Accepted, got.Rule, got.FalseAlarm, got.UsedModel, tc.accepted, tc.rule, tc.falseAlarm, tc.usedModel, got.Tried)
+			}
+			if tc.accepted && got.Step != tc.step {
+				t.Errorf("accepted step %q, want %q", got.Step, tc.step)
+			}
+			if !slices.Equal(got.Tried, tc.tried) {
+				t.Errorf("tried %v, want %v", got.Tried, tc.tried)
+			}
+			if len(got.Items) != tc.items {
+				t.Fatalf("items %v, want %d", itemURLs(got.Items), tc.items)
+			}
+			for _, it := range got.Items {
+				if !strings.Contains(it.URL, tc.itemPrefix) {
+					t.Errorf("item %s outside %s", it.URL, tc.itemPrefix)
+				}
+			}
+			if !tc.accepted {
+				return
+			}
+			again, err := Apply(got.Recipe, []byte(after), s.url("/blog"))
+			if err != nil || !slices.Equal(itemURLs(again), itemURLs(got.Items)) {
+				t.Errorf("the repaired recipe does not reproduce its items: %v, %v", itemURLs(again), err)
+			}
+			if got.Recipe.Fingerprint.Count != len(got.Items) {
+				t.Errorf("fingerprint count %d", got.Recipe.Fingerprint.Count)
+			}
+		})
+	}
+}
+
+func TestRepairAnchorsOnTheHistoryTemplateWhenNoKnownPostRemains(t *testing.T) {
+	s := newTestSite(t)
+	s.addBlog(8)
+	res := setupRecipe(t, s, "/blog")
+	fresh := strings.NewReplacer("/blog/older-post-number-", "/blog/fresh-post-number-", "Older post number", "Fresh post number").Replace(archiveList("latest", 6))
+	after := page("Blog", siteNav+`<main><h1>Blog</h1>`+fresh+`</main>`+siteFooter)
+	s.set("/blog", after)
+	polled, err := Poll(context.Background(), PollInput{Recipe: res.Recipe, History: historyFrom(res)}, s.opts())
+	if err != nil || polled.Verdict != PollSuspect {
+		t.Fatalf("poll = %+v, %v", polled, err)
+	}
+	got, err := Repair(context.Background(), polled, RepairInput{Recipe: res.Recipe, History: historyFrom(res)}, s.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Accepted || got.Step != RepairTemplate || got.Rule != AcceptTemplate || len(got.Items) != 6 {
+		t.Fatalf("repair = step %q rule %q accepted %v items %v (tried %v)", got.Step, got.Rule, got.Accepted, itemURLs(got.Items), got.Tried)
+	}
+}
+
+func TestAcceptanceRule(t *testing.T) {
+	last := postItems(8, "blog")
+	history := []GoodPoll{goodPoll(last)}
+	moved := postItems(8, "posts")
+	renamed := postItems(8, "posts")
+	for i := range renamed {
+		renamed[i].Title = fmt.Sprintf("Entirely new headline %d", i)
+	}
+	renamed[0].Title = last[0].Title
+	cases := []struct {
+		name  string
+		items []Item
+		model bool
+		want  string
+	}{
+		{"empty is never accepted", nil, true, ""},
+		{"one known post", append(postItems(3, "tags"), last[5]), false, AcceptKnownURL},
+		{"history template with three items", postItems(12, "blog")[9:], false, AcceptTemplate},
+		{"history template with two items is not enough", postItems(11, "blog")[9:], false, ""},
+		{"half the titles under a new scheme", moved[:4], false, AcceptTitles},
+		{"one title under a new scheme", renamed, false, ""},
+		{"model step with three items and some overlap", renamed, true, AcceptModel},
+		{"model step without overlap", renamed[1:], true, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := acceptRepair(tc.items, DominantTemplate(tc.items, nil), history, tc.model); got != tc.want {
+				t.Fatalf("accept = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

@@ -176,6 +176,7 @@ type WebSource struct {
 	LastModified        *string `json:"last_modified"`
 	LinkSetHash         *string `json:"link_set_hash"`
 	ConsecutiveFailures int64   `json:"consecutive_failures"`
+	LastCheckedAt       *string `json:"last_checked_at"`
 }
 
 type WebSourceItem struct {
@@ -199,4 +200,17 @@ type WebSourcePoll struct {
 	UrlTemplate string  `json:"url_template"`
 	DateFrac    float64 `json:"date_frac"`
 	TitleShape  float64 `json:"title_shape"`
+}
+
+type WebSourceRepair struct {
+	ID          int64   `json:"id"`
+	SourceID    string  `json:"source_id"`
+	AttemptedAt string  `json:"attempted_at"`
+	Cause       string  `json:"cause"`
+	Outcome     string  `json:"outcome"`
+	Step        string  `json:"step"`
+	Rule        string  `json:"rule"`
+	Reason      string  `json:"reason"`
+	UsedModel   int64   `json:"used_model"`
+	Usd         float64 `json:"usd"`
 }
