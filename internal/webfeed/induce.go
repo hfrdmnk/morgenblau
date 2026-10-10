@@ -5,18 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
-	"net/url"
 	"slices"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/andybalholm/cascadia"
 	"golang.org/x/net/html"
+
+	"morgenblau/internal/postkey"
 )
 
-// InduceSystemPrompt asks for a CSS recipe; unlike SystemPrompt it was not benchmarked, since the research prompt was deleted with the prototype.
-const InduceSystemPrompt = `You write CSS selectors that pull the stream of posts out of a web page, so a feed reader can follow a page that has no feed.
+// inducePrompt asks for a CSS recipe. Not benchmarked; change it only with a new benchmark.
+const inducePrompt = `You write CSS selectors that pull the stream of posts out of a web page, so a feed reader can follow a page that has no feed.
 You get the page URL, its title and a compressed skeleton of its HTML: one element per line, indented by depth, written as tag#id.class [attribute=value] "own text". A chain of single wrappers is joined with " > " on one line. Runs of similar siblings are cut to a few examples followed by a line "… N more tag.class"; your selectors must match all of them.
 Find this site's own individual posts, articles, episodes, releases or announcements: headline-like titles that link to single content pages. Ignore navigation, category and tag links, pagination, author lists, "popular"/"related"/sidebar lists, product and marketing pages, and social links. Sites often split one stream over several blocks (a featured story, a latest strip, the main list); cover all of them, with a comma-separated selector list when needed.
 Prefer tag names, stable class names and structure over hashed class names such as css-1x2y3z or _a8f3k.
@@ -28,17 +28,6 @@ const (
 	maxSkeletonChars = 60_000
 	induceRounds     = 2
 )
-
-// Inducer writes a CSS recipe for a listing page with one model call; Options.Inducer nil skips induction.
-type Inducer interface {
-	Induce(ctx context.Context, in InduceInput) (CSSRecipe, Usage, error)
-}
-
-// InduceInput is one induction call: the system prompt and the rendered page skeleton, with the failed attempt on a repair round.
-type InduceInput struct {
-	System string
-	User   string
-}
 
 // InduceRecord is the induction step's outcome and metered cost.
 type InduceRecord struct {
@@ -65,16 +54,10 @@ func (r SetupRecord) ModelCost() (calls int, usd float64) {
 	return calls, roundUSD(usd)
 }
 
-func roundUSD(f float64) float64 { return math.Round(f*1e8) / 1e8 }
-
-// ParseCSSRecipe reads the inducer's JSON, tolerating code fences and prose; every selector must compile.
-func ParseCSSRecipe(text string) (CSSRecipe, error) {
-	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
-	if start < 0 || end < start {
-		return CSSRecipe{}, errors.New("induce: no JSON object in reply")
-	}
+// parseCSSRecipe reads the inducer's reply; every selector must compile.
+func parseCSSRecipe(text string) (CSSRecipe, error) {
 	var r CSSRecipe
-	if err := json.Unmarshal([]byte(text[start:end+1]), &r); err != nil {
+	if err := decodeReply(text, &r); err != nil {
 		return CSSRecipe{}, fmt.Errorf("induce: %w", err)
 	}
 	r = CSSRecipe{Item: strings.TrimSpace(r.Item), Link: strings.TrimSpace(r.Link), Title: strings.TrimSpace(r.Title), Date: strings.TrimSpace(r.Date)}
@@ -100,7 +83,7 @@ func (r CSSRecipe) validate() error {
 }
 
 // induce asks for a CSS recipe, repairs it once when it yields nothing, and keeps it only when it beats the extractor on the self-check.
-func induce(ctx context.Context, res *Result, p *pageDoc, inducer Inducer) error {
+func induce(ctx context.Context, res *Result, p *pageDoc, m Model) error {
 	rec := &InduceRecord{}
 	setup := &res.Recipe.Setup
 	setup.Stages = append(setup.Stages, "induce")
@@ -110,7 +93,11 @@ func induce(ctx context.Context, res *Result, p *pageDoc, inducer Inducer) error
 	var items []Item
 	problem := ""
 	for range induceRounds {
-		c, u, err := inducer.Induce(ctx, InduceInput{System: InduceSystemPrompt, User: renderInduceMessage(res.Recipe.ListingURL, p.title, skel, css, problem)})
+		text, u, err := m.Complete(ctx, Prompt{System: inducePrompt, User: renderInduceMessage(res.Recipe.ListingURL, p.title, skel, css, problem), Effort: EffortMedium})
+		var c CSSRecipe
+		if err == nil {
+			c, err = parseCSSRecipe(text)
+		}
 		rec.Calls++
 		rec.InputTokens += u.InputTokens
 		rec.OutputTokens += u.OutputTokens
@@ -145,9 +132,8 @@ func induce(ctx context.Context, res *Result, p *pageDoc, inducer Inducer) error
 
 	templates := dominantTemplates(items)
 	sig := ComputeSignals(items, templates)
-	health, reasons := sig.setupVerdict()
-	_, extReasons := ComputeSignals(res.Items, res.Recipe.Fingerprint.URLTemplates).setupVerdict()
-	if len(reasons) >= len(extReasons) {
+	reasons := sig.doubts()
+	if len(reasons) >= len(ComputeSignals(res.Items, res.Recipe.Fingerprint.URLTemplates).doubts()) {
 		return nil
 	}
 	rec.Kept = true
@@ -160,8 +146,8 @@ func induce(ctx context.Context, res *Result, p *pageDoc, inducer Inducer) error
 		r.DateSource = DateSourceListing
 	}
 	sortItems(items, r.Order)
-	r.Fingerprint = Fingerprint{Count: sig.Count, URLTemplates: templates, DateFrac: round2(sig.DateFrac), TitleShape: round2(sig.TitleShape)}
-	res.Items, res.Health, res.HealthReasons = items, health, reasons
+	r.Fingerprint = fingerprintOf(sig, templates)
+	res.Items, res.Reasons = items, reasons
 	return nil
 }
 
@@ -185,7 +171,6 @@ func applyCSS(p *pageDoc, css CSSRecipe) (items []Item, matched int, err error) 
 	if err := css.validate(); err != nil {
 		return nil, 0, err
 	}
-	base := pageBase(p)
 	sel := p.doc.Find(css.Item)
 	seen := map[string]bool{}
 	sel.Each(func(_ int, it *goquery.Selection) {
@@ -197,11 +182,11 @@ func applyCSS(p *pageDoc, css CSSRecipe) (items []Item, matched int, err error) 
 		if !ok {
 			return
 		}
-		u, ok := resolveLink(base, href)
-		if !ok || sameDoc(u, p.url) || seen[urlKey(u)] {
+		u, ok := resolveLink(p.base, href)
+		if !ok || sameDoc(u, p.url) || seen[postkey.URL(u)] {
 			return
 		}
-		seen[urlKey(u)] = true
+		seen[postkey.URL(u)] = true
 		item := Item{URL: u}
 		titleNode := link
 		if css.Title != "" {
@@ -233,16 +218,6 @@ func within(it *goquery.Selection, sel string) *goquery.Selection {
 		return it
 	}
 	return it.Find(sel).First()
-}
-
-// pageBase honors <base href>, as parsePage does for anchors.
-func pageBase(p *pageDoc) *url.URL {
-	if href, ok := p.doc.Find("head base[href]").Attr("href"); ok {
-		if b, err := p.url.Parse(strings.TrimSpace(href)); err == nil {
-			return b
-		}
-	}
-	return p.url
 }
 
 // dominantTemplates is the URL shape most items share, generalized over a varying category segment when that covers more.

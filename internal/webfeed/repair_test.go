@@ -5,19 +5,12 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"testing"
 )
 
-// countingJudge picks one candidate and counts its calls.
-type countingJudge struct {
-	calls atomic.Int32
-	pick  int
-}
-
-func (j *countingJudge) Judge(context.Context, JudgeInput) (Verdict, Usage, error) {
-	j.calls.Add(1)
-	return Verdict{Pick: []int{j.pick}, Order: OrderPage}, Usage{InputTokens: 2500, OutputTokens: 600, USD: 0.0005}, nil
+// countingJudge is a model that always picks the first candidate.
+func countingJudge() *fakeModel {
+	return &fakeModel{replies: map[Effort][]string{EffortHigh: {judgeReply(OrderPage, 0)}}}
 }
 
 // shoutedTitles upper-cases every post title, which trips the title-shape rule without moving a single post.
@@ -112,9 +105,9 @@ func TestRepairLadder(t *testing.T) {
 				t.Fatalf("poll verdict %q (%s), want suspect", polled.Verdict, polled.Reason)
 			}
 			opts := s.opts()
-			judge := &countingJudge{}
+			judge := countingJudge()
 			if tc.judge {
-				opts.Judge = judge
+				opts.Model = judge
 			}
 			got, err := Repair(ctx, polled, RepairInput{Recipe: res.Recipe, History: historyFrom(res), AllowModel: tc.allowModel}, opts)
 			if err != nil {
@@ -141,7 +134,7 @@ func TestRepairLadder(t *testing.T) {
 			if !tc.accepted {
 				return
 			}
-			again, err := Apply(got.Recipe, []byte(after), s.url("/blog"))
+			again, err := apply(got.Recipe, []byte(after), s.url("/blog"))
 			if err != nil || !slices.Equal(itemURLs(again), itemURLs(got.Items)) {
 				t.Errorf("the repaired recipe does not reproduce its items: %v, %v", itemURLs(again), err)
 			}
@@ -208,11 +201,12 @@ func TestAcceptanceRule(t *testing.T) {
 // doubtedPoll is the page with the recipe's current extraction, as a poll hands it to repair after a weekly check doubted it.
 func doubtedPoll(t *testing.T, s *testSite, rec Recipe, body string) *PollResult {
 	t.Helper()
-	items, err := Apply(rec, []byte(body), s.url("/blog"))
+	p := mustPage(t, body, s.url("/blog"))
+	items, err := applyPage(rec, p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &PollResult{Verdict: PollOK, Items: items, page: &fetchedPage{body: []byte(body), url: s.url("/blog")}}
+	return &PollResult{Verdict: PollOK, Items: items, page: &fetchedPage{body: []byte(body), doc: p}}
 }
 
 func TestRepairOfADoubtedListNeedsADifferentList(t *testing.T) {
@@ -244,9 +238,9 @@ func TestRepairOfADoubtedListNeedsADifferentList(t *testing.T) {
 		s.addBlog(8)
 		s.set("/blog", posts)
 		res := setupRecipe(t, s, "/blog")
-		judge := &countingJudge{}
+		judge := countingJudge()
 		opts := s.opts()
-		opts.Judge = judge
+		opts.Model = judge
 		got, err := Repair(context.Background(), doubtedPoll(t, s, res.Recipe, posts), RepairInput{Recipe: res.Recipe, History: historyFrom(res), Doubted: true, AllowModel: true}, opts)
 		if err != nil {
 			t.Fatal(err)
@@ -258,4 +252,44 @@ func TestRepairOfADoubtedListNeedsADifferentList(t *testing.T) {
 			t.Errorf("tried %v (model %v), want the doubted posts skipped as anchors and the model step tried", got.Tried, got.UsedModel)
 		}
 	})
+}
+
+func TestModelAcceptanceNeedsThreeItems(t *testing.T) {
+	last := postItems(8, "blog")
+	history := []GoodPoll{goodPoll(last)}
+	renamed := retitled(postItems(3, "posts"), func(i int) string { return fmt.Sprintf("Entirely new headline %d", i) })
+	renamed[0].Title = last[0].Title
+	if got := acceptRepair(renamed[:2], DominantTemplate(renamed[:2], nil), history, true); got != "" {
+		t.Fatalf("two items with one known title accepted by %q", got)
+	}
+	if got := acceptRepair(renamed, DominantTemplate(renamed, nil), history, true); got != AcceptModel {
+		t.Fatalf("three items with one known title = %q, want %q", got, AcceptModel)
+	}
+}
+
+func TestRepairRejectsAModelStepWhoseSetupIsBlocked(t *testing.T) {
+	s := newTestSite(t)
+	s.addBlog(8)
+	res := setupRecipe(t, s, "/blog")
+	s.set("/blog", page("Blog", siteNav+renamedList(8)+siteFooter))
+	ctx := context.Background()
+	polled, err := Poll(ctx, PollInput{Recipe: res.Recipe, History: historyFrom(res)}, s.opts())
+	if err != nil || polled.Verdict != PollSuspect {
+		t.Fatalf("poll = %+v, %v", polled, err)
+	}
+	s.mu.Lock()
+	s.status["/blog"] = 403
+	s.mu.Unlock()
+	opts := s.opts()
+	opts.Model = countingJudge()
+	got, err := Repair(ctx, polled, RepairInput{Recipe: res.Recipe, History: historyFrom(res), AllowModel: true}, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Accepted || len(got.Items) != 0 {
+		t.Fatalf("repair accepted %v by %q with items %v, want the blocked setup rejected", got.Accepted, got.Rule, itemURLs(got.Items))
+	}
+	if len(got.Tried) == 0 || got.Tried[len(got.Tried)-1] != RepairJudge || !got.UsedModel {
+		t.Fatalf("tried %v (model %v), want the judge step tried last", got.Tried, got.UsedModel)
+	}
 }

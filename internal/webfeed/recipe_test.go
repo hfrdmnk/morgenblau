@@ -32,7 +32,7 @@ func TestRecipeDecodesTheSpecShape(t *testing.T) {
 	if err := json.Unmarshal([]byte(specRecipeJSON), &r); err != nil {
 		t.Fatal(err)
 	}
-	if r.Version != 1 || r.Mode != ModeStreams || r.Order != OrderDate || r.DateSource != DateSourceListing || r.Input != "raw" || r.Lang != "en" {
+	if r.Version != 1 || r.Mode != ModeStreams || r.Order != OrderDate || r.DateSource != DateSourceListing || r.Lang != "en" {
 		t.Fatalf("scalars = %+v", r)
 	}
 	if len(r.Streams) != 1 || r.Streams[0].URLTemplate != "news.example.com/posts/*" || r.Streams[0].ContainerHints[0] != "div.grid<section<main" {
@@ -60,7 +60,6 @@ func TestRecipeRoundTrips(t *testing.T) {
 			TitleHints:     TitleHints{Source: "heading", Tag: "h2"},
 		}},
 		ExcludeURLs: []string{"https://news.example.com/blog/archive"},
-		Input:       "raw",
 		Lang:        "de",
 		Order:       OrderPage,
 		DateSource:  DateSourceArticle,
@@ -86,7 +85,7 @@ func TestRecipeRoundTrips(t *testing.T) {
 }
 
 func TestNewRecipeMarshalsEmptyListsAndNullCSS(t *testing.T) {
-	raw, err := json.Marshal(NewRecipe("https://news.example.com/", ModeSitemap))
+	raw, err := json.Marshal(newRecipe("https://news.example.com/", ModeSitemap))
 	if err != nil {
 		t.Fatal(err)
 	}

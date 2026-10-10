@@ -142,11 +142,11 @@ type driftEnv struct {
 	id      string
 }
 
-func newDriftEnv(t *testing.T, watcher webfeed.Watcher) *driftEnv {
+func newDriftEnv(t *testing.T, model webfeed.Model) *driftEnv {
 	t.Helper()
 	env := newTestEnv(t)
 	web := driftSite()
-	gen := NewWebfeedGenerator(webfeed.Options{Client: web.client()}, watcher)
+	gen := NewWebfeedGenerator(webfeed.Options{Client: web.client(), Model: model})
 	svc := NewService(env.reader, env.writer, gen, Config{PublicBaseURL: testBase, PollInterval: 30 * time.Minute, ModelDailyUSD: 1})
 	svc.now = func() time.Time { return env.now }
 	preview, err := svc.Create(context.Background(), testDID, driftListing, "")
@@ -319,41 +319,27 @@ func TestDriftTierZeroSpendsNothing(t *testing.T) {
 	}
 }
 
-// scriptedWatcher answers the weekly check and counts its calls.
-type scriptedWatcher struct {
-	mu     sync.Mutex
-	broken bool
-	calls  int
-}
-
-func (w *scriptedWatcher) Watch(context.Context, webfeed.WatchInput) (webfeed.WatchVerdict, webfeed.Usage, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.calls++
-	return webfeed.WatchVerdict{Broken: w.broken, Reason: "the items look like category pages"}, webfeed.Usage{InputTokens: 1500, OutputTokens: 100, USD: 0.0002}, nil
-}
-
 func TestWeeklyCheckRunsOnceAWeekAndItsAlarmGoesThroughTheLadder(t *testing.T) {
-	w := &scriptedWatcher{}
+	w := &scriptedModel{}
 	d := newDriftEnv(t, w)
 	d.poll(t)
-	if w.calls != 0 {
-		t.Fatalf("watcher called %d times before the week was up", w.calls)
+	if w.count(webfeed.EffortLow) != 0 {
+		t.Fatalf("watcher called %d times before the week was up", w.count(webfeed.EffortLow))
 	}
 	d.advance(7 * 24 * time.Hour)
 	d.poll(t)
-	if w.calls != 1 {
-		t.Fatalf("watcher calls = %d, want 1", w.calls)
+	if w.count(webfeed.EffortLow) != 1 {
+		t.Fatalf("watcher calls = %d, want 1", w.count(webfeed.EffortLow))
 	}
 	d.poll(t)
-	if w.calls != 1 {
+	if w.count(webfeed.EffortLow) != 1 {
 		t.Fatalf("watcher called again right after the check")
 	}
 	if len(repairRows(t, d.testEnv, d.id)) != 0 {
 		t.Fatal("a healthy check started a repair")
 	}
 
-	w.broken = true
+	w.setBroken(true)
 	d.advance(7 * 24 * time.Hour)
 	d.poll(t)
 	rows := repairRows(t, d.testEnv, d.id)
@@ -376,20 +362,20 @@ func TestWeeklyCheckRunsOnceAWeekAndItsAlarmGoesThroughTheLadder(t *testing.T) {
 	if len(rows) != 2 || rows[1].cause != "weekly_check" || rows[1].outcome != "unresolved" || rows[1].step != "heuristic" {
 		t.Errorf("repairs = %+v, want the open alarm to retry the ladder on the next poll", rows)
 	}
-	if w.calls != 2 {
-		t.Errorf("watcher calls = %d, want the next check to wait for its day", w.calls)
+	if w.count(webfeed.EffortLow) != 2 {
+		t.Errorf("watcher calls = %d, want the next check to wait for its day", w.count(webfeed.EffortLow))
 	}
 
 	d.advance(24 * time.Hour)
 	d.poll(t)
-	if w.calls != 3 {
-		t.Errorf("watcher calls = %d, want the check back a day after its alarm", w.calls)
+	if w.count(webfeed.EffortLow) != 3 {
+		t.Errorf("watcher calls = %d, want the check back a day after its alarm", w.count(webfeed.EffortLow))
 	}
 	if row := readSource(t, d.testEnv, d.id); row.health != string(HealthNeedsAttention) {
 		t.Errorf("a check that still doubts the list closed the alarm: health = %s", row.health)
 	}
 
-	w.broken = false
+	w.setBroken(false)
 	d.advance(24 * time.Hour)
 	d.poll(t)
 	if row := readSource(t, d.testEnv, d.id); row.health != string(HealthOK) {

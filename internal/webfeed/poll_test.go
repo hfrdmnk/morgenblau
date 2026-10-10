@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -32,7 +33,7 @@ func TestPollDetectorVerdicts(t *testing.T) {
 		status  int
 		body    string
 		verdict PollVerdict
-		reason  string
+		reason  Reason
 		blocked bool
 		items   int
 	}{
@@ -185,7 +186,7 @@ func TestPollMarksNonHTMLBroken(t *testing.T) {
 func TestPollReportsAnUnreachableSiteAsBroken(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	opts := Options{Client: srv.Client()}
-	recipe := NewRecipe(srv.URL+"/blog", ModeStreams)
+	recipe := newRecipe(srv.URL+"/blog", ModeStreams)
 	srv.Close()
 	got, err := Poll(context.Background(), PollInput{Recipe: recipe}, opts)
 	if err != nil || got.Verdict != PollBroken || got.Reason != ReasonUnreachable {
@@ -243,4 +244,61 @@ func TestPollReadsRobotsFromADailyCache(t *testing.T) {
 	if got := poll(); got.Verdict != PollBroken || got.Reason != ReasonRobots {
 		t.Fatalf("verdict %q %q after a day, want the new robots.txt honored", got.Verdict, got.Reason)
 	}
+}
+
+// sitemapSite is a /news listing that refuses us, served from its sitemap instead.
+func sitemapSite(t *testing.T) (*testSite, *Result) {
+	t.Helper()
+	s := newTestSite(t)
+	s.mu.Lock()
+	s.status["/news"] = 403
+	s.mu.Unlock()
+	s.set("/robots.txt", "User-agent: *\nAllow: /\nSitemap: "+s.url("/sitemap-news.xml")+"\n")
+	s.set("/sitemap-news.xml", sitemapXML(s.url("/news/first-launch-of-the-reader"), s.url("/news/a-second-announcement-today"), s.url("/news/third-time-is-the-charm")))
+	res := setupRecipe(t, s, "/news")
+	if res.Recipe.Mode != ModeSitemap || res.Recipe.FeedURL != s.url("/sitemap-news.xml") || len(res.Items) != 3 {
+		t.Fatalf("setup mode %s feed %q items %v", res.Recipe.Mode, res.Recipe.FeedURL, itemURLs(res.Items))
+	}
+	return s, res
+}
+
+func TestPollInSitemapMode(t *testing.T) {
+	ctx := context.Background()
+	t.Run("an unchanged sitemap is not modified", func(t *testing.T) {
+		s, res := sitemapSite(t)
+		first, err := Poll(ctx, PollInput{Recipe: res.Recipe, History: historyFrom(res)}, s.opts())
+		if err != nil || first.Verdict != PollOK || len(first.Items) != 3 || first.LinkSetHash == "" {
+			t.Fatalf("first poll = %+v, %v", first, err)
+		}
+		again, err := Poll(ctx, PollInput{Recipe: res.Recipe, History: historyFrom(res), LinkSetHash: first.LinkSetHash}, s.opts())
+		if err != nil || again.Verdict != PollOK || !again.NotModified || len(again.Items) != 0 {
+			t.Fatalf("unchanged poll = %+v, %v", again, err)
+		}
+	})
+	t.Run("a new matching post is polled", func(t *testing.T) {
+		s, res := sitemapSite(t)
+		first, err := Poll(ctx, PollInput{Recipe: res.Recipe, History: historyFrom(res)}, s.opts())
+		if err != nil {
+			t.Fatal(err)
+		}
+		fresh := s.url("/news/a-fourth-story-for-readers")
+		s.set("/sitemap-news.xml", sitemapXML(fresh, s.url("/news/first-launch-of-the-reader"), s.url("/news/a-second-announcement-today"), s.url("/news/third-time-is-the-charm"), s.url("/about/team")))
+		got, err := Poll(ctx, PollInput{Recipe: res.Recipe, History: historyFrom(res), LinkSetHash: first.LinkSetHash}, s.opts())
+		if err != nil || got.Verdict != PollOK || got.NotModified {
+			t.Fatalf("poll = %+v, %v", got, err)
+		}
+		if urls := itemURLs(got.Items); len(urls) != 4 || !slices.Contains(urls, fresh) {
+			t.Fatalf("items = %v, want the three known posts and %s", urls, fresh)
+		}
+	})
+	t.Run("a refused sitemap is blocked", func(t *testing.T) {
+		s, res := sitemapSite(t)
+		s.mu.Lock()
+		s.status["/sitemap-news.xml"] = 403
+		s.mu.Unlock()
+		got, err := Poll(ctx, PollInput{Recipe: res.Recipe, History: historyFrom(res)}, s.opts())
+		if err != nil || got.Verdict != PollBroken || !got.Blocked || got.Reason != ReasonHTTPStatus {
+			t.Fatalf("poll = %+v, %v", got, err)
+		}
+	})
 }

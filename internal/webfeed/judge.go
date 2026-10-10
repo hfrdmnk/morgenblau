@@ -13,8 +13,8 @@ import (
 	"unicode/utf8"
 )
 
-// SystemPrompt is the frozen, benchmarked v2 judge prompt; change it only with a new benchmark.
-const SystemPrompt = `You choose which lists on a web page form the stream of posts a reader subscribes to when they follow this page.
+// judgePrompt is the frozen, benchmarked v2 judge prompt; change it only with a new benchmark.
+const judgePrompt = `You choose which lists on a web page form the stream of posts a reader subscribes to when they follow this page.
 You get the page URL and title, then numbered candidate lists found by a DOM heuristic. Each shows its URL shape, size, how many entries are dated and their date range, the median title length, whether it sits in navigation/header/footer, which other candidates share its URL shape, and sample entries (date | title | url). Lists of up to 8 entries are shown in full.
 The reader wants every post this page publishes. Sites often split one stream over several blocks: a hero or featured story, a "latest" strip, the main list, a second grid further down, or a list of another post type (episodes, videos, press releases). Each block becomes its own candidate, often small, undated or with a different URL shape. Pick every candidate whose entries are this site's own individual posts, articles, episodes, releases or announcements, that is headline-like titles linking to single content pages. Leaving out such a block loses posts and is the most common mistake.
 Reject candidates whose entries are not individual posts: navigation and section links, category/tag/topic pages, author lists, pagination, product or marketing pages, help/legal/social links, and aggregator meta-links (on a link aggregator the entry is the story link, not the domain or comments link). Also reject "popular"/"related"/sidebar lists. The in nav/header/footer flag is a hint, not a verdict: judge by the entries.
@@ -25,18 +25,6 @@ none=true when no candidate is a post stream.`
 // judgeVotes is how many independent calls a judged setup makes; a candidate needs a majority.
 const judgeVotes = 3
 
-// Judge picks the post stream among candidate lists with one model call.
-type Judge interface {
-	Judge(ctx context.Context, in JudgeInput) (Verdict, Usage, error)
-}
-
-// JudgeInput is one judge call: the frozen system prompt, the rendered candidates and how many there are.
-type JudgeInput struct {
-	System     string
-	User       string
-	Candidates int
-}
-
 // Verdict is the judge's answer; Pick indexes the candidates in the user message.
 type Verdict struct {
 	Pick   []int  `json:"pick"`
@@ -46,19 +34,8 @@ type Verdict struct {
 	Reason string `json:"reason"`
 }
 
-// Usage is the metered cost of one call, reported even when its answer does not parse.
-type Usage struct {
-	InputTokens  int
-	OutputTokens int
-	USD          float64
-}
-
-// ParseVerdict reads the judge's JSON, tolerating code fences and prose around it; picks must index one of n candidates.
-func ParseVerdict(text string, n int) (Verdict, error) {
-	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
-	if start < 0 || end < start {
-		return Verdict{}, errors.New("judge: no JSON object in reply")
-	}
+// parseVerdict reads the judge's reply; picks must index one of n candidates.
+func parseVerdict(text string, n int) (Verdict, error) {
 	var raw struct {
 		Pick   []json.RawMessage `json:"pick"`
 		Order  string            `json:"order"`
@@ -66,7 +43,7 @@ func ParseVerdict(text string, n int) (Verdict, error) {
 		None   bool              `json:"none"`
 		Reason string            `json:"reason"`
 	}
-	if err := json.Unmarshal([]byte(text[start:end+1]), &raw); err != nil {
+	if err := decodeReply(text, &raw); err != nil {
 		return Verdict{}, fmt.Errorf("judge: %w", err)
 	}
 	v := Verdict{Order: OrderPage, Mixed: raw.Mixed, None: raw.None, Reason: raw.Reason}
@@ -148,18 +125,16 @@ func aggregateVotes(votes []vote, heuristicOrder Order) (pick []int, order Order
 }
 
 // runJudge makes the three votes in parallel and meters their cost.
-func runJudge(ctx context.Context, j Judge, in JudgeInput, n int, heuristicOrder Order) (JudgeRecord, error) {
+func runJudge(ctx context.Context, m Model, user string, n int, heuristicOrder Order) (JudgeRecord, error) {
 	votes := make([]vote, judgeVotes)
 	usages := make([]Usage, judgeVotes)
 	var wg sync.WaitGroup
 	for i := range judgeVotes {
 		wg.Go(func() {
-			v, u, err := j.Judge(ctx, in)
+			text, u, err := m.Complete(ctx, Prompt{System: judgePrompt, User: user, Effort: EffortHigh})
+			var v Verdict
 			if err == nil {
-				v.Pick = slices.DeleteFunc(v.Pick, func(p int) bool { return p < 0 || p >= n })
-				if len(v.Pick) == 0 && !v.None {
-					err = errors.New("judge: no valid pick")
-				}
+				v, err = parseVerdict(text, n)
 			}
 			votes[i], usages[i] = vote{v: v, err: err}, u
 		})
@@ -177,7 +152,7 @@ func runJudge(ctx context.Context, j Judge, in JudgeInput, n int, heuristicOrder
 			rec.Failed++
 		}
 	}
-	rec.USD = math.Round(rec.USD*1e8) / 1e8
+	rec.USD = roundUSD(rec.USD)
 	rec.Pick, rec.Order, rec.None = aggregateVotes(votes, heuristicOrder)
 	if rec.Pick == nil {
 		rec.Pick = []int{}

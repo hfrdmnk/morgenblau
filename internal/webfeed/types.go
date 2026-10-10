@@ -25,7 +25,7 @@ type Candidate struct {
 func (c *cluster) public() Candidate {
 	out := Candidate{Template: c.template, ContainerHint: c.hint, Score: c.score, DateFrac: c.dateFrac, InNav: c.navShare >= 0.5}
 	for _, e := range c.entries {
-		out.Entries = append(out.Entries, Item{URL: e.URL, Title: e.Title, Date: e.Date})
+		out.Entries = append(out.Entries, e.item())
 	}
 	return out
 }

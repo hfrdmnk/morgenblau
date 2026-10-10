@@ -2,15 +2,6 @@ package webfeed
 
 import "strings"
 
-// Health is a generated feed's verdict, shown on the Sources page.
-type Health string
-
-const (
-	HealthOK             Health = "ok"
-	HealthNeedsAttention Health = "needs_attention"
-	HealthBlockedBySite  Health = "blocked_by_site"
-)
-
 // Signals are the detector's measurements of one extraction.
 type Signals struct {
 	Count         int
@@ -46,23 +37,25 @@ func ComputeSignals(items []Item, templates []string) Signals {
 	return s
 }
 
-// setupVerdict is the setup self-check; any reason means the reader should point at one post.
-func (s Signals) setupVerdict() (Health, []string) {
-	var reasons []string
+// fingerprintOf is the recipe's record of what a good extraction looks like.
+func fingerprintOf(s Signals, templates []string) Fingerprint {
+	return Fingerprint{Count: s.Count, URLTemplates: templates, DateFrac: round2(s.DateFrac), TitleShape: round2(s.TitleShape)}
+}
+
+// doubts is the setup self-check; any reason means the reader should point at one post.
+func (s Signals) doubts() []Reason {
+	var reasons []Reason
 	if s.Count < 3 {
-		reasons = append(reasons, "count")
+		reasons = append(reasons, ReasonCount)
 	}
 	if s.Count > 0 && s.TitleShape < 0.7 {
-		reasons = append(reasons, "title_shape")
+		reasons = append(reasons, ReasonTitleShape)
 	}
 	if s.DupTitles > 0.5 {
-		reasons = append(reasons, "dup_titles")
+		reasons = append(reasons, ReasonDupTitles)
 	}
 	if s.Count > 0 && s.TemplateShare < 0.5 {
-		reasons = append(reasons, "template_share")
+		reasons = append(reasons, ReasonTemplateShare)
 	}
-	if len(reasons) > 0 {
-		return HealthNeedsAttention, reasons
-	}
-	return HealthOK, nil
+	return reasons
 }

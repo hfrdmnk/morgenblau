@@ -7,41 +7,49 @@ import (
 	"strings"
 
 	"golang.org/x/net/html"
+
+	"morgenblau/internal/postkey"
 )
 
-// ErrUnsupportedMode is returned by Apply for modes it cannot run on a fetched page.
-var ErrUnsupportedMode = errors.New("webfeed: recipe mode not supported by Apply")
+// errUnsupportedMode is a recipe mode apply cannot run on a fetched page.
+var errUnsupportedMode = errors.New("webfeed: recipe mode not supported by Apply")
 
-// Apply runs a stored recipe on a freshly fetched page (the listing, or the sitemap in mode sitemap) without any model or extra fetch.
-func Apply(r Recipe, body []byte, pageURL string) ([]Item, error) {
-	switch r.Mode {
-	case ModeStreams:
-		return applyStreams(r, body, pageURL)
-	case ModeSitemap:
+// apply runs a stored recipe on a freshly fetched page (the listing, or the sitemap in mode sitemap) without any model or extra fetch.
+func apply(r Recipe, body []byte, pageURL string) ([]Item, error) {
+	if r.Mode == ModeSitemap {
 		return applySitemap(r, body)
-	case ModeCSS:
-		return applyCSSRecipe(r, body, pageURL)
 	}
-	return nil, fmt.Errorf("%w: %s", ErrUnsupportedMode, r.Mode)
-}
-
-func applyStreams(r Recipe, body []byte, pageURL string) ([]Item, error) {
 	p, err := parsePage(body, pageURL)
 	if err != nil {
 		return nil, err
 	}
+	return applyPage(r, p)
+}
+
+// applyPage runs a listing recipe on a page already parsed.
+func applyPage(r Recipe, p *pageDoc) ([]Item, error) {
+	switch r.Mode {
+	case ModeStreams:
+		return applyStreams(r, p), nil
+	case ModeCSS:
+		return applyCSSRecipe(r, p)
+	}
+	return nil, fmt.Errorf("%w: %s", errUnsupportedMode, r.Mode)
+}
+
+func applyStreams(r Recipe, p *pageDoc) []Item {
 	clusters := p.clusters()
 	var entries []*entry
 	seen := map[string]bool{}
 	for _, st := range r.Streams {
 		for _, c := range refind(clusters, st) {
 			for _, e := range c.entries {
-				k := urlKey(e.URL)
+				k := postkey.URL(e.URL)
 				if seen[k] || !matchTemplate(st.URLTemplate, URLTemplate(e.URL)) || slices.Contains(r.ExcludeURLs, e.URL) {
 					continue
 				}
 				seen[k] = true
-				if st.TitleHints.Source == "calibrated" {
+				if st.TitleHints.Source == TitleCalibrated {
 					applyTitleHint(e, st.TitleHints.Tag)
 				}
 				entries = append(entries, e)
@@ -51,10 +59,10 @@ func applyStreams(r Recipe, body []byte, pageURL string) ([]Item, error) {
 	slices.SortStableFunc(entries, func(a, b *entry) int { return p.order[a.node] - p.order[b.node] })
 	items := make([]Item, len(entries))
 	for i, e := range entries {
-		items[i] = Item{URL: e.URL, Title: e.Title, Date: e.Date}
+		items[i] = e.item()
 	}
 	sortItems(items, r.Order)
-	return capItems(items), nil
+	return capItems(items)
 }
 
 // capItems keeps the first MaxItems, the newest in date order.
@@ -120,7 +128,7 @@ func applyTitleHint(e *entry, sig string) {
 	walk = func(n *html.Node) bool {
 		if n.Type == html.ElementNode && nodeSig(n, true) == sig {
 			if t := cleanTitle(nodeText(n)); t != "" && !isGeneric(t) {
-				e.Title, e.TitleSource = t, "calibrated"
+				e.Title, e.TitleSource = t, TitleCalibrated
 				return true
 			}
 		}
@@ -142,12 +150,12 @@ func applySitemap(r Recipe, body []byte) ([]Item, error) {
 	var items []Item
 	seen := map[string]bool{}
 	for _, su := range sm.urls {
-		k := urlKey(su.loc)
+		k := postkey.URL(su.loc)
 		if seen[k] || slices.Contains(r.ExcludeURLs, su.loc) {
 			continue
 		}
 		for _, st := range r.Streams {
-			if matchTemplate(st.URLTemplate, URLTemplate(su.loc)) && !strings.EqualFold(k, urlKey(r.ListingURL)) {
+			if matchTemplate(st.URLTemplate, URLTemplate(su.loc)) && !strings.EqualFold(k, postkey.URL(r.ListingURL)) {
 				seen[k] = true
 				items = append(items, Item{URL: su.loc, Title: slugTitle(su.loc)})
 				break
@@ -157,13 +165,9 @@ func applySitemap(r Recipe, body []byte) ([]Item, error) {
 	return capItems(items), nil
 }
 
-func applyCSSRecipe(r Recipe, body []byte, pageURL string) ([]Item, error) {
+func applyCSSRecipe(r Recipe, p *pageDoc) ([]Item, error) {
 	if r.CSS == nil {
 		return nil, errors.New("webfeed: css recipe without selectors")
-	}
-	p, err := parsePage(body, pageURL)
-	if err != nil {
-		return nil, err
 	}
 	items, _, err := applyCSS(p, *r.CSS)
 	if err != nil {

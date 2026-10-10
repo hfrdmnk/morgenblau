@@ -18,8 +18,8 @@ func TestSetupBuildsAStreamsRecipe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Health != HealthOK || res.Title != "Blog | Example Publication" {
-		t.Fatalf("health = %s %v, title %q", res.Health, res.HealthReasons, res.Title)
+	if !res.Healthy() || res.Title != "Blog | Example Publication" {
+		t.Fatalf("blocked %v reasons %v, title %q", res.Blocked, res.Reasons, res.Title)
 	}
 	if len(res.Items) != 10 || res.Items[0].Title != postTitles[0] || res.Items[0].Date.Format("2006-01-02") != "2024-03-20" {
 		t.Fatalf("items = %+v", res.Items)
@@ -29,7 +29,7 @@ func TestSetupBuildsAStreamsRecipe(t *testing.T) {
 	if r.Version != 1 || r.Mode != ModeStreams || len(r.Streams) != 1 || r.Streams[0].URLTemplate != wantTmpl || len(r.Streams[0].ContainerHints) == 0 {
 		t.Fatalf("recipe = %+v", r)
 	}
-	if r.Order != OrderDate || r.DateSource != DateSourceListing || r.Lang != "en" || r.Input != "raw" {
+	if r.Order != OrderDate || r.DateSource != DateSourceListing || r.Lang != "en" {
 		t.Fatalf("order %s, date source %s, lang %q", r.Order, r.DateSource, r.Lang)
 	}
 	if r.Fingerprint.Count != 10 || r.Fingerprint.DateFrac != 1 || r.Fingerprint.TitleShape != 1 || !reflect.DeepEqual(r.Fingerprint.URLTemplates, []string{wantTmpl}) {
@@ -74,8 +74,8 @@ func TestSetupHonorsRobots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Health != HealthBlockedBySite || s.hits["/blog"] != 0 {
-		t.Fatalf("health %s, listing hits %d", res.Health, s.hits["/blog"])
+	if !res.Blocked || s.hits["/blog"] != 0 {
+		t.Fatalf("reasons %v, listing hits %d", res.Reasons, s.hits["/blog"])
 	}
 }
 
@@ -105,8 +105,8 @@ func TestSetupBlockedListingFallsBackToSitemap(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if res.Recipe.Mode != ModeSitemap || res.Health != HealthOK || len(res.Items) != 3 {
-				t.Fatalf("mode %s health %s items %+v", res.Recipe.Mode, res.Health, res.Items)
+			if res.Recipe.Mode != ModeSitemap || !res.Healthy() || len(res.Items) != 3 {
+				t.Fatalf("mode %s reasons %v items %+v", res.Recipe.Mode, res.Reasons, res.Items)
 			}
 			if res.Items[0].Title != "First launch of the reader" || res.Recipe.Streams[0].URLTemplate != s.host()+"/news/*" {
 				t.Fatalf("items %+v streams %+v", res.Items, res.Recipe.Streams)
@@ -122,8 +122,8 @@ func TestSetupBlockedWithoutSitemapIsBlockedBySite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Health != HealthBlockedBySite || len(res.Items) != 0 {
-		t.Fatalf("health %s items %d", res.Health, len(res.Items))
+	if !res.Blocked || len(res.Items) != 0 {
+		t.Fatalf("reasons %v items %d", res.Reasons, len(res.Items))
 	}
 }
 
@@ -145,15 +145,15 @@ func ambiguousPage() string {
 func TestSetupAsksTheJudgeWhenUnsure(t *testing.T) {
 	s := newTestSite(t)
 	s.set("/resources", ambiguousPage())
-	j := &fakeJudge{replies: []string{"```json\n{\"pick\":[1],\"order\":\"page\",\"none\":false,\"reason\":\"stories\"}\n```"}}
+	m := &fakeModel{replies: map[Effort][]string{EffortHigh: {"```json\n{\"pick\":[1],\"order\":\"page\",\"none\":false,\"reason\":\"stories\"}\n```"}}}
 	opts := s.opts()
-	opts.Judge = j
+	opts.Model = m
 	res, err := Setup(context.Background(), s.url("/resources"), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if j.calls.Load() != 3 {
-		t.Fatalf("judge calls = %d", j.calls.Load())
+	if n := len(m.calls(EffortHigh)); n != 3 {
+		t.Fatalf("judge calls = %d", n)
 	}
 	rec := res.Recipe.Setup
 	if !slices.Contains(rec.Stages, "judge") || rec.Judge == nil || rec.Judge.Calls != 3 || rec.Judge.InputTokens != 7500 || rec.Judge.USD == 0 || !rec.JudgeWanted {
@@ -204,7 +204,7 @@ func TestSetupCalibratesSubtitleWithOGTitleAndRecordsTitleHint(t *testing.T) {
 		t.Fatalf("title hints = %+v", hint)
 	}
 	page, _ := s.get(t, "/blog")
-	items, err := Apply(res.Recipe, page, s.url("/blog"))
+	items, err := apply(res.Recipe, page, s.url("/blog"))
 	if err != nil || len(items) != 5 || items[0].Title != postTitles[4] {
 		t.Fatalf("Apply with title hint = %+v, %v", items, err)
 	}
@@ -268,8 +268,8 @@ func TestSetupSelfCheckAsksForAPostWhenThinOrOdd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Health != HealthNeedsAttention || !slices.Contains(res.HealthReasons, "count") {
-		t.Fatalf("health %s %v", res.Health, res.HealthReasons)
+	if res.Healthy() || res.Blocked || !slices.Contains(res.Reasons, ReasonCount) {
+		t.Fatalf("blocked %v reasons %v", res.Blocked, res.Reasons)
 	}
 }
 
@@ -383,8 +383,8 @@ func TestSetupUnsureWithoutJudgeAsksForAPost(t *testing.T) {
 	if res.Recipe.Setup.Confidence >= judgeBelowConfidence {
 		t.Fatalf("fixture is not unsure: confidence %.2f", res.Recipe.Setup.Confidence)
 	}
-	if res.Health != HealthNeedsAttention || !slices.Contains(res.HealthReasons, "unsure") {
-		t.Fatalf("health %s %v", res.Health, res.HealthReasons)
+	if res.Healthy() || res.Blocked || !slices.Contains(res.Reasons, ReasonUnsure) {
+		t.Fatalf("blocked %v reasons %v", res.Blocked, res.Reasons)
 	}
 }
 
@@ -414,5 +414,87 @@ func TestMinorityShapesFromOtherSectionsAreGuarded(t *testing.T) {
 	}
 	if len(res.Items) != 8 {
 		t.Fatalf("items = %v, want the posts plus the off-site releases", itemURLs(res.Items))
+	}
+}
+
+func TestJudgeReasonsThresholdsAreStrict(t *testing.T) {
+	cases := []struct {
+		conf, margin float64
+		flagged      bool
+		want         []string
+	}{
+		{0.6, 2.0, false, nil},
+		{0.59, 2.0, false, []string{"confidence"}},
+		{0.6, 1.99, false, []string{"margin"}},
+		{0.6, 2.0, true, []string{"verify"}},
+		{0.1, 0.5, true, []string{"confidence", "margin", "verify"}},
+	}
+	for _, c := range cases {
+		if got := judgeReasons(c.conf, c.margin, c.flagged); !slices.Equal(got, c.want) {
+			t.Errorf("judgeReasons(%v, %v, %v) = %v, want %v", c.conf, c.margin, c.flagged, got, c.want)
+		}
+	}
+}
+
+// topicList is one list of section pages: well-shaped titles, but every link a taxonomy page.
+func topicList() string {
+	var b strings.Builder
+	b.WriteString(`<main><ul class="topics">`)
+	for i := range 6 {
+		fmt.Fprintf(&b, `<li><a href="/tags/%s">%s</a></li>`, slugify(postTitles[i]), postTitles[i])
+	}
+	b.WriteString(`</ul></main>`)
+	return page("Topics", b.String())
+}
+
+func TestSetupRecordsEachJudgeTriggerAlone(t *testing.T) {
+	cases := []struct {
+		name  string
+		serve func(*testSite)
+		path  string
+		want  []string
+	}{
+		{"low confidence", func(s *testSite) { s.set("/topics", topicList()) }, "/topics", []string{"confidence"}},
+		{"narrow margin", func(s *testSite) { s.set("/resources", ambiguousPage()) }, "/resources", []string{"margin"}},
+		{"first posts carry other titles", func(s *testSite) {
+			s.addBlog(8)
+			for i, t := range []string{"Quarterly garden vegetables report", "Weather outlook for sailors", "Recipes involving lentils"} {
+				s.set("/blog/"+slugify(postTitles[i]), article(t, t, ""))
+			}
+		}, "/blog", []string{"verify"}},
+		{"first posts are hub pages", func(s *testSite) {
+			s.addBlog(8)
+			for i := range 3 {
+				s.set("/blog/"+slugify(postTitles[i]), page("Archive", blogList(12)))
+			}
+		}, "/blog", []string{"verify"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestSite(t)
+			tc.serve(s)
+			res := setupRecipe(t, s, tc.path)
+			rec := res.Recipe.Setup
+			if !rec.JudgeWanted || !slices.Equal(rec.JudgeReasons, tc.want) {
+				t.Fatalf("judge wanted %v reasons %v, want %v (confidence %.2f margin %.2f)", rec.JudgeWanted, rec.JudgeReasons, tc.want, rec.Confidence, rec.Margin)
+			}
+		})
+	}
+}
+
+func TestSetupJudgeMajorityOfNoneIsNotHealthy(t *testing.T) {
+	s := newTestSite(t)
+	s.set("/resources", ambiguousPage())
+	opts := s.opts()
+	opts.Model = &fakeModel{replies: map[Effort][]string{EffortHigh: {`{"pick":[],"none":true,"order":"page"}`}}}
+	res, err := Setup(context.Background(), s.url("/resources"), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j := res.Recipe.Setup.Judge; j == nil || !j.None {
+		t.Fatalf("judge record = %+v, want a none majority", j)
+	}
+	if res.Healthy() || !slices.Contains(res.Reasons, ReasonJudgeNone) {
+		t.Fatalf("healthy %v reasons %v, want %q", res.Healthy(), res.Reasons, ReasonJudgeNone)
 	}
 }

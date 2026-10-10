@@ -131,3 +131,31 @@ func TestFeedAnswersUnknownIDsWithNotFound(t *testing.T) {
 		}
 	}
 }
+
+func TestFeedURLsBelongToThePublicBase(t *testing.T) {
+	svc := NewService(nil, nil, nil, Config{PublicBaseURL: "https://app.example.com/"})
+	if got := svc.FeedURL("abc"); got != "https://app.example.com/web/abc" {
+		t.Fatalf("FeedURL = %q", got)
+	}
+	if got := svc.FeedURLPrefix(); got != "https://app.example.com/web/" {
+		t.Fatalf("FeedURLPrefix = %q", got)
+	}
+	for raw, want := range map[string]string{
+		"https://app.example.com/web/abc":      "abc",
+		"https://APP.example.com/web/abc":      "abc",
+		"HTTPS://app.example.com/web/abc":      "abc",
+		"http://app.example.com/web/abc":       "",
+		"https://app.example.com/web/":         "",
+		"https://app.example.com/web/abc/rss":  "",
+		"https://app.example.com/webfeed":      "",
+		"https://app.example.com/api/health":   "",
+		"https://other.example.com/web/abc":    "",
+		"https://app.example.com:8443/web/abc": "",
+		"::not a url":                          "",
+	} {
+		id, ok := svc.IDFromFeedURL(raw)
+		if id != want || ok != (want != "") || svc.IsFeedURL(raw) != ok {
+			t.Errorf("IDFromFeedURL(%q) = %q, %v; want %q", raw, id, ok, want)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package webfeed
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -459,5 +460,44 @@ func TestLegalAndUtilityLinksAreNeverAConfidentStream(t *testing.T) {
 	}
 	if conf, _ := confidence(cands); conf >= judgeBelowConfidence {
 		t.Fatalf("legal links scored confidence %.2f: %v", conf, entryURLs(cands[0]))
+	}
+}
+
+func TestSectionGuardKeepsExtraPicksInTheListingOrPrimarySection(t *testing.T) {
+	cs := []*cluster{
+		{template: "news.example.com/blog/*"},
+		{template: "news.example.com/blog/series/*"},
+		{template: "news.example.com/careers/*"},
+		{template: "news.example.com/news/*"},
+		{template: "news.example.com/*"},
+	}
+	cases := []struct {
+		name    string
+		pick    []int
+		listing string
+		want    []int
+	}{
+		{"extra picks matching the primary or the listing stay, others go", []int{0, 1, 2, 3}, "https://news.example.com/news", []int{0, 1, 3}},
+		{"a root listing keeps root-level posts beside the primary", []int{0, 4, 2}, "https://news.example.com/", []int{0, 4}},
+		{"the primary pick is never dropped", []int{2, 0, 3}, "https://news.example.com/news", []int{2, 3}},
+		{"a single pick stands", []int{2}, "https://news.example.com/news", []int{2}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sectionGuard(cs, tc.pick, tc.listing); !slices.Equal(got, tc.want) {
+				t.Fatalf("sectionGuard = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCandidateIsInNavFromHalfItsEntries(t *testing.T) {
+	for _, c := range []struct {
+		share float64
+		want  bool
+	}{{0.5, true}, {0.49, false}, {1, true}, {0, false}} {
+		if got := (&cluster{navShare: c.share}).public().InNav; got != c.want {
+			t.Errorf("navShare %v: InNav = %v, want %v", c.share, got, c.want)
+		}
 	}
 }

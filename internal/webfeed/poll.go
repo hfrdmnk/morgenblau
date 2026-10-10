@@ -8,12 +8,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"sync"
 	"time"
 
-	"morgenblau/internal/safehttp"
+	"morgenblau/internal/postkey"
 )
 
 // PollInput is what one poll needs from earlier ones: the recipe, the conditional-GET validators, the link-set hash and the good-poll history, newest first.
@@ -23,6 +22,8 @@ type PollInput struct {
 	LastModified string
 	LinkSetHash  string
 	History      []GoodPoll
+	// Known are the posts already in the feed with their stored dates, zero when they have none; they are never refetched for a date.
+	Known []Item
 	// Unconditional fetches and extracts even an unchanged page, for the weekly check.
 	Unconditional bool
 }
@@ -30,7 +31,7 @@ type PollInput struct {
 // PollResult is one deterministic poll: the detector's verdict and the full, uncapped extraction.
 type PollResult struct {
 	Verdict PollVerdict
-	Reason  string
+	Reason  Reason
 	// Blocked marks a broken poll the site refused, rather than one where the site broke.
 	Blocked bool
 	// NotModified means the page or its link set did not change, so nothing was extracted.
@@ -41,15 +42,15 @@ type PollResult struct {
 	LastModified string
 	LinkSetHash  string
 	URLTemplate  string
-	Signals      Signals
 
 	page *fetchedPage
 }
 
-// fetchedPage keeps the polled listing so repair and the weekly check work on what the detector saw, without a second fetch.
+// fetchedPage keeps the polled listing so repair and the weekly check work on what the detector saw, without a second
+// fetch or parse; doc is nil for a sitemap.
 type fetchedPage struct {
 	body []byte
-	url  string
+	doc  *pageDoc
 }
 
 // Poll fetches the listing once and runs the detector; it never calls a model.
@@ -62,8 +63,9 @@ func Poll(ctx context.Context, in PollInput, opts Options) (*PollResult, error) 
 	switch r.Mode {
 	case ModeSitemap:
 		target, wantHTML = r.FeedURL, false
-	case ModeFeed:
-		return nil, fmt.Errorf("%w: %s", ErrUnsupportedMode, r.Mode)
+	case ModeStreams, ModeCSS:
+	default:
+		return nil, fmt.Errorf("%w: %s", errUnsupportedMode, r.Mode)
 	}
 	s := newSession(opts)
 	if !s.robotsAllow(ctx, target, opts.Robots) {
@@ -72,11 +74,11 @@ func Poll(ctx context.Context, in PollInput, opts Options) (*PollResult, error) 
 		}
 		return broken(&PollResult{}, ReasonRobots, true), nil
 	}
-	resp, etag, lastModified := s.pollFetch(ctx, target, r.Lang, in)
+	resp := s.pollFetch(ctx, target, r.Lang, in)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	out := &PollResult{ETag: etag, LastModified: lastModified}
+	out := &PollResult{ETag: resp.header.Get("ETag"), LastModified: resp.header.Get("Last-Modified")}
 	if resp.err == nil && resp.status == http.StatusNotModified {
 		out.Verdict, out.NotModified = PollOK, true
 		out.ETag, out.LastModified, out.LinkSetHash = in.ETag, in.LastModified, in.LinkSetHash
@@ -87,9 +89,10 @@ func Poll(ctx context.Context, in PollInput, opts Options) (*PollResult, error) 
 	}
 
 	var p *pageDoc
+	var items []Item
 	if r.Mode == ModeSitemap {
-		items, err := Apply(r, resp.body, resp.url)
-		if err != nil {
+		var err error
+		if items, err = applySitemap(r, resp.body); err != nil {
 			return broken(out, ReasonNotHTML, false), nil
 		}
 		out.LinkSetHash = hashKeys(itemURLKeys(items))
@@ -108,29 +111,70 @@ func Poll(ctx context.Context, in PollInput, opts Options) (*PollResult, error) 
 		return out, nil
 	}
 
-	items, err := Apply(r, resp.body, resp.url)
-	if err != nil {
-		return nil, err
-	}
-	if len(items) == 0 && p != nil {
-		if reason := emptyTier0(p, resp.body); reason != "" {
-			return broken(out, reason, false), nil
+	if p != nil {
+		var err error
+		if items, err = applyPage(r, p); err != nil {
+			return nil, err
+		}
+		if len(items) == 0 {
+			if reason := emptyTier0(p, resp.body); reason != "" {
+				return broken(out, reason, false), nil
+			}
 		}
 	}
 	templates := streamTemplates(r.Streams)
 	out.Items = items
 	out.URLTemplate = DominantTemplate(items, templates)
-	out.Signals = ComputeSignals(items, templates)
-	out.page = &fetchedPage{body: resp.body, url: resp.url}
+	out.page = &fetchedPage{body: resp.body, doc: p}
 	if reason := drift(items, out.URLTemplate, in.History); reason != "" {
 		out.Verdict, out.Reason = PollSuspect, reason
 		return out, nil
 	}
+	s.datePosts(ctx, r, items, in.Known)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	sortItems(items, r.Order)
 	out.Verdict = PollOK
 	if p != nil {
 		out.Excerpts = listingExcerpts(p, items)
 	}
 	return out, nil
+}
+
+// datePosts dates undated posts as setup did: a known post keeps its stored date, and a new one, when the recipe dates
+// posts from their own pages, gets the date its page states.
+func (s *session) datePosts(ctx context.Context, r Recipe, items, known []Item) {
+	stored := make(map[string]time.Time, len(known))
+	for _, k := range known {
+		stored[postkey.URL(k.URL)] = k.Date
+	}
+	var fetch []string
+	for i := range items {
+		if !items[i].Date.IsZero() {
+			continue
+		}
+		if d, ok := stored[postkey.URL(items[i].URL)]; ok {
+			items[i].Date = d
+			continue
+		}
+		if r.DateSource == DateSourceArticle && len(fetch) < calibrateItems {
+			fetch = append(fetch, items[i].URL)
+		}
+	}
+	if len(fetch) == 0 {
+		return
+	}
+	s.setLang(r.Lang)
+	infos := s.fetchArticles(ctx, fetch)
+	if !trustArticleDates(infos) {
+		return
+	}
+	for i := range items {
+		if info := infos[items[i].URL]; info != nil && items[i].Date.IsZero() {
+			items[i].Date = info.published
+		}
+	}
 }
 
 // Page is the listing this poll extracted from, for the weekly check; nil when the poll stopped before extraction.
@@ -141,45 +185,23 @@ func (r *PollResult) Page() []byte {
 	return r.page.body
 }
 
-func broken(out *PollResult, reason string, blocked bool) *PollResult {
+func broken(out *PollResult, reason Reason, blocked bool) *PollResult {
 	out.Verdict, out.Reason, out.Blocked = PollBroken, reason, blocked
 	return out
 }
 
 // pollFetch is one GET, conditional unless the poll must see the page.
-func (s *session) pollFetch(ctx context.Context, rawURL, lang string, in PollInput) (r *response, etag, lastModified string) {
-	r = &response{url: rawURL}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		r.err = err
-		return r, "", ""
-	}
-	req.Header.Set("User-Agent", s.userAgent)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	if lang := safehttp.LanguageTag(lang); lang != "" {
-		req.Header.Set("Accept-Language", lang)
-	}
+func (s *session) pollFetch(ctx context.Context, rawURL, lang string, in PollInput) *response {
+	h := http.Header{}
 	if !in.Unconditional {
 		if in.ETag != "" {
-			req.Header.Set("If-None-Match", in.ETag)
+			h.Set("If-None-Match", in.ETag)
 		}
 		if in.LastModified != "" {
-			req.Header.Set("If-Modified-Since", in.LastModified)
+			h.Set("If-Modified-Since", in.LastModified)
 		}
 	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		r.err = err
-		return r, "", ""
-	}
-	defer resp.Body.Close()
-	r.status = resp.StatusCode
-	r.ctype = resp.Header.Get("Content-Type")
-	if resp.Request != nil && resp.Request.URL != nil {
-		r.url = resp.Request.URL.String()
-	}
-	r.body, r.err = s.readBody(resp.Body, s.maxBody)
-	return r, resp.Header.Get("ETag"), resp.Header.Get("Last-Modified")
+	return s.fetch(ctx, rawURL, lang, maxBody, h)
 }
 
 // linkSetHash fingerprints the page's links, which stay put when only markup, scripts or timestamps change.
@@ -192,16 +214,15 @@ func linkSetHash(p *pageDoc) string {
 }
 
 func itemURLKeys(items []Item) []string {
-	keys := make([]string, len(items))
+	urls := make([]string, len(items))
 	for i, it := range items {
-		keys[i] = urlKey(it.URL)
+		urls[i] = it.URL
 	}
-	return keys
+	return urlKeys(urls)
 }
 
 func hashKeys(keys []string) string {
-	keys = slices.Compact(slices.Sorted(slices.Values(keys)))
-	sum := sha256.Sum256([]byte(strings.Join(keys, "\n")))
+	sum := sha256.Sum256([]byte(strings.Join(keySet(keys), "\n")))
 	return hex.EncodeToString(sum[:16])
 }
 

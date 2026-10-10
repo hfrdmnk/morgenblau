@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+
+	"morgenblau/internal/postkey"
 )
 
 const maxSitemapFetches = 8
@@ -32,7 +34,7 @@ func (s *session) sitemapSetup(ctx context.Context, res *Result, listing *url.UR
 		}
 		seen[next] = true
 		fetches++
-		r := s.fetchOnce(ctx, next, s.maxBody)
+		r := s.fetchOnce(ctx, next, maxBody)
 		if r.err != nil || r.status != http.StatusOK {
 			continue
 		}
@@ -46,7 +48,7 @@ func (s *session) sitemapSetup(ctx context.Context, res *Result, listing *url.UR
 		before := len(found)
 		for _, su := range sm.urls {
 			u, err := url.Parse(su.loc)
-			if err != nil || !sameSite(u.Host, listing.Host) || urlKey(su.loc) == urlKey(listing.String()) {
+			if err != nil || !sameSite(u.Host, listing.Host) || postkey.URL(su.loc) == postkey.URL(listing.String()) {
 				continue
 			}
 			if listingPath != "" {
@@ -82,7 +84,7 @@ func (s *session) sitemapSetup(ctx context.Context, res *Result, listing *url.UR
 		}
 	}
 	if len(items) == 0 {
-		res.Health, res.HealthReasons = HealthBlockedBySite, []string{"blocked"}
+		res.Blocked, res.Reasons = true, []Reason{ReasonBlocked}
 		return res, nil
 	}
 	// lastmod records edits, not publishing, so it orders the list but never dates an item.
@@ -104,12 +106,12 @@ func (s *session) sitemapSetup(ctx context.Context, res *Result, listing *url.UR
 	items = capItems(items)
 	rec.Mode = ModeSitemap
 	rec.FeedURL = source
-	rec.Streams = []Stream{{URLTemplate: tmpl, TitleHints: TitleHints{Source: "slug"}}}
+	rec.Streams = []Stream{{URLTemplate: tmpl, TitleHints: TitleHints{Source: TitleSlug}}}
 	rec.Order, rec.DateSource = OrderPage, DateSourceNone
 	sig := ComputeSignals(items, []string{tmpl})
-	rec.Fingerprint = Fingerprint{Count: sig.Count, URLTemplates: []string{tmpl}, TitleShape: round2(sig.TitleShape)}
+	rec.Fingerprint = fingerprintOf(sig, []string{tmpl})
 	res.Items = items
-	res.Health, res.HealthReasons = sig.setupVerdict()
+	res.Reasons = sig.doubts()
 	return res, nil
 }
 

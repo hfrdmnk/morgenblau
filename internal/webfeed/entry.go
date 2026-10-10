@@ -9,6 +9,8 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/net/html"
+
+	"morgenblau/internal/postkey"
 )
 
 // segment is one visually separate run of text inside an entry.
@@ -45,7 +47,7 @@ func (p *pageDoc) linkKey(n *html.Node, stop *html.Node) (key string, linked boo
 }
 
 func (p *pageDoc) segments(e *entry) []segment {
-	key := urlKey(e.URL)
+	key := postkey.URL(e.URL)
 	var out []segment
 	byOwner := map[*html.Node]int{}
 	var walk func(n *html.Node)
@@ -183,13 +185,13 @@ func (p *pageDoc) fillEntries(c *cluster) {
 	for i, e := range c.entries {
 		p.chooseTitle(e, segs[i], reject)
 		e.Date = p.entryDate(e, segs[i])
-		e.seeAll = (e.TitleSource == "slug" || e.TitleSource == "attr") && p.onlyGenericLinkText(e)
+		e.seeAll = (e.TitleSource == TitleSlug || e.TitleSource == TitleAttr) && p.onlyGenericLinkText(e)
 	}
 }
 
 // onlyGenericLinkText reports an entry whose links to its URL say only "See all" or "Read more": a section link, not a post.
 func (p *pageDoc) onlyGenericLinkText(e *entry) bool {
-	key := urlKey(e.URL)
+	key := postkey.URL(e.URL)
 	worded := false
 	for _, n := range descendants(e.node, func(n *html.Node) bool { return n.Data == "a" }) {
 		if a := p.anchorFor(n); a == nil || a.key != key {
@@ -210,8 +212,8 @@ func (p *pageDoc) onlyGenericLinkText(e *entry) bool {
 func hasLetter(s string) bool { return strings.IndexFunc(s, unicode.IsLetter) >= 0 }
 
 func (p *pageDoc) chooseTitle(e *entry, segs []segment, reject func(string) bool) {
-	key := urlKey(e.URL)
-	set := func(t, src, tag string) {
+	key := postkey.URL(e.URL)
+	set := func(t string, src TitleSource, tag string) {
 		e.Title, e.TitleSource, e.titleTag = cleanTitle(t), src, tag
 	}
 	for _, h := range descendants(e.node, isHeading) {
@@ -225,7 +227,7 @@ func (p *pageDoc) chooseTitle(e *entry, segs []segment, reject func(string) bool
 		}
 		t := nodeText(h)
 		if !reject(t) {
-			set(t, "heading", h.Data)
+			set(t, TitleHeading, h.Data)
 			return
 		}
 	}
@@ -235,7 +237,7 @@ func (p *pageDoc) chooseTitle(e *entry, segs []segment, reject func(string) bool
 		}
 		t := nodeText(n)
 		if !reject(t) && wordCount(t) <= 40 {
-			set(t, "class", n.Data)
+			set(t, TitleClass, n.Data)
 			return
 		}
 	}
@@ -244,7 +246,7 @@ func (p *pageDoc) chooseTitle(e *entry, segs []segment, reject func(string) bool
 			if s.inOther || reject(s.text) || !ok(s) {
 				continue
 			}
-			set(s.text, "anchor", s.owner.Data)
+			set(s.text, TitleAnchor, s.owner.Data)
 			return true
 		}
 		return false
@@ -258,12 +260,12 @@ func (p *pageDoc) chooseTitle(e *entry, segs []segment, reject func(string) bool
 	for _, a := range descendants(e.node, func(n *html.Node) bool { return n.Data == "a" || n.Data == "img" }) {
 		for _, name := range []string{"aria-label", "title", "alt"} {
 			if t := attr(a, name); t != "" && !reject(t) && !genericAlt(t) {
-				set(t, "attr", a.Data)
+				set(t, TitleAttr, a.Data)
 				return
 			}
 		}
 	}
-	set(slugTitle(e.URL), "slug", "")
+	set(slugTitle(e.URL), TitleSlug, "")
 }
 
 func genericAlt(s string) bool {

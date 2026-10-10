@@ -1,6 +1,7 @@
 package webfeed
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -86,5 +87,82 @@ func TestAllCapsRuleIgnoresAcronymsInUncasedScripts(t *testing.T) {
 	}
 	if goodTitleShape("BREAKING NEWS FROM THE EXAMPLE LAB") {
 		t.Fatal("an all-caps Latin title passed")
+	}
+}
+
+func TestCalibrateLimitFetchesMoreWhenMostPostsAreUndated(t *testing.T) {
+	for _, c := range []struct{ n, dated, want int }{
+		{10, 10, 20},
+		{10, 5, 20},
+		{10, 4, 30},
+		{10, 0, 30},
+		{0, 0, 20},
+	} {
+		if got := calibrateLimit(c.n, c.dated); got != c.want {
+			t.Errorf("calibrateLimit(%d, %d) = %d, want %d", c.n, c.dated, got, c.want)
+		}
+	}
+}
+
+func TestDateOrderNeedsSeventyPercentDated(t *testing.T) {
+	if got := orderFor(0.7); got != OrderDate {
+		t.Errorf("orderFor(0.7) = %s, want %s", got, OrderDate)
+	}
+	if got := orderFor(0.69); got != OrderPage {
+		t.Errorf("orderFor(0.69) = %s, want %s", got, OrderPage)
+	}
+}
+
+// numberedBlog serves /blog with n distinct posts and their pages; dated posts carry a listing date.
+func numberedBlog(s *testSite, n int, dated bool) {
+	var b strings.Builder
+	b.WriteString(`<main><h1>Blog</h1><ul class="posts">`)
+	for i := range n {
+		title := fmt.Sprintf("Example post number %d about calm reading", i)
+		path := "/blog/" + slugify(title)
+		date := ""
+		if dated {
+			date = fmt.Sprintf(`<time datetime="2024-%02d-%02d"></time>`, 12-i/28, 28-i%28)
+		}
+		fmt.Fprintf(&b, `<li class="post"><h2><a href="%s">%s</a></h2>%s</li>`, path, title, date)
+		s.set(path, article(title, title, ""))
+	}
+	b.WriteString(`</ul></main>`)
+	s.set("/blog", page("Blog | Example Publication", b.String()))
+}
+
+func (s *testSite) hitsUnder(prefix string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for path, c := range s.hits {
+		if strings.HasPrefix(path, prefix) {
+			n += c
+		}
+	}
+	return n
+}
+
+func TestSetupCalibrationFetchesAtMostItsCap(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		posts int
+		dated bool
+		want  int
+	}{
+		{"dated list", 25, true, 20},
+		{"undated list", 35, false, 30},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := newTestSite(t)
+			numberedBlog(s, c.posts, c.dated)
+			res := setupRecipe(t, s, "/blog")
+			if len(res.Items) != c.posts {
+				t.Fatalf("items = %d, want all %d posts", len(res.Items), c.posts)
+			}
+			if got := s.hitsUnder("/blog/"); got != c.want {
+				t.Fatalf("article pages fetched = %d, want %d", got, c.want)
+			}
+		})
 	}
 }

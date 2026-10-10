@@ -8,22 +8,18 @@ import (
 	"net/url"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
+
+	"morgenblau/internal/postkey"
 )
 
 // Options configures Setup.
 type Options struct {
 	// Client fetches every page; it must be SSRF-safe for attacker-chosen URLs.
 	Client Doer
-	// Judge is asked when the heuristic is unsure; nil keeps the heuristic's pick and records that the judge was wanted.
-	Judge Judge
-	// Inducer writes a CSS recipe when fewer than 3 items survive; nil skips induction.
-	Inducer Inducer
-	// UserAgent defaults to safehttp.UserAgent.
-	UserAgent string
-	// MaxBody caps each response body in bytes.
-	MaxBody int64
+	// Model judges unsure setups and writes a CSS recipe when fewer than 3 items survive; nil keeps the heuristic's
+	// pick, records that the judge was wanted and skips induction.
+	Model Model
 	// MaxSetupBytes caps the bytes one setup or poll reads across all its fetches.
 	MaxSetupBytes int64
 	// Robots lets polls reuse each site's robots.txt for a day; nil fetches it on every poll.
@@ -36,9 +32,11 @@ type Result struct {
 	Title  string
 	Items  []Item
 	// Excerpts are the items' teasers on the listing, keyed by item URL.
-	Excerpts      map[string]string
-	Health        Health
-	HealthReasons []string
+	Excerpts map[string]string
+	// Blocked says the site refused us: robots.txt, or a refusal with no sitemap to fall back on.
+	Blocked bool
+	// Reasons say why the site refused us or why the self-check doubts the result; none means it is healthy.
+	Reasons []Reason
 	// Candidates are the top lists the heuristic found, in the order the judge saw them.
 	Candidates []Candidate
 
@@ -60,14 +58,17 @@ func Setup(ctx context.Context, listingURL string, opts Options) (*Result, error
 	if err != nil {
 		return nil, err
 	}
-	if opts.Inducer != nil && res.listing != nil && len(res.Items) < induceBelowItems {
-		if err := induce(ctx, res, res.listing, opts.Inducer); err != nil {
+	if opts.Model != nil && res.listing != nil && len(res.Items) < induceBelowItems {
+		if err := induce(ctx, res, res.listing, opts.Model); err != nil {
 			return nil, err
 		}
 	}
 	res.release()
 	return res, nil
 }
+
+// Healthy is a result the self-check does not doubt.
+func (r *Result) Healthy() bool { return len(r.Reasons) == 0 }
 
 // release takes the teasers from the parsed listing and drops it, the biggest thing a setup holds.
 func (r *Result) release() {
@@ -99,31 +100,25 @@ func setup(ctx context.Context, listingURL, anchorURL string, opts Options) (*Re
 	}
 	u.Fragment = ""
 	s := newSession(opts)
-	res := &Result{Recipe: NewRecipe(u.String(), ModeStreams)}
+	res := &Result{Recipe: newRecipe(u.String(), ModeStreams)}
 	rec := &res.Recipe
 
 	rb := s.robotsFor(ctx, u.Scheme+"://"+u.Host)
 	if !rb.allowed(u.RequestURI()) {
 		rec.Setup.Stages = append(rec.Setup.Stages, "robots")
-		res.Health, res.HealthReasons = HealthBlockedBySite, []string{"robots"}
+		res.Blocked, res.Reasons = true, []Reason{ReasonRobots}
 		return res, nil
 	}
 	resp := s.get(ctx, u.String())
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if resp.blocked() {
+	if _, blocked := resp.refusal(); blocked {
 		return s.sitemapSetup(ctx, res, u, rb)
 	}
-	if resp.status >= 400 {
-		return nil, fmt.Errorf("webfeed: listing returned HTTP %d", resp.status)
-	}
-	if !resp.isHTML() {
-		return nil, fmt.Errorf("webfeed: listing is not HTML (%s)", resp.ctype)
-	}
-	p, err := parsePage(resp.body, resp.url)
+	p, err := listingPage(resp)
 	if err != nil {
-		return nil, fmt.Errorf("webfeed: parse listing: %w", err)
+		return nil, err
 	}
 	res.listing = p
 	s.setLang(p.lang)
@@ -139,57 +134,103 @@ func setup(ctx context.Context, listingURL, anchorURL string, opts Options) (*Re
 	conf, margin := confidence(top)
 	rec.Setup.Confidence, rec.Setup.Margin = round2(conf), round2(margin)
 	if len(top) == 0 && anchorURL == "" {
-		res.Health, res.HealthReasons = HealthNeedsAttention, []string{"count"}
+		res.Reasons = []Reason{ReasonCount}
 		return res, nil
 	}
 
-	pool, pick := top, []int(nil)
-	judgeNone := false
+	pool, pick, judgeNone := top, []int(nil), false
 	if anchorURL != "" {
 		pool, pick = p.anchoredPick(all, anchorURL)
 		rec.Setup.Stages = append(rec.Setup.Stages, "anchored")
 		rec.Setup.Anchor = anchorURL
-	} else {
-		flagged := s.verify(ctx, top[0])
-		rec.Setup.Stages = append(rec.Setup.Stages, "verify")
-		var reasons []string
-		if conf < judgeBelowConfidence {
-			reasons = append(reasons, "confidence")
-		}
-		if margin < judgeBelowMargin {
-			reasons = append(reasons, "margin")
-		}
-		if flagged {
-			reasons = append(reasons, "verify")
-		}
-		pick = heuristicPick(top, u.String())
-		if len(reasons) > 0 {
-			rec.Setup.JudgeWanted, rec.Setup.JudgeReasons = true, reasons
-			if opts.Judge != nil {
-				msg := renderUserMessage(u.String(), p.title, res.Candidates)
-				jr, err := runJudge(ctx, opts.Judge, JudgeInput{System: SystemPrompt, User: msg, Candidates: len(top)}, len(top), orderFor(top[0].dateFrac))
-				if err != nil {
-					return nil, err
-				}
-				rec.Setup.Stages = append(rec.Setup.Stages, "judge")
-				rec.Setup.Judge = &jr
-				judgeNone = jr.None
-				if !jr.None {
-					pick = sectionGuard(top, jr.Pick, u.String())
-				}
-			}
-		}
+	} else if pick, judgeNone, err = s.choose(ctx, res, top, conf, margin, opts.Model); err != nil {
+		return nil, err
 	}
 	if len(pick) == 0 {
-		res.Health, res.HealthReasons = HealthNeedsAttention, []string{"count"}
+		res.Reasons = []Reason{ReasonCount}
 		return res, nil
 	}
-
 	picked := make([]*cluster, len(pick))
 	for i, k := range pick {
 		picked[i] = pool[k]
 	}
-	streams := buildStreams(picked, u.String())
+	s.build(ctx, res, p, picked)
+	// Without a judge, an unsure pick is the reader's call: serving it as healthy would be a silent failure.
+	if anchorURL == "" && opts.Model == nil && conf < judgeBelowConfidence {
+		res.Reasons = append(res.Reasons, ReasonUnsure)
+	}
+	if judgeNone {
+		res.Reasons = append(res.Reasons, ReasonJudgeNone)
+	}
+	return res, nil
+}
+
+// listingPage parses a listing the site did not refuse, or says why there is nothing to parse.
+func listingPage(resp *response) (*pageDoc, error) {
+	switch reason, _ := resp.refusal(); {
+	case resp.err != nil:
+		return nil, fmt.Errorf("%w: %w", ErrUnreachable, resp.err)
+	case resp.unreachable():
+		return nil, fmt.Errorf("%w: listing returned HTTP %d", ErrUnreachable, resp.status)
+	case reason != "":
+		return nil, fmt.Errorf("webfeed: listing returned HTTP %d", resp.status)
+	case !resp.isHTML():
+		return nil, fmt.Errorf("webfeed: listing is not HTML (%s)", resp.header.Get("Content-Type"))
+	}
+	p, err := parsePage(resp.body, resp.url)
+	if err != nil {
+		return nil, fmt.Errorf("webfeed: parse listing: %w", err)
+	}
+	return p, nil
+}
+
+// judgeReasons says why the heuristic is unsure of its pick; none means it decides alone.
+func judgeReasons(conf, margin float64, verifyFlagged bool) []string {
+	var reasons []string
+	if conf < judgeBelowConfidence {
+		reasons = append(reasons, "confidence")
+	}
+	if margin < judgeBelowMargin {
+		reasons = append(reasons, "margin")
+	}
+	if verifyFlagged {
+		reasons = append(reasons, "verify")
+	}
+	return reasons
+}
+
+// choose picks among the top candidates: the heuristic's pick, or the judge's when the heuristic is unsure and there is
+// a model. none reports a judge majority that no list is a post stream; the heuristic's pick then stands.
+func (s *session) choose(ctx context.Context, res *Result, top []*cluster, conf, margin float64, m Model) (pick []int, none bool, err error) {
+	rec := &res.Recipe.Setup
+	flagged := s.verify(ctx, top[0])
+	rec.Stages = append(rec.Stages, "verify")
+	pick = heuristicPick(top, res.Recipe.ListingURL)
+	reasons := judgeReasons(conf, margin, flagged)
+	if len(reasons) == 0 {
+		return pick, false, nil
+	}
+	rec.JudgeWanted, rec.JudgeReasons = true, reasons
+	if m == nil {
+		return pick, false, nil
+	}
+	jr, err := runJudge(ctx, m, renderUserMessage(res.Recipe.ListingURL, res.Title, res.Candidates), len(top), orderFor(top[0].dateFrac))
+	if err != nil {
+		return nil, false, err
+	}
+	rec.Stages = append(rec.Stages, "judge")
+	rec.Judge = &jr
+	if jr.None {
+		return pick, true, nil
+	}
+	return sectionGuard(top, jr.Pick, res.Recipe.ListingURL), false, nil
+}
+
+// build turns the picked lists into the recipe's streams and the setup's items, checked against the posts' own pages,
+// and runs the self-check on them.
+func (s *session) build(ctx context.Context, res *Result, p *pageDoc, picked []*cluster) {
+	rec := &res.Recipe
+	streams := buildStreams(picked, rec.ListingURL)
 	entries := p.mergeEntries(picked, streamTemplates(streams))
 	excludes, hints, dateSource := s.calibrate(ctx, entries, picked)
 	for i := range streams {
@@ -201,7 +242,7 @@ func setup(ctx context.Context, listingURL, anchorURL string, opts Options) (*Re
 
 	items := make([]Item, len(entries))
 	for i, e := range entries {
-		items[i] = Item{URL: e.URL, Title: e.Title, Date: e.Date}
+		items[i] = e.item()
 	}
 	sig := ComputeSignals(items, streamTemplates(streams))
 	rec.Order = orderFor(sig.DateFrac)
@@ -217,17 +258,9 @@ func setup(ctx context.Context, listingURL, anchorURL string, opts Options) (*Re
 	rec.Streams = streams
 	rec.ExcludeURLs = append(rec.ExcludeURLs, excludes...)
 	rec.DateSource = dateSource
-	rec.Fingerprint = Fingerprint{Count: sig.Count, URLTemplates: streamTemplates(streams), DateFrac: round2(sig.DateFrac), TitleShape: round2(sig.TitleShape)}
+	rec.Fingerprint = fingerprintOf(sig, streamTemplates(streams))
 	res.Items = items
-	res.Health, res.HealthReasons = sig.setupVerdict()
-	// Without a judge, an unsure pick is the reader's call: serving it as healthy would be a silent failure.
-	if anchorURL == "" && opts.Judge == nil && conf < judgeBelowConfidence {
-		res.Health, res.HealthReasons = HealthNeedsAttention, append(res.HealthReasons, "unsure")
-	}
-	if judgeNone {
-		res.Health, res.HealthReasons = HealthNeedsAttention, append(res.HealthReasons, "judge_none")
-	}
-	return res, nil
+	res.Reasons = sig.doubts()
 }
 
 func orderFor(dateFrac float64) Order {
@@ -306,7 +339,7 @@ func buildStreams(picked []*cluster, listingURL string) []Stream {
 			if matchTemplate(c.template, t) {
 				continue
 			}
-			k := t[:strings.Index(t, "/")+1] + strconv.Itoa(strings.Count(t, "/"))
+			k := depthKey(t)
 			if groups[k] == nil {
 				keys = append(keys, k)
 			}
@@ -330,7 +363,7 @@ func minorityShape(es []*entry) string {
 	postLike := 0
 	var ts []string
 	for _, e := range es {
-		if goodTitleShape(e.Title) && (postLikePath(e.URL) || !e.Date.IsZero() || e.TitleSource == "heading") {
+		if goodTitleShape(e.Title) && (postLikePath(e.URL) || !e.Date.IsZero() || e.TitleSource == TitleHeading) {
 			postLike++
 		}
 		ts = append(ts, URLTemplate(e.URL))
@@ -372,7 +405,7 @@ func (p *pageDoc) mergeEntries(picked []*cluster, templates []string) []*entry {
 	seen := map[string]bool{}
 	for _, c := range picked {
 		for _, e := range c.entries {
-			k := urlKey(e.URL)
+			k := postkey.URL(e.URL)
 			if seen[k] || !matchAny(templates, URLTemplate(e.URL)) {
 				continue
 			}
@@ -392,26 +425,12 @@ func (s *session) calibrate(ctx context.Context, entries []*entry, picked []*clu
 			dated++
 		}
 	}
-	limit := calibrateItems
-	if len(entries) > 0 && float64(dated)/float64(len(entries)) < 0.5 {
-		limit = calibrateUndated
-	}
 	var urls []string
-	for _, e := range entries[:min(len(entries), limit)] {
+	for _, e := range entries[:min(len(entries), calibrateLimit(len(entries), dated))] {
 		urls = append(urls, e.URL)
 	}
 	infos := s.fetchArticles(ctx, urls)
-
-	published := map[string]bool{}
-	nPublished := 0
-	for _, info := range infos {
-		if !info.published.IsZero() {
-			nPublished++
-			published[info.published.Format("2006-01-02")] = true
-		}
-	}
-	// A site that stamps every page with one date (a build date) says nothing about its posts.
-	trustArticleDates := nPublished < 3 || len(published) != 1
+	trustDates := trustArticleDates(infos)
 
 	hintVotes := map[string]map[string]int{}
 	filled := 0
@@ -425,7 +444,7 @@ func (s *session) calibrate(ctx context.Context, entries []*entry, picked []*clu
 			excludes = append(excludes, e.URL)
 			continue
 		}
-		if e.Date.IsZero() && trustArticleDates && !info.published.IsZero() {
+		if e.Date.IsZero() && trustDates && !info.published.IsZero() {
 			e.Date = info.published
 			filled++
 		}
@@ -436,37 +455,64 @@ func (s *session) calibrate(ctx context.Context, entries []*entry, picked []*clu
 				}
 				hintVotes[tmpl][nodeSig(n, true)]++
 			}
-			e.Title, e.TitleSource = t, "article"
+			e.Title, e.TitleSource = t, TitleArticle
 		}
 	}
-	hints = map[string]TitleHints{}
-	for tmpl, votes := range hintVotes {
+	return excludes, titleHintsFrom(hintVotes), dateSourceOf(len(entries)-len(excludes), dated, filled)
+}
+
+// calibrateLimit is how many posts calibration fetches: more when most lack a listing date, since their pages must supply it.
+func calibrateLimit(n, dated int) int {
+	if n > 0 && float64(dated)/float64(n) < 0.5 {
+		return calibrateUndated
+	}
+	return calibrateItems
+}
+
+// titleHintsFrom keeps, per stream, the element that held the article's title for at least two posts and half the votes.
+func titleHintsFrom(votes map[string]map[string]int) map[string]TitleHints {
+	hints := map[string]TitleHints{}
+	for tmpl, byTag := range votes {
 		best, bestN, total := "", 0, 0
-		for sig, n := range votes {
+		for sig, n := range byTag {
 			total += n
 			if n > bestN || (n == bestN && sig < best) {
 				best, bestN = sig, n
 			}
 		}
 		if bestN*2 >= total && bestN >= 2 {
-			hints[tmpl] = TitleHints{Source: "calibrated", Tag: best}
+			hints[tmpl] = TitleHints{Source: TitleCalibrated, Tag: best}
 		}
 	}
+	return hints
+}
 
-	n := len(entries) - len(excludes)
+// dateSourceOf says where n kept posts got their dates: dated from the listing, filled from their own pages.
+func dateSourceOf(n, dated, filled int) DateSource {
 	switch {
 	case n <= 0:
-		source = DateSourceNone
+		return DateSourceNone
 	case float64(dated)/float64(n) >= 0.5:
-		source = DateSourceListing
+		return DateSourceListing
 	case filled > 0 && float64(dated+filled)/float64(n) >= 0.5:
-		source = DateSourceArticle
+		return DateSourceArticle
 	case dated > 0:
-		source = DateSourceListing
-	default:
-		source = DateSourceNone
+		return DateSourceListing
 	}
-	return excludes, hints, source
+	return DateSourceNone
+}
+
+// trustArticleDates is false for a site that stamps every page with one date (a build date), which says nothing about its posts.
+func trustArticleDates(infos map[string]*articleInfo) bool {
+	days := map[string]bool{}
+	dated := 0
+	for _, info := range infos {
+		if !info.published.IsZero() {
+			dated++
+			days[info.published.Format("2006-01-02")] = true
+		}
+	}
+	return dated < 3 || len(days) != 1
 }
 
 // betterTitle says whether the article's own title should replace the listing's: when the listing gave a slug, label or subtitle.
@@ -474,7 +520,7 @@ func betterTitle(e *entry, article string) bool {
 	if strings.EqualFold(e.Title, article) || (goodTitleShape(e.Title) && !goodTitleShape(article)) {
 		return false
 	}
-	if e.TitleSource == "slug" || e.TitleSource == "attr" {
+	if e.TitleSource == TitleSlug || e.TitleSource == TitleAttr {
 		return true
 	}
 	if !goodTitleShape(e.Title) && goodTitleShape(article) {
@@ -492,11 +538,11 @@ func betterTitle(e *entry, article string) bool {
 
 // anchoredPick chooses the lists holding the reader's example post, else lists with its URL shape, else every link of that shape.
 func (p *pageDoc) anchoredPick(all []*cluster, anchorURL string) ([]*cluster, []int) {
-	key, tmpl := urlKey(anchorURL), URLTemplate(anchorURL)
+	key, tmpl := postkey.URL(anchorURL), URLTemplate(anchorURL)
 	var pick []int
 	for i, c := range all {
 		for _, e := range c.entries {
-			if urlKey(e.URL) == key {
+			if postkey.URL(e.URL) == key {
 				pick = append(pick, i)
 				break
 			}

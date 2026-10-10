@@ -9,8 +9,8 @@ const (
 	longPromptFromTokens = 100_000
 )
 
-// Cost prices one call's tokens at Haiku 5.5 rates.
-func Cost(inputTokens, outputTokens int) float64 {
+// cost prices one call's tokens at Haiku 5.5 rates.
+func cost(inputTokens, outputTokens int) float64 {
 	in, out := inputPerMTok, outputPerMTok
 	if inputTokens > longPromptFromTokens {
 		in, out = longInputPerMTok, longOutputPerMTok

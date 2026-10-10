@@ -2,14 +2,12 @@ package webfeed
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 )
 
-// WatchSystemPrompt drives the weekly check; it was not benchmarked in this wording, since the research prompt was deleted with the prototype.
-const WatchSystemPrompt = `You check once a week whether a generated feed still follows the right posts on a web page.
+// watchPrompt drives the weekly check. Not benchmarked; change it only with a new benchmark.
+const watchPrompt = `You check once a week whether a generated feed still follows the right posts on a web page.
 You get the page URL, a digest of the page as fetched now (title, headings, a visible-text excerpt, link counts), the last items the feed accepted as good, and the items its recipe extracts from the page now (date | title | url).
 Answer broken when the current items are no longer this page's stream of posts: navigation, category or tag links, a "popular" or "related" list, another section of the site, a cookie or consent wall, an error, login or bot-check page, a parked or moved site, or a list cut down to a few entries while the page plainly shows many more posts. Also answer broken when the page shows newer posts than any current item.
 Answer healthy when the current items are individual posts from this page, even when they differ from the last good items because new posts were published or old ones dropped off.
@@ -21,19 +19,8 @@ const (
 	watchItems      = 20
 )
 
-// Watcher is the weekly second opinion on a generated feed: one model call that can raise an alarm, never close one.
-type Watcher interface {
-	Watch(ctx context.Context, in WatchInput) (WatchVerdict, Usage, error)
-}
-
-// WatchInput is one weekly-check call.
-type WatchInput struct {
-	System string
-	User   string
-}
-
-// WatchVerdict is the watcher's answer.
-type WatchVerdict struct {
+// watchVerdict is the weekly check's answer.
+type watchVerdict struct {
 	Broken bool
 	Reason string
 }
@@ -47,8 +34,8 @@ type WatchRecord struct {
 	USD          float64 `json:"usd,omitempty"`
 }
 
-// PageDigest is what the weekly check sees of the page as fetched now.
-type PageDigest struct {
+// pageDigest is what the weekly check sees of the page as fetched now.
+type pageDigest struct {
 	Title         string
 	Headings      []string
 	Text          string
@@ -56,14 +43,19 @@ type PageDigest struct {
 	SameSiteLinks int
 }
 
-// WeeklyCheck asks the watcher about one generated source; on error the record carries the cost and Broken stays false.
-func WeeklyCheck(ctx context.Context, w Watcher, listingURL string, page []byte, lastGood, current []Item) (WatchRecord, error) {
-	d, err := DigestPage(page, listingURL)
+// WeeklyCheck is the weekly second opinion on a generated source: one call that can raise an alarm, never close one.
+// On error the record carries the cost and Broken stays false.
+func WeeklyCheck(ctx context.Context, m Model, listingURL string, page []byte, lastGood, current []Item) (WatchRecord, error) {
+	d, err := digestPage(page, listingURL)
 	if err != nil {
 		return WatchRecord{}, err
 	}
-	v, u, err := w.Watch(ctx, WatchInput{System: WatchSystemPrompt, User: RenderWatchMessage(listingURL, d, lastGood, current)})
+	text, u, err := m.Complete(ctx, Prompt{System: watchPrompt, User: renderWatchMessage(listingURL, d, lastGood, current), Effort: EffortLow})
 	rec := WatchRecord{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, USD: roundUSD(u.USD)}
+	if err != nil {
+		return rec, err
+	}
+	v, err := parseWatchVerdict(text)
 	if err != nil {
 		return rec, err
 	}
@@ -71,24 +63,21 @@ func WeeklyCheck(ctx context.Context, w Watcher, listingURL string, page []byte,
 	return rec, nil
 }
 
-// DigestPage reads the title, headings, a visible-text excerpt and link counts from a fetched page.
-func DigestPage(body []byte, pageURL string) (PageDigest, error) {
+// digestPage reads the title, headings, a visible-text excerpt and link counts from a fetched page.
+func digestPage(body []byte, pageURL string) (pageDigest, error) {
 	p, err := parsePage(body, pageURL)
 	if err != nil {
-		return PageDigest{}, err
+		return pageDigest{}, err
 	}
-	d := PageDigest{Title: p.title}
+	d := pageDigest{Title: p.title}
 	for _, n := range p.doc.Find("body h1, body h2, body h3").Nodes {
 		if t := nodeText(n); t != "" && len(d.Headings) < digestHeadings {
 			d.Headings = append(d.Headings, clip(t, 90))
 		}
 	}
-	if body := p.doc.Find("body"); body.Length() > 0 {
-		d.Text = clip(nodeText(body.Nodes[0]), digestTextChars)
-	}
-	base := pageBase(p)
+	d.Text = clip(visibleText(p), digestTextChars)
 	for _, n := range p.doc.Find("body a[href]").Nodes {
-		u, err := base.Parse(strings.TrimSpace(attr(n, "href")))
+		u, err := p.base.Parse(strings.TrimSpace(attr(n, "href")))
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			continue
 		}
@@ -100,8 +89,8 @@ func DigestPage(body []byte, pageURL string) (PageDigest, error) {
 	return d, nil
 }
 
-// RenderWatchMessage builds the weekly check's user message; item lists show their first 20 entries.
-func RenderWatchMessage(listingURL string, d PageDigest, lastGood, current []Item) string {
+// renderWatchMessage builds the weekly check's user message; item lists show their first 20 entries.
+func renderWatchMessage(listingURL string, d pageDigest, lastGood, current []Item) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Page: %s\nTitle: %s\nHeadings: %s\nText: %s\nLinks: %d (%d on this site)\n", listingURL, d.Title, strings.Join(d.Headings, " | "), d.Text, d.Links, d.SameSiteLinks)
 	writeItems := func(label string, items []Item) {
@@ -123,24 +112,20 @@ func RenderWatchMessage(listingURL string, d PageDigest, lastGood, current []Ite
 	return b.String()
 }
 
-// ParseWatchVerdict reads the watcher's JSON, tolerating code fences and prose around it.
-func ParseWatchVerdict(text string) (WatchVerdict, error) {
-	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
-	if start < 0 || end < start {
-		return WatchVerdict{}, errors.New("watch: no JSON object in reply")
-	}
+// parseWatchVerdict reads the weekly check's reply.
+func parseWatchVerdict(text string) (watchVerdict, error) {
 	var raw struct {
 		Verdict string `json:"verdict"`
 		Reason  string `json:"reason"`
 	}
-	if err := json.Unmarshal([]byte(text[start:end+1]), &raw); err != nil {
-		return WatchVerdict{}, fmt.Errorf("watch: %w", err)
+	if err := decodeReply(text, &raw); err != nil {
+		return watchVerdict{}, fmt.Errorf("watch: %w", err)
 	}
 	switch strings.ToLower(strings.TrimSpace(raw.Verdict)) {
 	case "healthy":
-		return WatchVerdict{Reason: raw.Reason}, nil
+		return watchVerdict{Reason: raw.Reason}, nil
 	case "broken":
-		return WatchVerdict{Broken: true, Reason: raw.Reason}, nil
+		return watchVerdict{Broken: true, Reason: raw.Reason}, nil
 	}
-	return WatchVerdict{}, fmt.Errorf("watch: verdict %q is neither healthy nor broken", raw.Verdict)
+	return watchVerdict{}, fmt.Errorf("watch: verdict %q is neither healthy nor broken", raw.Verdict)
 }

@@ -25,6 +25,7 @@ import (
 	"morgenblau/internal/safehttp"
 	"morgenblau/internal/standardfeed"
 	"morgenblau/internal/webfeed"
+	"morgenblau/internal/websource"
 )
 
 type options struct {
@@ -137,7 +138,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		e.judge, e.inducer = model, model
+		e.model = model
 	}
 	if err := run(context.Background(), sites, opts, e, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -145,20 +146,31 @@ func main() {
 	}
 }
 
-// env holds what run fetches and asks through; nil judge, inducer or standard resolver turns that step off.
+// env holds what run fetches and asks through; a nil model or standard resolver turns that step off.
 type env struct {
 	client   webfeed.Doer
 	standard feedfinder.StandardResolver
-	judge    webfeed.Judge
-	inducer  webfeed.Inducer
+	model    webfeed.Model
 }
 
 // newModel builds the Haiku client; the key comes from the environment and is never printed.
-func newModel(apiKey string) (*claude.Client, error) {
+func newModel(apiKey string) (webfeed.Model, error) {
 	if apiKey == "" {
 		return nil, errors.New("-judge haiku needs ANTHROPIC_API_KEY in the environment")
 	}
-	return claude.New(claude.Config{APIKey: apiKey, HTTPClient: &http.Client{Timeout: 90 * time.Second}})
+	c, err := claude.New(claude.Config{APIKey: apiKey})
+	if err != nil {
+		return nil, err
+	}
+	return claudeModel{c}, nil
+}
+
+// claudeModel runs webfeed's prompts on Claude, as internal/server wires it.
+type claudeModel struct{ c *claude.Client }
+
+func (m claudeModel) Complete(ctx context.Context, p webfeed.Prompt) (string, webfeed.Usage, error) {
+	text, u, err := m.c.Complete(ctx, p.System, p.User, string(p.Effort))
+	return text, webfeed.Usage{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, USD: u.USD}, err
 }
 
 // run evaluates sites in parallel and writes one JSON document with results in input order.
@@ -207,7 +219,7 @@ func evalSite(ctx context.Context, s site, opts options, e env) result {
 			return feedRoute(ctx, client, r, cands)
 		}
 	}
-	res, err := webfeed.Setup(ctx, s.ListingURL, webfeed.Options{Client: client, Judge: e.judge, Inducer: e.inducer})
+	res, err := webfeed.Setup(ctx, s.ListingURL, webfeed.Options{Client: client, Model: e.model})
 	if err != nil {
 		r.Health, r.Error = "failed", err.Error()
 		return r
@@ -215,7 +227,7 @@ func evalSite(ctx context.Context, s site, opts options, e env) result {
 	if opts.explain {
 		explain(s, res)
 	}
-	r.Health = string(res.Health)
+	r.Health = string(websource.SetupHealth(res))
 	if rec := res.Recipe.Setup; rec.Judge != nil {
 		r.JudgeCalls = rec.Judge.Calls
 	}
@@ -244,7 +256,7 @@ func feedRoute(ctx context.Context, client webfeed.Doer, r result, cands []feedf
 		}
 		items, err := feedItems(ctx, client, c.FeedURL)
 		if err == nil && len(items) > 0 {
-			r.Mode, r.FeedURL, r.Health, r.Items = "feed", c.FeedURL, string(webfeed.HealthOK), items
+			r.Mode, r.FeedURL, r.Health, r.Items = "feed", c.FeedURL, string(websource.HealthOK), items
 			return r
 		}
 		if firstErr == nil {
@@ -256,7 +268,7 @@ func feedRoute(ctx context.Context, client webfeed.Doer, r result, cands []feedf
 	}
 	first := cands[0]
 	if first.Kind == "standardfeed" {
-		r.Mode, r.FeedURL, r.Health = "standardfeed", first.Publication, string(webfeed.HealthOK)
+		r.Mode, r.FeedURL, r.Health = "standardfeed", first.Publication, string(websource.HealthOK)
 		return r
 	}
 	if firstErr == nil {
@@ -287,7 +299,7 @@ func (d snapshotDoer) Do(req *http.Request) (*http.Response, error) {
 
 func explain(s site, res *webfeed.Result) {
 	rec := res.Recipe.Setup
-	slog.Info("setup", "id", s.ID, "health", res.Health, "reasons", res.HealthReasons, "stages", rec.Stages,
+	slog.Info("setup", "id", s.ID, "blocked", res.Blocked, "reasons", res.Reasons, "stages", rec.Stages,
 		"confidence", rec.Confidence, "margin", rec.Margin, "judge_wanted", rec.JudgeWanted, "judge_reasons", rec.JudgeReasons)
 	for i, c := range res.Candidates {
 		var sample []string

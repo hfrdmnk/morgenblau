@@ -65,8 +65,8 @@ func TestSetupCapsEachArticleBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Health != HealthOK || len(res.Items) != 5 {
-		t.Fatalf("health %s, items %d", res.Health, len(res.Items))
+	if !res.Healthy() || len(res.Items) != 5 {
+		t.Fatalf("reasons %v, items %d", res.Reasons, len(res.Items))
 	}
 	for i := range 5 {
 		if n := doer.read["/blog/"+slugify(postTitles[i])]; n > maxArticleBody {
@@ -142,11 +142,11 @@ func TestItemsAreCappedPerSource(t *testing.T) {
 		t.Errorf("setup items = %d, want %d", len(res.Items), MaxItems)
 	}
 	body, _ := s.get(t, "/blog")
-	if items, err := Apply(res.Recipe, body, s.url("/blog")); err != nil || len(items) != MaxItems {
+	if items, err := apply(res.Recipe, body, s.url("/blog")); err != nil || len(items) != MaxItems {
 		t.Errorf("streams apply = %d items, %v; want %d", len(items), err, MaxItems)
 	}
 	css := Recipe{Mode: ModeCSS, CSS: &CSSRecipe{Item: "li.post", Link: "a"}}
-	if items, err := Apply(css, body, s.url("/blog")); err != nil || len(items) != MaxItems {
+	if items, err := apply(css, body, s.url("/blog")); err != nil || len(items) != MaxItems {
 		t.Errorf("css apply = %d items, %v; want %d", len(items), err, MaxItems)
 	}
 	var locs []string
@@ -154,7 +154,7 @@ func TestItemsAreCappedPerSource(t *testing.T) {
 		locs = append(locs, fmt.Sprintf("https://news.example.com/news/post-number-%d", i))
 	}
 	sm := Recipe{Mode: ModeSitemap, ListingURL: "https://news.example.com/news", Streams: []Stream{{URLTemplate: "news.example.com/news/*"}}}
-	if items, err := Apply(sm, []byte(sitemapXML(locs...)), "https://news.example.com/sitemap.xml"); err != nil || len(items) != MaxItems {
+	if items, err := apply(sm, []byte(sitemapXML(locs...)), "https://news.example.com/sitemap.xml"); err != nil || len(items) != MaxItems {
 		t.Errorf("sitemap apply = %d items, %v; want %d", len(items), err, MaxItems)
 	}
 

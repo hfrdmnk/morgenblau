@@ -11,6 +11,8 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/net/html"
+
+	"morgenblau/internal/postkey"
 )
 
 // articleInfo is what one fetched post page says about itself.
@@ -95,14 +97,14 @@ func (s *session) article(ctx context.Context, rawURL string) *articleInfo {
 
 // summarizeLists keeps the URL shapes of the page's main lists and its prose length, all isHub needs once the page is dropped.
 func (a *articleInfo) summarizeLists() {
-	self := urlKey(a.url)
+	self := postkey.URL(a.url)
 	for _, c := range a.page.clusters() {
 		if c.sideList() {
 			continue
 		}
 		var ts []string
 		for _, e := range c.entries {
-			if urlKey(e.URL) != self {
+			if postkey.URL(e.URL) != self {
 				ts = append(ts, URLTemplate(e.URL))
 			}
 		}

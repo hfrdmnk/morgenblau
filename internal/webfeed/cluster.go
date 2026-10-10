@@ -2,7 +2,6 @@ package webfeed
 
 import (
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -29,7 +28,7 @@ type entry struct {
 	URL         string
 	Title       string
 	Date        time.Time
-	TitleSource string
+	TitleSource TitleSource
 	titleTag    string
 	node        *html.Node
 	text        string
@@ -37,6 +36,8 @@ type entry struct {
 	inAside     bool
 	seeAll      bool
 }
+
+func (e *entry) item() Item { return Item{URL: e.URL, Title: e.Title, Date: e.Date} }
 
 // clusters groups the page's anchors into candidate lists, unscored and in document order.
 func (p *pageDoc) clusters() []*cluster {
@@ -253,9 +254,7 @@ func entryTemplate(entries []*entry) string {
 		if counts[t] > bestN {
 			best, bestN = t, counts[t]
 		}
-		b := strings.Count(t, "/")
-		key := t[:strings.Index(t, "/")+1] + strconv.Itoa(b)
-		buckets[key] = append(buckets[key], t)
+		buckets[depthKey(t)] = append(buckets[depthKey(t)], t)
 	}
 	n := len(entries)
 	if bestN*10 >= n*8 {
@@ -280,7 +279,7 @@ func (p *pageDoc) singletonWorthKeeping(e *entry) bool {
 	if !postLikePath(e.URL) {
 		return false
 	}
-	return e.TitleSource == "heading" || len(strings.Fields(e.Title)) >= 4
+	return e.TitleSource == TitleHeading || len(strings.Fields(e.Title)) >= 4
 }
 
 // containerHint renders the container and two ancestors as "tag.class<tag.class<tag".

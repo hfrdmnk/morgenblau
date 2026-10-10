@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 )
@@ -68,12 +68,12 @@ func TestRenderUserMessageShowsSmallListsInFullAndDedupesIndexes(t *testing.T) {
 	}
 }
 
-func TestSystemPromptIsTheFrozenV2Prompt(t *testing.T) {
-	if !strings.HasPrefix(SystemPrompt, "You choose which lists on a web page form the stream of posts") ||
-		!strings.HasSuffix(SystemPrompt, "none=true when no candidate is a post stream.") ||
-		strings.Count(SystemPrompt, "\n") != 6 ||
-		!strings.Contains(SystemPrompt, `Return JSON only: {"pick":[ids],"order":"date"|"page","mixed":true|false,"none":true|false,"reason":"one short sentence"}`) {
-		t.Fatalf("system prompt drifted from v2:\n%s", SystemPrompt)
+func TestJudgePromptIsTheFrozenV2Prompt(t *testing.T) {
+	if !strings.HasPrefix(judgePrompt, "You choose which lists on a web page form the stream of posts") ||
+		!strings.HasSuffix(judgePrompt, "none=true when no candidate is a post stream.") ||
+		strings.Count(judgePrompt, "\n") != 6 ||
+		!strings.Contains(judgePrompt, `Return JSON only: {"pick":[ids],"order":"date"|"page","mixed":true|false,"none":true|false,"reason":"one short sentence"}`) {
+		t.Fatalf("system prompt drifted from v2:\n%s", judgePrompt)
 	}
 }
 
@@ -84,17 +84,17 @@ func TestParseVerdictToleratesFencesAndProse(t *testing.T) {
 		"Here is my answer:\n```\n{\"pick\":[\"0\",2],\"order\":\"date\",\"reason\":\"posts\"}\n```\nThanks.",
 	}
 	for _, c := range cases {
-		v, err := ParseVerdict(c, 3)
+		v, err := parseVerdict(c, 3)
 		if err != nil || !reflect.DeepEqual(v.Pick, []int{0, 2}) || v.Order != OrderDate {
-			t.Errorf("ParseVerdict(%q) = %+v, %v", c, v, err)
+			t.Errorf("parseVerdict(%q) = %+v, %v", c, v, err)
 		}
 	}
-	if v, err := ParseVerdict(`{"pick":[],"none":true,"order":"page"}`, 3); err != nil || !v.None {
+	if v, err := parseVerdict(`{"pick":[],"none":true,"order":"page"}`, 3); err != nil || !v.None {
 		t.Errorf("none verdict = %+v, %v", v, err)
 	}
 	for _, bad := range []string{"no json here", `{"pick":[7],"order":"date"}`, `{"pick":[],"none":false}`} {
-		if _, err := ParseVerdict(bad, 3); err == nil {
-			t.Errorf("ParseVerdict(%q) accepted", bad)
+		if _, err := parseVerdict(bad, 3); err == nil {
+			t.Errorf("parseVerdict(%q) accepted", bad)
 		}
 	}
 }
@@ -137,45 +137,72 @@ func TestAggregateVotes(t *testing.T) {
 	}
 }
 
-type fakeJudge struct {
-	calls          atomic.Int32
-	replies        []string
-	inflight, peak atomic.Int32
-}
-
-func (f *fakeJudge) Judge(ctx context.Context, in JudgeInput) (Verdict, Usage, error) {
-	n := f.calls.Add(1)
-	cur := f.inflight.Add(1)
-	defer f.inflight.Add(-1)
-	for {
-		p := f.peak.Load()
-		if cur <= p || f.peak.CompareAndSwap(p, cur) {
-			break
+// parallelBarrier holds each call until n calls are in flight at once, and fails the test if they never are.
+func parallelBarrier(t *testing.T, n int) func(context.Context, Prompt) {
+	var mu sync.Mutex
+	arrived := 0
+	all := make(chan struct{})
+	return func(ctx context.Context, _ Prompt) {
+		mu.Lock()
+		arrived++
+		if arrived == n {
+			close(all)
+		}
+		mu.Unlock()
+		select {
+		case <-all:
+		case <-time.After(2 * time.Second):
+			t.Errorf("only %d of %d calls were in flight together", arrived, n)
 		}
 	}
-	time.Sleep(20 * time.Millisecond)
-	if in.System != SystemPrompt || !strings.HasPrefix(in.User, "Page: ") {
-		return Verdict{}, Usage{}, errors.New("unexpected input")
-	}
-	usage := Usage{InputTokens: 2500, OutputTokens: 600, USD: 0.00054}
-	v, err := ParseVerdict(f.replies[int(n-1)%len(f.replies)], in.Candidates)
-	return v, usage, err
 }
 
 func TestRunJudgeCallsThreeTimesInParallelAndMetersCost(t *testing.T) {
-	j := &fakeJudge{replies: []string{`{"pick":[0,1],"order":"date","none":false}`}}
-	cands := []Candidate{{Template: "news.example.com/a/*"}, {Template: "news.example.com/a/*"}}
-	rec, err := runJudge(context.Background(), j, JudgeInput{System: SystemPrompt, User: "Page: x", Candidates: len(cands)}, len(cands), OrderPage)
+	m := &fakeModel{replies: map[Effort][]string{EffortHigh: {`{"pick":[0,1],"order":"date","none":false}`}}}
+	m.before = parallelBarrier(t, judgeVotes)
+	rec, err := runJudge(context.Background(), m, "Page: x", 2, OrderPage)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if j.calls.Load() != 3 || j.peak.Load() != 3 {
-		t.Fatalf("calls %d, peak parallel %d; want 3 and 3", j.calls.Load(), j.peak.Load())
+	prompts := m.calls(EffortHigh)
+	if len(prompts) != 3 || prompts[0].System != judgePrompt || prompts[0].User != "Page: x" {
+		t.Fatalf("prompts = %+v", prompts)
 	}
 	if !reflect.DeepEqual(rec.Pick, []int{0, 1}) || rec.Order != OrderDate || rec.Calls != 3 || rec.InputTokens != 7500 || rec.OutputTokens != 1800 {
 		t.Fatalf("record = %+v", rec)
 	}
 	if rec.USD < 0.00161 || rec.USD > 0.00163 {
 		t.Fatalf("usd = %v", rec.USD)
+	}
+}
+
+func TestRunJudgeVoteEdgeCases(t *testing.T) {
+	const none = `{"pick":[],"none":true,"order":"page"}`
+	cases := []struct {
+		name    string
+		replies []string
+		want    JudgeRecord
+	}{
+		{"every call fails and the heuristic top stands", nil,
+			JudgeRecord{Pick: []int{0}, Order: OrderPage, Calls: 3, Failed: 3}},
+		{"one none against two picks of the same list", []string{none, judgeReply(OrderDate, 2), judgeReply(OrderDate, 2)},
+			JudgeRecord{Pick: []int{2}, Order: OrderDate, Calls: 3}},
+		{"an out-of-range pick fails its vote, which goes to the heuristic top", []string{judgeReply(OrderDate, 9), judgeReply(OrderDate, 0), judgeReply(OrderDate, 1)},
+			JudgeRecord{Pick: []int{0}, Order: OrderDate, Calls: 3, Failed: 1}},
+		{"a three-way tie goes to the lowest index", []string{judgeReply(OrderDate, 3), judgeReply(OrderDate, 1), judgeReply(OrderDate, 2)},
+			JudgeRecord{Pick: []int{1}, Order: OrderDate, Calls: 3}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &fakeModel{replies: map[Effort][]string{EffortHigh: tc.replies}}
+			rec, err := runJudge(context.Background(), m, "Page: x", 4, OrderPage)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := JudgeRecord{Pick: rec.Pick, Order: rec.Order, None: rec.None, Calls: rec.Calls, Failed: rec.Failed}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("record = %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }

@@ -94,13 +94,6 @@ func WithTransport(rt http.RoundTripper) Option {
 	}
 }
 
-// WrapTransport wraps the safe client's RoundTripper, keeping it as the path for every request the wrapper does not answer itself.
-func WrapTransport(wrap func(http.RoundTripper) http.RoundTripper) Option {
-	return func(f *Fetcher) {
-		f.client.Transport = wrap(f.client.Transport)
-	}
-}
-
 // WithSafeHTTPOptions threads safehttp options (e.g. WithAllowLoopback) into the client. Test-only.
 func WithSafeHTTPOptions(opts ...safehttp.Option) Option {
 	return func(f *Fetcher) {

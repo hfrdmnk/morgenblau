@@ -2,6 +2,7 @@ package webfeed
 
 import (
 	"math"
+	"net"
 	"net/url"
 	"regexp"
 	"slices"
@@ -9,6 +10,9 @@ import (
 	"unicode"
 
 	"golang.org/x/net/html"
+	"golang.org/x/net/publicsuffix"
+
+	"morgenblau/internal/postkey"
 )
 
 // maxCandidates is how many lists the judge sees.
@@ -34,7 +38,7 @@ func (p *pageDoc) candidates() []*cluster {
 	return slices.DeleteFunc(cs, func(c *cluster) bool {
 		var keys []string
 		for _, e := range c.entries {
-			keys = append(keys, urlKey(e.URL))
+			keys = append(keys, postkey.URL(e.URL))
 		}
 		k := strings.Join(keys, " ")
 		dup := seen[k]
@@ -53,7 +57,7 @@ func (p *pageDoc) score(c *cluster) {
 		if matchTemplate(c.template, URLTemplate(e.URL)) {
 			tmpl++
 		}
-		if e.TitleSource == "heading" || e.TitleSource == "class" {
+		if e.TitleSource == TitleHeading || e.TitleSource == TitleClass {
 			head++
 		}
 		if !e.Date.IsZero() {
@@ -265,24 +269,17 @@ func sameSite(a, b string) bool {
 	return siteOf(a) == siteOf(b)
 }
 
-// siteOf approximates the registrable domain: the last two labels, three under country second levels like co.uk or co.jp.
+// siteOf is the registrable domain, the host itself when the public suffix list cannot name one (an IP, localhost).
 func siteOf(host string) string {
 	host = strings.ToLower(host)
-	if h, _, ok := strings.Cut(host, ":"); ok {
+	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	parts := strings.Split(host, ".")
-	keep := 2
-	if n := len(parts); n >= 3 && len(parts[n-1]) == 2 && countrySecondLevels[parts[n-2]] {
-		keep = 3
+	if site, err := publicsuffix.EffectiveTLDPlusOne(host); err == nil {
+		return site
 	}
-	if len(parts) <= keep {
-		return host
-	}
-	return strings.Join(parts[len(parts)-keep:], ".")
+	return host
 }
-
-var countrySecondLevels = map[string]bool{"co": true, "com": true, "ac": true, "or": true, "ne": true, "go": true, "gov": true, "org": true, "net": true, "edu": true}
 
 var decoyWords = []string{
 	"popular", "most read", "most viewed", "trending", "related", "recommended", "you may also like", "you might also like",

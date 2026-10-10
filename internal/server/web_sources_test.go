@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,15 +14,10 @@ import (
 	"github.com/mmcdole/gofeed"
 
 	dbqueries "morgenblau/internal/database/db"
-	"morgenblau/internal/fetcher"
 	"morgenblau/internal/middleware/auth"
-	"morgenblau/internal/safehttp"
 	"morgenblau/internal/session"
 	"morgenblau/internal/websource"
 )
-
-const webSourceRSS = `<?xml version="1.0"?><rss version="2.0"><channel><title>Example Publication</title><link>https://news.example.com/</link><description>d</description>` +
-	`<item><title>First post</title><link>https://news.example.com/posts/first</link><guid>https://news.example.com/posts/first</guid></item></channel></rss>`
 
 func TestPublicBaseURL(t *testing.T) {
 	for _, tc := range []struct {
@@ -47,73 +41,6 @@ func TestPublicBaseURL(t *testing.T) {
 				t.Errorf("publicBaseURL = %q, %v; want %q, error %v", got, err, tc.want, tc.wantErr)
 			}
 		})
-	}
-}
-
-func TestOwnWebFeedsAreFetchedInProcess(t *testing.T) {
-	var hits atomic.Int32
-	feeds := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits.Add(1)
-		if r.URL.Path != "/web/abc" {
-			t.Errorf("in-process path = %q", r.URL.Path)
-		}
-		if r.Header.Get("If-None-Match") == `"v1"` {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
-		w.Header().Set("ETag", `"v1"`)
-		_, _ = io.WriteString(w, webSourceRSS)
-	})
-	// Nothing listens on port 1, so only the in-process path can answer.
-	f := fetcher.New(fetcher.WrapTransport(func(next http.RoundTripper) http.RoundTripper {
-		return ownWebFeeds("http://127.0.0.1:1", feeds, next)
-	}))
-
-	res, err := f.Fetch(context.Background(), "http://127.0.0.1:1/web/abc", fetcher.FeedState{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Feed == nil || len(res.Feed.Items) != 1 || res.ETag != `"v1"` {
-		t.Fatalf("result = %+v", res)
-	}
-	res, err = f.Fetch(context.Background(), "http://127.0.0.1:1/web/abc", fetcher.FeedState{ETag: `"v1"`})
-	if err != nil || !res.NotModified {
-		t.Fatalf("conditional fetch = %+v, %v; want 304", res, err)
-	}
-	if hits.Load() != 2 {
-		t.Errorf("handler hits = %d, want 2", hits.Load())
-	}
-}
-
-func TestEverythingElseStillGoesThroughTheSafeTransport(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, webSourceRSS)
-	}))
-	defer upstream.Close()
-	var hits atomic.Int32
-	feeds := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits.Add(1)
-		_, _ = io.WriteString(w, webSourceRSS)
-	})
-	f := fetcher.New(fetcher.WrapTransport(func(next http.RoundTripper) http.RoundTripper {
-		return ownWebFeeds(upstream.URL, feeds, next)
-	}))
-
-	for _, raw := range []string{
-		upstream.URL + "/feed.xml",
-		upstream.URL + "/api/health",
-		upstream.URL + "/webfeed",
-		strings.Replace(upstream.URL, "http://", "https://", 1) + "/web/abc",
-	} {
-		if _, err := f.Fetch(context.Background(), raw, fetcher.FeedState{}); !errors.Is(err, safehttp.ErrBlockedAddress) {
-			t.Errorf("%s: err = %v, want the safe transport's loopback block", raw, err)
-		}
-	}
-	if hits.Load() != 0 {
-		t.Errorf("in-process handler served %d requests that are not this origin's /web/ feeds", hits.Load())
-	}
-	if _, err := f.Fetch(context.Background(), upstream.URL+"/web/abc", fetcher.FeedState{}); err != nil || hits.Load() != 1 {
-		t.Errorf("own /web/ feed: err = %v, hits = %d", err, hits.Load())
 	}
 }
 
@@ -182,24 +109,6 @@ func TestRunWebPollPollsOnEveryTickUntilCancelled(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("runWebPoll did not return after cancel")
-	}
-}
-
-func TestIsOwnWebFeed(t *testing.T) {
-	own := isOwnWebFeed("https://app.example.com")
-	for raw, want := range map[string]bool{
-		"https://app.example.com/web/abc":      true,
-		"https://APP.example.com/web/abc":      true,
-		"http://app.example.com/web/abc":       false,
-		"https://app.example.com/webfeed":      false,
-		"https://app.example.com/api/health":   false,
-		"https://other.example.com/web/abc":    false,
-		"https://app.example.com:8443/web/abc": false,
-		"::not a url":                          false,
-	} {
-		if got := own(raw); got != want {
-			t.Errorf("isOwnWebFeed(%q) = %v, want %v", raw, got, want)
-		}
 	}
 }
 

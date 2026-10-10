@@ -6,7 +6,6 @@ import "encoding/json"
 type Mode string
 
 const (
-	ModeFeed    Mode = "feed"
 	ModeStreams Mode = "streams"
 	ModeCSS     Mode = "css"
 	ModeSitemap Mode = "sitemap"
@@ -24,7 +23,6 @@ const (
 type DateSource string
 
 const (
-	DateSourceFeed    DateSource = "feed"
 	DateSourceListing DateSource = "listing"
 	DateSourceArticle DateSource = "article"
 	DateSourceNone    DateSource = "none"
@@ -39,7 +37,6 @@ type Recipe struct {
 	Streams     []Stream    `json:"streams"`
 	CSS         *CSSRecipe  `json:"css"`
 	ExcludeURLs []string    `json:"exclude_urls"`
-	Input       string      `json:"input"`
 	Lang        string      `json:"lang"`
 	Order       Order       `json:"order"`
 	DateSource  DateSource  `json:"date_source"`
@@ -63,10 +60,23 @@ func (s Stream) MarshalJSON() ([]byte, error) {
 	return json.Marshal(plain(s))
 }
 
+// TitleSource says where an entry's title came from.
+type TitleSource string
+
+const (
+	TitleHeading    TitleSource = "heading"
+	TitleClass      TitleSource = "class"
+	TitleAnchor     TitleSource = "anchor"
+	TitleAttr       TitleSource = "attr"
+	TitleSlug       TitleSource = "slug"
+	TitleArticle    TitleSource = "article"
+	TitleCalibrated TitleSource = "calibrated"
+)
+
 // TitleHints records where setup found each entry's title.
 type TitleHints struct {
-	Source string `json:"source,omitempty"`
-	Tag    string `json:"tag,omitempty"`
+	Source TitleSource `json:"source,omitempty"`
+	Tag    string      `json:"tag,omitempty"`
 }
 
 // CSSRecipe holds induced selectors for mode css.
@@ -109,15 +119,14 @@ type JudgeRecord struct {
 	USD          float64 `json:"usd,omitempty"`
 }
 
-// NewRecipe returns a version-1 recipe with every list initialized.
-func NewRecipe(listingURL string, mode Mode) Recipe {
+// newRecipe returns a version-1 recipe with every list initialized.
+func newRecipe(listingURL string, mode Mode) Recipe {
 	return Recipe{
 		Version:     1,
 		ListingURL:  listingURL,
 		Mode:        mode,
 		Streams:     []Stream{},
 		ExcludeURLs: []string{},
-		Input:       "raw",
 		Order:       OrderPage,
 		DateSource:  DateSourceNone,
 		Fingerprint: Fingerprint{URLTemplates: []string{}},

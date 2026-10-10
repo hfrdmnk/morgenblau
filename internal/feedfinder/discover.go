@@ -15,6 +15,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/mmcdole/gofeed"
 
+	"morgenblau/internal/postkey"
 	"morgenblau/internal/safehttp"
 )
 
@@ -237,7 +238,7 @@ func (f *Finder) probeFeed(ctx context.Context, p probe, lang string) *probedFee
 			continue
 		}
 		if abs, err := final.Parse(strings.TrimSpace(item.Link)); err == nil && abs.Host != "" {
-			keys[linkKey(abs)] = struct{}{}
+			keys[postkey.FromURL(abs)] = struct{}{}
 		}
 	}
 	return &probedFeed{
@@ -253,17 +254,8 @@ func listingLinkKeys(doc *goquery.Document, base *url.URL) map[string]struct{} {
 	keys := map[string]struct{}{}
 	doc.Find("a[href]").Each(func(_ int, s *goquery.Selection) {
 		if abs, err := base.Parse(strings.TrimSpace(s.AttrOr("href", ""))); err == nil && abs.Host != "" {
-			keys[linkKey(abs)] = struct{}{}
+			keys[postkey.FromURL(abs)] = struct{}{}
 		}
 	})
 	return keys
-}
-
-// linkKey ignores scheme, www., trailing slash and fragment, which feeds and listings disagree on for the same post.
-func linkKey(u *url.URL) string {
-	key := strings.TrimPrefix(strings.ToLower(u.Host), "www.") + strings.TrimSuffix(u.Path, "/")
-	if u.RawQuery != "" {
-		key += "?" + u.RawQuery
-	}
-	return key
 }

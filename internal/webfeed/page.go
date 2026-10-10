@@ -9,12 +9,15 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/net/html"
 
+	"morgenblau/internal/postkey"
 	"morgenblau/internal/safehttp"
 )
 
 // pageDoc is one parsed listing page with its usable links.
 type pageDoc struct {
-	url     *url.URL
+	url *url.URL
+	// base resolves relative links: the page URL, or its <base href>.
+	base    *url.URL
 	doc     *goquery.Document
 	title   string
 	lang    string
@@ -50,10 +53,10 @@ func parsePage(body []byte, pageURL string) (*pageDoc, error) {
 	if lang, ok := doc.Find("html").Attr("lang"); ok {
 		p.lang = safehttp.LanguageTag(lang)
 	}
-	base := u
+	p.base = u
 	if href, ok := doc.Find("head base[href]").Attr("href"); ok {
 		if b, err := u.Parse(strings.TrimSpace(href)); err == nil {
-			base = b
+			p.base = b
 		}
 	}
 	i := 0
@@ -67,7 +70,7 @@ func parsePage(body []byte, pageURL string) (*pageDoc, error) {
 				return
 			}
 			if n.Data == "a" {
-				if a := p.newAnchor(n, base); a != nil {
+				if a := p.newAnchor(n, p.base); a != nil {
 					p.anchors = append(p.anchors, a)
 				}
 			}
@@ -87,7 +90,7 @@ func (p *pageDoc) newAnchor(n *html.Node, base *url.URL) *anchor {
 	if !ok || sameDoc(abs, p.url) {
 		return nil
 	}
-	a := &anchor{node: n, url: abs, key: urlKey(abs), tmpl: URLTemplate(abs)}
+	a := &anchor{node: n, url: abs, key: postkey.URL(abs), tmpl: URLTemplate(abs)}
 	var tags []string
 	for x := n; x != nil && x.Type == html.ElementNode; x = x.Parent {
 		a.chain = append(a.chain, x)
@@ -114,15 +117,7 @@ func resolveLink(base *url.URL, href string) (string, bool) {
 	}
 	u.Fragment = ""
 	u.RawFragment = ""
-	if u.RawQuery != "" {
-		q := u.Query()
-		for k := range q {
-			if strings.HasPrefix(strings.ToLower(k), "utm_") || k == "ref" || k == "fbclid" || k == "gclid" {
-				q.Del(k)
-			}
-		}
-		u.RawQuery = q.Encode()
-	}
+	postkey.StripTracking(u)
 	if (u.Path == "" || u.Path == "/") && u.RawQuery == "" {
 		return "", false
 	}
@@ -132,22 +127,8 @@ func resolveLink(base *url.URL, href string) (string, bool) {
 	return u.String(), true
 }
 
-// urlKey identifies a URL for dedupe: scheme, www. and a trailing slash do not make a different post.
-func urlKey(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return raw
-	}
-	host := strings.TrimPrefix(strings.ToLower(u.Host), "www.")
-	key := host + strings.TrimSuffix(u.EscapedPath(), "/")
-	if u.RawQuery != "" {
-		key += "?" + u.RawQuery
-	}
-	return key
-}
-
 func sameDoc(abs string, page *url.URL) bool {
-	return urlKey(abs) == urlKey(page.String())
+	return postkey.URL(abs) == postkey.URL(page.String())
 }
 
 func attr(n *html.Node, name string) string {

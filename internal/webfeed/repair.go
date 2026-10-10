@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strings"
+
+	"morgenblau/internal/postkey"
 )
 
 // RepairStep names a rung of the repair ladder, cheapest first.
@@ -48,15 +49,13 @@ type RepairResult struct {
 	Step     RepairStep
 	Rule     string
 	// FalseAlarm marks an accepted repair that reproduces the last good poll's posts exactly.
-	FalseAlarm  bool
-	UsedModel   bool
-	Tried       []RepairStep
-	Recipe      Recipe
-	Items       []Item
-	Excerpts    map[string]string
-	URLTemplate string
-	ModelCalls  int
-	ModelUSD    float64
+	FalseAlarm bool
+	UsedModel  bool
+	Tried      []RepairStep
+	Recipe     Recipe
+	Items      []Item
+	Excerpts   map[string]string
+	ModelUSD   float64
 }
 
 // Repair re-finds the post stream on the page a suspect poll fetched, escalating until a result passes the acceptance rule.
@@ -68,35 +67,35 @@ func Repair(ctx context.Context, polled *PollResult, in RepairInput, opts Option
 	if len(in.History) == 0 {
 		return out, nil
 	}
-	pg := polled.page
+	page := polled.page.doc
 	accept := func(step RepairStep, rec Recipe, items []Item) bool { return out.accept(step, rec, items, in.History) }
 	steps := []RepairStep{RepairKnownURLs, RepairTemplate, RepairHeuristic}
 	if in.Doubted {
 		// The known posts and their template are what the check doubted, so only a fresh pick can answer it.
 		steps = []RepairStep{RepairHeuristic}
-		doubted := hashInput(itemURLKeys(polled.Items))
+		doubted := keySet(itemURLKeys(polled.Items))
 		accept = func(step RepairStep, rec Recipe, items []Item) bool {
 			return out.acceptOther(step, rec, items, doubted)
 		}
 	}
-	if in.Recipe.Mode != ModeSitemap {
+	if page != nil {
 		for _, step := range steps {
-			rec, ok := reinfer(step, pg, in)
+			rec, ok := reinfer(step, page, in)
 			if !ok {
 				continue
 			}
-			items, err := Apply(rec, pg.body, pg.url)
+			items, err := applyPage(rec, page)
 			if err != nil {
 				return nil, err
 			}
 			out.Tried = append(out.Tried, step)
 			if accept(step, rec, items) {
-				out.Excerpts = ListingExcerpts(pg.body, pg.url, items)
+				out.Excerpts = listingExcerpts(page, items)
 				return out, nil
 			}
 		}
 	}
-	if !in.AllowModel || (opts.Judge == nil && opts.Inducer == nil) {
+	if !in.AllowModel || opts.Model == nil {
 		return out, nil
 	}
 	res, err := Setup(ctx, in.Recipe.ListingURL, opts)
@@ -108,12 +107,12 @@ func Repair(ctx context.Context, polled *PollResult, in RepairInput, opts Option
 	}
 	out.Tried = append(out.Tried, RepairJudge)
 	out.UsedModel = true
-	out.ModelCalls, out.ModelUSD = res.Recipe.Setup.ModelCost()
-	if in.Doubted && res.Health != HealthOK {
+	_, out.ModelUSD = res.Recipe.Setup.ModelCost()
+	if in.Doubted && !res.Healthy() {
 		return out, nil
 	}
-	if res.Health != HealthBlockedBySite && accept(RepairJudge, res.Recipe, res.Items) {
-		out.Excerpts = ListingExcerpts(pg.body, pg.url, res.Items)
+	if !res.Blocked && accept(RepairJudge, res.Recipe, res.Items) {
+		out.Excerpts = res.Excerpts
 	}
 	return out, nil
 }
@@ -125,30 +124,30 @@ func (out *RepairResult) accept(step RepairStep, rec Recipe, items []Item, histo
 	if rule == "" {
 		return false
 	}
-	out.take(step, rule, rec, items, dominant)
-	out.FalseAlarm = slices.Equal(hashInput(itemURLKeys(items)), hashInput(urlKeys(history[0].URLs)))
+	out.take(step, rule, rec, items)
+	out.FalseAlarm = slices.Equal(keySet(itemURLKeys(items)), keySet(urlKeys(history[0].URLs)))
 	return true
 }
 
 // acceptOther takes a list that differs from the doubted one and would pass setup's own self-check.
 func (out *RepairResult) acceptOther(step RepairStep, rec Recipe, items []Item, doubted []string) bool {
-	if len(items) < acceptMinItems || slices.Equal(hashInput(itemURLKeys(items)), doubted) {
+	if len(items) < acceptMinItems || slices.Equal(keySet(itemURLKeys(items)), doubted) {
 		return false
 	}
 	templates := streamTemplates(rec.Streams)
-	if h, _ := ComputeSignals(items, templates).setupVerdict(); h != HealthOK {
+	if len(ComputeSignals(items, templates).doubts()) > 0 {
 		return false
 	}
-	out.take(step, AcceptDifferent, rec, items, DominantTemplate(items, templates))
+	out.take(step, AcceptDifferent, rec, items)
 	return true
 }
 
-func (out *RepairResult) take(step RepairStep, rule string, rec Recipe, items []Item, dominant string) {
+func (out *RepairResult) take(step RepairStep, rule string, rec Recipe, items []Item) {
 	templates := streamTemplates(rec.Streams)
 	sig := ComputeSignals(items, templates)
-	rec.Fingerprint = Fingerprint{Count: sig.Count, URLTemplates: templates, DateFrac: round2(sig.DateFrac), TitleShape: round2(sig.TitleShape)}
+	rec.Fingerprint = fingerprintOf(sig, templates)
 	out.Accepted, out.Step, out.Rule = true, step, rule
-	out.Recipe, out.Items, out.URLTemplate = rec, items, dominant
+	out.Recipe, out.Items = rec, items
 }
 
 // acceptRepair names the first acceptance rule a repair passes, or "" to escalate. Titles carry a site through a URL
@@ -160,10 +159,10 @@ func acceptRepair(items []Item, dominant string, history []GoodPoll, modelStep b
 	last := history[0]
 	known := map[string]bool{}
 	for _, u := range last.URLs {
-		known[urlKey(u)] = true
+		known[postkey.URL(u)] = true
 	}
 	for _, it := range items {
-		if known[urlKey(it.URL)] {
+		if known[postkey.URL(it.URL)] {
 			return AcceptKnownURL
 		}
 	}
@@ -172,11 +171,11 @@ func acceptRepair(items []Item, dominant string, history []GoodPoll, modelStep b
 	}
 	current := map[string]bool{}
 	for _, it := range items {
-		current[normTitle(it.Title)] = true
+		current[postkey.Title(it.Title)] = true
 	}
 	reappear := 0
 	for _, t := range last.Titles {
-		if current[normTitle(t)] {
+		if current[postkey.Title(t)] {
 			reappear++
 		}
 	}
@@ -189,24 +188,19 @@ func acceptRepair(items []Item, dominant string, history []GoodPoll, modelStep b
 	return ""
 }
 
-func normTitle(t string) string { return strings.ToLower(collapse(t)) }
-
 func urlKeys(urls []string) []string {
 	keys := make([]string, len(urls))
 	for i, u := range urls {
-		keys[i] = urlKey(u)
+		keys[i] = postkey.URL(u)
 	}
 	return keys
 }
 
-func hashInput(keys []string) []string { return slices.Compact(slices.Sorted(slices.Values(keys))) }
+// keySet is keys sorted and without repeats, so two lists of the same posts compare equal.
+func keySet(keys []string) []string { return slices.Compact(slices.Sorted(slices.Values(keys))) }
 
 // reinfer re-finds the stream on the polled page without a model or another fetch.
-func reinfer(step RepairStep, pg *fetchedPage, in RepairInput) (Recipe, bool) {
-	p, err := parsePage(pg.body, pg.url)
-	if err != nil {
-		return Recipe{}, false
-	}
+func reinfer(step RepairStep, p *pageDoc, in RepairInput) (Recipe, bool) {
 	all := p.candidates()
 	last := in.History[0]
 	var picked []*cluster
@@ -214,10 +208,10 @@ func reinfer(step RepairStep, pg *fetchedPage, in RepairInput) (Recipe, bool) {
 	case RepairKnownURLs:
 		known := map[string]bool{}
 		for _, u := range last.URLs {
-			known[urlKey(u)] = true
+			known[postkey.URL(u)] = true
 		}
 		for _, c := range all {
-			if !c.sideList() && slices.ContainsFunc(c.entries, func(e *entry) bool { return known[urlKey(e.URL)] }) {
+			if !c.sideList() && slices.ContainsFunc(c.entries, func(e *entry) bool { return known[postkey.URL(e.URL)] }) {
 				picked = append(picked, c)
 			}
 		}
@@ -249,7 +243,7 @@ func rebuilt(old Recipe, picked []*cluster, step RepairStep) Recipe {
 	rec.Streams = buildStreams(picked, old.ListingURL)
 	for i := range rec.Streams {
 		for _, o := range old.Streams {
-			if o.URLTemplate == rec.Streams[i].URLTemplate && o.TitleHints.Source == "calibrated" {
+			if o.URLTemplate == rec.Streams[i].URLTemplate && o.TitleHints.Source == TitleCalibrated {
 				rec.Streams[i].TitleHints = o.TitleHints
 			}
 		}

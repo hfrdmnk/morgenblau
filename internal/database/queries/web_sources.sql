@@ -1,14 +1,14 @@
--- name: CreateWebSource :execrows
+-- name: CreateWebSource :exec
 INSERT INTO web_sources (
     id, listing_key, listing_url, site_url, title, recipe, health, health_reason,
-    needs_anchor, setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_tried_at, next_poll_at
+    setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_health_reason,
+    setup_tried_at, next_poll_at
 ) VALUES (
     sqlc.arg(id), sqlc.arg(listing_key), sqlc.arg(listing_url), sqlc.arg(site_url), sqlc.arg(title),
-    sqlc.arg(recipe), sqlc.arg(health), sqlc.arg(health_reason), sqlc.arg(needs_anchor),
+    sqlc.arg(recipe), sqlc.arg(health), sqlc.arg(health_reason),
     sqlc.arg(setup_cost), sqlc.arg(created_by_did), sqlc.arg(created_at), sqlc.arg(created_at), sqlc.arg(created_at),
-    sqlc.arg(health), sqlc.arg(created_at), sqlc.narg(next_poll_at)
-)
-ON CONFLICT (listing_key) DO NOTHING;
+    sqlc.arg(health), sqlc.arg(health_reason), sqlc.arg(created_at), sqlc.narg(next_poll_at)
+);
 
 -- name: GetWebSource :one
 SELECT * FROM web_sources WHERE id = ?;
@@ -24,11 +24,11 @@ UPDATE web_sources SET
     recipe = sqlc.arg(recipe),
     health = sqlc.arg(health),
     health_reason = sqlc.arg(health_reason),
-    needs_anchor = sqlc.arg(needs_anchor),
     setup_cost = sqlc.arg(setup_cost),
     updated_at = sqlc.arg(updated_at),
     setup_at = sqlc.arg(updated_at),
     setup_health = sqlc.arg(health),
+    setup_health_reason = sqlc.arg(health_reason),
     setup_seq = setup_seq + 1,
     setup_tried_at = sqlc.arg(updated_at),
     next_poll_at = sqlc.narg(next_poll_at),
@@ -61,9 +61,9 @@ WHERE id = sqlc.arg(id) AND setup_seq = sqlc.arg(setup_seq);
 
 -- name: ListDueWebSources :many
 -- A web source counts as followed once its feed URL is in the shared feeds catalog, the same set the global refresher fetches.
--- A setup that doubted its own list is never polled: polls would trust the list it doubted.
+-- A setup the site refused has nothing to poll; an unsure one is polled, since the reader chose it from its preview.
 SELECT ws.* FROM web_sources ws
-WHERE ws.setup_health = 'ok'
+WHERE ws.setup_health IN ('ok', 'needs_attention')
   AND ws.next_poll_at IS NOT NULL
   AND ws.next_poll_at <= sqlc.arg(now)
   AND EXISTS (SELECT 1 FROM feeds f WHERE f.feed_url = sqlc.arg(feed_url_prefix) || ws.id)
@@ -76,7 +76,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (source_id, url) DO NOTHING;
 
 -- name: ListWebSourceKnownItems :many
-SELECT url, title FROM web_source_items WHERE source_id = ?;
+SELECT url, title, published_at FROM web_source_items WHERE source_id = ?;
 
 -- name: GetOldestWebSourceItemDate :one
 SELECT published_at FROM web_source_items

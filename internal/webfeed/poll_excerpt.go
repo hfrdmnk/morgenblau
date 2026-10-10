@@ -1,27 +1,23 @@
 package webfeed
 
-import "strings"
+import (
+	"strings"
+
+	"morgenblau/internal/postkey"
+)
 
 const excerptSegments = 2
 
-// ListingExcerpts finds each item's teaser on the listing page it came from; items without one are absent.
-func ListingExcerpts(body []byte, pageURL string, items []Item) map[string]string {
-	p, err := parsePage(body, pageURL)
-	if err != nil {
-		return nil
-	}
-	return listingExcerpts(p, items)
-}
-
+// listingExcerpts finds each item's teaser on the listing page it came from; items without one are absent.
 func listingExcerpts(p *pageDoc, items []Item) map[string]string {
 	want := make(map[string]Item, len(items))
 	for _, it := range items {
-		want[urlKey(it.URL)] = it
+		want[postkey.URL(it.URL)] = it
 	}
 	out := map[string]string{}
 	for _, c := range p.clusters() {
 		for _, e := range c.entries {
-			it, ok := want[urlKey(e.URL)]
+			it, ok := want[postkey.URL(e.URL)]
 			if !ok || out[it.URL] != "" {
 				continue
 			}

@@ -275,7 +275,6 @@ func TestCreateReusesTheSourceForTheSameSite(t *testing.T) {
 func TestCreateWithAnchorRerunsSetupAndMergesItems(t *testing.T) {
 	env := newTestEnv(t)
 	env.gen.generated.Health = HealthNeedsAttention
-	env.gen.generated.NeedsAnchor = true
 	first, err := env.service.Create(context.Background(), testDID, "https://news.example.com/", "")
 	if err != nil {
 		t.Fatal(err)
@@ -457,8 +456,8 @@ func TestCreateRateLimitsGenerationsPerReader(t *testing.T) {
 	}
 	_, err := env.service.Create(ctx, testDID, "https://c.example.com/", "")
 	var limited *RateLimitError
-	if !errors.Is(err, ErrRateLimited) || !errors.As(err, &limited) || limited.RetryAfter != 42*time.Minute {
-		t.Fatalf("third generation err = %v, want ErrRateLimited with the limiter's wait", err)
+	if !errors.As(err, &limited) || limited.RetryAfter != 42*time.Minute {
+		t.Fatalf("third generation err = %v, want a RateLimitError with the limiter's wait", err)
 	}
 	if len(env.gen.setups) != 2 {
 		t.Errorf("setups = %d, want the limited request to generate nothing", len(env.gen.setups))

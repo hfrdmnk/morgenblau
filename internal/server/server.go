@@ -24,6 +24,7 @@ import (
 	"morgenblau/internal/atidentity"
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/cache/profiles"
+	"morgenblau/internal/claude"
 	"morgenblau/internal/database"
 	dbqueries "morgenblau/internal/database/db"
 	"morgenblau/internal/feedfinder"
@@ -90,31 +91,17 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		return nil, nil, fmt.Errorf("load alpha access: %w", err)
 	}
 
-	port := 8000
-	if raw := os.Getenv("PORT"); raw != "" {
-		p, err := strconv.Atoi(raw)
-		if err != nil {
-			return nil, nil, fmt.Errorf("invalid PORT %q: %w", raw, err)
-		}
-		port = p
+	port, err := envInt(os.Getenv, "PORT", 8000)
+	if err != nil {
+		return nil, nil, err
 	}
-
-	fetchMinutes := 30
-	if raw := os.Getenv("FETCH_INTERVAL_MINUTES"); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil {
-			return nil, nil, fmt.Errorf("invalid FETCH_INTERVAL_MINUTES %q: %w", raw, err)
-		}
-		fetchMinutes = n
+	fetchMinutes, err := envInt(os.Getenv, "FETCH_INTERVAL_MINUTES", 30)
+	if err != nil {
+		return nil, nil, err
 	}
-
-	webPollMinutes := 30
-	if raw := os.Getenv("WEB_POLL_INTERVAL_MINUTES"); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil {
-			return nil, nil, fmt.Errorf("invalid WEB_POLL_INTERVAL_MINUTES %q: %w", raw, err)
-		}
-		webPollMinutes = n
+	webPollMinutes, err := envInt(os.Getenv, "WEB_POLL_INTERVAL_MINUTES", 30)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	publicBase, err := publicBaseURL(os.Getenv, port)
@@ -193,7 +180,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 
 	profileCache := profiles.New(identityDir, profiles.PDSFetcher{Client: safeClient})
 	tracker := jobs.New()
-	webGenerator, webModel, err := newWebGenerator(safeClient, os.Getenv("ANTHROPIC_API_KEY"))
+	webGenerator, webModel, err := newWebGenerator(safeClient, claude.Config{APIKey: os.Getenv("ANTHROPIC_API_KEY")})
 	if err != nil {
 		_ = db.Close()
 		return nil, nil, fmt.Errorf("configure feed generation: %w", err)
@@ -210,10 +197,8 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		// Each generation can cost model calls, so a reader gets a bounded number per hour.
 		Limiter: ratelimit.New(20, time.Hour, nil),
 	})
-	fetcherInst := fetcher.New(fetcher.WrapTransport(func(next http.RoundTripper) http.RoundTripper {
-		return ownWebFeeds(publicBase, webSources.FeedHandler(), next)
-	}))
-	pipeline := internalsync.NewFeedPipeline(fetcherInst, qw).WithTxRunner(db.Writer).WithUndatedHistory(isOwnWebFeed(publicBase))
+	fetcherInst := fetcher.New(fetcher.WithLocalFeeds(func(u *url.URL) bool { return webSources.IsFeedURL(u.String()) }, webSources.FeedHandler()))
+	pipeline := internalsync.NewFeedPipeline(fetcherInst, qw).WithTxRunner(db.Writer).WithUndatedHistory(webSources.IsFeedURL)
 	stdClient := standardfeed.NewClient(identityDir, safeClient)
 	finder := feedfinder.New(safeClient).WithStandardResolver(stdClient)
 	stdPipeline := internalsync.NewStandardfeedPipeline(stdClient, qw).WithTxRunner(db.Writer)
@@ -485,4 +470,17 @@ func runAuthRequestGC(ctx context.Context, st *store.Store) {
 			}
 		}
 	}
+}
+
+// envInt reads an integer setting, def when it is unset.
+func envInt(getenv func(string) string, name string, def int) (int, error) {
+	raw := getenv(name)
+	if raw == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s %q: %w", name, raw, err)
+	}
+	return n, nil
 }

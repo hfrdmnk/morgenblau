@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
@@ -38,37 +36,7 @@ func publicBaseURL(getenv func(string) string, port int) (string, error) {
 	return "https://" + u.Host, nil
 }
 
-// isOwnWebFeed reports whether a feed URL is one of this server's generated /web/ feeds.
-func isOwnWebFeed(base string) func(rawURL string) bool {
-	origin, err := url.Parse(base)
-	return func(rawURL string) bool {
-		u, uerr := url.Parse(rawURL)
-		return err == nil && uerr == nil && origin.Host != "" &&
-			strings.EqualFold(u.Scheme, origin.Scheme) && strings.EqualFold(u.Host, origin.Host) && strings.HasPrefix(u.Path, "/web/")
-	}
-}
-
-// ownWebFeeds answers this server's own /web/ feeds in process: the safe transport refuses loopback, and in production the request would hairpin out and back.
-func ownWebFeeds(base string, feeds http.Handler, next http.RoundTripper) http.RoundTripper {
-	own := isOwnWebFeed(base)
-	return roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if !own(req.URL.String()) {
-			return next.RoundTrip(req)
-		}
-		rec := httptest.NewRecorder()
-		feeds.ServeHTTP(rec, req)
-		resp := rec.Result()
-		resp.Request = req
-		return resp, nil
-	})
-}
-
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
-
 // modelCallTimeout bounds one model call with its retries; a setup runs up to three in a row inside websource.SetupTimeout.
-// api.anthropic.com is a fixed host, so the client needs no SSRF guard.
 const modelCallTimeout = 25 * time.Second
 
 // webModelDailyUSD reads WEB_MODEL_DAILY_USD, the most the model may cost in any 24 hours; 0 keeps every step heuristic.
@@ -84,19 +52,28 @@ func webModelDailyUSD(getenv func(string) string) (float64, error) {
 	return usd, nil
 }
 
-// newWebGenerator builds feed generation over client, which must be SSRF-safe; with an API key, Haiku judges unsure
-// setups, induces recipes, runs the daily model repair and the weekly check.
-func newWebGenerator(client webfeed.Doer, apiKey string) (websource.Generator, bool, error) {
+// newWebGenerator builds feed generation over client, which must be SSRF-safe; with an API key in cfg, Haiku judges
+// unsure setups, induces recipes, runs the daily model repair and the weekly check.
+func newWebGenerator(client webfeed.Doer, cfg claude.Config) (websource.Generator, bool, error) {
 	opts := webfeed.Options{Client: client}
-	if apiKey == "" {
-		return websource.NewWebfeedGenerator(opts, nil), false, nil
+	if cfg.APIKey == "" {
+		return websource.NewWebfeedGenerator(opts), false, nil
 	}
-	model, err := claude.New(claude.Config{APIKey: apiKey, HTTPClient: &http.Client{Timeout: modelCallTimeout}, CallTimeout: modelCallTimeout})
+	cfg.CallTimeout = modelCallTimeout
+	c, err := claude.New(cfg)
 	if err != nil {
 		return nil, false, err
 	}
-	opts.Judge, opts.Inducer = model, model
-	return websource.NewWebfeedGenerator(opts, model), true, nil
+	opts.Model = claudeModel{c}
+	return websource.NewWebfeedGenerator(opts), true, nil
+}
+
+// claudeModel runs webfeed's prompts on Claude.
+type claudeModel struct{ c *claude.Client }
+
+func (m claudeModel) Complete(ctx context.Context, p webfeed.Prompt) (string, webfeed.Usage, error) {
+	text, u, err := m.c.Complete(ctx, p.System, p.User, string(p.Effort))
+	return text, webfeed.Usage{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, USD: u.USD}, err
 }
 
 // webPoller is the slice of *websource.Service the poll loop drives.

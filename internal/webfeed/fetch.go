@@ -21,7 +21,7 @@ type Doer interface {
 }
 
 const (
-	defaultMaxBody = 5 << 20
+	maxBody = 5 << 20
 	// A post's title and dates sit in its head and first screen; the rest of a long page is not worth the memory.
 	maxArticleBody        = 512 << 10
 	maxRobotsBody         = 512 << 10
@@ -33,35 +33,29 @@ const (
 type response struct {
 	url    string
 	status int
-	ctype  string
+	header http.Header
 	body   []byte
 	err    error
 }
 
 type session struct {
-	client    Doer
-	userAgent string
-	maxBody   int64
-	mu        sync.Mutex
-	lang      string
-	cache     map[string]*response
-	articles  map[string]*articleInfo
+	client   Doer
+	mu       sync.Mutex
+	lang     string
+	cache    map[string]*response
+	articles map[string]*articleInfo
 	// budget is what is left of MaxSetupBytes; fetches reserve from it before reading.
 	budget int64
 }
+
+// ErrUnreachable is a listing that did not answer: a network error, a timeout or a server error, rather than a refusal.
+var ErrUnreachable = errors.New("webfeed: site unreachable")
 
 // errBudget stops a fetch once the session has read all it may.
 var errBudget = errors.New("webfeed: setup byte budget spent")
 
 func newSession(opts Options) *session {
-	s := &session{client: opts.Client, userAgent: opts.UserAgent, maxBody: opts.MaxBody, budget: opts.MaxSetupBytes,
-		cache: map[string]*response{}, articles: map[string]*articleInfo{}}
-	if s.userAgent == "" {
-		s.userAgent = safehttp.UserAgent
-	}
-	if s.maxBody <= 0 {
-		s.maxBody = defaultMaxBody
-	}
+	s := &session{client: opts.Client, budget: opts.MaxSetupBytes, cache: map[string]*response{}, articles: map[string]*articleInfo{}}
 	if s.budget <= 0 {
 		s.budget = defaultMaxSetupBytes
 	}
@@ -86,7 +80,7 @@ func (s *session) get(ctx context.Context, rawURL string) *response {
 		return r
 	}
 	s.mu.Unlock()
-	r := s.fetch(ctx, rawURL, lang, s.maxBody)
+	r := s.fetch(ctx, rawURL, lang, maxBody, nil)
 	s.mu.Lock()
 	s.cache[cacheKey(lang, rawURL)] = r
 	s.mu.Unlock()
@@ -98,17 +92,21 @@ func (s *session) fetchOnce(ctx context.Context, rawURL string, limit int64) *re
 	s.mu.Lock()
 	lang := s.lang
 	s.mu.Unlock()
-	return s.fetch(ctx, rawURL, lang, limit)
+	return s.fetch(ctx, rawURL, lang, limit, nil)
 }
 
-func (s *session) fetch(ctx context.Context, rawURL, lang string, limit int64) *response {
+// fetch is one GET reading at most limit bytes; header adds request headers such as conditional-GET validators.
+func (s *session) fetch(ctx context.Context, rawURL, lang string, limit int64, header http.Header) *response {
 	r := &response{url: rawURL}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		r.err = err
 		return r
 	}
-	req.Header.Set("User-Agent", s.userAgent)
+	for k, v := range header {
+		req.Header[k] = v
+	}
+	req.Header.Set("User-Agent", safehttp.UserAgent)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	if lang := safehttp.LanguageTag(lang); lang != "" {
 		req.Header.Set("Accept-Language", lang)
@@ -123,8 +121,7 @@ func (s *session) fetch(ctx context.Context, rawURL, lang string, limit int64) *
 		return r
 	}
 	defer resp.Body.Close()
-	r.status = resp.StatusCode
-	r.ctype = resp.Header.Get("Content-Type")
+	r.status, r.header = resp.StatusCode, resp.Header
 	if resp.Request != nil && resp.Request.URL != nil {
 		r.url = resp.Request.URL.String()
 	}
@@ -192,20 +189,29 @@ func isChallenge(body []byte) bool {
 	return false
 }
 
-// blocked reports a listing fetch the site refused us; other errors are not a block.
-func (r *response) blocked() bool {
-	if r.err != nil {
-		return true
+// refusal classifies a fetch that did not yield a page: blocked when the site refused us (401, 403, 429, 999 or a bot
+// challenge), and otherwise a failure that unreachable tells apart. reason is "" when the page came through.
+func (r *response) refusal() (reason Reason, blocked bool) {
+	switch {
+	case r.err != nil:
+		return ReasonUnreachable, false
+	case r.status >= 400:
+		switch r.status {
+		case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests, 999:
+			return ReasonHTTPStatus, true
+		}
+		return ReasonHTTPStatus, false
+	case isChallenge(r.body):
+		return ReasonChallenge, true
 	}
-	switch r.status {
-	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests, http.StatusServiceUnavailable, 999:
-		return true
-	}
-	return r.status < 400 && isChallenge(r.body)
+	return "", false
 }
 
+// unreachable is a fetch the site never answered: a network error, a timeout or a server error.
+func (r *response) unreachable() bool { return r.err != nil || r.status >= 500 }
+
 func (r *response) isHTML() bool {
-	ct := strings.ToLower(r.ctype)
+	ct := strings.ToLower(r.header.Get("Content-Type"))
 	if strings.Contains(ct, "html") {
 		return true
 	}

@@ -19,7 +19,7 @@ type Querier interface {
 	CreateNewsletterReceipt(ctx context.Context, arg CreateNewsletterReceiptParams) error
 	CreateNewsletterSave(ctx context.Context, arg CreateNewsletterSaveParams) error
 	CreateNewsletterSource(ctx context.Context, arg CreateNewsletterSourceParams) error
-	CreateWebSource(ctx context.Context, arg CreateWebSourceParams) (int64, error)
+	CreateWebSource(ctx context.Context, arg CreateWebSourceParams) error
 	DeleteAuthRequest(ctx context.Context, state string) error
 	DeleteExpiredAuthRequests(ctx context.Context, expiresAt string) (int64, error)
 	DeleteFeedEntry(ctx context.Context, arg DeleteFeedEntryParams) error
@@ -74,7 +74,7 @@ type Querier interface {
 	ListAllFeedURLs(ctx context.Context) ([]string, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
 	// A web source counts as followed once its feed URL is in the shared feeds catalog, the same set the global refresher fetches.
-	// A setup that doubted its own list is never polled: polls would trust the list it doubted.
+	// A setup the site refused has nothing to poll; an unsure one is polled, since the reader chose it from its preview.
 	ListDueWebSources(ctx context.Context, arg ListDueWebSourcesParams) ([]WebSource, error)
 	// Entries from a single feed, newest first, bounded by limit. The join to
 	// user_subscriptions doubles as an ownership filter; the handler still

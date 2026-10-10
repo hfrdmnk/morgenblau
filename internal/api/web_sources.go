@@ -86,6 +86,10 @@ func WebSourcesCreateHandler(svc WebSourceCreator) http.Handler {
 		case errors.Is(err, websource.ErrInvalidURL):
 			writeError(w, http.StatusBadRequest, codeInvalidRequest, "Enter a web address that starts with http:// or https://")
 			return
+		case errors.Is(err, websource.ErrUnreachable):
+			slog.Warn("/api/web-sources: site unreachable", "url", body.URL, "err", err)
+			writeError(w, http.StatusBadGateway, codeUpstreamError, "Couldn't reach that site")
+			return
 		case errors.Is(err, websource.ErrGeneration):
 			slog.Warn("/api/web-sources: generation failed", "url", body.URL, "err", err)
 			writeError(w, http.StatusBadGateway, codeUpstreamError, "Couldn't read that page")

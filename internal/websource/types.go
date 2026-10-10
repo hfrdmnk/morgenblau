@@ -64,7 +64,6 @@ type Generated struct {
 	SiteURL      string
 	Health       Health
 	HealthReason string
-	NeedsAnchor  bool
 	Items        []Item
 	Fingerprint  Fingerprint
 	Cost         Cost
@@ -72,10 +71,8 @@ type Generated struct {
 
 // PollRecord is one good poll in the detector's history.
 type PollRecord struct {
-	PolledAt time.Time
-	Count    int
-	URLs     []string
-	Titles   []string
+	URLs   []string
+	Titles []string
 	Fingerprint
 }
 
@@ -86,6 +83,8 @@ type PollState struct {
 	LastModified string
 	LinkSetHash  string
 	History      []PollRecord
+	// Known are the posts already stored, with their dates; a poll dates its posts from these before fetching any post page.
+	Known []Item
 	// AllowModelRepair is false while the site's one model repair a day is spent.
 	AllowModelRepair bool
 	// CheckDue asks for the weekly second opinion on this poll.
@@ -150,21 +149,14 @@ type Source struct {
 	Title        string
 	Health       Health
 	HealthReason string
-	NeedsAnchor  bool
-}
-
-// FeedItem is an item as the feed serves it; Date is zero when the feed sends no pubDate.
-type FeedItem struct {
-	URL     string
-	Title   string
-	Date    time.Time
-	Excerpt string
+	// NeedsAnchor says the setup in force doubted its list, so pointing at one post can settle it.
+	NeedsAnchor bool
 }
 
 // Preview is what a reader sees before subscribing: the source and the first items of its feed.
 type Preview struct {
 	Source    Source
-	Items     []FeedItem
+	Items     []Item
 	ItemCount int
 }
 
@@ -173,16 +165,16 @@ type Limiter interface {
 	Allow(key string) (wait time.Duration, ok bool)
 }
 
-// RateLimitError matches ErrRateLimited and says when the reader may generate again.
+// RateLimitError says when the reader may generate again.
 type RateLimitError struct{ RetryAfter time.Duration }
 
-func (e *RateLimitError) Error() string        { return "websource: too many generations" }
-func (e *RateLimitError) Is(target error) bool { return target == ErrRateLimited }
+func (e *RateLimitError) Error() string { return "websource: too many generations" }
 
 var (
-	ErrRateLimited = errors.New("websource: too many generations")
-	ErrInvalidURL  = errors.New("websource: invalid url")
-	ErrGeneration  = errors.New("websource: generation failed")
+	ErrInvalidURL = errors.New("websource: invalid url")
+	ErrGeneration = errors.New("websource: generation failed")
+	// ErrUnreachable is a generation that failed because the site did not answer, not because it refused us.
+	ErrUnreachable = errors.New("websource: site unreachable")
 	ErrUnavailable = errors.New("websource: feed generation is not available")
 	// ErrBusy means every setup slot stayed taken until the setup deadline.
 	ErrBusy = errors.New("websource: feed generation is busy")

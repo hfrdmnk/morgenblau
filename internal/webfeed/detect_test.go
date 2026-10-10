@@ -2,6 +2,7 @@ package webfeed
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 )
@@ -50,7 +51,7 @@ func TestDriftRulesFirstMatchWins(t *testing.T) {
 		name    string
 		items   []Item
 		history []GoodPoll
-		want    string
+		want    Reason
 	}{
 		{"unchanged", base, history, ""},
 		{"two new posts on top", append(postItems(12, "blog")[10:], base[:8]...), history, ""},
@@ -105,5 +106,87 @@ func TestDominantTemplatePrefersTheRecipePattern(t *testing.T) {
 	}
 	if got := DominantTemplate(nil, nil); got != "" {
 		t.Fatalf("empty = %q", got)
+	}
+}
+
+// retitled copies items with each title replaced by title(i).
+func retitled(items []Item, title func(i int) string) []Item {
+	out := slices.Clone(items)
+	for i := range out {
+		out[i].Title = title(i)
+	}
+	return out
+}
+
+// freshPosts are the blog posts numbered from..to-1 under URLs no earlier poll saw.
+func freshPosts(from, to int) []Item {
+	out := postItems(to, "blog")[from:]
+	for i := range out {
+		out[i].URL += "-fresh"
+	}
+	return out
+}
+
+func joined(lists ...[]Item) []Item {
+	var out []Item
+	for _, l := range lists {
+		out = append(out, l...)
+	}
+	return out
+}
+
+func TestDriftSuspectRulesInIsolation(t *testing.T) {
+	const blog = "news.example.com/blog/*"
+	base := postItems(10, "blog")
+	history := []GoodPoll{goodPoll(base)}
+	withShape := func(shape float64) []GoodPoll {
+		g := goodPoll(base)
+		g.TitleShape = shape
+		return []GoodPoll{g}
+	}
+	labels := func(good int) []Item {
+		return retitled(base, func(i int) string {
+			if i < good {
+				return base[i].Title
+			}
+			return fmt.Sprintf("Label%d", i)
+		})
+	}
+	moved := joined(base[:4], postItems(10, "news")[4:])
+	mixed := joined(base[:4], postItems(7, "news")[4:], postItems(10, "tags")[7:])
+	half := joined(base[:5], postItems(10, "news")[5:])
+	recent := joined(base[:4], freshPosts(4, 10))
+	cases := []struct {
+		name    string
+		items   []Item
+		history []GoodPoll
+		want    Reason
+	}{
+		{"count below half the median", base[:4], history, ReasonCountRatio},
+		{"count at exactly half the median", base[:5], history, ""},
+		{"count above three times the median", postItems(31, "blog"), history, ReasonCountRatio},
+		{"count at exactly three times the median", postItems(30, "blog"), history, ""},
+		{"most known posts gone and most items new", recent, history, ReasonContinuity},
+		{"many new posts while every known post stays", joined(base, freshPosts(10, 22)), history, ""},
+		{"most known posts gone but few items new", joined(base[:4], freshPosts(4, 7)), history, ""},
+		{"exactly half kept and half new", joined(base[:5], freshPosts(5, 10)), history, ""},
+		{"continuity compares with the newest poll", recent, []GoodPoll{goodPoll(recent), goodPoll(base)}, ""},
+		{"continuity ignores an older poll it would fail", recent, []GoodPoll{goodPoll(base), goodPoll(recent)}, ReasonContinuity},
+		{"template share low and a new template dominates", moved, []GoodPoll{goodPoll(moved)}, ReasonTemplateShare},
+		{"template share low across mixed shapes but the old one still dominates", mixed, []GoodPoll{goodPoll(mixed)}, ""},
+		{"template share at exactly half", half, []GoodPoll{goodPoll(half)}, ""},
+		{"titles lose their shape after a well-shaped history", labels(0), history, ReasonTitleShape},
+		{"title shape history at exactly 0.8", labels(0), withShape(0.8), ReasonTitleShape},
+		{"title shape history below 0.8 never alarms", labels(0), withShape(0.75), ""},
+		{"current title shape at exactly 0.7", labels(7), history, ""},
+		{"most titles duplicated", retitled(base, func(i int) string { return fmt.Sprintf("A shared headline about topic %d", i%4) }), history, ReasonDupTitles},
+		{"exactly half the titles duplicated", retitled(base, func(i int) string { return fmt.Sprintf("A shared headline about topic %d", i%5) }), history, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := drift(tc.items, DominantTemplate(tc.items, []string{blog}), tc.history); got != tc.want {
+				t.Fatalf("drift = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

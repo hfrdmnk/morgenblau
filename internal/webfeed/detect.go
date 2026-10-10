@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"morgenblau/internal/postkey"
 )
 
 // PollVerdict is the detector's call on one poll: ok publishes, suspect repairs, broken waits.
@@ -16,22 +18,37 @@ const (
 	PollBroken  PollVerdict = "broken"
 )
 
-// Detector reasons, as codes; the server words them for readers.
+// Reason is a coded cause behind a poll verdict or a setup's health; the server words it for readers.
+type Reason string
+
+// Detector reasons.
 const (
-	ReasonUnreachable   = "unreachable"
-	ReasonRobots        = "robots"
-	ReasonHTTPStatus    = "http_status"
-	ReasonNotHTML       = "not_html"
-	ReasonChallenge     = "challenge"
-	ReasonErrorPage     = "error_page"
-	ReasonConsentWall   = "consent_wall"
-	ReasonSPAShell      = "spa_shell"
-	ReasonEmpty         = "empty"
-	ReasonCountRatio    = "count_ratio"
-	ReasonContinuity    = "continuity"
-	ReasonTemplateShare = "template_share"
-	ReasonTitleShape    = "title_shape"
-	ReasonDupTitles     = "dup_titles"
+	ReasonUnreachable   Reason = "unreachable"
+	ReasonRobots        Reason = "robots"
+	ReasonHTTPStatus    Reason = "http_status"
+	ReasonNotHTML       Reason = "not_html"
+	ReasonChallenge     Reason = "challenge"
+	ReasonErrorPage     Reason = "error_page"
+	ReasonConsentWall   Reason = "consent_wall"
+	ReasonSPAShell      Reason = "spa_shell"
+	ReasonEmpty         Reason = "empty"
+	ReasonCountRatio    Reason = "count_ratio"
+	ReasonContinuity    Reason = "continuity"
+	ReasonTemplateShare Reason = "template_share"
+	ReasonTitleShape    Reason = "title_shape"
+	ReasonDupTitles     Reason = "dup_titles"
+)
+
+// Setup reasons, beside the detector's title_shape, dup_titles, template_share and robots.
+const (
+	// ReasonCount is a setup that found fewer than three posts.
+	ReasonCount Reason = "count"
+	// ReasonUnsure is a pick the heuristic doubted and no judge settled.
+	ReasonUnsure Reason = "unsure"
+	// ReasonJudgeNone is a judge majority saying no list on the page is a post stream.
+	ReasonJudgeNone Reason = "judge_none"
+	// ReasonBlocked is a listing that refused us with no sitemap to fall back on.
+	ReasonBlocked Reason = "blocked"
 )
 
 // GoodPoll is one ok poll in the detector's history.
@@ -63,19 +80,11 @@ func DominantTemplate(items []Item, templates []string) string {
 }
 
 // responseTier0 checks what the fetch alone shows; blocked means the site refused us rather than broke.
-func responseTier0(r *response, wantHTML bool) (reason string, blocked bool) {
-	switch {
-	case r.err != nil:
-		return ReasonUnreachable, false
-	case r.status >= 400:
-		switch r.status {
-		case 401, 403, 429, 999:
-			return ReasonHTTPStatus, true
-		}
-		return ReasonHTTPStatus, false
-	case isChallenge(r.body):
-		return ReasonChallenge, true
-	case wantHTML && !r.isHTML():
+func responseTier0(r *response, wantHTML bool) (reason Reason, blocked bool) {
+	if reason, blocked := r.refusal(); reason != "" {
+		return reason, blocked
+	}
+	if wantHTML && !r.isHTML() {
 		return ReasonNotHTML, false
 	}
 	return "", false
@@ -135,7 +144,7 @@ func textHead(s string) string {
 }
 
 // pageTier0 checks what the parsed page shows before any extraction.
-func pageTier0(p *pageDoc) string {
+func pageTier0(p *pageDoc) Reason {
 	title := strings.ToLower(p.title)
 	h1 := strings.ToLower(collapse(p.doc.Find("h1").First().Text()))
 	for _, s := range []string{title, h1} {
@@ -150,7 +159,7 @@ func pageTier0(p *pageDoc) string {
 }
 
 // emptyTier0 explains an extraction with no items when the page itself is the problem.
-func emptyTier0(p *pageDoc, body []byte) string {
+func emptyTier0(p *pageDoc, body []byte) Reason {
 	text := visibleText(p)
 	if len(text) < spaShellText {
 		lower := bytes.ToLower(body)
@@ -167,7 +176,7 @@ func emptyTier0(p *pageDoc, body []byte) string {
 }
 
 // drift applies the suspect rules against the good-poll history, newest first; the first match wins.
-func drift(items []Item, dominant string, history []GoodPoll) string {
+func drift(items []Item, dominant string, history []GoodPoll) Reason {
 	n := len(items)
 	if n == 0 {
 		return ReasonEmpty
@@ -183,12 +192,12 @@ func drift(items []Item, dominant string, history []GoodPoll) string {
 		if len(last.URLs) > 0 {
 			known := map[string]bool{}
 			for _, u := range last.URLs {
-				known[urlKey(u)] = true
+				known[postkey.URL(u)] = true
 			}
 			current := map[string]bool{}
 			novel := 0
 			for _, it := range items {
-				k := urlKey(it.URL)
+				k := postkey.URL(it.URL)
 				current[k] = true
 				if !known[k] {
 					novel++

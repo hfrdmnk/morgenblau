@@ -15,7 +15,7 @@ func TestSourceListCarriesGeneratedFeedHealthOnlyForOwnWebFeeds(t *testing.T) {
 	ctx := context.Background()
 	did, now := "did:plc:example", "2026-10-10T12:00:00Z"
 	const prefix = "https://app.example.com/web/"
-	if _, err := q.CreateWebSource(ctx, db.CreateWebSourceParams{
+	if err := q.CreateWebSource(ctx, db.CreateWebSourceParams{
 		ID: "generated", ListingKey: "news.example.com/", ListingUrl: "https://news.example.com/", SiteUrl: "https://news.example.com/",
 		Title: "Example Publication", Recipe: "{}", Health: "needs_attention", HealthReason: "Morgenblau isn't sure which links are posts",
 		SetupCost: "{}", CreatedByDid: "did:plc:creator", CreatedAt: now,

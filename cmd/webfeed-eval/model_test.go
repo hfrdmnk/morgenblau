@@ -49,18 +49,19 @@ func tonedListing() string {
 	return b.String()
 }
 
-type stubJudge struct{ calls atomic.Int32 }
+// stubModel picks the first list as judge and returns a CSS recipe as inducer, counting each step's calls.
+type stubModel struct{ judge, induce atomic.Int32 }
 
-func (j *stubJudge) Judge(ctx context.Context, in webfeed.JudgeInput) (webfeed.Verdict, webfeed.Usage, error) {
-	j.calls.Add(1)
-	return webfeed.Verdict{Pick: []int{0}, Order: webfeed.OrderDate}, webfeed.Usage{InputTokens: 2500, OutputTokens: 600, USD: 0.00055}, nil
-}
-
-type stubInducer struct{ calls atomic.Int32 }
-
-func (i *stubInducer) Induce(ctx context.Context, in webfeed.InduceInput) (webfeed.CSSRecipe, webfeed.Usage, error) {
-	i.calls.Add(1)
-	return webfeed.CSSRecipe{Item: "article.post", Link: "h2 a", Date: "time"}, webfeed.Usage{InputTokens: 20000, OutputTokens: 900, USD: 0.00245}, nil
+func (m *stubModel) Complete(ctx context.Context, p webfeed.Prompt) (string, webfeed.Usage, error) {
+	switch p.Effort {
+	case webfeed.EffortHigh:
+		m.judge.Add(1)
+		return `{"pick":[0],"order":"date","none":false}`, webfeed.Usage{InputTokens: 2500, OutputTokens: 600, USD: 0.00055}, nil
+	case webfeed.EffortMedium:
+		m.induce.Add(1)
+		return `{"item":"article.post","link":"h2 a","date":"time"}`, webfeed.Usage{InputTokens: 20000, OutputTokens: 900, USD: 0.00245}, nil
+	}
+	return "", webfeed.Usage{}, errors.New("unexpected step")
 }
 
 func TestModelStepsAreWiredAndTheirCostReported(t *testing.T) {
@@ -72,13 +73,13 @@ func TestModelStepsAreWiredAndTheirCostReported(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 	t.Cleanup(srv.Close)
-	j, ind := &stubJudge{}, &stubInducer{}
-	r := evalOne(t, site{ID: "toned", ListingURL: srv.URL + "/blog"}, options{judge: "haiku"}, env{client: srv.Client(), judge: j, inducer: ind})
+	m := &stubModel{}
+	r := evalOne(t, site{ID: "toned", ListingURL: srv.URL + "/blog"}, options{judge: "haiku"}, env{client: srv.Client(), model: m})
 	if r.Mode != "css" || len(r.Items) != 6 || r.Health != "ok" {
 		t.Fatalf("result = %+v", r)
 	}
-	if r.JudgeCalls != int(j.calls.Load()) || r.InduceCalls != 1 || ind.calls.Load() != 1 {
-		t.Fatalf("judge calls %d (made %d), induce calls %d", r.JudgeCalls, j.calls.Load(), r.InduceCalls)
+	if r.JudgeCalls != int(m.judge.Load()) || r.InduceCalls != 1 || m.induce.Load() != 1 {
+		t.Fatalf("judge calls %d (made %d), induce calls %d", r.JudgeCalls, m.judge.Load(), r.InduceCalls)
 	}
 	if want := float64(r.JudgeCalls)*0.00055 + 0.00245; math.Abs(r.CostUSD-want) > 1e-9 {
 		t.Fatalf("cost_usd = %v, want %v", r.CostUSD, want)
@@ -114,7 +115,7 @@ func TestListingSnapshotReplacesOnlyTheListing(t *testing.T) {
 	}
 	s := site{ID: "snap", ListingURL: srv.URL + "/no-feed", Snapshot: snap}
 
-	r := evalOne(t, s, options{snapshotField: true}, env{client: srv.Client(), inducer: &stubInducer{}})
+	r := evalOne(t, s, options{snapshotField: true}, env{client: srv.Client(), model: &stubModel{}})
 	mu.Lock()
 	listingHits, otherHits := hits["/no-feed"], len(hits)
 	mu.Unlock()

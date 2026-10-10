@@ -14,8 +14,10 @@ import (
 	"sync"
 	"time"
 
+	"morgenblau/internal/backoff"
 	"morgenblau/internal/database"
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/postkey"
 	"morgenblau/internal/webfeed"
 )
 
@@ -68,6 +70,7 @@ type Service struct {
 	limiter       Limiter
 	base          string
 	interval      time.Duration
+	backoff       backoff.Policy
 	modelDailyUSD float64
 	setupTimeout  time.Duration
 	slots         chan struct{}
@@ -79,7 +82,7 @@ type Service struct {
 
 // NewService takes a nil Generator when generation is not configured: Create then answers ErrUnavailable and nothing polls.
 func NewService(reader, writer *sql.DB, gen Generator, cfg Config) *Service {
-	return &Service{
+	s := &Service{
 		writer:        writer,
 		read:          db.New(reader),
 		gen:           gen,
@@ -92,9 +95,37 @@ func NewService(reader, writer *sql.DB, gen Generator, cfg Config) *Service {
 		now:           time.Now,
 		inflight:      map[string]bool{},
 	}
+	if cfg.PollInterval > 0 {
+		s.backoff.Steps = backoff.Exponential(2*cfg.PollInterval, 2, maxBackoff)
+	}
+	return s
 }
 
-func (s *Service) FeedURL(id string) string { return s.base + "/web/" + id }
+// FeedURL is the address readers subscribe to for one web source.
+func (s *Service) FeedURL(id string) string { return s.FeedURLPrefix() + id }
+
+// FeedURLPrefix is every generated feed's URL up to its id, for SQL that recognizes them by prefix.
+func (s *Service) FeedURLPrefix() string { return s.base + "/web/" }
+
+// IDFromFeedURL names the web source a feed URL serves, when it is one of this server's generated feeds.
+func (s *Service) IDFromFeedURL(raw string) (string, bool) {
+	u, err := url.Parse(raw)
+	base, berr := url.Parse(s.base)
+	if err != nil || berr != nil || base.Host == "" || !strings.EqualFold(u.Scheme, base.Scheme) || !strings.EqualFold(u.Host, base.Host) {
+		return "", false
+	}
+	id, ok := strings.CutPrefix(u.Path, "/web/")
+	if !ok || id == "" || strings.Contains(id, "/") {
+		return "", false
+	}
+	return id, true
+}
+
+// IsFeedURL reports one of this server's generated feeds.
+func (s *Service) IsFeedURL(raw string) bool {
+	_, ok := s.IDFromFeedURL(raw)
+	return ok
+}
 
 // Create returns the site's web source, generating it on first use. An anchorURL on a source that is not healthy, or an
 // unsure setup older than staleSetup, re-runs setup; the new one replaces the old only when it is ok or healthier.
@@ -103,7 +134,7 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 	if err != nil {
 		return Preview{}, err
 	}
-	stripTracking(listing)
+	postkey.StripTracking(listing)
 	if anchorURL != "" {
 		anchor, err := parseHTTPURL(anchorURL)
 		if err != nil {
@@ -119,7 +150,7 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 	regenerate := false
 	switch {
 	case err == nil:
-		takesAnchor := Health(existing.Health) != HealthOK || existing.NeedsAnchor != 0
+		takesAnchor := Health(existing.Health) != HealthOK || Health(existing.SetupHealth) == HealthNeedsAttention
 		if !takesAnchor {
 			anchorURL = ""
 		}
@@ -153,31 +184,61 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 	if err != nil {
 		return Preview{}, err
 	}
-	recipe := string(gen.Recipe)
-	if recipe == "" {
-		recipe = "{}"
-	}
-	cost, err := json.Marshal(gen.Cost)
+	setup, err := newSetupRow(key, listing, gen)
 	if err != nil {
 		return Preview{}, err
 	}
-	title := strings.TrimSpace(gen.Title)
-	if title == "" {
-		title = strings.TrimPrefix(listing.Hostname(), "www.")
+	id, err := s.storeSetup(ctx, did, setup, regenerate)
+	if err != nil {
+		return Preview{}, err
 	}
-	siteURL := strings.TrimSpace(gen.SiteURL)
-	if siteURL == "" {
-		siteURL = listing.Scheme + "://" + listing.Host + "/"
+	row, err := s.read.GetWebSource(ctx, id)
+	if err != nil {
+		return Preview{}, err
 	}
+	return s.preview(ctx, row)
+}
+
+// setupRow is a finished setup as the source row stores it.
+type setupRow struct {
+	key, listingURL, siteURL, title, recipe, cost string
+	gen                                           Generated
+}
+
+// newSetupRow fills in what a setup left blank: the recipe, the title and the site's address.
+func newSetupRow(key string, listing *url.URL, gen Generated) (setupRow, error) {
+	cost, err := json.Marshal(gen.Cost)
+	if err != nil {
+		return setupRow{}, err
+	}
+	row := setupRow{
+		key: key, listingURL: listing.String(), recipe: string(gen.Recipe), cost: string(cost), gen: gen,
+		title: strings.TrimSpace(gen.Title), siteURL: strings.TrimSpace(gen.SiteURL),
+	}
+	if row.recipe == "" {
+		row.recipe = "{}"
+	}
+	if row.title == "" {
+		row.title = strings.TrimPrefix(listing.Hostname(), "www.")
+	}
+	if row.siteURL == "" {
+		row.siteURL = listing.Scheme + "://" + listing.Host + "/"
+	}
+	return row, nil
+}
+
+// storeSetup writes a setup in one transaction: a new source, or a replacement of the site's source when regenerate and
+// the setup improves on it. Its items join as history; a healthy setup also starts the detector's history.
+func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow, regenerate bool) (string, error) {
+	gen := setup.gen
 	now := s.now().UTC()
 	nextPoll := formatTime(now.Add(s.interval))
-
 	var id string
-	err = database.WithTx(ctx, s.writer, func(q *db.Queries) error {
+	err := database.WithTx(ctx, s.writer, func(q *db.Queries) error {
 		if err := recordSpend(ctx, q, now, "setup", gen.Cost.USD); err != nil {
 			return err
 		}
-		row, err := q.GetWebSourceByListingKey(ctx, key)
+		row, err := q.GetWebSourceByListingKey(ctx, setup.key)
 		switch {
 		case err == nil && !regenerate:
 			// Another reader generated this site while our setup ran; theirs stands.
@@ -190,9 +251,9 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 				return q.MarkWebSourceSetupTried(ctx, db.MarkWebSourceSetupTriedParams{ID: id, TriedAt: formatTime(now)})
 			}
 			if err := q.ReplaceWebSourceSetup(ctx, db.ReplaceWebSourceSetupParams{
-				ID: id, ListingUrl: listing.String(), SiteUrl: siteURL, Title: title, Recipe: recipe,
-				Health: string(gen.Health), HealthReason: gen.HealthReason, NeedsAnchor: boolInt(gen.NeedsAnchor),
-				SetupCost: string(cost), UpdatedAt: formatTime(now), NextPollAt: &nextPoll,
+				ID: id, ListingUrl: setup.listingURL, SiteUrl: setup.siteURL, Title: setup.title, Recipe: setup.recipe,
+				Health: string(gen.Health), HealthReason: gen.HealthReason,
+				SetupCost: setup.cost, UpdatedAt: formatTime(now), NextPollAt: &nextPoll,
 			}); err != nil {
 				return err
 			}
@@ -201,14 +262,13 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 				return err
 			}
 		case errors.Is(err, sql.ErrNoRows):
-			id, err = newID()
-			if err != nil {
+			if id, err = newID(); err != nil {
 				return err
 			}
-			if _, err := q.CreateWebSource(ctx, db.CreateWebSourceParams{
-				ID: id, ListingKey: key, ListingUrl: listing.String(), SiteUrl: siteURL, Title: title, Recipe: recipe,
-				Health: string(gen.Health), HealthReason: gen.HealthReason, NeedsAnchor: boolInt(gen.NeedsAnchor),
-				SetupCost: string(cost), CreatedByDid: did, CreatedAt: formatTime(now), NextPollAt: &nextPoll,
+			if err := q.CreateWebSource(ctx, db.CreateWebSourceParams{
+				ID: id, ListingKey: setup.key, ListingUrl: setup.listingURL, SiteUrl: setup.siteURL, Title: setup.title, Recipe: setup.recipe,
+				Health: string(gen.Health), HealthReason: gen.HealthReason,
+				SetupCost: setup.cost, CreatedByDid: did, CreatedAt: formatTime(now), NextPollAt: &nextPoll,
 			}); err != nil {
 				return err
 			}
@@ -224,14 +284,7 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 		}
 		return nil
 	})
-	if err != nil {
-		return Preview{}, err
-	}
-	row, err := s.read.GetWebSource(ctx, id)
-	if err != nil {
-		return Preview{}, err
-	}
-	return s.preview(ctx, row)
+	return id, err
 }
 
 // runSetup runs one setup in a slot, bounded by the setup deadline, with the model only while the daily budget lasts.
@@ -349,7 +402,7 @@ func (s *Service) preview(ctx context.Context, row db.WebSource) (Preview, error
 	if err != nil {
 		return Preview{}, err
 	}
-	items := make([]FeedItem, 0, len(rows))
+	items := make([]Item, 0, len(rows))
 	for _, r := range rows {
 		items = append(items, feedItem(r))
 	}
@@ -359,7 +412,7 @@ func (s *Service) preview(ctx context.Context, row db.WebSource) (Preview, error
 func (s *Service) source(row db.WebSource) Source {
 	return Source{
 		ID: row.ID, FeedURL: s.FeedURL(row.ID), ListingURL: row.ListingUrl, SiteURL: row.SiteUrl, Title: row.Title,
-		Health: Health(row.Health), HealthReason: row.HealthReason, NeedsAnchor: row.NeedsAnchor != 0,
+		Health: Health(row.Health), HealthReason: row.HealthReason, NeedsAnchor: Health(row.SetupHealth) == HealthNeedsAttention,
 	}
 }
 
@@ -369,7 +422,7 @@ func (s *Service) PollDue(ctx context.Context) (int, error) {
 		return 0, ErrUnavailable
 	}
 	now := formatTime(s.now().UTC())
-	due, err := s.read.ListDueWebSources(ctx, db.ListDueWebSourcesParams{Now: &now, FeedUrlPrefix: s.FeedURL(""), Limit: pollBatch})
+	due, err := s.read.ListDueWebSources(ctx, db.ListDueWebSourcesParams{Now: &now, FeedUrlPrefix: s.FeedURLPrefix(), Limit: pollBatch})
 	if err != nil {
 		return 0, err
 	}
@@ -402,17 +455,22 @@ func (s *Service) pollOne(ctx context.Context, src db.WebSource) error {
 		out = PollOutcome{Verdict: VerdictBroken, Reason: "the site could not be reached"}
 	}
 
-	update := db.UpdateWebSourcePollParams{
+	if prev.WeeklyAlarm && out.Verdict == VerdictOK && !out.Checked && !answersAlarm(out.Repair) {
+		out = PollOutcome{Verdict: VerdictSuspect, Reason: src.HealthReason, Repair: out.Repair}
+	}
+	update, publish := s.pollUpdate(src, out, now)
+	return s.storePoll(ctx, src, out, update, publish, now)
+}
+
+// pollUpdate is the source row after a poll, and whether the poll's items are published.
+func (s *Service) pollUpdate(src db.WebSource, out PollOutcome, now time.Time) (update db.UpdateWebSourcePollParams, publish bool) {
+	update = db.UpdateWebSourcePollParams{
 		ID: src.ID, SetupSeq: src.SetupSeq, Recipe: src.Recipe, LastPolledAt: ptr(formatTime(now)), UpdatedAt: formatTime(now),
 		Etag: src.Etag, LastModified: src.LastModified, LinkSetHash: src.LinkSetHash,
 	}
 	if out.Checked {
 		update.LastCheckedAt = ptr(formatTime(now))
 	}
-	if prev.WeeklyAlarm && out.Verdict == VerdictOK && !out.Checked && !answersAlarm(out.Repair) {
-		out = PollOutcome{Verdict: VerdictSuspect, Reason: src.HealthReason, Repair: out.Repair}
-	}
-	publish := false
 	switch out.Verdict {
 	case VerdictOK:
 		update.Health, update.HealthReason = string(HealthOK), ""
@@ -433,9 +491,17 @@ func (s *Service) pollOne(ctx context.Context, src db.WebSource) error {
 			update.Health = string(HealthBlockedBySite)
 		}
 		update.ConsecutiveFailures = src.ConsecutiveFailures + 1
-		update.NextPollAt = ptr(formatTime(now.Add(s.backoff(update.ConsecutiveFailures))))
+		update.NextPollAt = ptr(formatTime(now.Add(s.backoff.Delay(int(update.ConsecutiveFailures)))))
 	}
+	// Only a later setup answers an unsure one; its own polls trust the very list it doubted.
+	if out.Verdict != VerdictBroken && Health(src.SetupHealth) != HealthOK {
+		update.Health, update.HealthReason = src.SetupHealth, src.SetupHealthReason
+	}
+	return update, publish
+}
 
+// storePoll writes one poll in a transaction: spend, the source row, its repair record and, when publish, the new items.
+func (s *Service) storePoll(ctx context.Context, src db.WebSource, out PollOutcome, update db.UpdateWebSourcePollParams, publish bool, now time.Time) error {
 	return database.WithTx(ctx, s.writer, func(q *db.Queries) error {
 		if err := recordSpend(ctx, q, now, "check", out.CheckUSD); err != nil {
 			return err
@@ -475,23 +541,21 @@ func (s *Service) pollOne(ctx context.Context, src db.WebSource) error {
 				return err
 			}
 		}
-		if publish {
-			items := dedupeItems(out.Items)
-			fresh, moved, err := unpublished(ctx, q, src.ID, items)
-			if err != nil {
-				return err
-			}
-			if err := insertItems(ctx, q, src.ID, fresh, now, false); err != nil {
-				return err
-			}
-			if err := insertItems(ctx, q, src.ID, moved, now, true); err != nil {
-				return err
-			}
-			if err := recordPoll(ctx, q, src.ID, now, items, out.Fingerprint); err != nil {
-				return err
-			}
+		if !publish {
+			return nil
 		}
-		return nil
+		items := dedupeItems(out.Items)
+		fresh, moved, err := unpublished(ctx, q, src.ID, items)
+		if err != nil {
+			return err
+		}
+		if err := insertItems(ctx, q, src.ID, fresh, now, false); err != nil {
+			return err
+		}
+		if err := insertItems(ctx, q, src.ID, moved, now, true); err != nil {
+			return err
+		}
+		return recordPoll(ctx, q, src.ID, now, items, out.Fingerprint)
 	})
 }
 
@@ -507,14 +571,6 @@ func joinReasons(a, b string) string {
 	return a + "; " + b
 }
 
-func (s *Service) backoff(failures int64) time.Duration {
-	d := s.interval
-	for i := int64(0); i < failures && d < maxBackoff; i++ {
-		d *= 2
-	}
-	return min(d, maxBackoff)
-}
-
 func (s *Service) pollState(ctx context.Context, src db.WebSource, now time.Time) (PollState, error) {
 	rows, err := s.read.ListWebSourcePolls(ctx, db.ListWebSourcePollsParams{SourceID: src.ID, Limit: historyPolls})
 	if err != nil {
@@ -522,8 +578,7 @@ func (s *Service) pollState(ctx context.Context, src db.WebSource, now time.Time
 	}
 	state := PollState{ETag: deref(src.Etag), LastModified: deref(src.LastModified), LinkSetHash: deref(src.LinkSetHash)}
 	for _, r := range rows {
-		rec := PollRecord{Count: int(r.ItemCount), Fingerprint: Fingerprint{URLTemplate: r.UrlTemplate, DateFrac: r.DateFrac, TitleShape: r.TitleShape}}
-		rec.PolledAt, _ = time.Parse(timeLayout, r.PolledAt)
+		rec := PollRecord{Fingerprint: Fingerprint{URLTemplate: r.UrlTemplate, DateFrac: r.DateFrac, TitleShape: r.TitleShape}}
 		if err := json.Unmarshal([]byte(r.Urls), &rec.URLs); err != nil {
 			return PollState{}, fmt.Errorf("poll %d urls: %w", r.ID, err)
 		}
@@ -531,6 +586,19 @@ func (s *Service) pollState(ctx context.Context, src db.WebSource, now time.Time
 			return PollState{}, fmt.Errorf("poll %d titles: %w", r.ID, err)
 		}
 		state.History = append(state.History, rec)
+	}
+	known, err := s.read.ListWebSourceKnownItems(ctx, src.ID)
+	if err != nil {
+		return PollState{}, err
+	}
+	for _, k := range known {
+		it := Item{URL: k.Url, Title: k.Title}
+		if k.PublishedAt != nil {
+			if it.Date, err = time.Parse(timeLayout, *k.PublishedAt); err != nil {
+				return PollState{}, fmt.Errorf("item %s date: %w", k.Url, err)
+			}
+		}
+		state.Known = append(state.Known, it)
 	}
 
 	modelLeft, err := s.modelBudgetLeft(ctx)
@@ -588,24 +656,26 @@ func unpublished(ctx context.Context, q *db.Queries, sourceID string, items []It
 	urls := make(map[string]bool, len(known))
 	byTitle := make(map[string][]string, len(known))
 	for _, k := range known {
-		urls[k.Url] = true
-		byTitle[normTitle(k.Title)] = append(byTitle[normTitle(k.Title)], k.Url)
+		urls[postkey.URL(k.Url)] = true
+		byTitle[postkey.Title(k.Title)] = append(byTitle[postkey.Title(k.Title)], k.Url)
 	}
 	current := make(map[string]bool, len(items))
 	for _, it := range items {
-		current[it.URL] = true
+		current[postkey.URL(it.URL)] = true
 	}
 	var oldest time.Time
 	switch raw, err := q.GetOldestWebSourceItemDate(ctx, sourceID); {
 	case err == nil && raw != nil:
-		oldest, _ = time.Parse(timeLayout, *raw)
+		if oldest, err = time.Parse(timeLayout, *raw); err != nil {
+			return nil, nil, fmt.Errorf("oldest item date: %w", err)
+		}
 	case err != nil && !errors.Is(err, sql.ErrNoRows):
 		return nil, nil, err
 	}
 	for _, it := range items {
 		switch {
-		case urls[it.URL] || (!it.Date.IsZero() && !oldest.IsZero() && it.Date.Before(oldest)):
-		case movedFrom(it.URL, byTitle[normTitle(it.Title)], current):
+		case urls[postkey.URL(it.URL)] || (!it.Date.IsZero() && !oldest.IsZero() && it.Date.Before(oldest)):
+		case movedFrom(it.URL, byTitle[postkey.Title(it.Title)], current):
 			moved = append(moved, it)
 		default:
 			fresh = append(fresh, it)
@@ -618,14 +688,12 @@ func unpublished(ctx context.Context, q *db.Queries, sourceID string, items []It
 func movedFrom(newURL string, sameTitle []string, current map[string]bool) bool {
 	shape := webfeed.URLTemplate(newURL)
 	for _, old := range sameTitle {
-		if !current[old] && webfeed.URLTemplate(old) != shape {
+		if !current[postkey.URL(old)] && webfeed.URLTemplate(old) != shape {
 			return true
 		}
 	}
 	return false
 }
-
-func normTitle(t string) string { return strings.ToLower(strings.Join(strings.Fields(t), " ")) }
 
 // dedupeItems is the gate every stored item passes: one per URL, only http(s) links, at most maxItems.
 func dedupeItems(items []Item) []Item {
@@ -636,10 +704,11 @@ func dedupeItems(items []Item) []Item {
 			break
 		}
 		it.URL = strings.TrimSpace(it.URL)
-		if seen[it.URL] || !isWebLink(it.URL) {
+		key := postkey.URL(it.URL)
+		if seen[key] || !isWebLink(it.URL) {
 			continue
 		}
-		seen[it.URL] = true
+		seen[key] = true
 		it.Title = strings.TrimSpace(it.Title)
 		if it.Title == "" {
 			it.Title = it.URL
@@ -694,8 +763,8 @@ func recordPoll(ctx context.Context, q *db.Queries, sourceID string, now time.Ti
 }
 
 // feedItem applies the history rule: a setup item without a date has none in the feed; a later one is dated when Morgenblau first saw it.
-func feedItem(r db.ListWebSourceFeedItemsRow) FeedItem {
-	it := FeedItem{URL: r.Url, Title: r.Title, Excerpt: r.Excerpt}
+func feedItem(r db.ListWebSourceFeedItemsRow) Item {
+	it := Item{URL: r.Url, Title: r.Title, Excerpt: r.Excerpt}
 	switch {
 	case r.PublishedAt != nil:
 		it.Date, _ = time.Parse(timeLayout, *r.PublishedAt)
@@ -736,26 +805,8 @@ func parseHTTPURL(raw string) (*url.URL, error) {
 // parameters do not make a second web source.
 func listingKey(u *url.URL) string {
 	c := *u
-	stripTracking(&c)
-	key := strings.TrimPrefix(c.Host, "www.") + strings.TrimRight(c.EscapedPath(), "/")
-	if c.RawQuery != "" {
-		key += "?" + c.RawQuery
-	}
-	return key
-}
-
-// stripTracking drops query parameters that only say where a click came from, keeping the ones that pick content.
-func stripTracking(u *url.URL) {
-	if u.RawQuery == "" {
-		return
-	}
-	q := u.Query()
-	for k := range q {
-		if lk := strings.ToLower(k); strings.HasPrefix(lk, "utm_") || lk == "ref" || lk == "fbclid" || lk == "gclid" {
-			q.Del(k)
-		}
-	}
-	u.RawQuery = q.Encode()
+	postkey.StripTracking(&c)
+	return postkey.FromURL(&c)
 }
 
 // sameSite holds when one host is the other or a subdomain of it, www. aside.

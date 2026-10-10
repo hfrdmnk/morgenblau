@@ -74,7 +74,7 @@ func TestWebSourcesCreate_ReturnsThePreview(t *testing.T) {
 			ID: "abc", FeedURL: "https://app.example.com/web/abc", Title: "Example Publication", SiteURL: "https://news.example.com/",
 			Health: websource.HealthNeedsAttention, HealthReason: "only two posts found", NeedsAnchor: true,
 		},
-		Items: []websource.FeedItem{
+		Items: []websource.Item{
 			{URL: "https://news.example.com/posts/b", Title: "B", Date: time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC), Excerpt: "not sent"},
 			{URL: "https://news.example.com/posts/a", Title: "A"},
 		},
@@ -97,7 +97,7 @@ func TestWebSourcesCreate_ReturnsThePreview(t *testing.T) {
 }
 
 func TestWebSourcesCreate_ASiteThatBlocksUsIsNotAnError(t *testing.T) {
-	svc := &fakeWebSources{preview: websource.Preview{Source: websource.Source{ID: "abc", Health: websource.HealthBlockedBySite}, Items: []websource.FeedItem{}}}
+	svc := &fakeWebSources{preview: websource.Preview{Source: websource.Source{ID: "abc", Health: websource.HealthBlockedBySite}, Items: []websource.Item{}}}
 	rr := postWebSource(t, svc, `{"url":"https://news.example.com/"}`)
 	var body struct {
 		Health string            `json:"health"`
@@ -147,5 +147,15 @@ func TestWebSourcesCreate_Errors(t *testing.T) {
 				t.Errorf("status = %d, body = %s; want %d %s", rr.Code, rr.Body, tc.status, tc.code)
 			}
 		})
+	}
+}
+
+func TestWebSourcesCreate_UnreachableSiteSaysSoRatherThanBlocked(t *testing.T) {
+	err := fmt.Errorf("%w: %w: dial tcp: connection refused", websource.ErrGeneration, websource.ErrUnreachable)
+	rr := postWebSource(t, &fakeWebSources{err: err}, `{"url":"https://news.example.com/"}`)
+	var env errorEnvelope
+	_ = json.Unmarshal(rr.Body.Bytes(), &env)
+	if rr.Code != http.StatusBadGateway || env.Code != codeUpstreamError || env.Message != "Couldn't reach that site" {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body)
 	}
 }

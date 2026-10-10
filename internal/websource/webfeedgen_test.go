@@ -2,29 +2,65 @@ package websource
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"testing"
 
 	"morgenblau/internal/webfeed"
 )
 
-type fixedJudge struct{}
+// scriptedModel answers by step: the judge (effort high) picks the first list, the weekly check (effort low) says
+// broken when told to; it counts the calls per step.
+type scriptedModel struct {
+	mu     sync.Mutex
+	broken bool
+	calls  map[webfeed.Effort]int
+}
 
-func (fixedJudge) Judge(context.Context, webfeed.JudgeInput) (webfeed.Verdict, webfeed.Usage, error) {
-	return webfeed.Verdict{Pick: []int{0}, Order: webfeed.OrderDate}, webfeed.Usage{InputTokens: 2500, OutputTokens: 600, USD: 0.00054}, nil
+func (m *scriptedModel) Complete(_ context.Context, p webfeed.Prompt) (string, webfeed.Usage, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.calls == nil {
+		m.calls = map[webfeed.Effort]int{}
+	}
+	m.calls[p.Effort]++
+	switch p.Effort {
+	case webfeed.EffortHigh:
+		return `{"pick":[0],"order":"date","none":false}`, webfeed.Usage{InputTokens: 2500, OutputTokens: 600, USD: 0.00054}, nil
+	case webfeed.EffortLow:
+		verdict := "healthy"
+		if m.broken {
+			verdict = "broken"
+		}
+		return `{"verdict":"` + verdict + `","reason":"the items look like category pages"}`, webfeed.Usage{InputTokens: 1500, OutputTokens: 100, USD: 0.0002}, nil
+	}
+	return "", webfeed.Usage{}, errors.New("no reply scripted for this step")
+}
+
+func (m *scriptedModel) count(e webfeed.Effort) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.calls[e]
+}
+
+func (m *scriptedModel) setBroken(b bool) {
+	m.mu.Lock()
+	m.broken = b
+	m.mu.Unlock()
 }
 
 func TestWebfeedGeneratorSetupMapsTheResult(t *testing.T) {
 	web := driftSite()
-	gen := NewWebfeedGenerator(webfeed.Options{Client: web.client()}, nil)
+	gen := NewWebfeedGenerator(webfeed.Options{Client: web.client()})
 	got, err := gen.Setup(context.Background(), driftListing, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Health != HealthOK || got.HealthReason != "" || got.NeedsAnchor || got.Title != "Blog | Example Publication" {
+	if got.Health != HealthOK || got.HealthReason != "" || got.Title != "Blog | Example Publication" {
 		t.Fatalf("generated = %+v", got)
 	}
 	if len(got.Items) != 8 || got.Items[0].URL != driftURL(2, "blog") || got.Items[0].Excerpt != "A short teaser for post 2 that tells readers what it is about." {
@@ -44,26 +80,26 @@ func TestWebfeedGeneratorSetupMapsTheResult(t *testing.T) {
 func TestWebfeedGeneratorSetupWordsItsDoubtsForReaders(t *testing.T) {
 	thin := driftSite()
 	thin.set(driftListing, driftPage("Blog", driftList(2, 4, "blog")))
-	got, err := NewWebfeedGenerator(webfeed.Options{Client: thin.client()}, nil).Setup(context.Background(), driftListing, "", true)
+	got, err := NewWebfeedGenerator(webfeed.Options{Client: thin.client()}).Setup(context.Background(), driftListing, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Health != HealthNeedsAttention || !got.NeedsAnchor || got.HealthReason != "only a few posts were found" {
-		t.Errorf("thin listing = %s %v %q", got.Health, got.NeedsAnchor, got.HealthReason)
+	if got.Health != HealthNeedsAttention || got.HealthReason != "only a few posts were found" {
+		t.Errorf("thin listing = %s %q", got.Health, got.HealthReason)
 	}
 
 	closed := driftSite()
 	closed.setPage("https://blog.example.com/robots.txt", fakePage{ctype: "text/plain", body: "User-agent: *\nDisallow: /blog\n"})
-	got, err = NewWebfeedGenerator(webfeed.Options{Client: closed.client()}, nil).Setup(context.Background(), driftListing, "", true)
+	got, err = NewWebfeedGenerator(webfeed.Options{Client: closed.client()}).Setup(context.Background(), driftListing, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Health != HealthBlockedBySite || got.NeedsAnchor || got.HealthReason != "this site blocks feed readers" {
-		t.Errorf("robots-closed listing = %s %v %q", got.Health, got.NeedsAnchor, got.HealthReason)
+	if got.Health != HealthBlockedBySite || got.HealthReason != "this site blocks feed readers" {
+		t.Errorf("robots-closed listing = %s %q", got.Health, got.HealthReason)
 	}
 
-	for _, reasons := range [][]string{{"unsure"}, {"something new"}} {
-		if got := setupReason(HealthNeedsAttention, reasons); got != "Morgenblau isn't sure which links are posts" {
+	for _, reasons := range [][]webfeed.Reason{{webfeed.ReasonUnsure}, {"something new"}} {
+		if got := setupReason(false, reasons); got != "Morgenblau isn't sure which links are posts" {
 			t.Errorf("setupReason(%v) = %q", reasons, got)
 		}
 	}
@@ -87,41 +123,41 @@ func twoListsPage() string {
 func TestWebfeedGeneratorSetupLeavesTheModelOutWhenTold(t *testing.T) {
 	web := driftSite()
 	web.set(driftListing, twoListsPage())
-	judge := &countingJudge{}
-	gen := NewWebfeedGenerator(webfeed.Options{Client: web.client(), Judge: judge}, nil)
+	judge := &scriptedModel{}
+	gen := NewWebfeedGenerator(webfeed.Options{Client: web.client(), Model: judge})
 	if _, err := gen.Setup(context.Background(), driftListing, "", true); err != nil {
 		t.Fatal(err)
 	}
-	if judge.calls.Load() == 0 {
+	if judge.count(webfeed.EffortHigh) == 0 {
 		t.Fatal("the fixture never asks the judge, so it proves nothing")
 	}
-	before := judge.calls.Load()
+	before := judge.count(webfeed.EffortHigh)
 	got, err := gen.Setup(context.Background(), driftListing, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if judge.calls.Load() != before || got.Cost.USD != 0 {
-		t.Errorf("judge calls %d -> %d, cost %+v; want no model call over budget", before, judge.calls.Load(), got.Cost)
+	if judge.count(webfeed.EffortHigh) != before || got.Cost.USD != 0 {
+		t.Errorf("judge calls %d -> %d, cost %+v; want no model call over budget", before, judge.count(webfeed.EffortHigh), got.Cost)
 	}
 }
 
 func TestWebfeedGeneratorPollNeverReachesTheModel(t *testing.T) {
 	web := driftSite()
-	judge := &countingJudge{}
-	gen := NewWebfeedGenerator(webfeed.Options{Client: web.client(), Judge: judge}, nil)
+	judge := &scriptedModel{}
+	gen := NewWebfeedGenerator(webfeed.Options{Client: web.client(), Model: judge})
 	setup, err := gen.Setup(context.Background(), driftListing, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := judge.calls.Load()
+	before := judge.count(webfeed.EffortHigh)
 	web.set(driftListing, driftPage("Blog", `<main><h1>Topics</h1><div class="topics"><a href="/tags/design">Design</a><a href="/tags/culture">Culture</a></div></main>`))
 	prev := PollState{History: []PollRecord{{URLs: urlsOf(2, 10, "blog"), Titles: driftTitles[2:10], Fingerprint: setup.Fingerprint}}}
 	out, err := gen.Poll(context.Background(), setup.Recipe, prev)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if judge.calls.Load() != before || out.Repair == nil || out.Repair.UsedModel || out.Verdict != VerdictSuspect {
-		t.Fatalf("judge calls %d -> %d, outcome %+v, repair %+v", before, judge.calls.Load(), out, out.Repair)
+	if judge.count(webfeed.EffortHigh) != before || out.Repair == nil || out.Repair.UsedModel || out.Verdict != VerdictSuspect {
+		t.Fatalf("judge calls %d -> %d, outcome %+v, repair %+v", before, judge.count(webfeed.EffortHigh), out, out.Repair)
 	}
 	prev.AllowModelRepair = true
 	out, err = gen.Poll(context.Background(), setup.Recipe, prev)
@@ -133,10 +169,13 @@ func TestWebfeedGeneratorPollNeverReachesTheModel(t *testing.T) {
 	}
 }
 
-// countingJudge counts calls; the judge's three votes run in parallel.
-type countingJudge struct{ calls atomic.Int32 }
-
-func (j *countingJudge) Judge(ctx context.Context, in webfeed.JudgeInput) (webfeed.Verdict, webfeed.Usage, error) {
-	j.calls.Add(1)
-	return fixedJudge{}.Judge(ctx, in)
+func TestWebfeedGeneratorSetupReportsAnUnreachableSite(t *testing.T) {
+	for _, status := range []int{http.StatusServiceUnavailable, http.StatusBadGateway} {
+		web := driftSite()
+		web.setPage(driftListing, fakePage{status: status, body: "down"})
+		_, err := NewWebfeedGenerator(webfeed.Options{Client: web.client()}).Setup(context.Background(), driftListing, "", true)
+		if !errors.Is(err, ErrUnreachable) {
+			t.Errorf("HTTP %d: err = %v, want ErrUnreachable", status, err)
+		}
+	}
 }

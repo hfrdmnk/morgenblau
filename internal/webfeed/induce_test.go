@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 )
 
@@ -28,44 +27,34 @@ func tonedBlog(s *testSite) {
 
 var tonedRecipe = CSSRecipe{Item: "article.post", Link: "h2 a", Title: "h2", Date: "time"}
 
-type fakeInducer struct {
-	mu      sync.Mutex
-	inputs  []InduceInput
-	replies []CSSRecipe
-	errs    []error
-}
-
-func (f *fakeInducer) Induce(ctx context.Context, in InduceInput) (CSSRecipe, Usage, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	i := len(f.inputs)
-	f.inputs = append(f.inputs, in)
-	u := Usage{InputTokens: 20000, OutputTokens: 900, USD: 0.00245}
-	if i < len(f.errs) && f.errs[i] != nil {
-		return CSSRecipe{}, u, f.errs[i]
+// inducer is a model whose induction replies with recipes; its judge has no script, so every vote falls back to the heuristic.
+func inducer(t *testing.T, recipes ...CSSRecipe) *fakeModel {
+	m := &fakeModel{replies: map[Effort][]string{}}
+	for _, r := range recipes {
+		m.replies[EffortMedium] = append(m.replies[EffortMedium], cssReply(t, r))
 	}
-	return f.replies[min(i, len(f.replies)-1)], u, nil
+	return m
 }
 
 func TestSetupInducesACSSRecipeWhenFewerThanThreeItemsSurvive(t *testing.T) {
 	s := newTestSite(t)
 	tonedBlog(s)
-	ind := &fakeInducer{replies: []CSSRecipe{tonedRecipe}}
+	ind := inducer(t, tonedRecipe)
 	opts := s.opts()
-	opts.Inducer = ind
+	opts.Model = ind
 	res, err := Setup(context.Background(), s.url("/blog"), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ind.inputs) != 1 || ind.inputs[0].System != InduceSystemPrompt || !strings.HasPrefix(ind.inputs[0].User, "Page: "+s.url("/blog")) {
-		t.Fatalf("induce inputs = %+v", ind.inputs)
+	if in := ind.calls(EffortMedium); len(in) != 1 || in[0].System != inducePrompt || !strings.HasPrefix(in[0].User, "Page: "+s.url("/blog")) {
+		t.Fatalf("induce prompts = %+v", ind.calls(EffortMedium))
 	}
 	r := res.Recipe
 	if r.Mode != ModeCSS || r.CSS == nil || *r.CSS != tonedRecipe || len(r.Streams) != 0 {
 		t.Fatalf("recipe mode %s css %+v streams %+v", r.Mode, r.CSS, r.Streams)
 	}
-	if res.Health != HealthOK || len(res.Items) != 6 || res.Items[0].Title != postTitles[0] || res.Items[0].Date.Format("2006-01-02") != "2024-03-20" {
-		t.Fatalf("health %s %v items %+v", res.Health, res.HealthReasons, res.Items)
+	if !res.Healthy() || len(res.Items) != 6 || res.Items[0].Title != postTitles[0] || res.Items[0].Date.Format("2006-01-02") != "2024-03-20" {
+		t.Fatalf("blocked %v reasons %v items %+v", res.Blocked, res.Reasons, res.Items)
 	}
 	wantTmpl := s.host() + "/blog/*/*"
 	if r.Order != OrderDate || r.DateSource != DateSourceListing || r.Fingerprint.Count != 6 || !reflect.DeepEqual(r.Fingerprint.URLTemplates, []string{wantTmpl}) {
@@ -76,7 +65,7 @@ func TestSetupInducesACSSRecipeWhenFewerThanThreeItemsSurvive(t *testing.T) {
 		t.Fatalf("setup record %+v induce %+v", r.Setup, rec)
 	}
 	listing, _ := s.get(t, "/blog")
-	items, err := Apply(r, listing, s.url("/blog"))
+	items, err := apply(r, listing, s.url("/blog"))
 	if err != nil || !reflect.DeepEqual(itemURLs(items), itemURLs(res.Items)) {
 		t.Fatalf("Apply = %v, %v; want the setup's items", itemURLs(items), err)
 	}
@@ -85,32 +74,33 @@ func TestSetupInducesACSSRecipeWhenFewerThanThreeItemsSurvive(t *testing.T) {
 func TestSetupSkipsInductionWhenTheExtractorSucceeds(t *testing.T) {
 	s := newTestSite(t)
 	s.addBlog(6)
-	ind := &fakeInducer{replies: []CSSRecipe{tonedRecipe}}
+	ind := inducer(t, tonedRecipe)
 	opts := s.opts()
-	opts.Inducer = ind
+	opts.Model = ind
 	res, err := Setup(context.Background(), s.url("/blog"), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ind.inputs) != 0 || res.Recipe.Setup.Induce != nil || res.Recipe.Mode != ModeStreams {
-		t.Fatalf("induced on a healthy page: calls %d record %+v", len(ind.inputs), res.Recipe.Setup.Induce)
+	if len(ind.calls(EffortMedium)) != 0 || res.Recipe.Setup.Induce != nil || res.Recipe.Mode != ModeStreams {
+		t.Fatalf("induced on a healthy page: calls %d record %+v", len(ind.calls(EffortMedium)), res.Recipe.Setup.Induce)
 	}
 }
 
 func TestSetupRepairsAnInducedRecipeThatYieldsNothingOnce(t *testing.T) {
 	s := newTestSite(t)
 	tonedBlog(s)
-	ind := &fakeInducer{replies: []CSSRecipe{{Item: "li.entry", Link: "a"}, tonedRecipe}}
+	ind := inducer(t, CSSRecipe{Item: "li.entry", Link: "a"}, tonedRecipe)
 	opts := s.opts()
-	opts.Inducer = ind
+	opts.Model = ind
 	res, err := Setup(context.Background(), s.url("/blog"), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ind.inputs) != 2 {
-		t.Fatalf("induce calls = %d, want one repair round", len(ind.inputs))
+	in := ind.calls(EffortMedium)
+	if len(in) != 2 {
+		t.Fatalf("induce calls = %d, want one repair round", len(in))
 	}
-	repair := ind.inputs[1].User
+	repair := in[1].User
 	if !strings.Contains(repair, `"item":"li.entry"`) || !strings.Contains(repair, "matched 0 elements") {
 		t.Fatalf("repair message lacks the failed recipe and why:\n%s", repair)
 	}
@@ -122,19 +112,20 @@ func TestSetupRepairsAnInducedRecipeThatYieldsNothingOnce(t *testing.T) {
 func TestSetupStopsAfterOneRepairRound(t *testing.T) {
 	s := newTestSite(t)
 	tonedBlog(s)
-	ind := &fakeInducer{replies: []CSSRecipe{{Item: "li.entry"}}, errs: []error{errors.New("judge: no JSON object in reply")}}
+	ind := inducer(t, CSSRecipe{Item: "li.entry"})
+	ind.errs = map[Effort][]error{EffortMedium: {errors.New("induce: no JSON object in reply")}}
 	opts := s.opts()
-	opts.Inducer = ind
+	opts.Model = ind
 	res, err := Setup(context.Background(), s.url("/blog"), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rec := res.Recipe.Setup.Induce
-	if len(ind.inputs) != 2 || rec.Calls != 2 || rec.Failed != 1 || rec.Kept || rec.USD == 0 {
-		t.Fatalf("calls %d record %+v", len(ind.inputs), rec)
+	if len(ind.calls(EffortMedium)) != 2 || rec.Calls != 2 || rec.Failed != 1 || rec.Kept || rec.USD == 0 {
+		t.Fatalf("calls %d record %+v", len(ind.calls(EffortMedium)), rec)
 	}
-	if res.Recipe.Mode != ModeStreams || len(res.Items) != 1 || res.Health != HealthNeedsAttention {
-		t.Fatalf("extractor result not kept: mode %s items %d health %s", res.Recipe.Mode, len(res.Items), res.Health)
+	if res.Recipe.Mode != ModeStreams || len(res.Items) != 1 || (res.Healthy() || res.Blocked) {
+		t.Fatalf("extractor result not kept: mode %s items %d reasons %v", res.Recipe.Mode, len(res.Items), res.Reasons)
 	}
 }
 
@@ -142,9 +133,9 @@ func TestSetupKeepsTheExtractorWhenTheInducedRecipeIsNotBetter(t *testing.T) {
 	s := newTestSite(t)
 	tonedBlog(s)
 	// The site navigation: many links, but one-word labels fail the title-shape check.
-	ind := &fakeInducer{replies: []CSSRecipe{{Item: "header nav a"}}}
+	ind := inducer(t, CSSRecipe{Item: "header nav a"})
 	opts := s.opts()
-	opts.Inducer = ind
+	opts.Model = ind
 	res, err := Setup(context.Background(), s.url("/blog"), opts)
 	if err != nil {
 		t.Fatal(err)
@@ -163,19 +154,14 @@ func TestSetupInductionHonorsCancellation(t *testing.T) {
 	tonedBlog(s)
 	ctx, cancel := context.WithCancel(context.Background())
 	opts := s.opts()
-	opts.Inducer = inducerFunc(func(ctx context.Context, in InduceInput) (CSSRecipe, Usage, error) {
-		cancel()
-		return CSSRecipe{}, Usage{}, ctx.Err()
-	})
+	opts.Model = &fakeModel{before: func(_ context.Context, p Prompt) {
+		if p.Effort == EffortMedium {
+			cancel()
+		}
+	}}
 	if _, err := Setup(ctx, s.url("/blog"), opts); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v", err)
 	}
-}
-
-type inducerFunc func(context.Context, InduceInput) (CSSRecipe, Usage, error)
-
-func (f inducerFunc) Induce(ctx context.Context, in InduceInput) (CSSRecipe, Usage, error) {
-	return f(ctx, in)
 }
 
 func TestSetupRecordModelCostSumsJudgeAndInduction(t *testing.T) {
@@ -193,13 +179,13 @@ func TestSetupRecordModelCostSumsJudgeAndInduction(t *testing.T) {
 }
 
 func TestParseCSSRecipe(t *testing.T) {
-	got, err := ParseCSSRecipe("Here you go:\n```json\n{\"item\":\" li.post \",\"link\":\"a\",\"title\":\"\",\"date\":\"time\",\"reason\":\"list\"}\n```")
+	got, err := parseCSSRecipe("Here you go:\n```json\n{\"item\":\" li.post \",\"link\":\"a\",\"title\":\"\",\"date\":\"time\",\"reason\":\"list\"}\n```")
 	if err != nil || got != (CSSRecipe{Item: "li.post", Link: "a", Date: "time"}) {
 		t.Fatalf("got %+v, %v", got, err)
 	}
 	for _, bad := range []string{"no json", `{"item":""}`, `{"item":"li[","link":"a"}`, `{"item":"li","date":"::nope("}`} {
-		if _, err := ParseCSSRecipe(bad); err == nil {
-			t.Errorf("ParseCSSRecipe(%q) accepted", bad)
+		if _, err := parseCSSRecipe(bad); err == nil {
+			t.Errorf("parseCSSRecipe(%q) accepted", bad)
 		}
 	}
 }
@@ -241,16 +227,16 @@ func TestApplyRunsCSSRecipes(t *testing.T) {
 	s := newTestSite(t)
 	tonedBlog(s)
 	listing, _ := s.get(t, "/blog")
-	r := NewRecipe(s.url("/blog"), ModeCSS)
+	r := newRecipe(s.url("/blog"), ModeCSS)
 	r.CSS = &tonedRecipe
 	r.Order = OrderDate
 	r.ExcludeURLs = []string{s.url("/blog/ocean/" + slugify(postTitles[0]))}
-	items, err := Apply(r, listing, s.url("/blog"))
+	items, err := apply(r, listing, s.url("/blog"))
 	if err != nil || len(items) != 5 || items[0].Title != postTitles[1] {
 		t.Fatalf("Apply = %+v, %v", items, err)
 	}
 	r.CSS = nil
-	if _, err := Apply(r, listing, s.url("/blog")); err == nil {
+	if _, err := apply(r, listing, s.url("/blog")); err == nil {
 		t.Fatal("css mode without selectors accepted")
 	}
 }

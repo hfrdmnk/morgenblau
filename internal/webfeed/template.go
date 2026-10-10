@@ -3,6 +3,7 @@ package webfeed
 import (
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -35,6 +36,11 @@ func URLTemplate(raw string) string {
 		}
 	}
 	return host + "/" + strings.Join(segs, "/")
+}
+
+// depthKey groups templates by host and path depth, the templates generalizeTemplates may merge.
+func depthKey(tmpl string) string {
+	return tmpl[:strings.Index(tmpl, "/")+1] + strconv.Itoa(strings.Count(tmpl, "/"))
 }
 
 func allDigits(s string) bool {

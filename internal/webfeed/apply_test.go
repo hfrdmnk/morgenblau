@@ -59,7 +59,7 @@ func TestApplyMatchesSetupOnTheSamePage(t *testing.T) {
 	s.addBlog(6)
 	res := setupRecipe(t, s, "/blog")
 	body, _ := s.get(t, "/blog")
-	items, err := Apply(res.Recipe, body, s.url("/blog"))
+	items, err := apply(res.Recipe, body, s.url("/blog"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestApplySurvivesDrift(t *testing.T) {
 	}
 	for name, html := range cases {
 		t.Run(name, func(t *testing.T) {
-			items, err := Apply(res.Recipe, []byte(html), s.url("/blog"))
+			items, err := apply(res.Recipe, []byte(html), s.url("/blog"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -108,7 +108,7 @@ func TestApplyKeepsDecoyOutWhileTheHintMatches(t *testing.T) {
 	listing := siteNav + `<div class="layout">` + blogList(5) + popularAside() + `</div>`
 	s.set("/blog", page("Blog", listing))
 	res := setupRecipe(t, s, "/blog")
-	items, err := Apply(res.Recipe, []byte(page("Blog", listing)), s.url("/blog"))
+	items, err := apply(res.Recipe, []byte(page("Blog", listing)), s.url("/blog"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,11 +126,11 @@ func TestApplyDedupesExcludesAndOrders(t *testing.T) {
 <li><h2><a href="/blog/the-archive-hub-page">The archive hub page</a></h2></li>
 <li><h2><a href="/blog/older-post-from-january/">Older post from January</a></h2><time datetime="2024-01-01"></time></li>
 </ul></main>`)
-	r := NewRecipe("https://www.example.com/blog", ModeStreams)
+	r := newRecipe("https://www.example.com/blog", ModeStreams)
 	r.Streams = []Stream{{URLTemplate: "example.com/blog/*", ContainerHints: []string{"ul.posts<main<body"}}}
 	r.ExcludeURLs = []string{"https://www.example.com/blog/the-archive-hub-page"}
 	r.Order = OrderDate
-	items, err := Apply(r, []byte(html), "https://www.example.com/blog")
+	items, err := apply(r, []byte(html), "https://www.example.com/blog")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,16 +141,16 @@ func TestApplyDedupesExcludesAndOrders(t *testing.T) {
 }
 
 func TestApplySitemapMode(t *testing.T) {
-	r := NewRecipe("https://news.example.com/news", ModeSitemap)
+	r := newRecipe("https://news.example.com/news", ModeSitemap)
 	r.Streams = []Stream{{URLTemplate: "news.example.com/news/*"}}
-	items, err := Apply(r, []byte(sitemapXML("https://news.example.com/news", "https://news.example.com/news/hello-there-world", "https://news.example.com/about/team")), "https://news.example.com/sitemap.xml")
+	items, err := apply(r, []byte(sitemapXML("https://news.example.com/news", "https://news.example.com/news/hello-there-world", "https://news.example.com/about/team")), "https://news.example.com/sitemap.xml")
 	if err != nil || len(items) != 1 || items[0].Title != "Hello there world" {
 		t.Fatalf("items %+v err %v", items, err)
 	}
 }
 
 func TestApplyRejectsModesItCannotRun(t *testing.T) {
-	if _, err := Apply(NewRecipe("https://news.example.com/", ModeFeed), nil, "https://news.example.com/"); !errors.Is(err, ErrUnsupportedMode) {
+	if _, err := apply(newRecipe("https://news.example.com/", Mode("feed")), nil, "https://news.example.com/"); !errors.Is(err, errUnsupportedMode) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -163,7 +163,7 @@ func TestCategoryInPathRecipeFollowsNewCategories(t *testing.T) {
 		t.Fatalf("items %d streams %+v", len(res.Items), res.Recipe.Streams)
 	}
 	later := page("Blog", categoryPathList([]string{"brand/new", "money/tax"}, 4))
-	items, err := Apply(res.Recipe, []byte(later), s.url("/fr/blog"))
+	items, err := apply(res.Recipe, []byte(later), s.url("/fr/blog"))
 	if err != nil || len(items) != 4 {
 		t.Fatalf("Apply on a new category = %v, %v", itemURLs(items), err)
 	}

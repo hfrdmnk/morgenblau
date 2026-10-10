@@ -13,8 +13,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"morgenblau/internal/webfeed"
 )
 
 // fakeAPI stands in for the Messages API: it records each request body and answers with a canned reply.
@@ -50,7 +48,7 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		stop = "end_turn"
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"id": "msg_test", "type": "message", "role": "assistant", "model": Model,
+		"id": "msg_test", "type": "message", "role": "assistant", "model": model,
 		"content": []map[string]any{
 			{"type": "thinking", "thinking": "", "signature": "sig"},
 			{"type": "text", "text": f.reply},
@@ -74,7 +72,7 @@ func newTestClient(t *testing.T, api *fakeAPI) *Client {
 	t.Helper()
 	srv := httptest.NewServer(api)
 	t.Cleanup(srv.Close)
-	c, err := New(Config{APIKey: "test-key", HTTPClient: srv.Client(), BaseURL: srv.URL})
+	c, err := New(Config{APIKey: "test-key", BaseURL: srv.URL})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,32 +110,46 @@ func assertRequestShape(t *testing.T, body map[string]any, effort, system, user 
 	}
 }
 
-func TestJudgeSendsTheContractRequestAndParsesTheVerdict(t *testing.T) {
-	api := &fakeAPI{reply: `{"pick":[1],"order":"date","mixed":false,"none":false,"reason":"posts"}`, usageIn: 2500, usageOut: 600}
-	c := newTestClient(t, api)
-	in := webfeed.JudgeInput{System: webfeed.SystemPrompt, User: "Page: https://news.example.com/\nTitle: News\n", Candidates: 3}
-	v, u, err := c.Judge(context.Background(), in)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(v.Pick, []int{1}) || v.Order != webfeed.OrderDate || v.Reason != "posts" {
-		t.Fatalf("verdict = %+v", v)
-	}
-	if u.InputTokens != 2500 || u.OutputTokens != 600 || math.Abs(u.USD-0.00055) > 1e-12 {
-		t.Fatalf("usage = %+v", u)
-	}
-	assertRequestShape(t, api.last(t), "high", webfeed.SystemPrompt, in.User)
-	if api.paths[0] != "/v1/messages" || api.headers[0].Get("X-Api-Key") != "test-key" {
-		t.Fatalf("path %s, key header %q", api.paths[0], api.headers[0].Get("X-Api-Key"))
+func TestCompleteSendsTheContractRequestAndMetersIt(t *testing.T) {
+	for _, effort := range []string{"low", "medium", "high"} {
+		t.Run(effort, func(t *testing.T) {
+			api := &fakeAPI{reply: `{"pick":[1],"order":"date"}`, usageIn: 2500, usageOut: 600}
+			c := newTestClient(t, api)
+			text, u, err := c.Complete(context.Background(), "You choose lists.", "Page: https://news.example.com/", effort)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if text != `{"pick":[1],"order":"date"}` {
+				t.Fatalf("text = %q, want the reply's text block only", text)
+			}
+			if u.InputTokens != 2500 || u.OutputTokens != 600 || math.Abs(u.USD-0.00055) > 1e-12 {
+				t.Fatalf("usage = %+v", u)
+			}
+			assertRequestShape(t, api.last(t), effort, "You choose lists.", "Page: https://news.example.com/")
+			if api.paths[0] != "/v1/messages" || api.headers[0].Get("X-Api-Key") != "test-key" {
+				t.Fatalf("path %s, key header %q", api.paths[0], api.headers[0].Get("X-Api-Key"))
+			}
+		})
 	}
 }
 
-func TestUnparsableReplyStillReportsUsage(t *testing.T) {
-	api := &fakeAPI{reply: "I think the second list.", usageIn: 100, usageOut: 20}
+func TestCompleteRefusesAnUnknownEffort(t *testing.T) {
+	api := &fakeAPI{reply: "x"}
 	c := newTestClient(t, api)
-	_, u, err := c.Judge(context.Background(), webfeed.JudgeInput{System: webfeed.SystemPrompt, User: "Page: x", Candidates: 2})
+	if _, _, err := c.Complete(context.Background(), "s", "u", "max"); err == nil {
+		t.Fatal("unknown effort accepted")
+	}
+	if len(api.bodies) != 0 {
+		t.Fatal("a request with an unknown effort reached the API")
+	}
+}
+
+func TestEmptyReplyStillReportsUsage(t *testing.T) {
+	api := &fakeAPI{reply: "", usageIn: 100, usageOut: 20}
+	c := newTestClient(t, api)
+	_, u, err := c.Complete(context.Background(), "s", "u", "high")
 	if err == nil {
-		t.Fatal("prose reply parsed as a verdict")
+		t.Fatal("a reply without text returned no error")
 	}
 	if u.InputTokens != 100 || u.OutputTokens != 20 || u.USD == 0 {
 		t.Fatalf("usage = %+v; tokens spent must be metered even when the answer is unusable", u)
@@ -152,7 +164,7 @@ func TestAPIErrorsAndRefusalsBubbleUp(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			c := newTestClient(t, api)
-			if _, _, err := c.Judge(context.Background(), webfeed.JudgeInput{System: "s", User: "u", Candidates: 1}); err == nil {
+			if _, _, err := c.Complete(context.Background(), "s", "u", "high"); err == nil {
 				t.Fatal("error swallowed")
 			}
 		})
@@ -168,48 +180,17 @@ func TestEachCallIsBoundedInTime(t *testing.T) {
 		}
 	}))
 	t.Cleanup(func() { close(release); srv.Close() })
-	c, err := New(Config{APIKey: "test-key", HTTPClient: srv.Client(), BaseURL: srv.URL, CallTimeout: 100 * time.Millisecond})
+	c, err := New(Config{APIKey: "test-key", BaseURL: srv.URL, CallTimeout: 100 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	if _, _, err := c.Judge(context.Background(), webfeed.JudgeInput{System: "s", User: "u", Candidates: 1}); err == nil {
+	if _, _, err := c.Complete(context.Background(), "s", "u", "high"); err == nil {
 		t.Fatal("hung call returned no error")
 	}
 	if d := time.Since(start); d > 3*time.Second {
 		t.Fatalf("call took %s with a 100ms budget", d)
 	}
-}
-
-func TestInduceUsesMediumEffortAndParsesSelectors(t *testing.T) {
-	api := &fakeAPI{reply: "```json\n{\"item\":\"li.post\",\"link\":\"h2 a\",\"title\":\"h2\",\"date\":\"time\",\"reason\":\"main list\"}\n```", usageIn: 20000, usageOut: 900}
-	c := newTestClient(t, api)
-	in := webfeed.InduceInput{System: webfeed.InduceSystemPrompt, User: "Page: https://news.example.com/"}
-	css, u, err := c.Induce(context.Background(), in)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if css != (webfeed.CSSRecipe{Item: "li.post", Link: "h2 a", Title: "h2", Date: "time"}) {
-		t.Fatalf("css = %+v", css)
-	}
-	if u.InputTokens != 20000 || u.OutputTokens != 900 {
-		t.Fatalf("usage = %+v", u)
-	}
-	assertRequestShape(t, api.last(t), "medium", webfeed.InduceSystemPrompt, in.User)
-}
-
-func TestWatchUsesLowEffortAndParsesTheVerdict(t *testing.T) {
-	api := &fakeAPI{reply: `{"verdict":"broken","reason":"the items are category pages"}`, usageIn: 1500, usageOut: 120}
-	c := newTestClient(t, api)
-	in := webfeed.WatchInput{System: webfeed.WatchSystemPrompt, User: "Page: https://news.example.com/"}
-	v, u, err := c.Watch(context.Background(), in)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !v.Broken || v.Reason != "the items are category pages" || u.OutputTokens != 120 {
-		t.Fatalf("verdict %+v usage %+v", v, u)
-	}
-	assertRequestShape(t, api.last(t), "low", webfeed.WatchSystemPrompt, in.User)
 }
 
 // recordingTransport answers every request itself, so a test can see where the client would have gone.
@@ -230,11 +211,11 @@ func TestEnvironmentCannotRedirectTheKeyOrSwapTheClient(t *testing.T) {
 	t.Setenv("ANTHROPIC_BASE_URL", "https://elsewhere.example.com")
 	t.Setenv("ANTHROPIC_API_KEY", "env-key")
 	rt := &recordingTransport{}
-	c, err := New(Config{APIKey: "configured-key", HTTPClient: &http.Client{Transport: rt}})
+	c, err := newClient(Config{APIKey: "configured-key"}, rt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := c.Watch(context.Background(), webfeed.WatchInput{System: "s", User: "u"}); err != nil {
+	if _, _, err := c.Complete(context.Background(), "s", "u", "low"); err != nil {
 		t.Fatal(err)
 	}
 	if len(rt.reqs) != 1 {
@@ -246,19 +227,16 @@ func TestEnvironmentCannotRedirectTheKeyOrSwapTheClient(t *testing.T) {
 	}
 }
 
-func TestNewRequiresAKeyAndAClient(t *testing.T) {
-	if _, err := New(Config{HTTPClient: http.DefaultClient}); err == nil {
+func TestNewRequiresAKey(t *testing.T) {
+	if _, err := New(Config{}); err == nil {
 		t.Error("empty key accepted")
-	}
-	if _, err := New(Config{APIKey: "k"}); err == nil {
-		t.Error("nil HTTP client accepted; the SDK default has no overall timeout")
 	}
 }
 
 func TestErrorsNeverCarryTheKey(t *testing.T) {
 	api := &fakeAPI{status: http.StatusBadRequest}
 	c := newTestClient(t, api)
-	_, _, err := c.Judge(context.Background(), webfeed.JudgeInput{System: "s", User: "u", Candidates: 1})
+	_, _, err := c.Complete(context.Background(), "s", "u", "high")
 	if err == nil || strings.Contains(err.Error(), "test-key") {
 		t.Fatalf("err = %v", err)
 	}
@@ -276,8 +254,8 @@ func TestCostUsesHaikuPricesAndTheLongPromptTier(t *testing.T) {
 		{100_001, 1000, 100_001*0.50/1e6 + 1000*2.50/1e6},
 	}
 	for _, c := range cases {
-		if got := Cost(c.in, c.out); math.Abs(got-c.want) > 1e-12 {
-			t.Errorf("Cost(%d, %d) = %v, want %v", c.in, c.out, got, c.want)
+		if got := cost(c.in, c.out); math.Abs(got-c.want) > 1e-12 {
+			t.Errorf("cost(%d, %d) = %v, want %v", c.in, c.out, got, c.want)
 		}
 	}
 }

@@ -171,13 +171,13 @@ type WebSource struct {
 	Recipe              string  `json:"recipe"`
 	Health              string  `json:"health"`
 	HealthReason        string  `json:"health_reason"`
-	NeedsAnchor         int64   `json:"needs_anchor"`
 	SetupCost           string  `json:"setup_cost"`
 	CreatedByDid        string  `json:"created_by_did"`
 	CreatedAt           string  `json:"created_at"`
 	UpdatedAt           string  `json:"updated_at"`
 	SetupAt             string  `json:"setup_at"`
 	SetupHealth         string  `json:"setup_health"`
+	SetupHealthReason   string  `json:"setup_health_reason"`
 	SetupSeq            int64   `json:"setup_seq"`
 	SetupTriedAt        string  `json:"setup_tried_at"`
 	LastPolledAt        *string `json:"last_polled_at"`

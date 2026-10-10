@@ -53,7 +53,7 @@ func (s *Server) routes() *http.ServeMux {
 	gated := api.CommitGate{Repo: s.pds}
 	webFeedPrefix := ""
 	if s.webSources != nil {
-		webFeedPrefix = s.webSources.FeedURL("")
+		webFeedPrefix = s.webSources.FeedURLPrefix()
 	}
 	mux.Handle("GET /api/subscriptions", api.SubscriptionsListHandler(s.qr, webFeedPrefix))
 	mux.Handle("POST /api/subscriptions/resolve", api.SubscriptionsResolveHandler(s.qr, s.feedfinder))

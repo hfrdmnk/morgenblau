@@ -3,6 +3,7 @@ package websource
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -10,19 +11,18 @@ import (
 )
 
 // WebfeedGenerator is the Generator over internal/webfeed. Polls and the free repair steps never call a model; the
-// judge and inducer in its options run only at setup and in the once-a-day model repair, the watcher once a week.
+// model in its options judges and induces only at setup and in the once-a-day model repair, and checks once a week.
 type WebfeedGenerator struct {
-	opts    webfeed.Options
-	watcher webfeed.Watcher
+	opts webfeed.Options
 }
 
-// NewWebfeedGenerator takes options with an SSRF-safe client; nil Judge, Inducer or watcher leave those steps out.
-// Polls share one robots.txt cache unless opts brings its own.
-func NewWebfeedGenerator(opts webfeed.Options, watcher webfeed.Watcher) *WebfeedGenerator {
+// NewWebfeedGenerator takes options with an SSRF-safe client; a nil Model leaves every model step out. Polls share one
+// robots.txt cache unless opts brings its own.
+func NewWebfeedGenerator(opts webfeed.Options) *WebfeedGenerator {
 	if opts.Robots == nil {
 		opts.Robots = webfeed.NewRobotsCache()
 	}
-	return &WebfeedGenerator{opts: opts, watcher: watcher}
+	return &WebfeedGenerator{opts: opts}
 }
 
 func (g *WebfeedGenerator) Setup(ctx context.Context, listingURL, anchorURL string, allowModel bool) (Generated, error) {
@@ -37,6 +37,9 @@ func (g *WebfeedGenerator) Setup(ctx context.Context, listingURL, anchorURL stri
 	} else {
 		res, err = webfeed.Setup(ctx, listingURL, opts)
 	}
+	if errors.Is(err, webfeed.ErrUnreachable) {
+		return Generated{}, fmt.Errorf("%w: %w", ErrUnreachable, err)
+	}
 	if err != nil {
 		return Generated{}, err
 	}
@@ -44,19 +47,18 @@ func (g *WebfeedGenerator) Setup(ctx context.Context, listingURL, anchorURL stri
 	if err != nil {
 		return Generated{}, err
 	}
-	health := Health(res.Health)
+	health := SetupHealth(res)
 	gen := Generated{
 		Recipe:       recipe,
 		Title:        res.Title,
 		Health:       health,
-		HealthReason: setupReason(health, res.HealthReasons),
-		NeedsAnchor:  health == HealthNeedsAttention,
+		HealthReason: setupReason(res.Blocked, res.Reasons),
 		Items:        toItems(res.Items, res.Excerpts),
 		Fingerprint:  fingerprint(res.Items, res.Recipe),
 		Cost:         setupCost(res.Recipe.Setup),
 	}
 	slog.Info("web source setup", "listing", listingURL, "anchored", anchorURL != "", "health", health,
-		"reasons", res.HealthReasons, "items", len(res.Items), "stages", gen.Cost.Stages, "usd", gen.Cost.USD)
+		"reasons", res.Reasons, "items", len(res.Items), "stages", gen.Cost.Stages, "usd", gen.Cost.USD)
 	return gen, nil
 }
 
@@ -66,10 +68,10 @@ func (g *WebfeedGenerator) Poll(ctx context.Context, raw json.RawMessage, prev P
 		return PollOutcome{}, fmt.Errorf("web source recipe: %w", err)
 	}
 	history := goodPolls(prev.History)
-	check := prev.CheckDue && g.watcher != nil
+	check := prev.CheckDue && g.opts.Model != nil
 	polled, err := webfeed.Poll(ctx, webfeed.PollInput{
 		Recipe: recipe, ETag: prev.ETag, LastModified: prev.LastModified, LinkSetHash: prev.LinkSetHash,
-		History: history, Unconditional: check || prev.WeeklyAlarm,
+		History: history, Known: knownItems(prev.Known), Unconditional: check || prev.WeeklyAlarm,
 	}, g.freeOpts())
 	if err != nil {
 		return PollOutcome{}, err
@@ -84,9 +86,9 @@ func (g *WebfeedGenerator) Poll(ctx context.Context, raw json.RawMessage, prev P
 		return out, nil
 	case webfeed.PollSuspect:
 		if prev.WeeklyAlarm {
-			return g.repair(ctx, out, polled, recipe, history, prev, RepairCauseWeeklyCheck, polled.Reason)
+			return g.repair(ctx, out, polled, recipe, history, prev, RepairCauseWeeklyCheck, string(polled.Reason))
 		}
-		return g.repair(ctx, out, polled, recipe, history, prev, RepairCauseDetector, polled.Reason)
+		return g.repair(ctx, out, polled, recipe, history, prev, RepairCauseDetector, string(polled.Reason))
 	}
 	if polled.NotModified {
 		out.Verdict = VerdictOK
@@ -94,7 +96,7 @@ func (g *WebfeedGenerator) Poll(ctx context.Context, raw json.RawMessage, prev P
 	}
 	if check && polled.Page() != nil {
 		out.Checked = true
-		rec, err := webfeed.WeeklyCheck(ctx, g.watcher, recipe.ListingURL, polled.Page(), historyItems(history), polled.Items)
+		rec, err := webfeed.WeeklyCheck(ctx, g.opts.Model, recipe.ListingURL, polled.Page(), historyItems(history), polled.Items)
 		out.CheckUSD = rec.USD
 		slog.Info("web source weekly check", "listing", recipe.ListingURL, "broken", rec.Broken, "reason", rec.Reason, "usd", rec.USD, "err", err)
 		if err == nil && rec.Broken {
@@ -151,31 +153,42 @@ func (g *WebfeedGenerator) repair(ctx context.Context, out PollOutcome, polled *
 // freeOpts are the options for steps that must never reach a model.
 func (g *WebfeedGenerator) freeOpts() webfeed.Options {
 	opts := g.opts
-	opts.Judge, opts.Inducer = nil, nil
+	opts.Model = nil
 	return opts
 }
 
-// setupReason words the self-check's first reason for the Sources page.
-func setupReason(h Health, reasons []string) string {
-	if h == HealthOK {
-		return ""
+// SetupHealth is a finished setup's verdict in the Sources page's terms.
+func SetupHealth(res *webfeed.Result) Health {
+	switch {
+	case res.Blocked:
+		return HealthBlockedBySite
+	case !res.Healthy():
+		return HealthNeedsAttention
 	}
-	if h == HealthBlockedBySite {
+	return HealthOK
+}
+
+// setupReason words the setup's first reason for the Sources page; a healthy setup has none.
+func setupReason(blocked bool, reasons []webfeed.Reason) string {
+	if blocked {
 		return "this site blocks feed readers"
+	}
+	if len(reasons) == 0 {
+		return ""
 	}
 	for _, r := range reasons {
 		switch r {
-		case "count":
+		case webfeed.ReasonCount:
 			return "only a few posts were found"
-		case "title_shape":
+		case webfeed.ReasonTitleShape:
 			return "the post titles look unusual"
-		case "dup_titles":
+		case webfeed.ReasonDupTitles:
 			return "many posts share one title"
-		case "template_share":
+		case webfeed.ReasonTemplateShare:
 			return "many links do not look like posts"
-		case "unsure":
+		case webfeed.ReasonUnsure:
 			return unsureReason
-		case "judge_none":
+		case webfeed.ReasonJudgeNone:
 			return "no list on the page looks like posts"
 		}
 	}
@@ -184,7 +197,7 @@ func setupReason(h Health, reasons []string) string {
 
 const unsureReason = "Morgenblau isn't sure which links are posts"
 
-func brokenReason(code string, blocked bool) string {
+func brokenReason(code webfeed.Reason, blocked bool) string {
 	switch code {
 	case webfeed.ReasonRobots:
 		return "this site asks feed readers not to read this page"
@@ -229,6 +242,14 @@ func fingerprint(items []webfeed.Item, r webfeed.Recipe) Fingerprint {
 	}
 	sig := webfeed.ComputeSignals(items, templates)
 	return Fingerprint{URLTemplate: webfeed.DominantTemplate(items, templates), DateFrac: sig.DateFrac, TitleShape: sig.TitleShape}
+}
+
+func knownItems(items []Item) []webfeed.Item {
+	out := make([]webfeed.Item, len(items))
+	for i, it := range items {
+		out[i] = webfeed.Item{URL: it.URL, Title: it.Title, Date: it.Date}
+	}
+	return out
 }
 
 func goodPolls(history []PollRecord) []webfeed.GoodPoll {

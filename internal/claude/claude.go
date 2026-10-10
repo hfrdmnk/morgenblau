@@ -1,4 +1,4 @@
-// Package claude runs webfeed's model steps (judge, recipe induction, weekly check) on Claude Haiku 5.5 through the Anthropic SDK.
+// Package claude answers prompts on Claude Haiku 5.5 through the Anthropic SDK, metering each call.
 package claude
 
 import (
@@ -11,12 +11,10 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
-
-	"morgenblau/internal/webfeed"
 )
 
-// Model is the one model every webfeed step runs on.
-const Model = "claude-haiku-5-5"
+// model is the one model every call runs on.
+const model = "claude-haiku-5-5"
 
 const (
 	defaultCallTimeout = 60 * time.Second
@@ -28,98 +26,79 @@ const (
 // Config builds a Client.
 type Config struct {
 	APIKey string
-	// HTTPClient carries every call. api.anthropic.com is a fixed, trusted host, so a plain timeout-bounded client is enough; no SSRF guard is needed.
-	HTTPClient *http.Client
 	// BaseURL replaces api.anthropic.com in tests.
 	BaseURL string
 	// CallTimeout bounds one call including the SDK's retries; zero means 60 s.
 	CallTimeout time.Duration
 }
 
-// Client implements webfeed.Judge, webfeed.Inducer and webfeed.Watcher.
+// Client answers prompts on Haiku 5.5.
 type Client struct {
 	msgs    anthropic.MessageService
 	timeout time.Duration
 }
 
-var (
-	_ webfeed.Judge   = (*Client)(nil)
-	_ webfeed.Inducer = (*Client)(nil)
-	_ webfeed.Watcher = (*Client)(nil)
-)
+// Usage is one call's tokens and their price.
+type Usage struct {
+	InputTokens  int
+	OutputTokens int
+	USD          float64
+}
 
-// New builds a Client that ignores ANTHROPIC_* environment defaults, so neither an env base URL nor a stored profile can redirect the key.
-func New(cfg Config) (*Client, error) {
+// New builds a Client that ignores ANTHROPIC_* environment defaults, so neither an env base URL nor a stored profile can
+// redirect the key. api.anthropic.com is a fixed, trusted host, so a timeout-bounded client needs no SSRF guard.
+func New(cfg Config) (*Client, error) { return newClient(cfg, nil) }
+
+// newClient takes the transport tests answer from; nil is the default network transport.
+func newClient(cfg Config, transport http.RoundTripper) (*Client, error) {
 	if cfg.APIKey == "" {
 		return nil, errors.New("claude: API key is required")
-	}
-	if cfg.HTTPClient == nil {
-		return nil, errors.New("claude: HTTP client is required")
-	}
-	opts := []option.RequestOption{
-		option.WithoutEnvironmentDefaults(),
-		option.WithAPIKey(cfg.APIKey),
-		option.WithHTTPClient(cfg.HTTPClient),
-		option.WithMaxRetries(maxRetries),
-	}
-	if cfg.BaseURL != "" {
-		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
 	}
 	timeout := cfg.CallTimeout
 	if timeout <= 0 {
 		timeout = defaultCallTimeout
 	}
+	opts := []option.RequestOption{
+		option.WithoutEnvironmentDefaults(),
+		option.WithAPIKey(cfg.APIKey),
+		option.WithHTTPClient(&http.Client{Timeout: timeout, Transport: transport}),
+		option.WithMaxRetries(maxRetries),
+	}
+	if cfg.BaseURL != "" {
+		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
+	}
 	c := anthropic.NewClient(opts...)
 	return &Client{msgs: c.Messages, timeout: timeout}, nil
 }
 
-// Judge picks candidate lists at effort high, per the benchmarked judge contract.
-func (c *Client) Judge(ctx context.Context, in webfeed.JudgeInput) (webfeed.Verdict, webfeed.Usage, error) {
-	text, u, err := c.call(ctx, anthropic.OutputConfigEffortHigh, in.System, in.User)
-	if err != nil {
-		return webfeed.Verdict{}, u, err
-	}
-	v, err := webfeed.ParseVerdict(text, in.Candidates)
-	return v, u, err
+var efforts = map[string]anthropic.OutputConfigEffort{
+	"low":    anthropic.OutputConfigEffortLow,
+	"medium": anthropic.OutputConfigEffortMedium,
+	"high":   anthropic.OutputConfigEffortHigh,
 }
 
-// Induce writes a CSS recipe at effort medium.
-func (c *Client) Induce(ctx context.Context, in webfeed.InduceInput) (webfeed.CSSRecipe, webfeed.Usage, error) {
-	text, u, err := c.call(ctx, anthropic.OutputConfigEffortMedium, in.System, in.User)
-	if err != nil {
-		return webfeed.CSSRecipe{}, u, err
+// Complete makes one request at effort low, medium or high and returns its text. Haiku 5.5 rejects temperature and
+// assistant prefill with a 400, so neither is sent.
+func (c *Client) Complete(ctx context.Context, system, user, effort string) (string, Usage, error) {
+	level, ok := efforts[effort]
+	if !ok {
+		return "", Usage{}, fmt.Errorf("claude: effort %q", effort)
 	}
-	r, err := webfeed.ParseCSSRecipe(text)
-	return r, u, err
-}
-
-// Watch runs the weekly check at effort low.
-func (c *Client) Watch(ctx context.Context, in webfeed.WatchInput) (webfeed.WatchVerdict, webfeed.Usage, error) {
-	text, u, err := c.call(ctx, anthropic.OutputConfigEffortLow, in.System, in.User)
-	if err != nil {
-		return webfeed.WatchVerdict{}, u, err
-	}
-	v, err := webfeed.ParseWatchVerdict(text)
-	return v, u, err
-}
-
-// call makes one request and returns its text; Haiku 5.5 rejects temperature and assistant prefill with a 400, so neither is sent.
-func (c *Client) call(ctx context.Context, effort anthropic.OutputConfigEffort, system, user string) (string, webfeed.Usage, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 	msg, err := c.msgs.New(ctx, anthropic.MessageNewParams{
-		Model:        Model,
+		Model:        model,
 		MaxTokens:    maxTokens,
 		System:       []anthropic.TextBlockParam{{Text: system}},
 		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(user))},
 		Thinking:     anthropic.ThinkingConfigParamUnion{OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{}},
-		OutputConfig: anthropic.OutputConfigParam{Effort: effort},
+		OutputConfig: anthropic.OutputConfigParam{Effort: level},
 	})
 	if err != nil {
-		return "", webfeed.Usage{}, fmt.Errorf("claude: %w", err)
+		return "", Usage{}, fmt.Errorf("claude: %w", err)
 	}
 	in, out := int(msg.Usage.InputTokens), int(msg.Usage.OutputTokens)
-	u := webfeed.Usage{InputTokens: in, OutputTokens: out, USD: Cost(in, out)}
+	u := Usage{InputTokens: in, OutputTokens: out, USD: cost(in, out)}
 	switch msg.StopReason {
 	case anthropic.StopReasonRefusal:
 		return "", u, fmt.Errorf("claude: refused (%s)", msg.StopDetails.Category)

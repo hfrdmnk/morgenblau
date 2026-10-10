@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"slices"
 	"testing"
 	"time"
@@ -84,7 +85,7 @@ func TestPollDuePublishesNewItemsOnOK(t *testing.T) {
 	if string(call.recipe) != `{"version":1,"mode":"streams"}` {
 		t.Errorf("recipe passed to poll = %s", call.recipe)
 	}
-	if len(call.prev.History) != 1 || call.prev.History[0].Count != 3 || call.prev.History[0].URLTemplate != "news.example.com/posts/*" {
+	if len(call.prev.History) != 1 || len(call.prev.History[0].URLs) != 3 || call.prev.History[0].URLTemplate != "news.example.com/posts/*" {
 		t.Errorf("history passed to poll = %+v, want the setup poll", call.prev.History)
 	}
 
@@ -116,7 +117,7 @@ func TestPollDuePublishesNewItemsOnOK(t *testing.T) {
 
 	env.advance(31 * time.Minute)
 	pollDue(t, env)
-	if prev := env.gen.polls[1].prev; prev.ETag != `"v2"` || prev.LastModified != "Fri, 09 Oct 2026 08:00:00 GMT" || prev.LinkSetHash != "hash-2" || prev.History[0].Count != 4 {
+	if prev := env.gen.polls[1].prev; prev.ETag != `"v2"` || prev.LastModified != "Fri, 09 Oct 2026 08:00:00 GMT" || prev.LinkSetHash != "hash-2" || len(prev.History[0].URLs) != 4 {
 		t.Errorf("next poll's state = %+v, want the stored validators and newest history first", prev)
 	}
 }
@@ -250,5 +251,72 @@ func TestPollDueNotModifiedChangesNothingButTheSchedule(t *testing.T) {
 	}
 	if got := pollCount(t, env, id); got != 1 {
 		t.Errorf("good polls = %d, want an unchanged page left out of history", got)
+	}
+}
+
+func TestPollDueDoesNotRepublishAVariantOfAStoredPost(t *testing.T) {
+	env := newTestEnv(t)
+	env.gen.generated.Items = append(env.gen.generated.Items, Item{URL: "http://www.news.example.com/posts/first/", Title: "First post"})
+	id := followed(t, env)
+	if n := len(storedItems(t, env, id)); n != 3 {
+		t.Fatalf("setup stored %d items, want 3: a variant URL is the same post", n)
+	}
+	env.advance(31 * time.Minute)
+	env.gen.outcomes = []PollOutcome{{Verdict: VerdictOK, Items: []Item{
+		{URL: "http://news.example.com/posts/third", Title: "Third post", Date: day(8)},
+		{URL: "https://www.news.example.com/posts/second/", Title: "Second post"},
+		{URL: "https://news.example.com/posts/fourth", Title: "Fourth post", Date: day(9)},
+	}}}
+	pollDue(t, env)
+	items := storedItems(t, env, id)
+	if len(items) != 4 {
+		t.Fatalf("stored = %v, want only the fourth post added", items)
+	}
+	if _, ok := items["https://news.example.com/posts/fourth"]; !ok {
+		t.Fatal("the new post was not published")
+	}
+}
+
+func TestPollDueBrokenPollStaysOutOfHistoryAndKeepsTheRecipe(t *testing.T) {
+	env := newTestEnv(t)
+	id := followed(t, env)
+	before := readSource(t, env, id).recipe
+	env.advance(31 * time.Minute)
+	env.gen.outcomes = []PollOutcome{{
+		Verdict: VerdictBroken, Reason: "the site returned an error",
+		Recipe: json.RawMessage(`{"version":1,"mode":"css"}`), Items: []Item{{URL: "https://news.example.com/posts/x", Title: "X"}},
+		Fingerprint: Fingerprint{URLTemplate: "news.example.com/posts/*", DateFrac: 1, TitleShape: 1},
+	}}
+	pollDue(t, env)
+	if got := readSource(t, env, id).recipe; got != before {
+		t.Errorf("recipe after a broken poll = %s, want %s kept", got, before)
+	}
+	if got := pollCount(t, env, id); got != 1 {
+		t.Errorf("good polls = %d, want the broken poll kept out of history", got)
+	}
+	env.advance(2 * time.Hour)
+	pollDue(t, env)
+	if h := env.gen.polls[1].prev.History; len(h) != 1 || len(h[0].URLs) != 3 {
+		t.Errorf("next poll's history = %+v, want only the setup's good poll", h)
+	}
+}
+
+func TestPollDueOnARealSiteThatBreaksKeepsItsRecipeAndHistory(t *testing.T) {
+	d := newDriftEnv(t, nil)
+	recipe := readSource(t, d.testEnv, d.id).recipe
+	d.web.setPage(driftListing, fakePage{status: http.StatusServiceUnavailable, body: "maintenance"})
+	d.poll(t)
+	row := readSource(t, d.testEnv, d.id)
+	if row.health != string(HealthBroken) || row.recipe != recipe || pollCount(t, d.testEnv, d.id) != 1 {
+		t.Fatalf("after a 503: health %s, recipe kept %v, good polls %d", row.health, row.recipe == recipe, pollCount(t, d.testEnv, d.id))
+	}
+	d.web.set(driftListing, driftPage("Blog | Example Publication", driftList(1, 10, "blog")))
+	d.advance(2 * time.Hour)
+	d.poll(t)
+	if row := readSource(t, d.testEnv, d.id); row.health != string(HealthOK) || pollCount(t, d.testEnv, d.id) != 2 {
+		t.Fatalf("after recovery: health %s, good polls %d", row.health, pollCount(t, d.testEnv, d.id))
+	}
+	if got := d.served(t); !slices.Contains(got, driftURL(1, "blog")) {
+		t.Errorf("served = %v, want the post published after recovery", got)
 	}
 }

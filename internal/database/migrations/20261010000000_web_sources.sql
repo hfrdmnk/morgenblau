@@ -10,7 +10,6 @@ CREATE TABLE web_sources (
     recipe               TEXT NOT NULL,
     health               TEXT NOT NULL CHECK (health IN ('ok', 'needs_attention', 'blocked_by_site', 'broken')),
     health_reason        TEXT NOT NULL DEFAULT '',
-    needs_anchor         INTEGER NOT NULL DEFAULT 0,
     setup_cost           TEXT NOT NULL DEFAULT '{}',
     created_by_did       TEXT NOT NULL,
     created_at           TEXT NOT NULL,
@@ -18,6 +17,7 @@ CREATE TABLE web_sources (
     -- The setup in force: when it ran, its own verdict and a counter a poll checks so it never writes over a newer one.
     setup_at             TEXT NOT NULL,
     setup_health         TEXT NOT NULL CHECK (setup_health IN ('ok', 'needs_attention', 'blocked_by_site', 'broken')),
+    setup_health_reason  TEXT NOT NULL DEFAULT '',
     setup_seq            INTEGER NOT NULL DEFAULT 0,
     -- The last setup run, kept or not, so a reader retrying at once does not pay for another.
     setup_tried_at       TEXT NOT NULL,

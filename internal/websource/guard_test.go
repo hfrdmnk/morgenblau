@@ -93,7 +93,6 @@ func TestCreateKeepsTheOldSetupWhenTheNewOneIsNoBetter(t *testing.T) {
 	env := newTestEnv(t)
 	env.gen.generated.Health = HealthNeedsAttention
 	env.gen.generated.HealthReason = "Morgenblau isn't sure which links are posts"
-	env.gen.generated.NeedsAnchor = true
 	first, err := env.service.Create(context.Background(), testDID, "https://news.example.com/", "")
 	if err != nil {
 		t.Fatal(err)
@@ -142,26 +141,56 @@ func TestCreateDoesNotRegenerateAfterATransientOutage(t *testing.T) {
 	}
 }
 
-func TestPollDueLeavesAnUnsureSetupAlone(t *testing.T) {
+func TestPollDuePublishesAnUnsureSetupButKeepsItsDoubt(t *testing.T) {
 	env := newTestEnv(t)
+	const doubt = "Morgenblau isn't sure which links are posts"
 	env.gen.generated.Health = HealthNeedsAttention
-	env.gen.generated.HealthReason = "Morgenblau isn't sure which links are posts"
-	env.gen.generated.NeedsAnchor = true
+	env.gen.generated.HealthReason = doubt
 	id := followed(t, env)
-	for range 3 {
-		env.advance(31 * time.Minute)
-		env.gen.outcomes = []PollOutcome{{Verdict: VerdictOK, Items: []Item{{URL: "https://news.example.com/tags/design", Title: "Design"}}}}
-		pollDue(t, env)
+	fresh := Item{URL: "https://news.example.com/posts/fourth", Title: "Fourth post"}
+	steps := []struct {
+		out    PollOutcome
+		health Health
+		reason string
+	}{
+		{PollOutcome{Verdict: VerdictOK, Items: []Item{fresh}}, HealthNeedsAttention, doubt},
+		{PollOutcome{Verdict: VerdictSuspect, Reason: "the page changed and the post list could not be found again"}, HealthNeedsAttention, doubt},
+		{PollOutcome{Verdict: VerdictBroken, Reason: "the site returned an error"}, HealthBroken, "the site returned an error"},
+		{PollOutcome{Verdict: VerdictOK, Items: []Item{fresh}}, HealthNeedsAttention, doubt},
 	}
-	if len(env.gen.polls) != 0 {
-		t.Errorf("polled an unsure setup %d times", len(env.gen.polls))
+	for i, st := range steps {
+		env.advance(25 * time.Hour)
+		env.gen.outcomes = []PollOutcome{st.out}
+		if n := pollDue(t, env); n != 1 {
+			t.Fatalf("step %d: polled %d sources; the reader chose to follow an unsure setup", i, n)
+		}
+		if row := readSource(t, env, id); row.health != string(st.health) || row.reason != st.reason {
+			t.Fatalf("step %d: source = %s %q, want %s %q", i, row.health, row.reason, st.health, st.reason)
+		}
 	}
-	row := readSource(t, env, id)
-	if row.health != string(HealthNeedsAttention) || row.reason != "Morgenblau isn't sure which links are posts" {
-		t.Errorf("source = %+v, want the setup's doubt to stand until an anchored or healthy setup", row)
+	if it, ok := storedItems(t, env, id)[fresh.URL]; !ok || it.history {
+		t.Fatalf("new post = %+v, %v; want it published as news", it, ok)
 	}
-	if _, ok := storedItems(t, env, id)["https://news.example.com/tags/design"]; ok {
-		t.Error("published from a list the setup doubted")
+
+	env.gen.generated.Health, env.gen.generated.HealthReason = HealthOK, ""
+	if _, err := env.service.Create(context.Background(), testDID, "https://news.example.com/", "https://news.example.com/posts/third"); err != nil {
+		t.Fatal(err)
+	}
+	env.advance(31 * time.Minute)
+	env.gen.outcomes = []PollOutcome{{Verdict: VerdictOK}}
+	pollDue(t, env)
+	if row := readSource(t, env, id); row.health != string(HealthOK) || row.reason != "" {
+		t.Fatalf("after an anchored healthy setup: %s %q", row.health, row.reason)
+	}
+}
+
+func TestPollDueSkipsASiteThatBlockedSetup(t *testing.T) {
+	env := newTestEnv(t)
+	env.gen.generated = Generated{Recipe: json.RawMessage(`{}`), Health: HealthBlockedBySite, HealthReason: "this site blocks feed readers"}
+	followed(t, env)
+	env.advance(31 * time.Minute)
+	if n := pollDue(t, env); n != 0 {
+		t.Fatalf("polled %d sources; a setup the site refused has nothing to poll", n)
 	}
 }
 
