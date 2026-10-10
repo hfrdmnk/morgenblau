@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
@@ -11,6 +12,7 @@ import {
     SourcesIcon,
 } from '@/components/icons';
 import { useAppProfile } from '@/hooks/use-app-profile';
+import { useHeightProperty } from '@/hooks/use-height-property';
 import { addCalendarDays, digestDateRange, parseDigestDate, toDateKey } from '@/lib/digest-dates';
 import { APP_MODES, appMode, digestHref, isSettingsPath, PATHS } from '@/lib/paths';
 import { cn } from '@/lib/utils';
@@ -59,6 +61,10 @@ const fullDate = new Intl.DateTimeFormat(undefined, {
 export function AppHeader() {
     const [location] = useLocation();
     const profile = useAppProfile();
+    const headerRef = useRef<HTMLElement>(null);
+    const modeNavRef = useRef<HTMLElement>(null);
+    useHeightProperty(headerRef, '--app-header-height');
+    useHeightProperty(modeNavRef, '--app-mode-nav-height');
     const current = appMode(location);
     const mark = current
         ? artwork[current.href]
@@ -66,7 +72,7 @@ export function AppHeader() {
 
     return (
         <>
-            <header className="app-header grid grid-cols-[1fr_auto] items-start gap-y-6 px-5 sm:px-8 md:grid-cols-3 md:px-14">
+            <header ref={headerRef} className="app-header grid grid-cols-[1fr_auto] items-start gap-y-6 px-5 sm:px-8 md:grid-cols-3 md:px-14">
                 <span className="flex min-h-10 items-center text-base text-muted-foreground md:hidden">
                     Morgenblau
                 </span>
@@ -93,7 +99,7 @@ export function AppHeader() {
                     )}
                 </div>
             </header>
-            <nav aria-label="Modes" className="app-mode-nav text-sm">
+            <nav ref={modeNavRef} aria-label="Modes" className="app-mode-nav text-sm">
                 {APP_MODES.map((mode) => {
                     const active = current === mode;
                     const { Icon, color, tabSize } = artwork[mode.href];

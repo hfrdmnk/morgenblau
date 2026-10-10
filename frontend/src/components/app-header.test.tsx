@@ -171,3 +171,38 @@ test('settings return names the previous mode and direct entry falls back to dig
     const direct = await render('/settings/import');
     expect(link(direct, 'Back to Digest').getAttribute('href')).toBe('/');
 });
+
+test('the header and mode bar heights reach the page while the header is mounted', async () => {
+    const originalObserver = globalThis.ResizeObserver;
+    const resizeCallbacks = new Set<() => void>();
+    class ManualResizeObserver extends originalObserver {
+        resize: () => void;
+        constructor(callback: ResizeObserverCallback) {
+            super(callback);
+            this.resize = () => callback([], this);
+        }
+        observe() { resizeCallbacks.add(this.resize); }
+        disconnect() { resizeCallbacks.delete(this.resize); }
+    }
+    globalThis.ResizeObserver = ManualResizeObserver;
+    const root = document.documentElement.style;
+    try {
+        const container = await render('/');
+        const setHeight = (selector: string, height: number) =>
+            Object.defineProperty(container.querySelector(selector)!, 'getBoundingClientRect', {
+                configurable: true,
+                value: () => ({ height }),
+            });
+        setHeight('header', 132.5);
+        setHeight('nav[aria-label="Modes"]', 66);
+        for (const resize of resizeCallbacks) resize();
+        expect(root.getPropertyValue('--app-header-height')).toBe('132.5px');
+        expect(root.getPropertyValue('--app-mode-nav-height')).toBe('66px');
+
+        act(() => unmount());
+        expect(root.getPropertyValue('--app-header-height')).toBe('');
+        expect(root.getPropertyValue('--app-mode-nav-height')).toBe('');
+    } finally {
+        globalThis.ResizeObserver = originalObserver;
+    }
+});
