@@ -25,7 +25,10 @@ func TestParseOptionsDefaultsAndValidation(t *testing.T) {
 	if opts, err := parseOptions([]string{"-skip-feed", "sites.json"}); err != nil || !opts.skipFeed {
 		t.Fatalf("-skip-feed = %+v, %v", opts, err)
 	}
-	for _, bad := range [][]string{{}, {"-judge", "haiku", "sites.json"}, {"-concurrency", "0", "sites.json"}, {"a.json", "b.json"}} {
+	if opts, err := parseOptions([]string{"-judge", "haiku", "-listing-snapshot-field", "sites.json"}); err != nil || opts.judge != "haiku" || !opts.snapshotField {
+		t.Fatalf("-judge haiku -listing-snapshot-field = %+v, %v", opts, err)
+	}
+	for _, bad := range [][]string{{}, {"-judge", "sonnet", "sites.json"}, {"-concurrency", "0", "sites.json"}, {"a.json", "b.json"}} {
 		if _, err := parseOptions(bad); err == nil {
 			t.Errorf("parseOptions(%v) accepted", bad)
 		}
@@ -85,7 +88,7 @@ func TestEvalReportsFeedStreamsAndBlockedSites(t *testing.T) {
 		{ID: "gone", ListingURL: bare.URL + "/missing"},
 	}
 	var out bytes.Buffer
-	err := run(context.Background(), sites, options{judge: "off", concurrency: 2, timeout: 10 * time.Second}, srv.Client(), &out)
+	err := run(context.Background(), sites, options{judge: "off", concurrency: 2, timeout: 10 * time.Second}, env{client: srv.Client()}, &out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +124,7 @@ func TestEvalReportsFeedStreamsAndBlockedSites(t *testing.T) {
 func TestSkipFeedRunsTheDOMPathOnFeedSites(t *testing.T) {
 	srv := newSite(t)
 	var out bytes.Buffer
-	err := run(context.Background(), []site{{ID: "feed", ListingURL: srv.URL + "/with-feed"}}, options{judge: "off", concurrency: 1, timeout: 10 * time.Second, skipFeed: true}, srv.Client(), &out)
+	err := run(context.Background(), []site{{ID: "feed", ListingURL: srv.URL + "/with-feed"}}, options{judge: "off", concurrency: 1, timeout: 10 * time.Second, skipFeed: true}, env{client: srv.Client()}, &out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +138,7 @@ func TestOutputUsesTheScorerFieldNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{`"results"`, `"id"`, `"listing_url"`, `"mode"`, `"feed_url"`, `"health"`, `"items"`, `"url"`, `"title"`, `"date"`, `"judge_calls"`, `"cost_usd"`, `"error"`} {
+	for _, f := range []string{`"results"`, `"id"`, `"listing_url"`, `"mode"`, `"feed_url"`, `"health"`, `"items"`, `"url"`, `"title"`, `"date"`, `"judge_calls"`, `"induce_calls"`, `"cost_usd"`, `"error"`} {
 		if !strings.Contains(string(raw), f) {
 			t.Errorf("output %s lacks %s", raw, f)
 		}
@@ -148,7 +151,7 @@ func TestReadSites(t *testing.T) {
 		t.Fatal(err)
 	}
 	sites, err := readSites(path)
-	if err != nil || len(sites) != 1 || sites[0].ListingURL != "https://news.example.com/blog" {
+	if err != nil || len(sites) != 1 || sites[0].ListingURL != "https://news.example.com/blog" || sites[0].Snapshot != "" {
 		t.Fatalf("sites %+v err %v", sites, err)
 	}
 }

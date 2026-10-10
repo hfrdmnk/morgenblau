@@ -87,13 +87,14 @@ type Fingerprint struct {
 
 // SetupRecord is the audit trail of how the recipe was chosen.
 type SetupRecord struct {
-	Stages       []string     `json:"stages"`
-	Confidence   float64      `json:"confidence"`
-	Margin       float64      `json:"margin"`
-	JudgeWanted  bool         `json:"judge_wanted,omitempty"`
-	JudgeReasons []string     `json:"judge_reasons,omitempty"`
-	Judge        *JudgeRecord `json:"judge,omitempty"`
-	Anchor       string       `json:"anchor,omitempty"`
+	Stages       []string      `json:"stages"`
+	Confidence   float64       `json:"confidence"`
+	Margin       float64       `json:"margin"`
+	JudgeWanted  bool          `json:"judge_wanted,omitempty"`
+	JudgeReasons []string      `json:"judge_reasons,omitempty"`
+	Judge        *JudgeRecord  `json:"judge,omitempty"`
+	Induce       *InduceRecord `json:"induce,omitempty"`
+	Anchor       string        `json:"anchor,omitempty"`
 }
 
 // JudgeRecord is the aggregated judge verdict and its metered cost.

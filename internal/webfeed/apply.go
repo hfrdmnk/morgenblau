@@ -19,6 +19,8 @@ func Apply(r Recipe, body []byte, pageURL string) ([]Item, error) {
 		return applyStreams(r, body, pageURL)
 	case ModeSitemap:
 		return applySitemap(r, body)
+	case ModeCSS:
+		return applyCSSRecipe(r, body, pageURL)
 	}
 	return nil, fmt.Errorf("%w: %s", ErrUnsupportedMode, r.Mode)
 }
@@ -149,5 +151,22 @@ func applySitemap(r Recipe, body []byte) ([]Item, error) {
 			}
 		}
 	}
+	return items, nil
+}
+
+func applyCSSRecipe(r Recipe, body []byte, pageURL string) ([]Item, error) {
+	if r.CSS == nil {
+		return nil, errors.New("webfeed: css recipe without selectors")
+	}
+	p, err := parsePage(body, pageURL)
+	if err != nil {
+		return nil, err
+	}
+	items, _, err := applyCSS(p, *r.CSS)
+	if err != nil {
+		return nil, err
+	}
+	items = slices.DeleteFunc(items, func(it Item) bool { return slices.Contains(r.ExcludeURLs, it.URL) })
+	sortItems(items, r.Order)
 	return items, nil
 }

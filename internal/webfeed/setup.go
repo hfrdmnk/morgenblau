@@ -18,6 +18,8 @@ type Options struct {
 	Client Doer
 	// Judge is asked when the heuristic is unsure; nil keeps the heuristic's pick and records that the judge was wanted.
 	Judge Judge
+	// Inducer writes a CSS recipe when fewer than 3 items survive; nil skips induction.
+	Inducer Inducer
 	// UserAgent defaults to safehttp.UserAgent.
 	UserAgent string
 	// MaxBody caps each response body in bytes.
@@ -33,6 +35,8 @@ type Result struct {
 	HealthReasons []string
 	// Candidates are the top lists the heuristic found, in the order the judge saw them.
 	Candidates []Candidate
+
+	listing *pageDoc
 }
 
 const (
@@ -46,7 +50,17 @@ const (
 
 // Setup finds the post stream on a listing page that has no feed and builds its recipe.
 func Setup(ctx context.Context, listingURL string, opts Options) (*Result, error) {
-	return setup(ctx, listingURL, "", opts)
+	res, err := setup(ctx, listingURL, "", opts)
+	if err != nil {
+		return nil, err
+	}
+	if opts.Inducer != nil && res.listing != nil && len(res.Items) < induceBelowItems {
+		if err := induce(ctx, res, res.listing, opts.Inducer); err != nil {
+			return nil, err
+		}
+	}
+	res.listing = nil
+	return res, nil
 }
 
 // SetupAnchored re-runs setup choosing the lists that contain the reader's example post or share its URL shape.
@@ -54,7 +68,11 @@ func SetupAnchored(ctx context.Context, listingURL, anchorPostURL string, opts O
 	if URLTemplate(anchorPostURL) == "" {
 		return nil, fmt.Errorf("webfeed: anchor %q is not an http(s) URL", anchorPostURL)
 	}
-	return setup(ctx, listingURL, anchorPostURL, opts)
+	res, err := setup(ctx, listingURL, anchorPostURL, opts)
+	if res != nil {
+		res.listing = nil
+	}
+	return res, err
 }
 
 func setup(ctx context.Context, listingURL, anchorURL string, opts Options) (*Result, error) {
@@ -93,6 +111,7 @@ func setup(ctx context.Context, listingURL, anchorURL string, opts Options) (*Re
 	if err != nil {
 		return nil, fmt.Errorf("webfeed: parse listing: %w", err)
 	}
+	res.listing = p
 	s.setLang(p.lang)
 	rec.Lang = p.lang
 	res.Title = p.title

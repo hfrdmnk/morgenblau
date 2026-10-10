@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,8 +19,11 @@ import (
 
 	"github.com/mmcdole/gofeed"
 
+	"morgenblau/internal/atidentity"
+	"morgenblau/internal/claude"
 	"morgenblau/internal/feedfinder"
 	"morgenblau/internal/safehttp"
+	"morgenblau/internal/standardfeed"
 	"morgenblau/internal/webfeed"
 )
 
@@ -31,27 +35,30 @@ type options struct {
 	explain     bool
 	skipFeed    bool
 	cacheDir    string
+	// snapshotField serves each site's listing page from its "snapshot" file; every other request stays live.
+	snapshotField bool
 }
 
 func parseOptions(args []string) (options, error) {
 	fs := flag.NewFlagSet("webfeed-eval", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	opts := options{}
-	fs.StringVar(&opts.judge, "judge", "off", "judge for unsure setups: off")
+	fs.StringVar(&opts.judge, "judge", "off", "model for unsure setups and recipe induction: off or haiku (reads ANTHROPIC_API_KEY)")
 	fs.IntVar(&opts.concurrency, "concurrency", 4, "sites evaluated in parallel")
 	fs.DurationVar(&opts.timeout, "timeout", 90*time.Second, "time budget per site")
 	fs.BoolVar(&opts.explain, "explain", false, "log each site's candidates and setup record to stderr")
 	fs.StringVar(&opts.cacheDir, "cache", "", "replay responses from this directory and record new ones (tuning only)")
 	fs.BoolVar(&opts.skipFeed, "skip-feed", false, "skip feed discovery to measure the DOM path alone (tuning only)")
+	fs.BoolVar(&opts.snapshotField, "listing-snapshot-field", false, `serve each listing page from the site's "snapshot" file; feed probes, robots, sitemaps and articles stay live`)
 	if err := fs.Parse(args); err != nil {
 		return options{}, err
 	}
 	if fs.NArg() != 1 {
-		return options{}, errors.New("usage: webfeed-eval [-judge off] [-concurrency N] [-timeout D] sites.json")
+		return options{}, errors.New("usage: webfeed-eval [-judge off|haiku] [-listing-snapshot-field] [-concurrency N] [-timeout D] sites.json")
 	}
 	opts.input = fs.Arg(0)
-	if opts.judge != "off" {
-		return options{}, fmt.Errorf("-judge %q is not available yet; use off", opts.judge)
+	if opts.judge != "off" && opts.judge != "haiku" {
+		return options{}, fmt.Errorf("-judge %q: use off or haiku", opts.judge)
 	}
 	if opts.concurrency < 1 {
 		return options{}, errors.New("-concurrency must be at least 1")
@@ -65,6 +72,7 @@ func parseOptions(args []string) (options, error) {
 type site struct {
 	ID         string `json:"id"`
 	ListingURL string `json:"listing_url"`
+	Snapshot   string `json:"snapshot"`
 }
 
 type item struct {
@@ -74,15 +82,16 @@ type item struct {
 }
 
 type result struct {
-	ID         string  `json:"id"`
-	ListingURL string  `json:"listing_url"`
-	Mode       string  `json:"mode"`
-	FeedURL    string  `json:"feed_url"`
-	Health     string  `json:"health"`
-	Items      []item  `json:"items"`
-	JudgeCalls int     `json:"judge_calls"`
-	CostUSD    float64 `json:"cost_usd"`
-	Error      string  `json:"error"`
+	ID          string  `json:"id"`
+	ListingURL  string  `json:"listing_url"`
+	Mode        string  `json:"mode"`
+	FeedURL     string  `json:"feed_url"`
+	Health      string  `json:"health"`
+	Items       []item  `json:"items"`
+	JudgeCalls  int     `json:"judge_calls"`
+	InduceCalls int     `json:"induce_calls"`
+	CostUSD     float64 `json:"cost_usd"`
+	Error       string  `json:"error"`
 }
 
 type output struct {
@@ -112,22 +121,48 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	var client webfeed.Doer = safehttp.NewClient(opts.timeout, 5)
+	safe := safehttp.NewClient(opts.timeout, 5)
+	// Discovery is composed as in internal/server: the same finder with the Standardfeed probes.
+	e := env{client: safe, standard: standardfeed.NewClient(atidentity.Guarded(safe), safe)}
 	if opts.cacheDir != "" {
 		if err := os.MkdirAll(opts.cacheDir, 0o700); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		client = cachingDoer{dir: opts.cacheDir, next: client}
+		e.client = cachingDoer{dir: opts.cacheDir, next: e.client}
 	}
-	if err := run(context.Background(), sites, opts, client, os.Stdout); err != nil {
+	if opts.judge == "haiku" {
+		model, err := newModel(os.Getenv("ANTHROPIC_API_KEY"))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		e.judge, e.inducer = model, model
+	}
+	if err := run(context.Background(), sites, opts, e, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
+// env holds what run fetches and asks through; nil judge, inducer or standard resolver turns that step off.
+type env struct {
+	client   webfeed.Doer
+	standard feedfinder.StandardResolver
+	judge    webfeed.Judge
+	inducer  webfeed.Inducer
+}
+
+// newModel builds the Haiku client; the key comes from the environment and is never printed.
+func newModel(apiKey string) (*claude.Client, error) {
+	if apiKey == "" {
+		return nil, errors.New("-judge haiku needs ANTHROPIC_API_KEY in the environment")
+	}
+	return claude.New(claude.Config{APIKey: apiKey, HTTPClient: &http.Client{Timeout: 90 * time.Second}})
+}
+
 // run evaluates sites in parallel and writes one JSON document with results in input order.
-func run(ctx context.Context, sites []site, opts options, client webfeed.Doer, w io.Writer) error {
+func run(ctx context.Context, sites []site, opts options, e env, w io.Writer) error {
 	results := make([]result, len(sites))
 	sem := make(chan struct{}, opts.concurrency)
 	var wg sync.WaitGroup
@@ -137,7 +172,7 @@ func run(ctx context.Context, sites []site, opts options, client webfeed.Doer, w
 			defer func() { <-sem }()
 			sctx, cancel := context.WithTimeout(ctx, opts.timeout)
 			defer cancel()
-			results[i] = evalSite(sctx, s, opts, client)
+			results[i] = evalSite(sctx, s, opts, e)
 		})
 	}
 	wg.Wait()
@@ -146,15 +181,33 @@ func run(ctx context.Context, sites []site, opts options, client webfeed.Doer, w
 	return enc.Encode(output{Results: results})
 }
 
-func evalSite(ctx context.Context, s site, opts options, client webfeed.Doer) result {
+func evalSite(ctx context.Context, s site, opts options, e env) result {
 	r := result{ID: s.ID, ListingURL: s.ListingURL, Mode: "none", Items: []item{}}
-	if !opts.skipFeed {
-		if feed, items := discoverFeed(ctx, client, s.ListingURL); feed != "" {
-			r.Mode, r.FeedURL, r.Health, r.Items = "feed", feed, string(webfeed.HealthOK), items
+	client := e.client
+	if opts.snapshotField && s.Snapshot != "" {
+		body, err := os.ReadFile(s.Snapshot)
+		if err != nil {
+			r.Health, r.Error = "failed", "snapshot: "+err.Error()
 			return r
 		}
+		client = snapshotDoer{listingURL: s.ListingURL, body: body, next: client}
 	}
-	res, err := webfeed.Setup(ctx, s.ListingURL, webfeed.Options{Client: client})
+	if !opts.skipFeed {
+		finder := feedfinder.New(client)
+		if e.standard != nil {
+			finder = finder.WithStandardResolver(e.standard)
+		}
+		cands, err := finder.Resolve(ctx, s.ListingURL)
+		if err != nil {
+			r.Health, r.Error = "failed", "discovery: "+err.Error()
+			return r
+		}
+		// The reader is offered generation only when discovery finds nothing at all.
+		if len(cands) > 0 {
+			return feedRoute(ctx, client, r, cands)
+		}
+	}
+	res, err := webfeed.Setup(ctx, s.ListingURL, webfeed.Options{Client: client, Judge: e.judge, Inducer: e.inducer})
 	if err != nil {
 		r.Health, r.Error = "failed", err.Error()
 		return r
@@ -163,9 +216,13 @@ func evalSite(ctx context.Context, s site, opts options, client webfeed.Doer) re
 		explain(s, res)
 	}
 	r.Health = string(res.Health)
-	if res.Recipe.Setup.Judge != nil {
-		r.JudgeCalls, r.CostUSD = res.Recipe.Setup.Judge.Calls, res.Recipe.Setup.Judge.USD
+	if rec := res.Recipe.Setup; rec.Judge != nil {
+		r.JudgeCalls = rec.Judge.Calls
 	}
+	if rec := res.Recipe.Setup; rec.Induce != nil {
+		r.InduceCalls = rec.Induce.Calls
+	}
+	_, r.CostUSD = res.Recipe.Setup.ModelCost()
 	for _, it := range res.Items {
 		r.Items = append(r.Items, item{URL: it.URL, Title: it.Title, Date: formatDate(it.Date)})
 	}
@@ -178,21 +235,54 @@ func evalSite(ctx context.Context, s site, opts options, client webfeed.Doer) re
 	return r
 }
 
-// discoverFeed returns the first discovered RSS candidate that parses with items.
-func discoverFeed(ctx context.Context, client webfeed.Doer, listingURL string) (string, []item) {
-	cands, err := feedfinder.New(client).Resolve(ctx, listingURL)
-	if err != nil {
-		return "", nil
-	}
+// feedRoute reports the subscription the reader would get: the first RSS candidate with items, else the first candidate as offered.
+func feedRoute(ctx context.Context, client webfeed.Doer, r result, cands []feedfinder.Candidate) result {
+	var firstErr error
 	for _, c := range cands {
 		if c.Kind != "" || c.FeedURL == "" {
 			continue
 		}
-		if items, err := feedItems(ctx, client, c.FeedURL); err == nil && len(items) > 0 {
-			return c.FeedURL, items
+		items, err := feedItems(ctx, client, c.FeedURL)
+		if err == nil && len(items) > 0 {
+			r.Mode, r.FeedURL, r.Health, r.Items = "feed", c.FeedURL, string(webfeed.HealthOK), items
+			return r
+		}
+		if firstErr == nil {
+			firstErr = err
+			if err == nil {
+				firstErr = errors.New("feed has no items")
+			}
 		}
 	}
-	return "", nil
+	first := cands[0]
+	if first.Kind == "standardfeed" {
+		r.Mode, r.FeedURL, r.Health = "standardfeed", first.Publication, string(webfeed.HealthOK)
+		return r
+	}
+	if firstErr == nil {
+		firstErr = errors.New("no readable feed among the candidates")
+	}
+	r.Mode, r.FeedURL, r.Health, r.Error = "feed", first.FeedURL, "failed", firstErr.Error()
+	return r
+}
+
+// snapshotDoer serves the exact listing URL from a saved page and passes every other request through.
+type snapshotDoer struct {
+	listingURL string
+	body       []byte
+	next       webfeed.Doer
+}
+
+func (d snapshotDoer) Do(req *http.Request) (*http.Response, error) {
+	if req.URL.String() != d.listingURL {
+		return d.next.Do(req)
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
+		Body:       io.NopCloser(bytes.NewReader(d.body)),
+		Request:    req,
+	}, nil
 }
 
 func explain(s site, res *webfeed.Result) {
