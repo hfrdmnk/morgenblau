@@ -281,12 +281,7 @@
 
 @media (min-width: 48rem) {
     .app-header {
-        position: static;
         padding-top: 2.5rem;
-    }
-
-    .app-header::after {
-        display: none;
     }
 
     .app-shell > main {

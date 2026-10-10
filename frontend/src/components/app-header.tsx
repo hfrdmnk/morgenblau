@@ -191,7 +191,7 @@ function DigestDateNav() {
                     </Link>
                 )}
             </nav>
-            <nav aria-label="Digest date" className="hidden grid-cols-7 items-start gap-3.5 md:inline-grid md:translate-y-1.5">
+            <nav aria-label="Digest date" className="hidden grid-cols-7 items-start gap-3.5 md:grid md:mt-2.25">
                 {dates.map((date) => (
                     <DateOption date={date} key={toDateKey(date)} selectedKey={selectedKey} todayKey={todayKey} />
                 ))}
