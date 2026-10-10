@@ -19,6 +19,9 @@ func TestUserAgent_IdentifiesMorgenblau(t *testing.T) {
 	if !strings.Contains(UserAgent, "+https://morgen.blue/about") {
 		t.Errorf("UserAgent = %q, want it to contain %q", UserAgent, "+https://morgen.blue/about")
 	}
+	if strings.Contains(UserAgent, "Go-http-client") {
+		t.Errorf("UserAgent = %q, want no Go-http-client token: some sites refuse requests that carry it", UserAgent)
+	}
 }
 
 func TestValidator_Blocks(t *testing.T) {

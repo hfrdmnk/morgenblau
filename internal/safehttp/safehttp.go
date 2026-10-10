@@ -15,7 +15,8 @@ import (
 )
 
 // UserAgent identifies Morgenblau's outbound bot traffic so operators can attribute and contact us.
-const UserAgent = "Morgenblau/0.1 (+https://morgen.blue/about; bot@morgen.blue) Go-http-client/1.1"
+// It carries no Go-http-client token because some sites refuse every request that does.
+const UserAgent = "Morgenblau/0.1 (+https://morgen.blue/about; bot@morgen.blue)"
 
 // ErrBlockedAddress is returned when a resolved IP fails the safety check.
 var ErrBlockedAddress = errors.New("safehttp: blocked address")

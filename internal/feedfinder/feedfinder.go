@@ -1,4 +1,4 @@
-// Package feedfinder turns a pasted URL into feed candidates via HTML link-rel and YouTube channel mapping.
+// Package feedfinder turns a pasted URL into feed candidates via HTML link-rel, hidden-feed discovery and YouTube channel mapping.
 package feedfinder
 
 import (
@@ -155,6 +155,11 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 		return nil, fmt.Errorf("parse html: %w", err)
 	}
 	out := extractLinkRels(doc, base)
+	if len(out) == 0 {
+		if c := f.discoverFeed(ctx, doc, base, resp.StatusCode >= 200 && resp.StatusCode < 300); c != nil {
+			out = append(out, *c)
+		}
+	}
 	if f.standard != nil {
 		var pubURIs []string
 		if wkURI := <-wellKnown; wkURI != "" {
