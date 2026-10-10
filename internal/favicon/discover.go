@@ -25,7 +25,7 @@ const (
 	maxIconBytes = 256 << 10
 	// PoliteUA mimics a browser: CDNs like Cloudflare gate HTML/image responses on
 	// absence of "Go-http-client" in the UA while leaving /feed/ paths open.
-	PoliteUA = "Mozilla/5.0 (compatible; Morgenblau/0.1; +https://morgen.blue/about)"
+	PoliteUA = "Mozilla/5.0 (compatible; Morgenblau/0.1; +https://app.morgen.blue/about)"
 )
 
 // Discover walks siteURL and returns the best validated favicon URL, or an error if no candidate (including /favicon.ico) returns 2xx.
