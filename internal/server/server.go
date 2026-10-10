@@ -30,6 +30,7 @@ import (
 	"morgenblau/internal/fetcher"
 	"morgenblau/internal/jobs"
 	"morgenblau/internal/middleware/auth"
+	"morgenblau/internal/middleware/ratelimit"
 	"morgenblau/internal/newsletter"
 	"morgenblau/internal/oauth/config"
 	"morgenblau/internal/oauth/cookie"
@@ -41,6 +42,7 @@ import (
 	"morgenblau/internal/session"
 	"morgenblau/internal/standardfeed"
 	internalsync "morgenblau/internal/sync"
+	"morgenblau/internal/websource"
 )
 
 // syncDispatcher is the slice of the sync orchestrator the routes dispatch through.
@@ -74,6 +76,7 @@ type Server struct {
 	feedfinder  *feedfinder.Finder
 	safeClient  *http.Client
 	newsletters *newsletter.Service
+	webSources  *websource.Service
 	allowedDIDs auth.Allowlist
 
 	gcCancel context.CancelFunc
@@ -103,6 +106,20 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 			return nil, nil, fmt.Errorf("invalid FETCH_INTERVAL_MINUTES %q: %w", raw, err)
 		}
 		fetchMinutes = n
+	}
+
+	webPollMinutes := 30
+	if raw := os.Getenv("WEB_POLL_INTERVAL_MINUTES"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid WEB_POLL_INTERVAL_MINUTES %q: %w", raw, err)
+		}
+		webPollMinutes = n
+	}
+
+	publicBase, err := publicBaseURL(os.Getenv, port)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	newsletterCfg, err := loadNewsletterRuntimeConfig()
@@ -176,8 +193,18 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 
 	profileCache := profiles.New(identityDir, profiles.PDSFetcher{Client: safeClient})
 	tracker := jobs.New()
-	fetcherInst := fetcher.New()
-	pipeline := internalsync.NewFeedPipeline(fetcherInst, qw).WithTxRunner(db.Writer)
+	// internal/webfeed plugs in here through an adapter to websource.Generator; nil answers create with 503 and keeps polling off.
+	var webGenerator websource.Generator
+	webPollInterval := time.Duration(webPollMinutes) * time.Minute
+	webSources := websource.NewService(db.Reader, db.Writer, webGenerator, websource.Config{
+		PublicBaseURL: publicBase, PollInterval: webPollInterval,
+		// Each generation can cost model calls, so a reader gets a bounded number per hour.
+		Limiter: ratelimit.New(20, time.Hour, nil),
+	})
+	fetcherInst := fetcher.New(fetcher.WrapTransport(func(next http.RoundTripper) http.RoundTripper {
+		return ownWebFeeds(publicBase, webSources.FeedHandler(), next)
+	}))
+	pipeline := internalsync.NewFeedPipeline(fetcherInst, qw).WithTxRunner(db.Writer).WithUndatedHistory(isOwnWebFeed(publicBase))
 	stdClient := standardfeed.NewClient(identityDir, safeClient)
 	finder := feedfinder.New(safeClient).WithStandardResolver(stdClient)
 	stdPipeline := internalsync.NewStandardfeedPipeline(stdClient, qw).WithTxRunner(db.Writer)
@@ -237,6 +264,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		feedfinder:  finder,
 		safeClient:  safeClient,
 		newsletters: newsletterService,
+		webSources:  webSources,
 		allowedDIDs: allowedDIDs,
 		gcCancel:    gcCancel,
 	}
@@ -250,6 +278,12 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		slog.Info("global feed fetch enabled", "interval", interval)
 	} else {
 		slog.Info("global feed fetch disabled (FETCH_INTERVAL_MINUTES <= 0)")
+	}
+	if webPollMinutes > 0 && webGenerator != nil {
+		srv.gcWG.Go(func() { runWebPoll(gcCtx, webSources, min(time.Minute, webPollInterval)) })
+		slog.Info("web source polling enabled", "interval", webPollInterval)
+	} else {
+		slog.Info("web source polling disabled", "generator", webGenerator != nil, "interval_minutes", webPollMinutes)
 	}
 
 	server := &http.Server{

@@ -462,3 +462,49 @@ func TestStandardfeedPipeline_FetchAndStore_DeleteSweepAndMalformedProtection(t 
 		t.Errorf("cached entry should be untouched (still old cid), got %v", kept.RecordCid)
 	}
 }
+
+// Generated /web/ feeds date every item a later poll finds, so an undated one is setup history and must stay out of the digest.
+func TestFeedPipeline_OwnWebFeedUndatedItemsStayUndated(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>Example Publication</title><link>https://site.example.com/</link>` +
+			`<item><title>Undated</title><link>https://site.example.com/undated</link><guid>https://site.example.com/undated</guid></item>` +
+			`<item><title>Dated</title><link>https://site.example.com/dated</link><guid>https://site.example.com/dated</guid><pubDate>Thu, 01 Oct 2026 08:00:00 +0000</pubDate></item>` +
+			`</channel></rss>`))
+	}))
+	defer srv.Close()
+	plainURL, webURL := srv.URL+"/feed.xml", srv.URL+"/web/abc"
+	dbs := openPipelineTestDB(t)
+	seedCatalogFeed(t, dbs, plainURL)
+	seedCatalogFeed(t, dbs, webURL)
+	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+	p := NewFeedPipeline(fetcher.New(fetcher.WithSafeHTTPOptions(safehttp.WithAllowLoopback())), db.New(dbs.Writer)).
+		WithFaviconDiscoverer(&fakeFaviconDiscoverer{}).WithTxRunner(dbs.Writer).
+		WithUndatedHistory(func(feedURL string) bool { return feedURL == webURL })
+	p.now = func() time.Time { return now }
+
+	published := func(feedURL, guid string) string {
+		t.Helper()
+		entry, err := db.New(dbs.Reader).GetFeedEntryBySlug(context.Background(), EntrySlug(feedURL, guid))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return entry.PublishedAt
+	}
+	for range 2 {
+		for _, feedURL := range []string{plainURL, webURL} {
+			if err := p.FetchAndStore(context.Background(), feedURL); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := published(webURL, "https://site.example.com/undated"); got != "" {
+			t.Errorf("web feed undated published_at = %q, want empty", got)
+		}
+		if got := published(plainURL, "https://site.example.com/undated"); got != "2026-10-10T12:00:00Z" {
+			t.Errorf("plain feed undated published_at = %q, want the first-seen time", got)
+		}
+		if got := published(webURL, "https://site.example.com/dated"); got != "2026-10-01T08:00:00Z" {
+			t.Errorf("web feed dated published_at = %q", got)
+		}
+		now = now.Add(24 * time.Hour)
+	}
+}

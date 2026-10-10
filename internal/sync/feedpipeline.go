@@ -51,6 +51,8 @@ type FeedPipeline struct {
 	now       func() time.Time
 	favicon   FaviconDiscoverer
 	runTx     func(ctx context.Context, fn func(pipelineQueries) error) error
+	// undatedHistory reports feeds whose undated items are history rather than news, so they keep no date.
+	undatedHistory func(feedURL string) bool
 }
 
 type pipelineQueries interface {
@@ -80,6 +82,12 @@ func NewFeedPipeline(f *fetcher.Fetcher, q pipelineQueries) *FeedPipeline {
 // WithFaviconDiscoverer swaps the favicon discoverer for tests.
 func (p *FeedPipeline) WithFaviconDiscoverer(d FaviconDiscoverer) *FeedPipeline {
 	p.favicon = d
+	return p
+}
+
+// WithUndatedHistory marks feeds that date every new item themselves (generated /web/ feeds), so an undated item there is setup history and skips the first-seen fallback.
+func (p *FeedPipeline) WithUndatedHistory(isHistory func(feedURL string) bool) *FeedPipeline {
+	p.undatedHistory = isHistory
 	return p
 }
 
@@ -183,6 +191,10 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 			}
 		}
 
+		var keepUndated int64
+		if p.undatedHistory != nil && p.undatedHistory(feedURL) {
+			keepUndated = 1
+		}
 		for _, item := range res.Feed.Items {
 			guid := chooseGUID(item)
 			if guid == "" {
@@ -217,6 +229,7 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 				PublishedAt: publishedAt,
 				FetchedAt:   nowStr,
 				Metadata:    metaJSON,
+				KeepUndated: keepUndated,
 			}); err != nil {
 				slog.Warn("feedpipeline: entry upsert failed", "url", feedURL, "guid", guid, "err", err)
 			}

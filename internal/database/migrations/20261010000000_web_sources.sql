@@ -1,0 +1,62 @@
+-- +goose Up
+-- +goose StatementBegin
+CREATE TABLE web_sources (
+    id                   TEXT PRIMARY KEY,
+    -- One web source per site: listing_key is the normalized listing URL, listing_url the one generation fetches.
+    listing_key          TEXT NOT NULL UNIQUE,
+    listing_url          TEXT NOT NULL,
+    site_url             TEXT NOT NULL,
+    title                TEXT NOT NULL DEFAULT '',
+    recipe               TEXT NOT NULL,
+    health               TEXT NOT NULL CHECK (health IN ('ok', 'needs_attention', 'blocked_by_site', 'broken')),
+    health_reason        TEXT NOT NULL DEFAULT '',
+    needs_anchor         INTEGER NOT NULL DEFAULT 0,
+    setup_cost           TEXT NOT NULL DEFAULT '{}',
+    created_by_did       TEXT NOT NULL,
+    created_at           TEXT NOT NULL,
+    updated_at           TEXT NOT NULL,
+    setup_at             TEXT NOT NULL,
+    last_polled_at       TEXT,
+    next_poll_at         TEXT,
+    etag                 TEXT,
+    last_modified        TEXT,
+    link_set_hash        TEXT,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX web_sources_next_poll_at_idx ON web_sources (next_poll_at);
+
+CREATE TABLE web_source_items (
+    source_id     TEXT NOT NULL REFERENCES web_sources (id) ON DELETE CASCADE,
+    url           TEXT NOT NULL,
+    title         TEXT NOT NULL,
+    published_at  TEXT,
+    excerpt       TEXT NOT NULL DEFAULT '',
+    first_seen_at TEXT NOT NULL,
+    history       INTEGER NOT NULL DEFAULT 0,
+    position      INTEGER NOT NULL,
+    PRIMARY KEY (source_id, url)
+);
+
+-- Only good polls land here; the detector compares a new poll against the latest few.
+CREATE TABLE web_source_polls (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id    TEXT NOT NULL REFERENCES web_sources (id) ON DELETE CASCADE,
+    polled_at    TEXT NOT NULL,
+    item_count   INTEGER NOT NULL,
+    urls         TEXT NOT NULL,
+    titles       TEXT NOT NULL,
+    url_template TEXT NOT NULL,
+    date_frac    REAL NOT NULL,
+    title_shape  REAL NOT NULL
+);
+
+CREATE INDEX web_source_polls_source_idx ON web_source_polls (source_id, id);
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+DROP TABLE IF EXISTS web_source_polls;
+DROP TABLE IF EXISTS web_source_items;
+DROP TABLE IF EXISTS web_sources;
+-- +goose StatementEnd

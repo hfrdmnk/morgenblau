@@ -101,6 +101,12 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("GET /api/entries/{slug}", entry)
 	mux.Handle("POST /api/entries/{slug}/extract", api.EntryExtractHandler(s.qr, s.qw, s.safeClient))
 
+	if s.webSources != nil {
+		// Server-owned storage only: generating a feed commits nothing to the PDS, so it stays out of CommitGate.
+		mux.Handle("POST /api/web-sources", api.WebSourcesCreateHandler(s.webSources))
+		mux.Handle("GET /web/{id}", s.webSources.FeedHandler())
+	}
+
 	mux.HandleFunc("/api/", api.NotFound)
 
 	mux.Handle("GET /about", api.AboutHandler())

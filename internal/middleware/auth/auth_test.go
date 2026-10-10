@@ -127,6 +127,11 @@ func TestMiddleware_Table(t *testing.T) {
 		{name: "static asset", path: "/assets/index-abc.js", method: "GET", wantCode: 200, wantNext: true},
 		{name: "favicon", path: "/favicon.svg", method: "GET", wantCode: 200, wantNext: true},
 
+		// Feed readers fetch generated web source feeds without a session.
+		{name: "web feed unauthed", path: "/web/abcdefghijklmnopqrstuvwxyz", method: "GET", wantCode: 200, wantNext: true},
+		{name: "web feed authed", path: "/web/abcdefghijklmnopqrstuvwxyz", method: "GET", authed: true, wantCode: 200, wantNext: true},
+		{name: "web lookalike unauthed", path: "/webhooks", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
+
 		{name: "root unauthed", path: "/", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
 		{name: "login unauthed", path: "/login", method: "GET", wantCode: 200, wantNext: true},
 

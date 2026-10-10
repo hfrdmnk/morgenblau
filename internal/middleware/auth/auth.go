@@ -77,7 +77,7 @@ func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, allowed A
 				return
 			}
 
-			if isInfra(path) {
+			if isInfra(path) || isPublicPrefix(path) {
 				serve(next, w, r, sess)
 				return
 			}
@@ -129,6 +129,20 @@ func serve(next http.Handler, w http.ResponseWriter, r *http.Request, sess *sess
 var publicRoutes = map[string]string{
 	"/login": "/",
 	"/about": "",
+}
+
+// publicPrefixes are anonymous on purpose: feed readers fetch generated web source feeds without a session.
+var publicPrefixes = []string{
+	"/web/",
+}
+
+func isPublicPrefix(path string) bool {
+	for _, p := range publicPrefixes {
+		if strings.HasPrefix(path, p) {
+			return true
+		}
+	}
+	return false
 }
 
 var infraExact = map[string]struct{}{

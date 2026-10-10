@@ -29,7 +29,7 @@ func New(limit int, window time.Duration, key func(*http.Request) string) *Limit
 
 func (l *Limiter) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if wait, ok := l.allow(l.key(r)); !ok {
+		if wait, ok := l.Allow(l.key(r)); !ok {
 			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
 			http.Error(w, "too many requests, try again shortly", http.StatusTooManyRequests)
 			return
@@ -38,7 +38,8 @@ func (l *Limiter) Wrap(next http.Handler) http.Handler {
 	})
 }
 
-func (l *Limiter) allow(key string) (time.Duration, bool) {
+// Allow counts one request for key, or reports how long until the window resets.
+func (l *Limiter) Allow(key string) (time.Duration, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()

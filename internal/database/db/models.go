@@ -154,3 +154,49 @@ type UserSubscription struct {
 	CreatedAt   string  `json:"created_at"`
 	UpdatedAt   string  `json:"updated_at"`
 }
+
+type WebSource struct {
+	ID                  string  `json:"id"`
+	ListingKey          string  `json:"listing_key"`
+	ListingUrl          string  `json:"listing_url"`
+	SiteUrl             string  `json:"site_url"`
+	Title               string  `json:"title"`
+	Recipe              string  `json:"recipe"`
+	Health              string  `json:"health"`
+	HealthReason        string  `json:"health_reason"`
+	NeedsAnchor         int64   `json:"needs_anchor"`
+	SetupCost           string  `json:"setup_cost"`
+	CreatedByDid        string  `json:"created_by_did"`
+	CreatedAt           string  `json:"created_at"`
+	UpdatedAt           string  `json:"updated_at"`
+	SetupAt             string  `json:"setup_at"`
+	LastPolledAt        *string `json:"last_polled_at"`
+	NextPollAt          *string `json:"next_poll_at"`
+	Etag                *string `json:"etag"`
+	LastModified        *string `json:"last_modified"`
+	LinkSetHash         *string `json:"link_set_hash"`
+	ConsecutiveFailures int64   `json:"consecutive_failures"`
+}
+
+type WebSourceItem struct {
+	SourceID    string  `json:"source_id"`
+	Url         string  `json:"url"`
+	Title       string  `json:"title"`
+	PublishedAt *string `json:"published_at"`
+	Excerpt     string  `json:"excerpt"`
+	FirstSeenAt string  `json:"first_seen_at"`
+	History     int64   `json:"history"`
+	Position    int64   `json:"position"`
+}
+
+type WebSourcePoll struct {
+	ID          int64   `json:"id"`
+	SourceID    string  `json:"source_id"`
+	PolledAt    string  `json:"polled_at"`
+	ItemCount   int64   `json:"item_count"`
+	Urls        string  `json:"urls"`
+	Titles      string  `json:"titles"`
+	UrlTemplate string  `json:"url_template"`
+	DateFrac    float64 `json:"date_frac"`
+	TitleShape  float64 `json:"title_shape"`
+}

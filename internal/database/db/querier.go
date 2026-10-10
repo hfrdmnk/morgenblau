@@ -10,6 +10,7 @@ import (
 
 type Querier interface {
 	AllowNewsletterRemoteImages(ctx context.Context, arg AllowNewsletterRemoteImagesParams) error
+	CountWebSourceItems(ctx context.Context, sourceID string) (int64, error)
 	CreateManualNewsletterSource(ctx context.Context, arg CreateManualNewsletterSourceParams) error
 	CreateNewsletterAddress(ctx context.Context, arg CreateNewsletterAddressParams) error
 	CreateNewsletterInlineAsset(ctx context.Context, arg CreateNewsletterInlineAssetParams) error
@@ -17,6 +18,7 @@ type Querier interface {
 	CreateNewsletterReceipt(ctx context.Context, arg CreateNewsletterReceiptParams) error
 	CreateNewsletterSave(ctx context.Context, arg CreateNewsletterSaveParams) error
 	CreateNewsletterSource(ctx context.Context, arg CreateNewsletterSourceParams) error
+	CreateWebSource(ctx context.Context, arg CreateWebSourceParams) (int64, error)
 	DeleteAuthRequest(ctx context.Context, state string) error
 	DeleteExpiredAuthRequests(ctx context.Context, expiresAt string) (int64, error)
 	DeleteFeedEntry(ctx context.Context, arg DeleteFeedEntryParams) error
@@ -27,6 +29,8 @@ type Querier interface {
 	DeleteUnsavedNewsletterMessages(ctx context.Context, arg DeleteUnsavedNewsletterMessagesParams) error
 	DeleteUserSave(ctx context.Context, arg DeleteUserSaveParams) error
 	DeleteUserSubscription(ctx context.Context, arg DeleteUserSubscriptionParams) error
+	DeleteWebSourceItems(ctx context.Context, sourceID string) error
+	DeleteWebSourcePolls(ctx context.Context, sourceID string) error
 	EnableNewsletterSource(ctx context.Context, arg EnableNewsletterSourceParams) error
 	GetAuthRequest(ctx context.Context, state string) (GetAuthRequestRow, error)
 	// Column order matches the table's physical layout so sqlc reuses the Feed
@@ -49,6 +53,7 @@ type Querier interface {
 	GetNewsletterSourceByKey(ctx context.Context, arg GetNewsletterSourceByKeyParams) (NewsletterSource, error)
 	GetNewsletterSourceWithStats(ctx context.Context, arg GetNewsletterSourceWithStatsParams) (GetNewsletterSourceWithStatsRow, error)
 	GetNextNewsletterReceipt(ctx context.Context, nextAttemptAt *string) (GetNextNewsletterReceiptRow, error)
+	GetOldestWebSourceItemDate(ctx context.Context, sourceID string) (*string, error)
 	GetSession(ctx context.Context, arg GetSessionParams) ([]byte, error)
 	GetUserSave(ctx context.Context, arg GetUserSaveParams) (UserSave, error)
 	GetUserSaveByItemURL(ctx context.Context, arg GetUserSaveByItemURLParams) (UserSave, error)
@@ -58,8 +63,14 @@ type Querier interface {
 	GetUserSourceWithStats(ctx context.Context, arg GetUserSourceWithStatsParams) (GetUserSourceWithStatsRow, error)
 	GetUserSubscription(ctx context.Context, arg GetUserSubscriptionParams) (UserSubscription, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserSubscriptionByFeedURLParams) (UserSubscription, error)
+	GetWebSource(ctx context.Context, id string) (WebSource, error)
+	GetWebSourceByListingKey(ctx context.Context, listingKey string) (WebSource, error)
+	InsertWebSourceItem(ctx context.Context, arg InsertWebSourceItemParams) error
+	InsertWebSourcePoll(ctx context.Context, arg InsertWebSourcePollParams) error
 	ListAllFeedURLs(ctx context.Context) ([]string, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
+	// A web source counts as followed once its feed URL is in the shared feeds catalog, the same set the global refresher fetches.
+	ListDueWebSources(ctx context.Context, arg ListDueWebSourcesParams) ([]WebSource, error)
 	// Entries from a single feed, newest first, bounded by limit. The join to
 	// user_subscriptions doubles as an ownership filter; the handler still
 	// distinguishes "not subscribed" from "no posts" via a separate lookup.
@@ -91,11 +102,17 @@ type Querier interface {
 	// resolve handler can flag candidates that point at the same site under the
 	// other kind (rss vs standardfeed).
 	ListUserSubscriptionsWithSiteURL(ctx context.Context, did string) ([]ListUserSubscriptionsWithSiteURLRow, error)
+	// Newest first: an item's own date, else the time a later poll first saw it; undated history keeps page order at the end.
+	ListWebSourceFeedItems(ctx context.Context, arg ListWebSourceFeedItemsParams) ([]ListWebSourceFeedItemsRow, error)
+	ListWebSourceItemURLs(ctx context.Context, sourceID string) ([]string, error)
+	ListWebSourcePolls(ctx context.Context, arg ListWebSourcePollsParams) ([]WebSourcePoll, error)
 	MarkNewsletterReceiptFailed(ctx context.Context, arg MarkNewsletterReceiptFailedParams) error
 	MoveNewsletterMessage(ctx context.Context, arg MoveNewsletterMessageParams) error
 	PatchNewsletterSource(ctx context.Context, arg PatchNewsletterSourceParams) error
+	PruneWebSourcePolls(ctx context.Context, arg PruneWebSourcePollsParams) error
 	PutAuthRequest(ctx context.Context, arg PutAuthRequestParams) error
 	PutSession(ctx context.Context, arg PutSessionParams) error
+	ReplaceWebSourceSetup(ctx context.Context, arg ReplaceWebSourceSetupParams) error
 	SetFeedIconURL(ctx context.Context, arg SetFeedIconURLParams) error
 	SetNewsletterSourceStatus(ctx context.Context, arg SetNewsletterSourceStatusParams) error
 	TouchNewsletterSource(ctx context.Context, arg TouchNewsletterSourceParams) error
@@ -104,6 +121,7 @@ type Querier interface {
 	UpdateFeedFetchFailure(ctx context.Context, arg UpdateFeedFetchFailureParams) error
 	// SPEC <feed-sources> failure handling: success resets the backoff counter and clears the skip stamp.
 	UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchStateParams) error
+	UpdateWebSourcePoll(ctx context.Context, arg UpdateWebSourcePollParams) error
 	// kind defaults to 'rss' via NULLIF so pre-standardfeed callers passing the
 	// zero value keep working; it is never changed on conflict. title is the
 	// cached publication name; COALESCE keeps rss callers (nil) from clobbering it.
@@ -111,6 +129,7 @@ type Querier interface {
 	// sqlc emit non-contiguous placeholder numbers that modernc.org/sqlite can't
 	// bind ("missing argument with index N").
 	UpsertFeed(ctx context.Context, arg UpsertFeedParams) error
+	// keep_undated = 1 stores an undated entry with an empty published_at, which no digest day matches, instead of its first-seen time.
 	UpsertFeedEntry(ctx context.Context, arg UpsertFeedEntryParams) error
 	// Standardfeed counterpart to UpsertFeedEntry. Unlike the rss upsert it owns
 	// extracted_body and record_cid on conflict: a CID change must reset the
