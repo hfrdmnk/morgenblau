@@ -38,7 +38,7 @@ async function settle() {
     });
 }
 
-// The newsletter panel's exit runs on happy-dom's animation clock before results mount.
+// The newsletter panel's exit runs on motion's frame loop (test/preload.ts) before results mount.
 async function waitFor(text: string) {
     for (let tries = 0; tries < 100 && !document.body.textContent?.includes(text); tries++) {
         await act(async () => {
