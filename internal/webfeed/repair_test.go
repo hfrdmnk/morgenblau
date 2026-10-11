@@ -80,8 +80,8 @@ func TestRepairLadder(t *testing.T) {
 			accepted: true, step: RepairHeuristic, rule: AcceptTitles, tried: []RepairStep{RepairHeuristic}, items: 8, itemPrefix: "/posts/"},
 		{name: "titles rewritten and moved, no model allowed", after: siteNav + renamedList(8) + siteFooter, judge: true,
 			tried: []RepairStep{RepairHeuristic}},
-		{name: "titles rewritten and moved, the model step keeps the overlap", after: siteNav + renamedList(8) + siteFooter, judge: true, allowModel: true,
-			accepted: true, step: RepairJudge, rule: AcceptModel, usedModel: true, tried: []RepairStep{RepairHeuristic, RepairJudge}, items: 8, itemPrefix: "/articles/"},
+		{name: "titles rewritten and moved, a confident setup re-run earns no model leniency", after: siteNav + renamedList(8) + siteFooter, judge: true, allowModel: true,
+			tried: []RepairStep{RepairHeuristic, RepairJudge}},
 		{name: "only topic links left", after: siteNav + tagCloud() + siteFooter, allowModel: true,
 			tried: []RepairStep{RepairHeuristic}},
 	}
@@ -248,8 +248,8 @@ func TestRepairOfADoubtedListNeedsADifferentList(t *testing.T) {
 		if got.Accepted {
 			t.Fatalf("repair reproduced the doubted list and was accepted by %q at %q", got.Rule, got.Step)
 		}
-		if !slices.Equal(got.Tried, []RepairStep{RepairHeuristic, RepairJudge}) || !got.UsedModel {
-			t.Errorf("tried %v (model %v), want the doubted posts skipped as anchors and the model step tried", got.Tried, got.UsedModel)
+		if !slices.Equal(got.Tried, []RepairStep{RepairHeuristic, RepairJudge}) || got.UsedModel {
+			t.Errorf("tried %v (model %v), want the doubted posts skipped as anchors and the setup rung tried without a model call", got.Tried, got.UsedModel)
 		}
 	})
 }
@@ -289,7 +289,7 @@ func TestRepairRejectsAModelStepWhoseSetupIsBlocked(t *testing.T) {
 	if got.Accepted || len(got.Items) != 0 {
 		t.Fatalf("repair accepted %v by %q with items %v, want the blocked setup rejected", got.Accepted, got.Rule, itemURLs(got.Items))
 	}
-	if len(got.Tried) == 0 || got.Tried[len(got.Tried)-1] != RepairJudge || !got.UsedModel {
-		t.Fatalf("tried %v (model %v), want the judge step tried last", got.Tried, got.UsedModel)
+	if len(got.Tried) == 0 || got.Tried[len(got.Tried)-1] != RepairJudge || got.UsedModel {
+		t.Fatalf("tried %v (model %v), want the judge step tried last without a model call", got.Tried, got.UsedModel)
 	}
 }

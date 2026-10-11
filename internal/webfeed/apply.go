@@ -147,22 +147,18 @@ func applySitemap(r Recipe, body []byte) ([]Item, error) {
 	if err != nil {
 		return nil, err
 	}
-	var items []Item
-	seen := map[string]bool{}
-	for _, su := range sm.urls {
-		k := postkey.URL(su.loc)
-		if seen[k] || slices.Contains(r.ExcludeURLs, su.loc) {
-			continue
+	return sitemapItems(sm.urls, sitemapMatch(r)), nil
+}
+
+// sitemapMatch keeps the entries a sitemap recipe's streams name, other than the listing and its excluded URLs.
+func sitemapMatch(r Recipe) func(loc string) bool {
+	listing := postkey.URL(r.ListingURL)
+	return func(loc string) bool {
+		if slices.Contains(r.ExcludeURLs, loc) || strings.EqualFold(postkey.URL(loc), listing) {
+			return false
 		}
-		for _, st := range r.Streams {
-			if matchTemplate(st.URLTemplate, URLTemplate(su.loc)) && !strings.EqualFold(k, postkey.URL(r.ListingURL)) {
-				seen[k] = true
-				items = append(items, Item{URL: su.loc, Title: slugTitle(su.loc)})
-				break
-			}
-		}
+		return slices.ContainsFunc(r.Streams, func(st Stream) bool { return matchTemplate(st.URLTemplate, URLTemplate(loc)) })
 	}
-	return capItems(items), nil
 }
 
 func applyCSSRecipe(r Recipe, p *pageDoc) ([]Item, error) {

@@ -90,11 +90,27 @@ func Poll(ctx context.Context, in PollInput, opts Options) (*PollResult, error) 
 
 	var p *pageDoc
 	var items []Item
+	body := resp.body
 	if r.Mode == ModeSitemap {
-		var err error
-		if items, err = applySitemap(r, resp.body); err != nil {
+		root := resp
+		match := sitemapMatch(r)
+		tree := walkSitemaps([]string{target}, r.ListingURL, func(rawURL string) *response {
+			if got := root; got != nil {
+				root = nil
+				return got
+			}
+			return s.fetchOnce(ctx, rawURL, maxBody)
+		}, func(su sitemapURL) bool { return match(su.loc) })
+		if tree.rootErr != nil {
 			return broken(out, ReasonNotHTML, false), nil
 		}
+		if tree.rootIndex {
+			out.ETag, out.LastModified = "", ""
+		}
+		if tree.source != nil {
+			body = tree.source
+		}
+		items = sitemapItems(tree.found, match)
 		out.LinkSetHash = hashKeys(itemURLKeys(items))
 	} else {
 		var err error
@@ -125,7 +141,7 @@ func Poll(ctx context.Context, in PollInput, opts Options) (*PollResult, error) 
 	templates := streamTemplates(r.Streams)
 	out.Items = items
 	out.URLTemplate = DominantTemplate(items, templates)
-	out.page = &fetchedPage{body: resp.body, doc: p}
+	out.page = &fetchedPage{body: body, doc: p}
 	if reason := drift(items, out.URLTemplate, in.History); reason != "" {
 		out.Verdict, out.Reason = PollSuspect, reason
 		return out, nil

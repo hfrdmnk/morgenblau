@@ -144,7 +144,8 @@ func generalizeTemplates(ts []string) string {
 	return host + "/" + strings.Join(out, "/")
 }
 
-// matchTemplate reports whether a URL's template fits a stream's pattern, where * in the pattern stands for any one segment.
+// matchTemplate reports whether a URL's template fits a stream's pattern, where * in the pattern stands for any one
+// non-empty segment: a root URL's template is "host/", and "/?page=2" must not join a root-slug stream.
 func matchTemplate(pattern, tmpl string) bool {
 	if pattern == tmpl {
 		return true
@@ -159,7 +160,7 @@ func matchTemplate(pattern, tmpl string) bool {
 		return false
 	}
 	for i := range ps {
-		if ps[i] != "*" && ps[i] != ts[i] {
+		if ts[i] == "" || (ps[i] != "*" && ps[i] != ts[i]) {
 			return false
 		}
 	}

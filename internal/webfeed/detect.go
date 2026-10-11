@@ -90,7 +90,8 @@ func responseTier0(r *response, wantHTML bool) (reason Reason, blocked bool) {
 	return "", false
 }
 
-var reErrorTitle = regexp.MustCompile(`(?i)^\W*(error\W*)?(404|410|500|502|503)\b`)
+// reErrorTitle wants the code bare, set off by punctuation or named an error, since a publication may lead its name with one.
+var reErrorTitle = regexp.MustCompile(`(?i)^\W*(?:error\W*(?:404|410|500|502|503)\b|(?:404|410|500|502|503)[\s\p{Z}]*(?:$|[^\pL\pN\s\p{Z}]|(?:error|gone)\b))`)
 
 // errorPhrases name a soft error page; they are matched on the title and first heading only, where a listing never says them.
 var errorPhrases = []string{

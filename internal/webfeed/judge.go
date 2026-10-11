@@ -140,9 +140,6 @@ func runJudge(ctx context.Context, m Model, user string, n int, heuristicOrder O
 		})
 	}
 	wg.Wait()
-	if err := ctx.Err(); err != nil {
-		return JudgeRecord{}, err
-	}
 	rec := JudgeRecord{Calls: judgeVotes}
 	for i, u := range usages {
 		rec.InputTokens += u.InputTokens
@@ -153,6 +150,10 @@ func runJudge(ctx context.Context, m Model, user string, n int, heuristicOrder O
 		}
 	}
 	rec.USD = roundUSD(rec.USD)
+	// The calls were paid for even when the deadline cut them short, so the record travels with the error.
+	if err := ctx.Err(); err != nil {
+		return rec, err
+	}
 	rec.Pick, rec.Order, rec.None = aggregateVotes(votes, heuristicOrder)
 	if rec.Pick == nil {
 		rec.Pick = []int{}

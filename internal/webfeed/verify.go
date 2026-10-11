@@ -176,7 +176,9 @@ func (s *session) fetchArticles(ctx context.Context, urls []string) map[string]*
 		cached, ok := s.articles[u]
 		s.mu.Unlock()
 		if ok {
+			mu.Lock()
 			out[u] = cached
+			mu.Unlock()
 			continue
 		}
 		wg.Go(func() {

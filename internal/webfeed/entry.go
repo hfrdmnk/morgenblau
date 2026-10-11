@@ -118,15 +118,51 @@ func isGeneric(s string) bool {
 	return t == "" || genericPhrases[t]
 }
 
+// isDateLike reports text that is only a date: a title that merely mentions one ("Monthly roundup: May 2024") is a headline.
 func isDateLike(s string) bool {
 	if utf8.RuneCountInString(s) > 40 {
 		return false
 	}
-	if _, ok := parseDateText(s); ok {
+	if reRelativeDate.MatchString(s) {
 		return true
 	}
-	return reRelativeDate.MatchString(s)
+	rest, found := s, false
+	for _, re := range dateShapes {
+		rest = re.ReplaceAllStringFunc(rest, func(m string) string {
+			if _, ok := parseDateText(m); !ok {
+				return m
+			}
+			found = true
+			return " "
+		})
+	}
+	if !found {
+		return false
+	}
+	for _, w := range strings.FieldsFunc(strings.ToLower(rest), func(r rune) bool { return !unicode.IsLetter(r) }) {
+		if !dateWords[w] {
+			return false
+		}
+	}
+	return true
 }
+
+// dateShapes are parseDateText's patterns, full dates before month-year so "May 3, 2024" goes whole.
+var dateShapes = []*regexp.Regexp{reISODate, reCJKDate, reYMDDate, reMonthDay, reDayMonth, reDMYDots, reSlashDate, reMonthYear}
+
+// dateWords may surround a date without making it a headline: weekdays, publish labels, clock words, CJK day marks.
+var dateWords = func() map[string]bool {
+	m := map[string]bool{}
+	for _, w := range strings.Fields(`monday tuesday wednesday thursday friday saturday sunday mon tue tues wed thu thur thurs fri sat sun
+		montag dienstag mittwoch donnerstag freitag samstag sonnabend sonntag lundi mardi mercredi jeudi vendredi samedi dimanche
+		lunes martes miércoles jueves viernes sábado domingo lunedì martedì mercoledì giovedì venerdì sabato domenica
+		segunda terça quarta quinta sexta feira maandag dinsdag woensdag donderdag vrijdag zaterdag zondag
+		posted published updated on at am pm uhr um veröffentlicht aktualisiert publié le el op
+		日 일 月 火 水 木 金 土 曜日`) {
+		m[w] = true
+	}
+	return m
+}()
 
 var reRelativeDate = regexp.MustCompile(`(?i)^\s*(\d+\s*(min|mins|minutes?|h|hours?|d|days?|w|weeks?|mo|months?|y|years?)\s*(ago)?|yesterday|today|gestern|heute|vor \d+ \S+)\s*$`)
 

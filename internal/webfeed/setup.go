@@ -60,11 +60,12 @@ const (
 func Setup(ctx context.Context, listingURL string, opts Options) (*Result, error) {
 	res, err := setup(ctx, listingURL, "", opts)
 	if err != nil {
-		return nil, err
+		return res, err
 	}
 	if opts.Model != nil && res.listing != nil && len(res.Items) < induceBelowItems {
 		if err := induce(ctx, res, res.listing, opts.Model); err != nil {
-			return nil, err
+			res.release()
+			return res, err
 		}
 	}
 	res.release()
@@ -153,7 +154,8 @@ func setup(ctx context.Context, listingURL, anchorURL string, opts Options) (*Re
 		rec.Setup.Stages = append(rec.Setup.Stages, "anchored")
 		rec.Setup.Anchor = anchorURL
 	} else if pick, judgeNone, err = s.choose(ctx, res, top, conf, margin, opts.Model); err != nil {
-		return nil, err
+		res.release()
+		return res, err
 	}
 	if len(pick) == 0 {
 		res.Reasons = []Reason{ReasonCount}
@@ -225,6 +227,7 @@ func (s *session) choose(ctx context.Context, res *Result, top []*cluster, conf,
 	}
 	jr, err := runJudge(ctx, m, renderUserMessage(res.Recipe.ListingURL, res.Title, res.Candidates), len(top), orderFor(top[0].dateFrac))
 	if err != nil {
+		rec.Judge = &jr
 		return nil, false, err
 	}
 	rec.Stages = append(rec.Stages, "judge")
@@ -241,7 +244,7 @@ func (s *session) build(ctx context.Context, res *Result, p *pageDoc, picked []*
 	rec := &res.Recipe
 	streams := buildStreams(picked, rec.ListingURL)
 	entries := p.mergeEntries(picked, streamTemplates(streams))
-	excludes, hints, dateSource := s.calibrate(ctx, entries, picked)
+	excludes, hints, dateSource := s.calibrate(ctx, entries, picked, streamTemplates(streams))
 	for i := range streams {
 		if h, ok := hints[streams[i].URLTemplate]; ok {
 			streams[i].TitleHints = h
@@ -372,7 +375,8 @@ func minorityShape(es []*entry) string {
 	postLike := 0
 	var ts []string
 	for _, e := range es {
-		if goodTitleShape(e.Title) && (postLikePath(e.URL) || !e.Date.IsZero() || e.TitleSource == TitleHeading) {
+		u, err := url.Parse(e.URL)
+		if err == nil && !isPagination(u, e.Title) && goodTitleShape(e.Title) && (postLikePath(e.URL) || !e.Date.IsZero() || e.TitleSource == TitleHeading) {
 			postLike++
 		}
 		ts = append(ts, URLTemplate(e.URL))
@@ -427,7 +431,7 @@ func (p *pageDoc) mergeEntries(picked []*cluster, templates []string) []*entry {
 }
 
 // calibrate fetches each emitted item once: article titles replace weak listing titles, article dates fill gaps, hub pages are excluded.
-func (s *session) calibrate(ctx context.Context, entries []*entry, picked []*cluster) (excludes []string, hints map[string]TitleHints, source DateSource) {
+func (s *session) calibrate(ctx context.Context, entries []*entry, picked []*cluster, streams []string) (excludes []string, hints map[string]TitleHints, source DateSource) {
 	dated := 0
 	for _, e := range entries {
 		if !e.Date.IsZero() {
@@ -459,10 +463,11 @@ func (s *session) calibrate(ctx context.Context, entries []*entry, picked []*clu
 		}
 		if t := info.clean; t != "" && betterTitle(e, t) {
 			if n := segmentMatching(e, t); n != nil {
-				if hintVotes[tmpl] == nil {
-					hintVotes[tmpl] = map[string]int{}
+				st := streamOf(streams, e.URL)
+				if hintVotes[st] == nil {
+					hintVotes[st] = map[string]int{}
 				}
-				hintVotes[tmpl][nodeSig(n, true)]++
+				hintVotes[st][nodeSig(n, true)]++
 			}
 			e.Title, e.TitleSource = t, TitleArticle
 		}
@@ -550,11 +555,8 @@ func (p *pageDoc) anchoredPick(all []*cluster, anchorURL string) ([]*cluster, []
 	key, tmpl := postkey.URL(anchorURL), URLTemplate(anchorURL)
 	var pick []int
 	for i, c := range all {
-		for _, e := range c.entries {
-			if postkey.URL(e.URL) == key {
-				pick = append(pick, i)
-				break
-			}
+		if c.navShare < 0.5 && slices.ContainsFunc(c.entries, func(e *entry) bool { return postkey.URL(e.URL) == key }) {
+			pick = append(pick, i)
 		}
 	}
 	if len(pick) == 0 {
@@ -564,10 +566,14 @@ func (p *pageDoc) anchoredPick(all []*cluster, anchorURL string) ([]*cluster, []
 			}
 		}
 	}
+	// A "most read" sidebar holds recent posts and the anchor's shape too; it is the stream only when nothing else is.
+	if main := slices.DeleteFunc(slices.Clone(pick), func(i int) bool { return all[i].sideList() }); len(main) > 0 {
+		pick = main
+	}
 	if len(pick) > 0 {
-		// Every same-shape list joins, since the reader vouched for the shape.
+		// Every same-shape list joins, since the reader vouched for the shape; side lists merely share it.
 		for i, c := range all {
-			if c.template == all[pick[0]].template && c.navShare < 0.5 && !slices.Contains(pick, i) {
+			if c.template == all[pick[0]].template && !c.sideList() && !slices.Contains(pick, i) {
 				pick = append(pick, i)
 			}
 		}
@@ -597,6 +603,15 @@ func (p *pageDoc) links(rawURL string) bool {
 	}
 	key := postkey.URL(abs)
 	return slices.ContainsFunc(p.anchors, func(a *anchor) bool { return a.key == key })
+}
+
+// streamOf is the first stream pattern an item fits, the one whose title hint a poll applies to it.
+func streamOf(streams []string, rawURL string) string {
+	t := URLTemplate(rawURL)
+	if i := slices.IndexFunc(streams, func(p string) bool { return matchTemplate(p, t) }); i >= 0 {
+		return streams[i]
+	}
+	return t
 }
 
 // streamFor is the URL shape of the picked list that holds an item, its own template when none matches.

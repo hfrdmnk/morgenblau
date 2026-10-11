@@ -68,13 +68,15 @@ func Repair(ctx context.Context, polled *PollResult, in RepairInput, opts Option
 		return out, nil
 	}
 	page := polled.page.doc
-	accept := func(step RepairStep, rec Recipe, items []Item) bool { return out.accept(step, rec, items, in.History) }
+	accept := func(step RepairStep, rec Recipe, items []Item, modelPicked bool) bool {
+		return out.accept(step, rec, items, in.History, modelPicked)
+	}
 	steps := []RepairStep{RepairKnownURLs, RepairTemplate, RepairHeuristic}
 	if in.Doubted {
 		// The known posts and their template are what the check doubted, so only a fresh pick can answer it.
 		steps = []RepairStep{RepairHeuristic}
 		doubted := keySet(itemURLKeys(polled.Items))
-		accept = func(step RepairStep, rec Recipe, items []Item) bool {
+		accept = func(step RepairStep, rec Recipe, items []Item, _ bool) bool {
 			return out.acceptOther(step, rec, items, doubted)
 		}
 	}
@@ -89,7 +91,7 @@ func Repair(ctx context.Context, polled *PollResult, in RepairInput, opts Option
 				return nil, err
 			}
 			out.Tried = append(out.Tried, step)
-			if accept(step, rec, items) {
+			if accept(step, rec, items, false) {
 				out.Excerpts = listingExcerpts(page, items)
 				return out, nil
 			}
@@ -99,28 +101,32 @@ func Repair(ctx context.Context, polled *PollResult, in RepairInput, opts Option
 		return out, nil
 	}
 	res, err := Setup(ctx, in.Recipe.ListingURL, opts)
+	if res != nil {
+		out.Tried = append(out.Tried, RepairJudge)
+		// Setup asks a model only when unsure, so a confident re-run spends no model slot and earns no model leniency.
+		calls, usd := res.Recipe.Setup.ModelCost()
+		out.UsedModel, out.ModelUSD = calls > 0, usd
+	}
 	if err != nil {
+		// A cut-short setup still paid for its model calls, so out travels with the error.
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
+			return out, ctxErr
 		}
 		return out, nil
 	}
-	out.Tried = append(out.Tried, RepairJudge)
-	out.UsedModel = true
-	_, out.ModelUSD = res.Recipe.Setup.ModelCost()
 	if in.Doubted && !res.Healthy() {
 		return out, nil
 	}
-	if !res.Blocked && accept(RepairJudge, res.Recipe, res.Items) {
+	if !res.Blocked && accept(RepairJudge, res.Recipe, res.Items, out.UsedModel) {
 		out.Excerpts = res.Excerpts
 	}
 	return out, nil
 }
 
-func (out *RepairResult) accept(step RepairStep, rec Recipe, items []Item, history []GoodPoll) bool {
-	templates := streamTemplates(rec.Streams)
+func (out *RepairResult) accept(step RepairStep, rec Recipe, items []Item, history []GoodPoll, modelPicked bool) bool {
+	templates := recipeTemplates(rec)
 	dominant := DominantTemplate(items, templates)
-	rule := acceptRepair(items, dominant, history, step == RepairJudge)
+	rule := acceptRepair(items, dominant, history, modelPicked)
 	if rule == "" {
 		return false
 	}
@@ -134,7 +140,7 @@ func (out *RepairResult) acceptOther(step RepairStep, rec Recipe, items []Item, 
 	if len(items) < acceptMinItems || slices.Equal(keySet(itemURLKeys(items)), doubted) {
 		return false
 	}
-	templates := streamTemplates(rec.Streams)
+	templates := recipeTemplates(rec)
 	if len(ComputeSignals(items, templates).doubts()) > 0 {
 		return false
 	}
@@ -142,8 +148,16 @@ func (out *RepairResult) acceptOther(step RepairStep, rec Recipe, items []Item, 
 	return true
 }
 
+// recipeTemplates are the URL shapes a recipe extracts; an induced CSS recipe has no streams, so its fingerprint holds them.
+func recipeTemplates(rec Recipe) []string {
+	if rec.Mode == ModeCSS {
+		return slices.Clone(rec.Fingerprint.URLTemplates)
+	}
+	return streamTemplates(rec.Streams)
+}
+
 func (out *RepairResult) take(step RepairStep, rule string, rec Recipe, items []Item) {
-	templates := streamTemplates(rec.Streams)
+	templates := recipeTemplates(rec)
 	sig := ComputeSignals(items, templates)
 	rec.Fingerprint = fingerprintOf(sig, templates)
 	out.Accepted, out.Step, out.Rule = true, step, rule
