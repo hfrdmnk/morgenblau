@@ -101,13 +101,24 @@ export function generateSource(
     });
 }
 
-const RATE_LIMITED = 'Too many generated feeds this hour. Try again later.';
+const RATE_LIMITED = 'You’ve generated a lot of feeds recently. Try again later.';
+const SETUP_IN_FLIGHT =
+    'Your last feed is still being generated. Try again in a moment.';
+
+// The reader's own earlier setup is still spending, so this clears in seconds unlike a limit.
+function setupInFlight(error: ApiError) {
+    return error.code === 'setup_in_flight';
+}
+
+function limitMessage(error: ApiError) {
+    return setupInFlight(error) ? SETUP_IN_FLIGHT : RATE_LIMITED;
+}
 
 // Server messages are terse logs, so every failure reads in the dialog's own words.
 export function generationError(error: unknown) {
     if (error instanceof ApiError) {
         if (error.status === 429 || error.code === 'rate_limited')
-            return RATE_LIMITED;
+            return limitMessage(error);
         if (error.status === 400) return 'Enter a website URL.';
         if (error.status === 502) return 'Couldn’t read that page.';
         if (error.status === 503)
@@ -143,16 +154,18 @@ export function anchorRejection(why: AnchorRejection) {
         : 'That post didn’t help. The feed stays as it was.';
 }
 
-// A limit, an unavailable generator or a bad address answers the same way at once.
+// A long limit, an unavailable generator or a bad address answers the same way at once.
 export function canRetryGeneration(error: unknown) {
     if (error instanceof ApiError)
-        return error.status >= 500 && error.status !== 503;
+        return error.status === 429
+            ? setupInFlight(error)
+            : error.status >= 500 && error.status !== 503;
     return error instanceof TypeError;
 }
 
 export function generatedVerdict(source: GeneratedSource) {
     const blocked = source.health === 'blocked_by_site';
-    const found = source.health !== 'broken' && source.itemCount > 0;
+    const found = source.itemCount > 0;
     return {
         subscribable: !blocked && found,
         askAnchor:

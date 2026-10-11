@@ -227,7 +227,7 @@ function GeneratedPreview({
             {verdict.askAnchor && (
                 <AnchorForm
                     key={source.id + source.itemCount}
-                    found={verdict.subscribable}
+                    prompt={anchorPrompt(source, verdict.subscribable)}
                     rejected={source.anchorRejected}
                     anchoring={anchoring}
                     disabled={save.saving}
@@ -370,8 +370,17 @@ function AddGeneratedSource({
 
 const ANCHOR_PROMPT = {
     unsure: 'Morgenblau isn’t sure these are the site’s posts. Paste the address of one post from this page to find more like it.',
+    stale: 'Morgenblau couldn’t read this page on its last visit. If these aren’t the site’s posts, paste the address of one post from this page to find more like it.',
     empty: 'No posts found on this page yet. Paste the address of one post from it, and Morgenblau will look for posts like it.',
 };
+
+// A shared feed can be broken by one failed poll while it still serves the posts it stored.
+function anchorPrompt(source: GeneratedSource, found: boolean) {
+    if (!found) return ANCHOR_PROMPT.empty;
+    return source.health === 'broken'
+        ? ANCHOR_PROMPT.stale
+        : ANCHOR_PROMPT.unsure;
+}
 
 function useAnchorField(
     rejected: GeneratedSource['anchorRejected'],
@@ -413,13 +422,13 @@ function useAnchorField(
 }
 
 function AnchorForm({
-    found,
+    prompt,
     rejected,
     anchoring,
     disabled,
     onSubmit,
 }: {
-    found: boolean;
+    prompt: string;
     rejected: GeneratedSource['anchorRejected'];
     anchoring: boolean;
     disabled: boolean;
@@ -434,7 +443,7 @@ function AnchorForm({
                 className="block text-sm text-muted-foreground"
                 htmlFor={inputId}
             >
-                {found ? ANCHOR_PROMPT.unsure : ANCHOR_PROMPT.empty}
+                {prompt}
             </label>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                 <Input

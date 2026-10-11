@@ -302,14 +302,47 @@ test('a site that blocks feed readers offers nothing to add', async () => {
     expect(container.querySelector('input')).toBeNull();
 });
 
-test('a reader over the hourly limit is told calmly and not offered a retry', async () => {
+test('a reader over the generation limit is told calmly and not offered a retry', async () => {
     respond(() => Response.json({ code: 'rate_limited', message: 'Slow down' }, { status: 429, headers: { 'Retry-After': '600' } }));
     const { container } = await render();
     await click(button(container, 'Generate a feed'));
     await settle();
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Too many generated feeds this hour. Try again later.');
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('You’ve generated a lot of feeds recently. Try again later.');
     expect(button(container, 'Try again')).toBeUndefined();
     expect(container.contains(document.activeElement)).toBe(true);
+});
+
+test('a setup still running from before is waited out with Try again', async () => {
+    let attempt = 0;
+    respond(() => {
+        attempt++;
+        return attempt === 1
+            ? Response.json({ code: 'setup_in_flight', message: 'Still generating' }, { status: 429, headers: { 'Retry-After': '10' } })
+            : Response.json(preview);
+    });
+    const { container } = await render();
+    await click(button(container, 'Generate a feed'));
+    await settle();
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+        'Your last feed is still being generated. Try again in a moment.',
+    );
+    expect(document.activeElement).toBe(button(container, 'Try again')!);
+    await click(button(container, 'Try again'));
+    await settle();
+    expect(container.textContent).toContain('First post');
+});
+
+test('a shared feed whose last poll failed still offers its stored posts', async () => {
+    respond(() => Response.json({ ...preview, health: 'broken', healthReason: 'listing page returned 500' }));
+    const { container } = await render();
+    await click(button(container, 'Generate a feed'));
+    await settle();
+    expect(container.textContent).toContain('First post');
+    expect(container.textContent).not.toContain('No posts found');
+    expect(container.textContent).toContain('Morgenblau couldn’t read this page on its last visit.');
+    expect(button(container, 'Add source')?.disabled).toBe(false);
+    expect(container.querySelector('input')).not.toBeNull();
+    expect(announced(container)).toEqual(['Generated feed, 12 posts found.']);
 });
 
 test('an unreadable page can be tried again', async () => {

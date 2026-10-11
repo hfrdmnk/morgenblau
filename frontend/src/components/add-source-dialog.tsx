@@ -242,8 +242,9 @@ function FeedDiscovery({
 }
 
 function foundFeeds(state: DiscoveryState) {
-    if (state.stage !== 2 || state.result.candidates.length === 0) return '';
+    if (state.stage !== 2) return '';
     const count = state.result.candidates.length;
+    if (count === 0) return 'No feed found. You can generate one.';
     return count === 1 ? '1 feed found.' : `${count} feeds found.`;
 }
 

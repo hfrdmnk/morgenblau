@@ -265,9 +265,9 @@ test('a pointed-at post must be a web address before anything is generated', asy
 
 test('generation failures read calmly by cause, in house copy', () => {
     const limited = new ApiError(429, 'rate_limited', 'You have generated a lot of feeds.');
-    expect(generationError(limited)).toBe('Too many generated feeds this hour. Try again later.');
+    expect(generationError(limited)).toBe('You’ve generated a lot of feeds recently. Try again later.');
     expect(generationError(new ApiError(403, 'rate_limited', 'Daily cap reached'))).toBe(
-        'Too many generated feeds this hour. Try again later.',
+        'You’ve generated a lot of feeds recently. Try again later.',
     );
     expect(generationError(new ApiError(502, 'upstream_error', "Couldn't read that page"))).toBe(
         'Couldn’t read that page.',
@@ -302,6 +302,45 @@ test('a generated feed is offered by its health', () => {
     expect(generatedVerdict({ ...generated, health: 'blocked_by_site', needsAnchor: true })).toEqual({ subscribable: false, askAnchor: false, blocked: true });
     expect(generatedVerdict({ ...generated, health: 'broken', items: [], itemCount: 0 })).toEqual({ subscribable: false, askAnchor: true, blocked: false });
     expect(generatedVerdict({ ...generated, items: [], itemCount: 0 })).toEqual({ subscribable: false, askAnchor: true, blocked: false });
+});
+
+test('a shared feed that failed its last poll still offers the posts it serves', () => {
+    expect(generatedVerdict({ ...generated, health: 'broken' })).toEqual({ subscribable: true, askAnchor: true, blocked: false });
+});
+
+async function limitedBy(code: string, retryAfter: string | null) {
+    respond(() =>
+        Response.json(
+            { code, message: 'Server copy' },
+            { status: 429, headers: retryAfter === null ? {} : { 'Retry-After': retryAfter } },
+        ),
+    );
+    return generateSource('https://news.example.com/', undefined, new AbortController().signal).catch(
+        (error: unknown) => error,
+    );
+}
+
+test('a setup still in flight reads as a short wait that can be tried again', async () => {
+    const inFlight = await limitedBy('setup_in_flight', '10');
+    expect(generationError(inFlight)).toBe('Your last feed is still being generated. Try again in a moment.');
+    expect(canRetryGeneration(inFlight)).toBe(true);
+    expect(anchorError(inFlight)).toEqual({
+        message: 'Your last feed is still being generated. Try again in a moment.',
+        invalid: false,
+    });
+});
+
+test('a long limit reads calmly, names no window, and is not offered again at once', async () => {
+    // A fixed hourly window can be seconds from its reset, which must not read as a setup in flight.
+    for (const retryAfter of ['5', '600', '82800', null]) {
+        const limited = await limitedBy('rate_limited', retryAfter);
+        expect(generationError(limited)).toBe('You’ve generated a lot of feeds recently. Try again later.');
+        expect(canRetryGeneration(limited)).toBe(false);
+        expect(anchorError(limited)).toEqual({
+            message: 'You’ve generated a lot of feeds recently. Try again later.',
+            invalid: false,
+        });
+    }
 });
 
 test('a generated feed subscribes through the ordinary add path with its title and site', async () => {

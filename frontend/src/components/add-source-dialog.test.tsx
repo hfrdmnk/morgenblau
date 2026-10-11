@@ -88,6 +88,13 @@ test('the generate offer is not read out wholesale by a surrounding live region'
     expect(offer!.closest('[aria-live]')).toBeNull();
 });
 
+test('a page without a feed is announced along with the offer to generate one', async () => {
+    respond(() => Response.json({ candidates: [], existingSubscriptions: [] }));
+    await findFeeds('news.example.com');
+    await waitFor('No feed found');
+    expect(announced()).toEqual(['No feed found. You can generate one.']);
+});
+
 test('found feeds are announced in one short line', async () => {
     respond(() =>
         Response.json({
