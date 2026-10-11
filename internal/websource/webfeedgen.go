@@ -37,11 +37,15 @@ func (g *WebfeedGenerator) Setup(ctx context.Context, listingURL, anchorURL stri
 	} else {
 		res, err = webfeed.Setup(ctx, listingURL, opts)
 	}
-	if errors.Is(err, webfeed.ErrUnreachable) {
-		return Generated{}, fmt.Errorf("%w: %w", ErrUnreachable, err)
-	}
 	if err != nil {
-		return Generated{}, err
+		var paid Generated
+		if res != nil {
+			paid.Cost = setupCost(res.Recipe.Setup)
+		}
+		if errors.Is(err, webfeed.ErrUnreachable) {
+			return paid, fmt.Errorf("%w: %w", ErrUnreachable, err)
+		}
+		return paid, err
 	}
 	recipe, err := json.Marshal(res.Recipe)
 	if err != nil {
@@ -135,6 +139,9 @@ func (g *WebfeedGenerator) repair(ctx context.Context, out PollOutcome, polled *
 		Recipe: recipe, History: history, AllowModel: prev.AllowModelRepair, Doubted: cause == RepairCauseWeeklyCheck,
 	}, g.opts)
 	if err != nil {
+		if res != nil && res.ModelUSD > 0 {
+			return PollOutcome{Repair: &RepairReport{Cause: cause, Reason: reason, UsedModel: res.UsedModel, USD: res.ModelUSD, Outcome: RepairUnresolved}}, err
+		}
 		return PollOutcome{}, err
 	}
 	report := &RepairReport{Cause: cause, Reason: reason, UsedModel: res.UsedModel, USD: res.ModelUSD, Outcome: RepairUnresolved}

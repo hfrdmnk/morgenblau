@@ -129,7 +129,7 @@ func (s *Service) IsFeedURL(raw string) bool {
 
 // Create returns the site's web source, generating it on first use. An anchorURL on a source that is not healthy, or an
 // unsure setup older than staleSetup, re-runs setup; the new one replaces the old only when it is ok or healthier, and an
-// anchored one on a source others follow only once vetAnchor passes it.
+// anchored one on a source others follow only once vetAnchor passes it. An unanchored re-run never fails the request.
 func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string) (Preview, error) {
 	listing, err := parseHTTPURL(listingURL)
 	if err != nil {
@@ -148,20 +148,33 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 	}
 	key := listingKey(listing)
 	existing, err := s.read.GetWebSourceByListingKey(ctx, key)
-	regenerate := false
 	switch {
 	case err == nil:
 		takesAnchor := Health(existing.Health) != HealthOK || Health(existing.SetupHealth) == HealthNeedsAttention
 		if !takesAnchor {
 			anchorURL = ""
 		}
-		regenerate = anchorURL != "" || s.staleUnsure(existing)
-		if !regenerate {
+		if anchorURL != "" {
+			return s.generate(ctx, did, key, listing, anchorURL, existing, true)
+		}
+		if !s.staleUnsure(existing) {
 			return s.preview(ctx, existing)
 		}
+		p, err := s.generate(ctx, did, key, listing, "", existing, true)
+		if err != nil {
+			// The reader asked for the shared feed, not this refresh, so whatever stopped it the existing source serves.
+			slog.Info("web source refresh skipped", "id", existing.ID, "err", err)
+			return s.preview(ctx, existing)
+		}
+		return p, nil
 	case !errors.Is(err, sql.ErrNoRows):
 		return Preview{}, err
 	}
+	return s.generate(ctx, did, key, listing, anchorURL, db.WebSource{}, false)
+}
+
+// generate runs a setup for the site and stores it: a new source, or when regenerate a candidate to replace existing.
+func (s *Service) generate(ctx context.Context, did, key string, listing *url.URL, anchorURL string, existing db.WebSource, regenerate bool) (Preview, error) {
 	if s.gen == nil {
 		return Preview{}, ErrUnavailable
 	}
@@ -186,6 +199,13 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 	defer cancel()
 	gen, err := s.runSetup(setupCtx, listing.String(), anchorURL)
 	if err != nil {
+		if regenerate {
+			// The deadline may be what failed the setup, and the next visitor should not pay for it again at once.
+			tried := db.MarkWebSourceSetupTriedParams{ID: existing.ID, TriedAt: formatTime(s.now().UTC())}
+			if merr := db.New(s.writer).MarkWebSourceSetupTried(context.WithoutCancel(ctx), tried); merr != nil {
+				return Preview{}, errors.Join(err, merr)
+			}
+		}
 		return Preview{}, err
 	}
 	if regenerate && anchorURL != "" {
@@ -362,11 +382,15 @@ func (s *Service) runSetup(ctx context.Context, listingURL, anchorURL string) (G
 		return Generated{}, err
 	}
 	gen, err := s.gen.Setup(ctx, listingURL, anchorURL, allowModel)
-	if err != nil {
-		return Generated{}, fmt.Errorf("%w: %w", ErrGeneration, err)
+	if err == nil && !gen.Health.valid() {
+		err = fmt.Errorf("unknown health %q", gen.Health)
 	}
-	if !gen.Health.valid() {
-		return Generated{}, fmt.Errorf("%w: unknown health %q", ErrGeneration, gen.Health)
+	if err != nil {
+		// A failed setup's model calls were paid for, and its deadline may be what failed it.
+		if serr := s.recordModelSpend(context.WithoutCancel(ctx), "setup", gen.Cost.USD); serr != nil {
+			return Generated{}, errors.Join(fmt.Errorf("%w: %w", ErrGeneration, err), serr)
+		}
+		return Generated{}, fmt.Errorf("%w: %w", ErrGeneration, err)
 	}
 	return gen, nil
 }
@@ -516,6 +540,12 @@ func (s *Service) pollOne(ctx context.Context, src db.WebSource) error {
 	out, err := s.gen.Poll(ctx, json.RawMessage(src.Recipe), prev)
 	if err != nil {
 		if ctx.Err() != nil {
+			// A repair cut short by shutdown already paid for its model calls, so the budget still counts them.
+			if r := out.Repair; r != nil {
+				if serr := s.recordModelSpend(context.WithoutCancel(ctx), "repair", r.USD); serr != nil {
+					slog.Warn("web source repair spend", "id", src.ID, "err", serr)
+				}
+			}
 			return ctx.Err()
 		}
 		slog.Warn("web source poll failed", "id", src.ID, "err", err)

@@ -79,7 +79,7 @@ func WebSourcesCreateHandler(svc WebSourceCreator) http.Handler {
 			return
 		case errors.Is(err, websource.ErrSetupInFlight):
 			w.Header().Set("Retry-After", "10")
-			writeError(w, http.StatusTooManyRequests, codeRateLimited, "Morgenblau is still generating your last feed. Try again when it finishes.")
+			writeError(w, http.StatusTooManyRequests, codeSetupInFlight, "Morgenblau is still generating your last feed. Try again when it finishes.")
 			return
 		case errors.Is(err, websource.ErrBusy):
 			w.Header().Set("Retry-After", "30")

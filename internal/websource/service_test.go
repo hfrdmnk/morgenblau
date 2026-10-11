@@ -69,17 +69,17 @@ func (f *fakeGenerator) Poll(_ context.Context, recipe json.RawMessage, prev Pol
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.polls = append(f.polls, pollCall{recipe: recipe, prev: prev})
-	if f.pollErr != nil {
-		return PollOutcome{}, f.pollErr
-	}
 	if len(f.outcomes) == 0 {
+		if f.pollErr != nil {
+			return PollOutcome{}, f.pollErr
+		}
 		return PollOutcome{Verdict: VerdictOK}, nil
 	}
 	out := f.outcomes[0]
 	if len(f.outcomes) > 1 {
 		f.outcomes = f.outcomes[1:]
 	}
-	return out, nil
+	return out, f.pollErr
 }
 
 type testEnv struct {

@@ -160,7 +160,7 @@ func TestWebSourcesCreate_Errors(t *testing.T) {
 		{"generation failed", `{"url":"https://news.example.com/"}`, fmt.Errorf("%w: refused", websource.ErrGeneration), http.StatusBadGateway, codeUpstreamError},
 		{"not configured", `{"url":"https://news.example.com/"}`, websource.ErrUnavailable, http.StatusServiceUnavailable, codeUnavailable},
 		{"every setup slot busy", `{"url":"https://news.example.com/"}`, websource.ErrBusy, http.StatusServiceUnavailable, codeUnavailable},
-		{"this reader's setup still running", `{"url":"https://news.example.com/"}`, websource.ErrSetupInFlight, http.StatusTooManyRequests, codeRateLimited},
+		{"this reader's setup still running", `{"url":"https://news.example.com/"}`, websource.ErrSetupInFlight, http.StatusTooManyRequests, codeSetupInFlight},
 		{"storage failure", `{"url":"https://news.example.com/"}`, errors.New("disk full"), http.StatusInternalServerError, codeInternalError},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

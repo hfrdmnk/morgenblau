@@ -26,6 +26,8 @@ const (
 	probeBudget = 10 * time.Second
 	// maxHintProbes bounds page-supplied URLs, since a page can mention "feed" in hundreds of links.
 	maxHintProbes = 12
+	// minPostLinks is how many content links a listing needs before a feed sharing none of them counts as another stream.
+	minPostLinks = 2
 )
 
 var (
@@ -55,6 +57,7 @@ type probedFeed struct {
 	contentType string
 	title       string
 	itemKeys    map[string]struct{}
+	itemHosts   map[string]struct{}
 }
 
 // discoverFeed finds a feed the page does not advertise with rel=alternate, or returns nil.
@@ -86,8 +89,10 @@ func (f *Finder) discoverFeed(ctx context.Context, doc *goquery.Document, base *
 			strings.Compare(a.finalURL, b.finalURL),
 		)
 	})
-	// A guessed path whose posts never appear on a readable listing is another stream, such as a site-wide press feed.
-	if listingReadable && best.source == fromPath && len(best.itemKeys) > 0 && overlap(best) == 0 {
+	// A guessed path whose posts never appear on a readable listing is another stream, such as a site-wide press feed;
+	// a client-rendered shell has no posts to share, so its silence says nothing.
+	if listingReadable && best.source == fromPath && len(best.itemKeys) > 0 && overlap(best) == 0 &&
+		contentLinks(doc, base, best.itemHosts) >= minPostLinks {
 		return nil
 	}
 	return &Candidate{
@@ -233,12 +238,14 @@ func (f *Finder) probeFeed(ctx context.Context, p probe, lang string) *probedFee
 		final = resp.Request.URL
 	}
 	keys := make(map[string]struct{}, len(parsed.Items))
+	hosts := map[string]struct{}{}
 	for _, item := range parsed.Items {
 		if item == nil {
 			continue
 		}
 		if abs, err := final.Parse(strings.TrimSpace(item.Link)); err == nil && abs.Host != "" {
 			keys[postkey.FromURL(abs)] = struct{}{}
+			hosts[linkHost(abs)] = struct{}{}
 		}
 	}
 	return &probedFeed{
@@ -247,6 +254,7 @@ func (f *Finder) probeFeed(ctx context.Context, p probe, lang string) *probedFee
 		contentType: strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0]),
 		title:       strings.TrimSpace(parsed.Title),
 		itemKeys:    keys,
+		itemHosts:   hosts,
 	}
 }
 
@@ -259,3 +267,23 @@ func listingLinkKeys(doc *goquery.Document, base *url.URL) map[string]struct{} {
 	})
 	return keys
 }
+
+// contentLinks counts the listing's links outside the site chrome that point below the root of a host the feed's posts live on.
+func contentLinks(doc *goquery.Document, base *url.URL, hosts map[string]struct{}) int {
+	n := 0
+	doc.Find("a[href]").Each(func(_ int, s *goquery.Selection) {
+		if s.Closest("nav, header, footer, [role=navigation]").Length() > 0 {
+			return
+		}
+		abs, err := base.Parse(strings.TrimSpace(s.AttrOr("href", "")))
+		if err != nil || strings.Trim(abs.Path, "/") == "" {
+			return
+		}
+		if _, ok := hosts[linkHost(abs)]; ok {
+			n++
+		}
+	})
+	return n
+}
+
+func linkHost(u *url.URL) string { return strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.") }

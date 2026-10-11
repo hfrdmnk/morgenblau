@@ -341,13 +341,13 @@ func feedItems(ctx context.Context, client webfeed.Doer, feedURL string) ([]item
 	var items []item
 	for _, fi := range feed.Items {
 		link := strings.TrimSpace(fi.Link)
+		if link == "" {
+			continue
+		}
 		if base != nil {
 			if u, err := base.Parse(link); err == nil {
 				link = u.String()
 			}
-		}
-		if link == "" {
-			continue
 		}
 		var d time.Time
 		switch {

@@ -11,7 +11,7 @@ import (
 // Generator derives a feed from a listing page; WebfeedGenerator implements it over internal/webfeed.
 type Generator interface {
 	// Setup reads the listing (anchored on one post when anchorURL is set) and returns the recipe and the posts found now;
-	// allowModel false keeps it to the free heuristic.
+	// allowModel false keeps it to the free heuristic. A failed setup still returns the Cost of the model calls it made.
 	Setup(ctx context.Context, listingURL, anchorURL string, allowModel bool) (Generated, error)
 	// Poll re-reads the listing with the stored recipe, judges the result against prev and repairs a suspect one.
 	Poll(ctx context.Context, recipe json.RawMessage, prev PollState) (PollOutcome, error)

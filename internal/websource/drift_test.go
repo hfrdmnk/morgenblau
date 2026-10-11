@@ -359,8 +359,9 @@ func TestWeeklyCheckRunsOnceAWeekAndItsAlarmGoesThroughTheLadder(t *testing.T) {
 		t.Errorf("published new posts while the weekly alarm stands: %v", got)
 	}
 	rows = repairRows(t, d.testEnv, d.id)
-	if len(rows) != 2 || rows[1].cause != "weekly_check" || rows[1].outcome != "unresolved" || rows[1].step != "heuristic" {
-		t.Errorf("repairs = %+v, want the open alarm to retry the ladder on the next poll", rows)
+	// The first repair's setup rung asked no model, so the day's model repair is still unspent and the retry climbs to it.
+	if len(rows) != 2 || rows[1].cause != "weekly_check" || rows[1].outcome != "unresolved" || rows[1].step != "judge" || rows[0].usedModel || rows[1].usedModel {
+		t.Errorf("repairs = %+v, want the open alarm to retry the whole ladder on the next poll without spending a model call", rows)
 	}
 	if w.count(webfeed.EffortLow) != 2 {
 		t.Errorf("watcher calls = %d, want the next check to wait for its day", w.count(webfeed.EffortLow))

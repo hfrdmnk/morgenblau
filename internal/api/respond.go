@@ -24,6 +24,7 @@ const (
 	codeInvalidRecord   = "invalid_record"
 	codeUnavailable     = "unavailable"
 	codeRateLimited     = "rate_limited"
+	codeSetupInFlight   = "setup_in_flight"
 )
 
 // errorEnvelope is the single error body shape: a stable machine `code` plus a human `message`.
