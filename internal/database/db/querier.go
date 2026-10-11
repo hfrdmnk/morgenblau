@@ -71,6 +71,8 @@ type Querier interface {
 	InsertWebSourceItem(ctx context.Context, arg InsertWebSourceItemParams) error
 	InsertWebSourcePoll(ctx context.Context, arg InsertWebSourcePollParams) error
 	InsertWebSourceRepair(ctx context.Context, arg InsertWebSourceRepairParams) error
+	// Answers yes or no and never names a follower; an anchored rebuild of a feed other readers follow must be confirmed first.
+	IsWebSourceFollowedByOthers(ctx context.Context, arg IsWebSourceFollowedByOthersParams) (bool, error)
 	ListAllFeedURLs(ctx context.Context) ([]string, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
 	// A web source counts as followed once its feed URL is in the shared feeds catalog, the same set the global refresher fetches.

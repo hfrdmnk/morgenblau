@@ -28,7 +28,10 @@ CREATE TABLE web_sources (
     link_set_hash        TEXT,
     consecutive_failures INTEGER NOT NULL DEFAULT 0,
     -- The weekly model check counts from here, or from setup_at before the first one.
-    last_checked_at      TEXT
+    last_checked_at      TEXT,
+    -- The reader who pointed at a post for the setup in force, and when; kept for audit, never served.
+    anchored_by_did      TEXT,
+    anchored_at          TEXT
 );
 
 CREATE INDEX web_sources_next_poll_at_idx ON web_sources (next_poll_at);
@@ -81,7 +84,7 @@ CREATE INDEX web_source_repairs_source_idx ON web_source_repairs (source_id, att
 CREATE TABLE web_model_spend (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
     spent_at TEXT NOT NULL,
-    kind     TEXT NOT NULL CHECK (kind IN ('setup', 'repair', 'check')),
+    kind     TEXT NOT NULL CHECK (kind IN ('setup', 'repair', 'check', 'anchor_check')),
     usd      REAL NOT NULL
 );
 

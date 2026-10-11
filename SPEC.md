@@ -35,22 +35,31 @@ Sharing, discovery recommendations, following users, public reader profiles, net
 
 <terminology>
 
-## Terminology
+## Glossary
+
+Terms that are easy to conflate. Each line states the distinction; the linked sections and code own the detail.
 
 | Term | Meaning |
 |:--|:--|
-| Source | A reader-selected input, used in product copy and routes. |
-| Subscription | The relationship between a user and a source. Existing feed subscriptions are represented by PDS records. |
-| Feed | The technical RSS/Atom input, or a native Standardfeed publication in the shared content catalog. |
-| Newsletter | An email source delivered to the user's private inbound address. |
-| Digest | The finite collection of content for a selected day. |
-| Library | The user's saved entries. |
-| View | A filter by source, tags, content type, or a combination. |
-| Hidden feed | A site's own RSS/Atom feed that its pages do not advertise with `rel=alternate`; discovery finds it and it is followed like any feed. |
-| Generated feed | A feed Morgenblau builds for a site without one, from the site's listing page. Server-owned, one per site, served at `/web/<id>`; also called a web source in code. |
-| Listing page | The page a reader pastes that links to the site's posts, such as a blog or news index. |
-| Health | Whether a generated feed currently serves the site's posts: fine, needs attention (with a reason), or blocked by the site. Shown in Sources only. |
-| Pointing at a post | The reader pastes one real post from the listing page so an unsure generated feed is rebuilt around posts like it. |
+| Source | What the reader chose to follow, in product copy and routes. A source is followed through a subscription and backed by a feed or a newsletter. |
+| Feed | The technical input behind a source: an RSS/Atom URL, a Standardfeed publication, or a generated feed. Feeds and their entries live in the shared catalog. |
+| Subscription | One reader's relationship to one source. Feed subscriptions are records in the reader's PDS; SQLite only mirrors them. |
+| Shared catalog | Feeds and entries stored once and referenced by every subscriber. It may show that someone follows a feed, never who. Newsletter data never enters it. |
+| PDS-authoritative | Data whose truth is the reader's PDS (feed subscriptions, URL saves). Write the PDS first, then mirror locally; reconciliation repairs the mirror. |
+| Server-owned | Data whose truth is Morgenblau's database: newsletters, newsletter saves, generated feeds. Never written to a PDS. |
+| Standardfeed | A native ATProto publication (`site.standard.*`). A reader follows a site through RSS or Standardfeed, never both. |
+| Sidecar | Morgenblau's metadata record (title, tags, primary) beside a Standardfeed subscription. The `site.standard` record decides whether the subscription exists; the sidecar never does. |
+| Digest | The finite set of entries for one day of the reader's local calendar, not the server's. No unread counts, no backlog. |
+| Primary source | A reader's preference to show a source first. Not a ranking or social signal. |
+| Newsletter | An email source delivered to the reader's private random address. Private even when a message has a public web URL. |
+| Hidden feed | A site's own feed that its pages fail to advertise. Discovery finds it, and it is followed like any feed, never generated. |
+| Generated feed | A feed Morgenblau builds from the listing page of a site with no feed at all; called a web source in code. Server-owned, one per site, shared by all its readers, served at `/web/<id>`. |
+| Listing page | The page that links to a site's posts, such as a blog index. A generated feed is built from it, never from the posts themselves. |
+| Setup and poll | Setup builds a generated feed once and may ask the model. A poll re-reads the listing through the stored recipe and never calls a model on its own. |
+| History | Posts a generated feed found at setup. Undated ones are stored without a date, which keeps them out of every digest. Do not backfill them with the fetch time. |
+| Health | Whether a generated feed currently serves the site's posts: fine, needs attention, or blocked by the site. Shown in Sources, never in the digest. |
+| Pointing at a post | A reader's fix for an unsure generated feed: paste one real post and setup rebuilds around it. Because the feed is shared, the rebuild must be confirmed before it replaces what other readers see. |
+| Blocked by site | The site refuses honest bots. Morgenblau reports it and never works around it. Distinct from unreachable, which is a network or server failure. |
 
 The Sources page groups RSS/Atom and Standardfeed subscriptions under **Feeds**, and email subscriptions under **Newsletters**. Standardfeed remains an ordinary source in product language; protocol details belong only where they help someone choose how to subscribe.
 

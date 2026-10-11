@@ -41,28 +41,31 @@ const createWebSource = `-- name: CreateWebSource :exec
 INSERT INTO web_sources (
     id, listing_key, listing_url, site_url, title, recipe, health, health_reason,
     setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_health_reason,
-    setup_tried_at, next_poll_at
+    setup_tried_at, next_poll_at, anchored_by_did, anchored_at
 ) VALUES (
     ?1, ?2, ?3, ?4, ?5,
     ?6, ?7, ?8,
     ?9, ?10, ?11, ?11, ?11,
-    ?7, ?8, ?11, ?12
+    ?7, ?8, ?11, ?12,
+    ?13, ?14
 )
 `
 
 type CreateWebSourceParams struct {
-	ID           string  `json:"id"`
-	ListingKey   string  `json:"listing_key"`
-	ListingUrl   string  `json:"listing_url"`
-	SiteUrl      string  `json:"site_url"`
-	Title        string  `json:"title"`
-	Recipe       string  `json:"recipe"`
-	Health       string  `json:"health"`
-	HealthReason string  `json:"health_reason"`
-	SetupCost    string  `json:"setup_cost"`
-	CreatedByDid string  `json:"created_by_did"`
-	CreatedAt    string  `json:"created_at"`
-	NextPollAt   *string `json:"next_poll_at"`
+	ID            string  `json:"id"`
+	ListingKey    string  `json:"listing_key"`
+	ListingUrl    string  `json:"listing_url"`
+	SiteUrl       string  `json:"site_url"`
+	Title         string  `json:"title"`
+	Recipe        string  `json:"recipe"`
+	Health        string  `json:"health"`
+	HealthReason  string  `json:"health_reason"`
+	SetupCost     string  `json:"setup_cost"`
+	CreatedByDid  string  `json:"created_by_did"`
+	CreatedAt     string  `json:"created_at"`
+	NextPollAt    *string `json:"next_poll_at"`
+	AnchoredByDid *string `json:"anchored_by_did"`
+	AnchoredAt    *string `json:"anchored_at"`
 }
 
 func (q *Queries) CreateWebSource(ctx context.Context, arg CreateWebSourceParams) error {
@@ -79,6 +82,8 @@ func (q *Queries) CreateWebSource(ctx context.Context, arg CreateWebSourceParams
 		arg.CreatedByDid,
 		arg.CreatedAt,
 		arg.NextPollAt,
+		arg.AnchoredByDid,
+		arg.AnchoredAt,
 	)
 	return err
 }
@@ -140,7 +145,7 @@ func (q *Queries) GetOldestWebSourceItemDate(ctx context.Context, sourceID strin
 }
 
 const getWebSource = `-- name: GetWebSource :one
-SELECT id, listing_key, listing_url, site_url, title, recipe, health, health_reason, setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_health_reason, setup_seq, setup_tried_at, last_polled_at, next_poll_at, etag, last_modified, link_set_hash, consecutive_failures, last_checked_at FROM web_sources WHERE id = ?
+SELECT id, listing_key, listing_url, site_url, title, recipe, health, health_reason, setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_health_reason, setup_seq, setup_tried_at, last_polled_at, next_poll_at, etag, last_modified, link_set_hash, consecutive_failures, last_checked_at, anchored_by_did, anchored_at FROM web_sources WHERE id = ?
 `
 
 func (q *Queries) GetWebSource(ctx context.Context, id string) (WebSource, error) {
@@ -171,12 +176,14 @@ func (q *Queries) GetWebSource(ctx context.Context, id string) (WebSource, error
 		&i.LinkSetHash,
 		&i.ConsecutiveFailures,
 		&i.LastCheckedAt,
+		&i.AnchoredByDid,
+		&i.AnchoredAt,
 	)
 	return i, err
 }
 
 const getWebSourceByListingKey = `-- name: GetWebSourceByListingKey :one
-SELECT id, listing_key, listing_url, site_url, title, recipe, health, health_reason, setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_health_reason, setup_seq, setup_tried_at, last_polled_at, next_poll_at, etag, last_modified, link_set_hash, consecutive_failures, last_checked_at FROM web_sources WHERE listing_key = ?
+SELECT id, listing_key, listing_url, site_url, title, recipe, health, health_reason, setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_health_reason, setup_seq, setup_tried_at, last_polled_at, next_poll_at, etag, last_modified, link_set_hash, consecutive_failures, last_checked_at, anchored_by_did, anchored_at FROM web_sources WHERE listing_key = ?
 `
 
 func (q *Queries) GetWebSourceByListingKey(ctx context.Context, listingKey string) (WebSource, error) {
@@ -207,6 +214,8 @@ func (q *Queries) GetWebSourceByListingKey(ctx context.Context, listingKey strin
 		&i.LinkSetHash,
 		&i.ConsecutiveFailures,
 		&i.LastCheckedAt,
+		&i.AnchoredByDid,
+		&i.AnchoredAt,
 	)
 	return i, err
 }
@@ -319,8 +328,27 @@ func (q *Queries) InsertWebSourceRepair(ctx context.Context, arg InsertWebSource
 	return err
 }
 
+const isWebSourceFollowedByOthers = `-- name: IsWebSourceFollowedByOthers :one
+SELECT EXISTS (
+    SELECT 1 FROM user_subscriptions us WHERE us.feed_url = ?1 AND us.did <> ?2
+) AS followed
+`
+
+type IsWebSourceFollowedByOthersParams struct {
+	FeedUrl string `json:"feed_url"`
+	Did     string `json:"did"`
+}
+
+// Answers yes or no and never names a follower; an anchored rebuild of a feed other readers follow must be confirmed first.
+func (q *Queries) IsWebSourceFollowedByOthers(ctx context.Context, arg IsWebSourceFollowedByOthersParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, isWebSourceFollowedByOthers, arg.FeedUrl, arg.Did)
+	var followed bool
+	err := row.Scan(&followed)
+	return followed, err
+}
+
 const listDueWebSources = `-- name: ListDueWebSources :many
-SELECT ws.id, ws.listing_key, ws.listing_url, ws.site_url, ws.title, ws.recipe, ws.health, ws.health_reason, ws.setup_cost, ws.created_by_did, ws.created_at, ws.updated_at, ws.setup_at, ws.setup_health, ws.setup_health_reason, ws.setup_seq, ws.setup_tried_at, ws.last_polled_at, ws.next_poll_at, ws.etag, ws.last_modified, ws.link_set_hash, ws.consecutive_failures, ws.last_checked_at FROM web_sources ws
+SELECT ws.id, ws.listing_key, ws.listing_url, ws.site_url, ws.title, ws.recipe, ws.health, ws.health_reason, ws.setup_cost, ws.created_by_did, ws.created_at, ws.updated_at, ws.setup_at, ws.setup_health, ws.setup_health_reason, ws.setup_seq, ws.setup_tried_at, ws.last_polled_at, ws.next_poll_at, ws.etag, ws.last_modified, ws.link_set_hash, ws.consecutive_failures, ws.last_checked_at, ws.anchored_by_did, ws.anchored_at FROM web_sources ws
 WHERE ws.setup_health IN ('ok', 'needs_attention')
   AND ws.next_poll_at IS NOT NULL
   AND ws.next_poll_at <= ?1
@@ -371,6 +399,8 @@ func (q *Queries) ListDueWebSources(ctx context.Context, arg ListDueWebSourcesPa
 			&i.LinkSetHash,
 			&i.ConsecutiveFailures,
 			&i.LastCheckedAt,
+			&i.AnchoredByDid,
+			&i.AnchoredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -633,21 +663,25 @@ UPDATE web_sources SET
     last_modified = NULL,
     link_set_hash = NULL,
     consecutive_failures = 0,
-    last_checked_at = NULL
-WHERE id = ?10
+    last_checked_at = NULL,
+    anchored_by_did = ?10,
+    anchored_at = ?11
+WHERE id = ?12
 `
 
 type ReplaceWebSourceSetupParams struct {
-	ListingUrl   string  `json:"listing_url"`
-	SiteUrl      string  `json:"site_url"`
-	Title        string  `json:"title"`
-	Recipe       string  `json:"recipe"`
-	Health       string  `json:"health"`
-	HealthReason string  `json:"health_reason"`
-	SetupCost    string  `json:"setup_cost"`
-	UpdatedAt    string  `json:"updated_at"`
-	NextPollAt   *string `json:"next_poll_at"`
-	ID           string  `json:"id"`
+	ListingUrl    string  `json:"listing_url"`
+	SiteUrl       string  `json:"site_url"`
+	Title         string  `json:"title"`
+	Recipe        string  `json:"recipe"`
+	Health        string  `json:"health"`
+	HealthReason  string  `json:"health_reason"`
+	SetupCost     string  `json:"setup_cost"`
+	UpdatedAt     string  `json:"updated_at"`
+	NextPollAt    *string `json:"next_poll_at"`
+	AnchoredByDid *string `json:"anchored_by_did"`
+	AnchoredAt    *string `json:"anchored_at"`
+	ID            string  `json:"id"`
 }
 
 func (q *Queries) ReplaceWebSourceSetup(ctx context.Context, arg ReplaceWebSourceSetupParams) error {
@@ -661,6 +695,8 @@ func (q *Queries) ReplaceWebSourceSetup(ctx context.Context, arg ReplaceWebSourc
 		arg.SetupCost,
 		arg.UpdatedAt,
 		arg.NextPollAt,
+		arg.AnchoredByDid,
+		arg.AnchoredAt,
 		arg.ID,
 	)
 	return err

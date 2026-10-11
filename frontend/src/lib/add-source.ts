@@ -67,6 +67,8 @@ export type GeneratedHealth =
     | 'blocked_by_site'
     | 'broken';
 
+export type AnchorRejection = 'not_on_page' | 'not_confirmed' | 'no_better';
+
 export type GeneratedSource = {
     id: string;
     feedUrl: string;
@@ -77,6 +79,7 @@ export type GeneratedSource = {
     needsAnchor: boolean;
     items: { url: string; title: string; date: string | null }[];
     itemCount: number;
+    anchorRejected?: AnchorRejection;
 };
 
 export function generateSource(
@@ -131,6 +134,13 @@ export function anchorError(error: unknown) {
                 : generationError(error),
         invalid,
     };
+}
+
+// The post was a fair try, so this reads as an outcome rather than the reader's mistake.
+export function anchorRejection(why: AnchorRejection) {
+    return why === 'not_on_page'
+        ? 'That post isn’t linked on this page. The feed stays as it was.'
+        : 'That post didn’t help. The feed stays as it was.';
 }
 
 // A limit, an unavailable generator or a bad address answers the same way at once.

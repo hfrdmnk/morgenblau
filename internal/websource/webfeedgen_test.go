@@ -179,3 +179,49 @@ func TestWebfeedGeneratorSetupReportsAnUnreachableSite(t *testing.T) {
 		}
 	}
 }
+
+func TestWebfeedGeneratorAnchoredSetupOffersOneModelCheck(t *testing.T) {
+	web := driftSite()
+	web.set(driftListing, twoListsPage())
+	linked := "https://blog.example.com/stories/" + driftSlug(driftTitles[6])
+	model := &scriptedModel{}
+	gen := NewWebfeedGenerator(webfeed.Options{Client: web.client(), Model: model})
+
+	got, err := gen.Setup(context.Background(), driftListing, linked, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.AnchorOnPage || got.Confirm == nil || len(model.calls) != 0 {
+		t.Fatalf("on page %v, confirm %v, calls %v; want the check offered and nothing spent yet", got.AnchorOnPage, got.Confirm != nil, model.calls)
+	}
+	c, err := got.Confirm(context.Background())
+	if err != nil || !c.Agreed || c.USD != 0.0002 || model.count(webfeed.EffortLow) != 1 {
+		t.Errorf("confirmation = %+v, %v after %d low-effort calls", c, err, model.count(webfeed.EffortLow))
+	}
+	model.setBroken(true)
+	if c, err := got.Confirm(context.Background()); err != nil || c.Agreed || c.Reason == "" {
+		t.Errorf("doubted confirmation = %+v, %v", c, err)
+	}
+
+	elsewhere, err := gen.Setup(context.Background(), driftListing, "https://blog.example.com/stories/a-post-this-page-never-links", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elsewhere.AnchorOnPage {
+		t.Error("a post of the right shape that the page never links counted as on the page")
+	}
+	plain, err := gen.Setup(context.Background(), driftListing, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.Confirm != nil {
+		t.Error("an unanchored setup offered an anchor check")
+	}
+	noModel, err := NewWebfeedGenerator(webfeed.Options{Client: web.client()}).Setup(context.Background(), driftListing, linked, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !noModel.AnchorOnPage || noModel.Confirm != nil {
+		t.Errorf("without a model: on page %v, confirm %v", noModel.AnchorOnPage, noModel.Confirm != nil)
+	}
+}

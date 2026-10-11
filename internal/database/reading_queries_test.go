@@ -5,20 +5,39 @@ import (
 	"testing"
 )
 
+// Every other reading-index query must bind each reading table it touches to the caller's DID.
+var unscopedReadingQueries = map[string]string{
+	"IsWebSourceFollowedByOthers": "a shared generated feed asks only whether anyone else follows it, a yes or no that names no reader",
+}
+
 func TestReadingIndexQueriesAreScopedByOwnerDID(t *testing.T) {
 	checked := 0
+	seen := map[string]bool{}
 	for _, query := range loadSQLQueries(t) {
 		refs := readingTableRefs(query.sql)
 		if len(refs) == 0 {
 			continue
 		}
 		checked++
-		for _, problem := range ownerScopeProblems(query.sql, refs) {
-			t.Errorf("%s in %s: %s; bind every reading-index table to the caller DID so one reader cannot reach another's subscriptions or saves", query.name, query.file, problem)
+		seen[query.name] = true
+		problems := ownerScopeProblems(query.sql, refs)
+		_, unscoped := unscopedReadingQueries[query.name]
+		switch {
+		case unscoped && len(problems) == 0:
+			t.Errorf("%s is owner-scoped; drop it from unscopedReadingQueries", query.name)
+		case !unscoped:
+			for _, problem := range problems {
+				t.Errorf("%s in %s: %s; bind every reading-index table to the caller DID so one reader cannot reach another's subscriptions or saves", query.name, query.file, problem)
+			}
 		}
 	}
 	if checked == 0 {
 		t.Fatal("no reading-index queries checked; ownership protection must cover the SQL that actually runs")
+	}
+	for name := range unscopedReadingQueries {
+		if !seen[name] {
+			t.Errorf("unscopedReadingQueries lists %s, which reads no reading-index table", name)
+		}
 	}
 }
 

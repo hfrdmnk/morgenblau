@@ -41,6 +41,8 @@ type webSourceWire struct {
 	NeedsAnchor  bool                `json:"needsAnchor"`
 	Items        []webSourceItemWire `json:"items"`
 	ItemCount    int                 `json:"itemCount"`
+	// AnchorRejected says the reader's post left the source, and this preview, as they were.
+	AnchorRejected websource.AnchorRejection `json:"anchorRejected,omitempty"`
 }
 
 // webSourceWriteTimeout outlasts websource.SetupTimeout, so a slow setup ends in an answer rather than a dropped connection.
@@ -106,6 +108,7 @@ func WebSourcesCreateHandler(svc WebSourceCreator) http.Handler {
 		out := webSourceWire{
 			ID: src.ID, FeedURL: src.FeedURL, Title: src.Title, SiteURL: src.SiteURL, Health: src.Health,
 			HealthReason: src.HealthReason, NeedsAnchor: src.NeedsAnchor, Items: []webSourceItemWire{}, ItemCount: preview.ItemCount,
+			AnchorRejected: preview.AnchorRejected,
 		}
 		for _, it := range preview.Items {
 			item := webSourceItemWire{URL: it.URL, Title: it.Title}

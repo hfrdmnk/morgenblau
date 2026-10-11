@@ -110,6 +110,15 @@ function announced(container: HTMLElement) {
 
 const unsure = { ...preview, health: 'needs_attention', needsAnchor: true };
 
+function watchScrolls() {
+    const original = HTMLElement.prototype.scrollIntoView;
+    const calls: { text: string | null; options: unknown }[] = [];
+    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement, options?: unknown) {
+        calls.push({ text: this.textContent, options });
+    };
+    return { calls, restore: () => (HTMLElement.prototype.scrollIntoView = original) };
+}
+
 async function settle() {
     await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -190,6 +199,45 @@ test('an unsure list asks for one post, regenerates around it, and can still be 
     expect(announced(container)).toEqual(['Found 3 posts like that one.']);
     expect(document.activeElement).toBe(button(container, 'Add source')!);
 });
+
+for (const [why, line] of [
+    ['not_confirmed', 'That post didn’t help. The feed stays as it was.'],
+    ['not_on_page', 'That post isn’t linked on this page. The feed stays as it was.'],
+    ['no_better', 'That post didn’t help. The feed stays as it was.'],
+]) {
+    test(`a post that does not help (${why}) leaves the feed and the field as they were`, async () => {
+        const calls = respond(({ body }) => Response.json(body.anchorUrl ? { ...unsure, anchorRejected: why } : unsure));
+        const { container } = await render();
+        await click(button(container, 'Generate a feed'));
+        await settle();
+        const input = container.querySelector('input')!;
+        await type(input, 'https://news.example.com/related/a');
+        const scrolled = watchScrolls();
+        await act(async () => input.form!.requestSubmit());
+        await settle();
+        scrolled.restore();
+
+        expect(calls).toHaveLength(2);
+        expect(container.textContent).toContain(line);
+        // A tall dialog would otherwise leave the line below its fold.
+        expect(scrolled.calls.at(-1)).toEqual({ text: line, options: { block: 'nearest' } });
+        expect(announced(container)).toEqual([line]);
+        expect(container.querySelector('[role="alert"]')).toBeNull();
+        expect(input.isConnected).toBe(true);
+        expect(input.value).toBe('https://news.example.com/related/a');
+        expect(input.getAttribute('aria-invalid')).toBe('false');
+        expect(input.getAttribute('aria-describedby')).toBeTruthy();
+        expect(document.getElementById(input.getAttribute('aria-describedby')!)?.textContent).toBe(line);
+        expect(document.activeElement).toBe(input);
+        expect(container.textContent).toContain('First post');
+        expect(container.textContent).toContain('isn’t sure');
+        expect(button(container, 'Add source')?.disabled).toBe(false);
+
+        await type(input, 'https://news.example.com/posts/third');
+        expect(input.form!.textContent).not.toContain(line);
+        expect(input.getAttribute('aria-describedby')).toBeNull();
+    });
+}
 
 test('an unsure list keeps Add source near the posts by showing fewer of them', async () => {
     const items = ['one', 'two', 'three', 'four', 'five'].map((name) => ({ url: `https://news.example.com/posts/${name}`, title: `Post ${name}`, date: null }));

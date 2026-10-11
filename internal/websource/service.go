@@ -128,7 +128,8 @@ func (s *Service) IsFeedURL(raw string) bool {
 }
 
 // Create returns the site's web source, generating it on first use. An anchorURL on a source that is not healthy, or an
-// unsure setup older than staleSetup, re-runs setup; the new one replaces the old only when it is ok or healthier.
+// unsure setup older than staleSetup, re-runs setup; the new one replaces the old only when it is ok or healthier, and an
+// anchored one on a source others follow only once vetAnchor passes it.
 func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string) (Preview, error) {
 	listing, err := parseHTTPURL(listingURL)
 	if err != nil {
@@ -180,15 +181,33 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 		}
 	}
 
-	gen, err := s.runSetup(ctx, listing.String(), anchorURL)
+	// One deadline covers the setup and its model check, so the answer still reaches the reader's open request.
+	setupCtx, cancel := context.WithTimeout(ctx, s.setupTimeout)
+	defer cancel()
+	gen, err := s.runSetup(setupCtx, listing.String(), anchorURL)
 	if err != nil {
 		return Preview{}, err
+	}
+	if regenerate && anchorURL != "" {
+		rejected, err := s.vetAnchor(setupCtx, did, existing, gen)
+		if err != nil {
+			return Preview{}, err
+		}
+		if rejected != "" {
+			slog.Info("web source anchor rejected", "id", existing.ID, "why", rejected)
+			p, err := s.preview(ctx, existing)
+			p.AnchorRejected = rejected
+			return p, err
+		}
 	}
 	setup, err := newSetupRow(key, listing, gen)
 	if err != nil {
 		return Preview{}, err
 	}
-	id, err := s.storeSetup(ctx, did, setup, regenerate)
+	if anchorURL != "" {
+		setup.anchoredBy = did
+	}
+	id, kept, err := s.storeSetup(ctx, did, setup, regenerate)
 	if err != nil {
 		return Preview{}, err
 	}
@@ -196,13 +215,49 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 	if err != nil {
 		return Preview{}, err
 	}
-	return s.preview(ctx, row)
+	p, err := s.preview(ctx, row)
+	if kept && anchorURL != "" {
+		p.AnchorRejected = AnchorNoBetter
+	}
+	return p, err
 }
 
 // setupRow is a finished setup as the source row stores it.
 type setupRow struct {
 	key, listingURL, siteURL, title, recipe, cost string
+	anchoredBy                                    string
 	gen                                           Generated
+}
+
+// vetAnchor holds an anchored setup that would replace a source other readers follow to two checks: the page links the
+// reader's post, and the model agrees the new list is the site's posts. It says why the source stays, or nothing.
+func (s *Service) vetAnchor(ctx context.Context, did string, existing db.WebSource, gen Generated) (AnchorRejection, error) {
+	followed, err := s.read.IsWebSourceFollowedByOthers(ctx, db.IsWebSourceFollowedByOthersParams{FeedUrl: s.FeedURL(existing.ID), Did: did})
+	if err != nil || !followed {
+		return "", err
+	}
+	if !gen.AnchorOnPage {
+		return AnchorNotOnPage, nil
+	}
+	if !improves(gen.Health, existing) {
+		return "", nil
+	}
+	if gen.Confirm == nil {
+		return AnchorNotConfirmed, nil
+	}
+	if left, err := s.modelBudgetLeft(ctx); err != nil || !left {
+		return AnchorNotConfirmed, err
+	}
+	c, err := gen.Confirm(ctx)
+	// The spend lands even when the setup's deadline cut the call short: it was paid for.
+	if serr := s.recordModelSpend(context.WithoutCancel(ctx), "anchor_check", c.USD); serr != nil {
+		return "", serr
+	}
+	if err != nil || !c.Agreed {
+		slog.Info("web source anchor not confirmed", "id", existing.ID, "reason", c.Reason, "err", err)
+		return AnchorNotConfirmed, nil
+	}
+	return "", nil
 }
 
 // newSetupRow fills in what a setup left blank: the recipe, the title and the site's address.
@@ -228,13 +283,17 @@ func newSetupRow(key string, listing *url.URL, gen Generated) (setupRow, error) 
 }
 
 // storeSetup writes a setup in one transaction: a new source, or a replacement of the site's source when regenerate and
-// the setup improves on it. Its items join as history; a healthy setup also starts the detector's history.
-func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow, regenerate bool) (string, error) {
+// the setup improves on it; kept reports a regenerated setup that did not. Its items join as history; a healthy setup
+// also starts the detector's history.
+func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow, regenerate bool) (id string, kept bool, err error) {
 	gen := setup.gen
 	now := s.now().UTC()
 	nextPoll := formatTime(now.Add(s.interval))
-	var id string
-	err := database.WithTx(ctx, s.writer, func(q *db.Queries) error {
+	var anchoredBy, anchoredAt *string
+	if setup.anchoredBy != "" {
+		anchoredBy, anchoredAt = &setup.anchoredBy, ptr(formatTime(now))
+	}
+	err = database.WithTx(ctx, s.writer, func(q *db.Queries) error {
 		if err := recordSpend(ctx, q, now, "setup", gen.Cost.USD); err != nil {
 			return err
 		}
@@ -248,12 +307,14 @@ func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow, re
 			id = row.ID
 			if !improves(gen.Health, row) {
 				slog.Info("web source setup kept the old one", "id", id, "old", row.SetupHealth, "new", gen.Health)
+				kept = true
 				return q.MarkWebSourceSetupTried(ctx, db.MarkWebSourceSetupTriedParams{ID: id, TriedAt: formatTime(now)})
 			}
 			if err := q.ReplaceWebSourceSetup(ctx, db.ReplaceWebSourceSetupParams{
 				ID: id, ListingUrl: setup.listingURL, SiteUrl: setup.siteURL, Title: setup.title, Recipe: setup.recipe,
 				Health: string(gen.Health), HealthReason: gen.HealthReason,
 				SetupCost: setup.cost, UpdatedAt: formatTime(now), NextPollAt: &nextPoll,
+				AnchoredByDid: anchoredBy, AnchoredAt: anchoredAt,
 			}); err != nil {
 				return err
 			}
@@ -269,6 +330,7 @@ func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow, re
 				ID: id, ListingKey: setup.key, ListingUrl: setup.listingURL, SiteUrl: setup.siteURL, Title: setup.title, Recipe: setup.recipe,
 				Health: string(gen.Health), HealthReason: gen.HealthReason,
 				SetupCost: setup.cost, CreatedByDid: did, CreatedAt: formatTime(now), NextPollAt: &nextPoll,
+				AnchoredByDid: anchoredBy, AnchoredAt: anchoredAt,
 			}); err != nil {
 				return err
 			}
@@ -284,13 +346,11 @@ func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow, re
 		}
 		return nil
 	})
-	return id, err
+	return id, kept, err
 }
 
-// runSetup runs one setup in a slot, bounded by the setup deadline, with the model only while the daily budget lasts.
+// runSetup runs one setup in a slot, with the model only while the daily budget lasts.
 func (s *Service) runSetup(ctx context.Context, listingURL, anchorURL string) (Generated, error) {
-	ctx, cancel := context.WithTimeout(ctx, s.setupTimeout)
-	defer cancel()
 	select {
 	case s.slots <- struct{}{}:
 	case <-ctx.Done():
@@ -355,6 +415,13 @@ func (s *Service) modelBudgetLeft(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+func (s *Service) recordModelSpend(ctx context.Context, kind string, usd float64) error {
+	if usd <= 0 {
+		return nil
+	}
+	return database.WithTx(ctx, s.writer, func(q *db.Queries) error { return recordSpend(ctx, q, s.now().UTC(), kind, usd) })
 }
 
 func recordSpend(ctx context.Context, q *db.Queries, now time.Time, kind string, usd float64) error {

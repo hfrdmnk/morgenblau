@@ -96,6 +96,30 @@ func TestWebSourcesCreate_ReturnsThePreview(t *testing.T) {
 	}
 }
 
+func TestWebSourcesCreate_ARejectedAnchorAnswersTheUnchangedPreview(t *testing.T) {
+	for _, why := range []websource.AnchorRejection{websource.AnchorNotOnPage, websource.AnchorNotConfirmed, websource.AnchorNoBetter} {
+		svc := &fakeWebSources{preview: websource.Preview{
+			Source:         websource.Source{ID: "abc", Health: websource.HealthNeedsAttention, NeedsAnchor: true},
+			Items:          []websource.Item{{URL: "https://news.example.com/posts/a", Title: "A"}},
+			ItemCount:      1,
+			AnchorRejected: why,
+		}}
+		rr := postWebSource(t, svc, `{"url":"https://news.example.com/","anchorUrl":"https://news.example.com/related/a"}`)
+		var body struct {
+			Health         string `json:"health"`
+			NeedsAnchor    bool   `json:"needsAnchor"`
+			ItemCount      int    `json:"itemCount"`
+			AnchorRejected string `json:"anchorRejected"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if rr.Code != http.StatusOK || body.AnchorRejected != string(why) || body.Health != "needs_attention" || !body.NeedsAnchor || body.ItemCount != 1 {
+			t.Errorf("%s: status = %d, body = %s", why, rr.Code, rr.Body)
+		}
+	}
+}
+
 func TestWebSourcesCreate_ASiteThatBlocksUsIsNotAnError(t *testing.T) {
 	svc := &fakeWebSources{preview: websource.Preview{Source: websource.Source{ID: "abc", Health: websource.HealthBlockedBySite}, Items: []websource.Item{}}}
 	rr := postWebSource(t, svc, `{"url":"https://news.example.com/"}`)

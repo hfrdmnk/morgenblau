@@ -2,12 +2,13 @@
 INSERT INTO web_sources (
     id, listing_key, listing_url, site_url, title, recipe, health, health_reason,
     setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_health_reason,
-    setup_tried_at, next_poll_at
+    setup_tried_at, next_poll_at, anchored_by_did, anchored_at
 ) VALUES (
     sqlc.arg(id), sqlc.arg(listing_key), sqlc.arg(listing_url), sqlc.arg(site_url), sqlc.arg(title),
     sqlc.arg(recipe), sqlc.arg(health), sqlc.arg(health_reason),
     sqlc.arg(setup_cost), sqlc.arg(created_by_did), sqlc.arg(created_at), sqlc.arg(created_at), sqlc.arg(created_at),
-    sqlc.arg(health), sqlc.arg(health_reason), sqlc.arg(created_at), sqlc.narg(next_poll_at)
+    sqlc.arg(health), sqlc.arg(health_reason), sqlc.arg(created_at), sqlc.narg(next_poll_at),
+    sqlc.narg(anchored_by_did), sqlc.narg(anchored_at)
 );
 
 -- name: GetWebSource :one
@@ -37,7 +38,9 @@ UPDATE web_sources SET
     last_modified = NULL,
     link_set_hash = NULL,
     consecutive_failures = 0,
-    last_checked_at = NULL
+    last_checked_at = NULL,
+    anchored_by_did = sqlc.narg(anchored_by_did),
+    anchored_at = sqlc.narg(anchored_at)
 WHERE id = sqlc.arg(id);
 
 -- name: MarkWebSourceSetupTried :exec
@@ -69,6 +72,12 @@ WHERE ws.setup_health IN ('ok', 'needs_attention')
   AND EXISTS (SELECT 1 FROM feeds f WHERE f.feed_url = sqlc.arg(feed_url_prefix) || ws.id)
 ORDER BY ws.next_poll_at, ws.id
 LIMIT sqlc.arg(limit);
+
+-- name: IsWebSourceFollowedByOthers :one
+-- Answers yes or no and never names a follower; an anchored rebuild of a feed other readers follow must be confirmed first.
+SELECT EXISTS (
+    SELECT 1 FROM user_subscriptions us WHERE us.feed_url = sqlc.arg(feed_url) AND us.did <> sqlc.arg(did)
+) AS followed;
 
 -- name: InsertWebSourceItem :exec
 INSERT INTO web_source_items (source_id, url, title, published_at, excerpt, first_seen_at, history, position)

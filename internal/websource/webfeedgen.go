@@ -56,10 +56,23 @@ func (g *WebfeedGenerator) Setup(ctx context.Context, listingURL, anchorURL stri
 		Items:        toItems(res.Items, res.Excerpts),
 		Fingerprint:  fingerprint(res.Items, res.Recipe),
 		Cost:         setupCost(res.Recipe.Setup),
+		AnchorOnPage: res.AnchorOnPage,
+	}
+	if anchorURL != "" && g.opts.Model != nil {
+		gen.Confirm = g.confirmAnchored(listingURL, res)
 	}
 	slog.Info("web source setup", "listing", listingURL, "anchored", anchorURL != "", "health", health,
 		"reasons", res.Reasons, "items", len(res.Items), "stages", gen.Cost.Stages, "usd", gen.Cost.USD)
 	return gen, nil
+}
+
+// confirmAnchored is the weekly check's one look at an anchored list, left for the service to spend.
+func (g *WebfeedGenerator) confirmAnchored(listingURL string, res *webfeed.Result) func(context.Context) (Confirmation, error) {
+	return func(ctx context.Context) (Confirmation, error) {
+		rec, err := webfeed.ConfirmAnchored(ctx, g.opts.Model, res)
+		slog.Info("web source anchor check", "listing", listingURL, "broken", rec.Broken, "reason", rec.Reason, "usd", rec.USD, "err", err)
+		return Confirmation{Agreed: err == nil && !rec.Broken, Reason: rec.Reason, USD: rec.USD}, err
+	}
 }
 
 func (g *WebfeedGenerator) Poll(ctx context.Context, raw json.RawMessage, prev PollState) (PollOutcome, error) {

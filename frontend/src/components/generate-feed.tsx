@@ -10,6 +10,7 @@ import { useGeneration, type GenerationStep } from '@/hooks/use-generation';
 import {
     addSource,
     anchorError,
+    anchorRejection,
     generatedCandidate,
     generatedVerdict,
     type GeneratedSource,
@@ -90,6 +91,7 @@ export function GenerateFeed({
 function resultStatus(state: GenerationStep) {
     if (state.step !== 'preview') return '';
     const { source } = state;
+    if (source.anchorRejected) return anchorRejection(source.anchorRejected);
     if (!generatedVerdict(source).subscribable) return '';
     return state.anchored
         ? `Found ${postCount(source.itemCount)} like that one.`
@@ -99,6 +101,7 @@ function resultStatus(state: GenerationStep) {
 function focusOrder(state: GenerationStep) {
     if (state.step === 'failed') return ['retry'];
     if (state.step !== 'preview') return [];
+    if (state.source.anchorRejected) return ['anchor', 'add'];
     return state.anchored ? ['add', 'anchor'] : ['heading', 'anchor'];
 }
 
@@ -225,6 +228,7 @@ function GeneratedPreview({
                 <AnchorForm
                     key={source.id + source.itemCount}
                     found={verdict.subscribable}
+                    rejected={source.anchorRejected}
                     anchoring={anchoring}
                     disabled={save.saving}
                     onSubmit={pointAt}
@@ -369,34 +373,63 @@ const ANCHOR_PROMPT = {
     empty: 'No posts found on this page yet. Paste the address of one post from it, and Morgenblau will look for posts like it.',
 };
 
-function AnchorForm({
-    found,
-    anchoring,
-    disabled,
-    onSubmit,
-}: {
-    found: boolean;
-    anchoring: boolean;
-    disabled: boolean;
-    onSubmit: (anchor: string) => Promise<void>;
-}) {
-    const inputId = useId();
+function useAnchorField(
+    rejected: GeneratedSource['anchorRejected'],
+    anchoring: boolean,
+    onSubmit: (anchor: string) => Promise<void>,
+) {
     const [anchor, setAnchor] = useState('');
+    const [edited, setEdited] = useState(false);
     const [error, setError] = useState<ReturnType<typeof anchorError> | null>(
         null,
     );
+    const notice =
+        rejected && !edited && !error ? anchorRejection(rejected) : undefined;
 
     async function submit(event: FormEvent) {
         event.preventDefault();
         if (anchoring || !anchor.trim()) return;
         setError(null);
+        setEdited(false);
         await onSubmit(anchor).catch((failure) =>
             setError(anchorError(failure)),
         );
     }
 
+    function change(value: string) {
+        setAnchor(value);
+        setError(null);
+        setEdited(true);
+    }
+
+    return {
+        anchor,
+        error,
+        notice,
+        described: !anchoring && Boolean(error || notice),
+        submit,
+        change,
+    };
+}
+
+function AnchorForm({
+    found,
+    rejected,
+    anchoring,
+    disabled,
+    onSubmit,
+}: {
+    found: boolean;
+    rejected: GeneratedSource['anchorRejected'];
+    anchoring: boolean;
+    disabled: boolean;
+    onSubmit: (anchor: string) => Promise<void>;
+}) {
+    const inputId = useId();
+    const field = useAnchorField(rejected, anchoring, onSubmit);
+
     return (
-        <form className="mt-4" onSubmit={submit}>
+        <form className="mt-4" onSubmit={field.submit}>
             <label
                 className="block text-sm text-muted-foreground"
                 htmlFor={inputId}
@@ -405,32 +438,32 @@ function AnchorForm({
             </label>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                 <Input
-                    aria-describedby={error ? `${inputId}-error` : undefined}
-                    aria-invalid={Boolean(error?.invalid)}
+                    aria-describedby={
+                        field.described ? `${inputId}-message` : undefined
+                    }
+                    aria-invalid={Boolean(field.error?.invalid)}
                     aria-busy={anchoring}
                     autoCapitalize="none"
                     data-focus="anchor"
                     disabled={disabled}
                     id={inputId}
                     inputMode="url"
-                    onChange={(event) => {
-                        setAnchor(event.target.value);
-                        setError(null);
-                    }}
+                    onChange={(event) => field.change(event.target.value)}
                     placeholder="example.com/posts/one-post"
                     readOnly={anchoring}
                     spellCheck={false}
-                    value={anchor}
+                    value={field.anchor}
                 />
                 <UsePostButton
                     anchoring={anchoring}
-                    disabled={disabled || !anchor.trim()}
+                    disabled={disabled || !field.anchor.trim()}
                 />
             </div>
             <AnchorMessage
                 anchoring={anchoring}
-                error={error}
-                id={`${inputId}-error`}
+                error={field.error}
+                notice={field.notice}
+                id={`${inputId}-message`}
             />
         </form>
     );
@@ -461,32 +494,49 @@ function UsePostButton({
     );
 }
 
+const SEARCHING = 'Looking for posts like that one. This can take a little while.';
+
+function anchorMessage(
+    anchoring: boolean,
+    error: ReturnType<typeof anchorError> | null,
+    notice?: string,
+) {
+    if (anchoring) return { text: SEARCHING, role: 'status' };
+    // The dialog's status region already announced the notice; a second live region would repeat it.
+    if (notice) return { text: notice };
+    if (!error) return null;
+    return { text: error.message, role: 'alert', invalid: error.invalid };
+}
+
 function AnchorMessage({
     anchoring,
     error,
+    notice,
     id,
 }: {
     anchoring: boolean;
     error: ReturnType<typeof anchorError> | null;
+    notice?: string;
     id: string;
 }) {
-    if (anchoring)
-        return (
-            <p className="mt-3 text-sm text-muted-foreground" role="status">
-                Looking for posts like that one. This can take a little while.
-            </p>
-        );
-    if (!error) return null;
+    const message = anchorMessage(anchoring, error, notice);
+    const line = useRef<HTMLParagraphElement>(null);
+    // The dialog can be taller than the screen, and the field's focus alone leaves the line below its fold.
+    useEffect(() => {
+        line.current?.scrollIntoView({ block: 'nearest' });
+    }, [message?.text]);
+    if (!message) return null;
     return (
         <p
             className={cn(
-                'mt-3 text-sm',
-                error.invalid ? 'text-destructive' : 'text-muted-foreground',
+                'mt-3 scroll-mb-6 text-sm sm:scroll-mb-8',
+                message.invalid ? 'text-destructive' : 'text-muted-foreground',
             )}
-            id={id}
-            role="alert"
+            id={anchoring ? undefined : id}
+            ref={line}
+            role={message.role}
         >
-            {error.message}
+            {message.text}
         </p>
     );
 }

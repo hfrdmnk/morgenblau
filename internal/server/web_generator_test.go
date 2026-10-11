@@ -139,4 +139,11 @@ func TestWebGeneratorWiresEveryModelStepToClaude(t *testing.T) {
 	if api.count("low") != 1 {
 		t.Fatalf("weekly check calls = %d, want 1", api.count("low"))
 	}
+	anchored, err := gen.Setup(context.Background(), site.URL+"/blog", site.URL+"/blog/ocean/story-number-0", true)
+	if err != nil || !anchored.AnchorOnPage || anchored.Confirm == nil {
+		t.Fatalf("anchored setup = %+v, %v; want the anchor found and its check offered", anchored, err)
+	}
+	if c, err := anchored.Confirm(context.Background()); err != nil || !c.Agreed || c.USD == 0 || api.count("low") != 2 {
+		t.Fatalf("anchor check = %+v, %v after %d low-effort calls; want one metered call through Claude", c, err, api.count("low"))
+	}
 }

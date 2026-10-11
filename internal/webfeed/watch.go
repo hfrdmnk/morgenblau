@@ -2,6 +2,7 @@ package webfeed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -50,6 +51,19 @@ func WeeklyCheck(ctx context.Context, m Model, listingURL string, page []byte, l
 	if err != nil {
 		return WatchRecord{}, err
 	}
+	return watch(ctx, m, listingURL, d, lastGood, current)
+}
+
+// ConfirmAnchored asks the weekly check whether an anchored setup's items are the listing's posts, with nothing trusted
+// to compare them to: a reader's pointer alone must not swap the list a shared feed serves.
+func ConfirmAnchored(ctx context.Context, m Model, res *Result) (WatchRecord, error) {
+	if res.digest == nil {
+		return WatchRecord{}, errors.New("webfeed: the anchored setup read no listing page to check against")
+	}
+	return watch(ctx, m, res.Recipe.ListingURL, *res.digest, nil, res.Items)
+}
+
+func watch(ctx context.Context, m Model, listingURL string, d pageDigest, lastGood, current []Item) (WatchRecord, error) {
 	text, u, err := m.Complete(ctx, Prompt{System: watchPrompt, User: renderWatchMessage(listingURL, d, lastGood, current), Effort: EffortLow})
 	rec := WatchRecord{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, USD: roundUSD(u.USD)}
 	if err != nil {
@@ -69,6 +83,10 @@ func digestPage(body []byte, pageURL string) (pageDigest, error) {
 	if err != nil {
 		return pageDigest{}, err
 	}
+	return p.digest(), nil
+}
+
+func (p *pageDoc) digest() pageDigest {
 	d := pageDigest{Title: p.title}
 	for _, n := range p.doc.Find("body h1, body h2, body h3").Nodes {
 		if t := nodeText(n); t != "" && len(d.Headings) < digestHeadings {
@@ -86,7 +104,7 @@ func digestPage(body []byte, pageURL string) (pageDigest, error) {
 			d.SameSiteLinks++
 		}
 	}
-	return d, nil
+	return d
 }
 
 // renderWatchMessage builds the weekly check's user message; item lists show their first 20 entries.

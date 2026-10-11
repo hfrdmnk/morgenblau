@@ -39,8 +39,12 @@ type Result struct {
 	Reasons []Reason
 	// Candidates are the top lists the heuristic found, in the order the judge saw them.
 	Candidates []Candidate
+	// AnchorOnPage says the listing as fetched links the anchored post itself, not merely a URL of its shape.
+	AnchorOnPage bool
 
 	listing *pageDoc
+	// digest is what ConfirmAnchored shows the model of the anchored listing, kept once the page is released.
+	digest *pageDigest
 }
 
 const (
@@ -85,6 +89,10 @@ func SetupAnchored(ctx context.Context, listingURL, anchorPostURL string, opts O
 	}
 	res, err := setup(ctx, listingURL, anchorPostURL, opts)
 	if res != nil {
+		if res.listing != nil {
+			d := res.listing.digest()
+			res.digest = &d
+		}
 		res.release()
 	}
 	return res, err
@@ -140,6 +148,7 @@ func setup(ctx context.Context, listingURL, anchorURL string, opts Options) (*Re
 
 	pool, pick, judgeNone := top, []int(nil), false
 	if anchorURL != "" {
+		res.AnchorOnPage = p.links(anchorURL)
 		pool, pick = p.anchoredPick(all, anchorURL)
 		rec.Setup.Stages = append(rec.Setup.Stages, "anchored")
 		rec.Setup.Anchor = anchorURL
@@ -578,6 +587,16 @@ func (p *pageDoc) anchoredPick(all []*cluster, anchorURL string) ([]*cluster, []
 	c.hint = containerHint(c.container)
 	p.score(c)
 	return append(all, c), []int{len(all)}
+}
+
+// links reports a link on the page to rawURL, compared the way the page's own links are keyed.
+func (p *pageDoc) links(rawURL string) bool {
+	abs, ok := resolveLink(p.url, rawURL)
+	if !ok {
+		return false
+	}
+	key := postkey.URL(abs)
+	return slices.ContainsFunc(p.anchors, func(a *anchor) bool { return a.key == key })
 }
 
 // streamFor is the URL shape of the picked list that holds an item, its own template when none matches.

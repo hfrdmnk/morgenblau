@@ -67,7 +67,27 @@ type Generated struct {
 	Items        []Item
 	Fingerprint  Fingerprint
 	Cost         Cost
+	// AnchorOnPage says an anchored setup found the reader's post linked on the listing it read.
+	AnchorOnPage bool
+	// Confirm asks the model once whether an anchored setup's items are the listing's posts; nil without a model.
+	Confirm func(ctx context.Context) (Confirmation, error)
 }
+
+// Confirmation is the model's one look at an anchored list; USD is spent even when the call fails.
+type Confirmation struct {
+	Agreed bool
+	Reason string
+	USD    float64
+}
+
+// AnchorRejection says why a reader's post did not replace a source other readers follow.
+type AnchorRejection string
+
+const (
+	AnchorNotOnPage    AnchorRejection = "not_on_page"
+	AnchorNotConfirmed AnchorRejection = "not_confirmed"
+	AnchorNoBetter     AnchorRejection = "no_better"
+)
 
 // PollRecord is one good poll in the detector's history.
 type PollRecord struct {
@@ -158,6 +178,8 @@ type Preview struct {
 	Source    Source
 	Items     []Item
 	ItemCount int
+	// AnchorRejected is set when the reader's post left the source as it was.
+	AnchorRejected AnchorRejection
 }
 
 // Limiter caps generations per reader; *ratelimit.Limiter satisfies it.

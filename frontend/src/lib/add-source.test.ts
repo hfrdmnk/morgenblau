@@ -4,6 +4,7 @@ import { ApiError } from './api';
 import {
     addSource,
     anchorError,
+    anchorRejection,
     canRetryGeneration,
     discoverSources,
     generatedCandidate,
@@ -338,4 +339,16 @@ test('only a bad post address is the reader’s to fix', () => {
         invalid: false,
     });
     expect(anchorError(new TypeError('Failed to fetch')).invalid).toBe(false);
+});
+
+test('a post that left the feed as it was says so calmly, by cause', () => {
+    expect(anchorRejection('not_on_page')).toBe(
+        'That post isn’t linked on this page. The feed stays as it was.',
+    );
+    expect(anchorRejection('not_confirmed')).toBe(
+        'That post didn’t help. The feed stays as it was.',
+    );
+    expect(anchorRejection('no_better')).toBe(
+        'That post didn’t help. The feed stays as it was.',
+    );
 });

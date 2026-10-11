@@ -187,6 +187,8 @@ type WebSource struct {
 	LinkSetHash         *string `json:"link_set_hash"`
 	ConsecutiveFailures int64   `json:"consecutive_failures"`
 	LastCheckedAt       *string `json:"last_checked_at"`
+	AnchoredByDid       *string `json:"anchored_by_did"`
+	AnchoredAt          *string `json:"anchored_at"`
 }
 
 type WebSourceItem struct {
