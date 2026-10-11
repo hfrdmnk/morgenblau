@@ -46,6 +46,11 @@ Sharing, discovery recommendations, following users, public reader profiles, net
 | Digest | The finite collection of content for a selected day. |
 | Library | The user's saved entries. |
 | View | A filter by source, tags, content type, or a combination. |
+| Hidden feed | A site's own RSS/Atom feed that its pages do not advertise with `rel=alternate`; discovery finds it and it is followed like any feed. |
+| Generated feed | A feed Morgenblau builds for a site without one, from the site's listing page. Server-owned, one per site, served at `/web/<id>`; also called a web source in code. |
+| Listing page | The page a reader pastes that links to the site's posts, such as a blog or news index. |
+| Health | Whether a generated feed currently serves the site's posts: fine, needs attention (with a reason), or blocked by the site. Shown in Sources only. |
+| Pointing at a post | The reader pastes one real post from the listing page so an unsure generated feed is rebuilt around posts like it. |
 
 The Sources page groups RSS/Atom and Standardfeed subscriptions under **Feeds**, and email subscriptions under **Newsletters**. Standardfeed remains an ordinary source in product language; protocol details belong only where they help someone choose how to subscribe.
 
