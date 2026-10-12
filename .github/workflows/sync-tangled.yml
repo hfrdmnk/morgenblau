@@ -39,4 +39,10 @@ jobs:
       - name: Push main to Tangled
         env:
           GIT_SSH_COMMAND: ssh -i ~/.ssh/tangled -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
-        run: git push --force git@tangled.org:dominikhofer.me/morgenblau HEAD:refs/heads/main
+        # The knot rate-limits per source IP, and hosted runners share IPs with other jobs.
+        run: |
+          for delay in 15 30 45 0; do
+            git push --force git@tangled.org:dominikhofer.me/morgenblau HEAD:refs/heads/main && exit 0
+            [ "$delay" -gt 0 ] || exit 1
+            sleep "$delay"
+          done
