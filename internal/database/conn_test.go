@@ -47,11 +47,11 @@ func TestWithTx_Commit(t *testing.T) {
 	dbs := openTestDB(t)
 	ctx := context.Background()
 	if err := WithTx(ctx, dbs.Writer, func(q *db.Queries) error {
-		return q.UpsertFeed(ctx, db.UpsertFeedParams{FeedUrl: "https://a/feed", CreatedAt: "t", UpdatedAt: "t"})
+		return q.UpsertFeed(ctx, db.UpsertFeedParams{FeedUrl: "https://a.example.com/feed", CreatedAt: "t", UpdatedAt: "t"})
 	}); err != nil {
 		t.Fatalf("WithTx: %v", err)
 	}
-	if _, err := db.New(dbs.Writer).GetFeed(ctx, "https://a/feed"); err != nil {
+	if _, err := db.New(dbs.Writer).GetFeed(ctx, "https://a.example.com/feed"); err != nil {
 		t.Errorf("committed row not found: %v", err)
 	}
 }
@@ -61,7 +61,7 @@ func TestWithTx_Rollback(t *testing.T) {
 	ctx := context.Background()
 	sentinel := errors.New("boom")
 	err := WithTx(ctx, dbs.Writer, func(q *db.Queries) error {
-		if err := q.UpsertFeed(ctx, db.UpsertFeedParams{FeedUrl: "https://b/feed", CreatedAt: "t", UpdatedAt: "t"}); err != nil {
+		if err := q.UpsertFeed(ctx, db.UpsertFeedParams{FeedUrl: "https://b.example.com/feed", CreatedAt: "t", UpdatedAt: "t"}); err != nil {
 			return err
 		}
 		return sentinel
@@ -69,7 +69,7 @@ func TestWithTx_Rollback(t *testing.T) {
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("WithTx error = %v, want sentinel", err)
 	}
-	if _, err := db.New(dbs.Writer).GetFeed(ctx, "https://b/feed"); !errors.Is(err, sql.ErrNoRows) {
+	if _, err := db.New(dbs.Writer).GetFeed(ctx, "https://b.example.com/feed"); !errors.Is(err, sql.ErrNoRows) {
 		t.Errorf("row survived rollback: err=%v", err)
 	}
 }
@@ -107,7 +107,7 @@ func TestWithTx_ReaderSeesCommit(t *testing.T) {
 	dbs := openTestDB(t)
 	ctx := context.Background()
 	if err := WithTx(ctx, dbs.Writer, func(q *db.Queries) error {
-		return q.UpsertFeed(ctx, db.UpsertFeedParams{FeedUrl: "https://c/feed", CreatedAt: "t", UpdatedAt: "t"})
+		return q.UpsertFeed(ctx, db.UpsertFeedParams{FeedUrl: "https://c.example.com/feed", CreatedAt: "t", UpdatedAt: "t"})
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestWithTx_ReaderSeesCommit(t *testing.T) {
 	}
 	found := false
 	for _, u := range urls {
-		if u == "https://c/feed" {
+		if u == "https://c.example.com/feed" {
 			found = true
 		}
 	}

@@ -94,8 +94,8 @@ func TestSubscriptionsResolve_SiblingMatrix(t *testing.T) {
 		{
 			name:      "shared host different path not siblings",
 			sub:       db.UserSubscription{Did: "did:plc:alice", Rkey: "1", FeedUrl: testPublication, Kind: "standardfeed"},
-			subSite:   "https://leaflet.pub/one",
-			candidate: feedfinder.Candidate{FeedURL: "https://leaflet.pub/two/feed.xml", SiteURL: "https://leaflet.pub/two"},
+			subSite:   "https://publishing.example.com/one",
+			candidate: feedfinder.Candidate{FeedURL: "https://publishing.example.com/two/feed.xml", SiteURL: "https://publishing.example.com/two"},
 			wantVia:   nil,
 		},
 		{

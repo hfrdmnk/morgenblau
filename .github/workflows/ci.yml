@@ -63,6 +63,11 @@ jobs:
           stray="$(git ls-files '*package-lock.json' '*pnpm-lock.yaml' '*yarn.lock')"
           test -z "$stray" || { echo "Remove $stray: Bun owns every install (bun.lock), so installs stay reproducible."; exit 1; }
 
+      - name: Check generated component paths
+        run: |
+          generated="$(git ls-files -- ':(glob)frontend/@/**')"
+          test -z "$generated" || { echo "Move $generated into frontend/src/components/ui: @ is an import alias, not a source directory."; exit 1; }
+
       - name: Install frontend dependencies
         run: bun install --cwd ./frontend --frozen-lockfile
 
