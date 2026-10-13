@@ -69,7 +69,7 @@ func TestAlphaDevLoginCannotBypassAdmission(t *testing.T) {
 	sync := &recordingLoginSync{}
 	rr := httptest.NewRecorder()
 	DevLoginHandler(&devLoginStub{}, sealer, sync, auth.Allowlist{"did:plc:other": {}}).ServeHTTP(rr,
-		httptest.NewRequest(http.MethodPost, "/dev/login", nil))
+		httptest.NewRequest(http.MethodPost, "/__dev/login", nil))
 	if rr.Code != http.StatusForbidden || sync.calls != 0 || len(rr.Result().Cookies()) != 0 {
 		t.Fatalf("status=%d sync=%d cookies=%d", rr.Code, sync.calls, len(rr.Result().Cookies()))
 	}

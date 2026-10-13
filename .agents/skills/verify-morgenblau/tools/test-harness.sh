@@ -216,10 +216,90 @@ test_browser_guard_rejects_escapes() {
     guard_browser_args "$dir" http://127.0.0.1:8100 screenshot --filename=allowed.png
 }
 
+# up stubbed down to its wiring: what each process is started with, and which ports the run claims.
+stub_up() {
+    STUB_NODE_MAJOR="$1"
+    node_major() { printf '%s' "$STUB_NODE_MAJOR"; }
+    tools_installed() { return 0; }
+    oauth_scope() { printf atproto; }
+    local_oauth_scope() { printf atproto; }
+    start_process() { local name="$2"; shift 3; printf '%s\n' "$*" >"$tmp/start-$name"; }
+    goose() { return 0; }
+    go() { return 0; }
+    wait_for_pds() { return 0; }
+    wait_for_fixtures() { return 0; }
+    create_account() { printf '%s\n' '{"handle":"verify-example.test","app_password":"example-app-credential"}' >"$1/run/account.json"; }
+    process_status() { printf yes; }
+    curl() { [[ " $* " == *" -o "* ]] || printf '{"status":"up"}'; }
+}
+
+test_up_gives_only_the_server_the_fixture_origin() {
+    local dir state fixtures decoy
+    stub_up 22
+    up fixtures-wiring >"$tmp/state.json"
+    dir="$(jq -r .dir "$tmp/state.json")"
+    fixtures="$(jq -r .fixtures.url "$tmp/state.json")"
+    decoy="$(jq -r .fixtures.decoy_url "$tmp/state.json")"
+    [[ "$fixtures" =~ ^http://127\.0\.0\.1:[0-9]+$ && "$decoy" =~ ^http://127\.0\.0\.1:[0-9]+$ && "$fixtures" != "$decoy" ]]
+    jq -e --argjson f "${fixtures##*:}" --argjson d "${decoy##*:}" '(.ports | index($f)) and (.ports | index($d))' "$dir/run/state.json" >/dev/null
+    grep -q "FIXTURE_PORT=${fixtures##*:} DECOY_PORT=${decoy##*:} -- node feed-fixtures.mjs" "$tmp/start-fixtures"
+    grep -q "FEED_FIXTURE_ORIGIN=$fixtures " "$tmp/start-server"
+    if grep -q "${decoy##*:}" "$tmp/start-server"; then return 1; fi
+}
+
+test_anonymous_up_has_no_fixture_origin() {
+    stub_up 0
+    up fixtures-anonymous >"$tmp/state.json"
+    jq -e '.fixtures == null' "$tmp/state.json" >/dev/null
+    [[ ! -e "$tmp/start-fixtures" ]]
+    grep -q "FEED_FIXTURE_ORIGIN= " "$tmp/start-server"
+}
+
+# Fresh fixture entries are dated a minute before the request; comparing instants, not formatted days, holds across midnight and in any locale.
+fresh_fixture_date() {
+    local at age
+    at="$(LC_ALL=C date -u -d "$1" +%s)" || return 1
+    age=$(($(date +%s) - at))
+    ((age >= 55 && age <= 120))
+}
+
+test_feed_fixtures_serve_each_case() {
+    local claimed fixtures decoy origin pid i
+    claimed="$(claimed_ports)"
+    fixtures="$(free_port 29800 "$claimed")"
+    decoy="$(free_port $((fixtures + 1)) "$claimed")"
+    origin="http://127.0.0.1:$fixtures"
+    FIXTURE_PORT="$fixtures" DECOY_PORT="$decoy" node "$ROOT/$TOOLS/feed-fixtures.mjs" >"$tmp/fixtures.log" 2>&1 &
+    pid=$!
+    trap "kill $pid 2>/dev/null; rm -rf $(printf %q "$tmp")" EXIT
+    for i in $(seq 1 40); do [[ -s "$tmp/fixtures.log" ]] && break; sleep 0.25; done
+    # Loopback only: nothing else on the network may fetch the run's fixtures.
+    jq -e --argjson f "$fixtures" --argjson d "$decoy" \
+        '.fixtures == {address: "127.0.0.1", family: "IPv4", port: $f} and .decoy == {address: "127.0.0.1", family: "IPv4", port: $d}' "$tmp/fixtures.log" >/dev/null
+    curl -fsS "$origin/" | grep -q "href=\"/feeds/valid.xml\""
+    curl -fsS "$origin/feeds/valid.xml" >"$tmp/valid.xml"
+    grep -q "<link>$origin/posts/fresh</link>" "$tmp/valid.xml"
+    fresh_fixture_date "$(sed -n 's|.*<pubDate>\(.*\)</pubDate>.*|\1|p' "$tmp/valid.xml" | head -1)"
+    fresh_fixture_date "$(curl -fsS "$origin/feeds/atom.xml" | sed -n 's|.*<published>\(.*\)</published>.*|\1|p')"
+    [[ "$(curl -fsS -o /dev/null -w '%{content_type}' "$origin/feeds/latin1.xml")" == *ISO-8859-1 ]]
+    curl -fsS "$origin/feeds/latin1.xml" | grep -q $'Gr\xfc\xdfe aus Z\xfcrich'
+    [[ "$(curl -fsS "$origin/feeds/huge.xml" | wc -c)" -gt $((5 * 1024 * 1024)) ]]
+    [[ "$(curl -sS -o /dev/null -w '%{http_code}' "$origin/feeds/unavailable.xml")" == 503 ]]
+    [[ "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$origin/feeds/redirect-decoy.xml")" == "302 http://127.0.0.1:$decoy/feed.xml" ]]
+    curl -fsS "http://127.0.0.1:$decoy/feed.xml" | grep -q 'must stay unreachable'
+    curl -fsS -X POST "$origin/control/toggle/down" >/dev/null
+    [[ "$(curl -sS -o /dev/null -w '%{http_code}' "$origin/feeds/toggle.xml")" == 503 ]]
+    curl -fsS -X POST "$origin/control/toggle/up" >/dev/null
+    curl -fsS "$origin/feeds/toggle.xml" | grep -q 'Example Toggle Feed'
+    [[ "$(curl -sS -o /dev/null -w '%{http_code}' "$origin/feeds/../../tools/package.json")" == 404 ]]
+}
+
 if [[ $# -gt 0 ]]; then "$1"; exit; fi
 
 failed=0
-for test in test_same_slug_is_checked_under_lock test_abandoned_startup_is_stale test_live_startup_is_not_stale test_restarted_service_is_live test_unavailable_supervisor_blocks_cleanup test_stopped_service_is_stale test_doctor_rejects_unusable_browser test_orb_services_keep_secrets_out_of_command test_service_secret_assertion_rejects_a_leak test_browser_uses_owned_secret_config test_cleanup_continues_after_service_stop_failure test_browser_guard_rejects_escapes; do
+for test in test_same_slug_is_checked_under_lock test_abandoned_startup_is_stale test_live_startup_is_not_stale test_restarted_service_is_live test_unavailable_supervisor_blocks_cleanup test_stopped_service_is_stale test_doctor_rejects_unusable_browser test_orb_services_keep_secrets_out_of_command test_service_secret_assertion_rejects_a_leak test_browser_uses_owned_secret_config test_cleanup_continues_after_service_stop_failure test_browser_guard_rejects_escapes \
+    test_up_gives_only_the_server_the_fixture_origin test_anonymous_up_has_no_fixture_origin \
+    test_feed_fixtures_serve_each_case; do
     if bash "$test_file" "$test" >"$tmp/result" 2>&1; then
         printf 'PASS %s\n' "$test"
     else

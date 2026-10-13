@@ -3,14 +3,16 @@ package server
 import (
 	"fmt"
 
+	"morgenblau/internal/fetcher"
 	"morgenblau/internal/safehttp"
 	"morgenblau/internal/session"
 )
 
-// localNetwork is the throwaway PLC and PDS a verify run starts beside an APP_ENV=local server; NewServer's loopback, identity and OAuth overrides all come from it.
+// localNetwork is the throwaway PLC, PDS and fixture feed server a verify run starts beside an APP_ENV=local server; NewServer's loopback, identity and OAuth overrides all come from it.
 type localNetwork struct {
-	plc, pds string
-	ports    []int
+	plc, pds    string
+	ports       []int
+	feedFixture int
 }
 
 func loadLocalNetwork(getenv func(string) string) (*localNetwork, error) {
@@ -25,7 +27,23 @@ func loadLocalNetwork(getenv func(string) string) (*localNetwork, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ATPROTO_PDS beside PLC_URL: %w", err)
 	}
-	return &localNetwork{plc: plc, pds: pds, ports: []int{plcPort, pdsPort}}, nil
+	n := &localNetwork{plc: plc, pds: pds, ports: []int{plcPort, pdsPort}}
+	if raw := getenv("FEED_FIXTURE_ORIGIN"); raw != "" {
+		_, n.feedFixture, err = safehttp.LoopbackOrigin(raw)
+		if err != nil {
+			return nil, fmt.Errorf("FEED_FIXTURE_ORIGIN: %w", err)
+		}
+		n.ports = append(n.ports, n.feedFixture)
+	}
+	return n, nil
+}
+
+// feedFetchOptions lets the feed fetcher reach a verify run's fixture feed server, the only loopback origin it ever fetches from.
+func feedFetchOptions(n *localNetwork) []fetcher.Option {
+	if n == nil || n.feedFixture == 0 {
+		return nil
+	}
+	return []fetcher.Option{fetcher.WithSafeHTTPOptions(safehttp.WithAllowLoopbackPorts(n.feedFixture))}
 }
 
 // checkDevPDS refuses a plain-HTTP dev PDS other than the local network's, since the safe client reaches loopback only on that network's ports.

@@ -22,11 +22,11 @@ func (s *Server) RegisterRoutes() http.Handler {
 	if os.Getenv("APP_ENV") == "local" && s.sessions.DevEnabled() {
 		devLogin = handler.DevLoginHandler(s.sessions, s.sealer, s.sync, s.allowedDIDs)
 	}
-	root.Handle("/dev/login", devLogin)
+	root.Handle("/__dev/login", devLogin)
 	if os.Getenv("APP_ENV") == "local" {
-		root.Handle("/dev/", spaHandler())
+		root.Handle("/__dev/", spaHandler())
 	} else {
-		root.HandleFunc("/dev/", http.NotFound)
+		root.HandleFunc("/__dev/", http.NotFound)
 	}
 	root.Handle("/", gate(mux))
 	return s.corsMiddleware(root)

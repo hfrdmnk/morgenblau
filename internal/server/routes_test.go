@@ -24,7 +24,7 @@ func TestDevLoginRouteRequiresLocalOptIn(t *testing.T) {
 					continue
 				}
 				rr := httptest.NewRecorder()
-				srv.RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(method, "/dev/login", nil))
+				srv.RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(method, "/__dev/login", nil))
 				want := 404
 				if env == "local" && enabled {
 					want = 200
@@ -70,7 +70,7 @@ func TestDevRoutesArePublicInLocalEnvironment(t *testing.T) {
 	t.Setenv("VITE_URL", vite.URL)
 
 	rr := httptest.NewRecorder()
-	(&Server{}).RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/dev/styleguide", nil))
+	(&Server{}).RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/__dev/styleguide", nil))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
@@ -84,7 +84,7 @@ func TestDevRoutesAreNotServedOutsideLocalEnvironment(t *testing.T) {
 	t.Setenv("APP_ENV", "production")
 
 	rr := httptest.NewRecorder()
-	(&Server{}).RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/dev/styleguide", nil))
+	(&Server{}).RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/__dev/styleguide", nil))
 
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rr.Code)

@@ -50,6 +50,8 @@ Starts processes via `mprocs.yaml`:
 
 In `APP_ENV=local`, the Go server reverse-proxies `/` to the Vite dev server (HMR works). In any other env it serves `frontend/dist` from the embedded FS (`frontend/embed.go`). Open **`http://127.0.0.1:8000`** — same origin keeps `/api/*` cookies and CSRF sane, and the loopback origin doubles as your OAuth `client_id`.
 
+Development-only routes live under `/__dev/`, such as the style guide at `/__dev/styleguide`. `RegisterRoutes` in `internal/server/routes.go` serves them only with `APP_ENV=local`; the prefix is a naming convention, not the gate.
+
 `make run` starts Go + Vite without `mprocs` if you'd rather use your own terminal layout.
 
 ### Inbound newsletters
@@ -85,7 +87,7 @@ For a private orb, use a dedicated development account instead of the loopback c
 
 In Amp, `amp orb services ensure` starts the services declared in `.amp/services.yaml`, which opts into this shortcut. The account credentials must already be configured in the orb environment. Open the returned Morgenblau portal link.
 
-Agents can `POST /dev/login` on the Go server and retain the returned cookie in their own cookie jar. Success is `204`; `GET /dev/login` reports availability. Both return `404` when disabled. An HTTP client's cookie does not sign in your browser: use the button there. `internal/session/` owns token refresh and logout. Password tokens stay in memory, so sign in again after restarting the server.
+Agents can `POST /__dev/login` on the Go server and retain the returned cookie in their own cookie jar. Success is `204`; `GET /__dev/login` reports availability. Both return `404` when disabled. An HTTP client's cookie does not sign in your browser: use the button there. `internal/session/` owns token refresh and logout. Password tokens stay in memory, so sign in again after restarting the server.
 
 ### Scopes
 

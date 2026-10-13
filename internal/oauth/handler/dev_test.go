@@ -40,7 +40,7 @@ func TestDevLoginHandler(t *testing.T) {
 			}
 			sealer := newSealer(t)
 			h := DevLoginHandler(stub, sealer, nil, nil)
-			r := httptest.NewRequest(tc.method, "https://app.example.com/dev/login", nil)
+			r := httptest.NewRequest(tc.method, "https://app.example.com/__dev/login", nil)
 			if tc.origin != "" {
 				r.Header.Set("Origin", tc.origin)
 			}

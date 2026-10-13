@@ -94,7 +94,7 @@ func WithTransport(rt http.RoundTripper) Option {
 	}
 }
 
-// WithSafeHTTPOptions threads safehttp options (e.g. WithAllowLoopback) into the client. Test-only.
+// WithSafeHTTPOptions rebuilds the client with safehttp options; outside tests only a verify run's fixture feed port uses it.
 func WithSafeHTTPOptions(opts ...safehttp.Option) Option {
 	return func(f *Fetcher) {
 		f.client = buildSafeClient(opts...)

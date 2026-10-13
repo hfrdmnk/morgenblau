@@ -40,4 +40,4 @@ Preconditions:
 ## Gotchas
 
 - The digest groups by the browser's local day. Pass `timezone` explicitly on API calls and use the same zone as the browser, or a late-evening delivery lands on another day.
-- Feeds the run adds bring real entries next to the fixture. Assert on the fixture's title, not on counts.
+- Feeds the run adds bring their entries next to the newsletter. Assert on titles, not on counts. For a feed entry today without network, follow `$F/feeds/valid.xml` as in [subscriptions](./subscriptions.md): `Fixture entry published just now` lands on today.

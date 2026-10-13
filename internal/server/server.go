@@ -160,7 +160,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	var oauthFlow handler.ClientApp = oauthApp
 	listenHost := ""
 	if localNet != nil {
-		slog.Info("local PLC and PDS enabled", "plc", localNet.plc, "pds", localNet.pds)
+		slog.Info("local PLC and PDS enabled", "plc", localNet.plc, "pds", localNet.pds, "feed_fixture_port", localNet.feedFixture)
 		safeClient = safehttp.NewClient(30*time.Second, 5, safehttp.WithAllowLoopbackPorts(localNet.ports...))
 		identityDir = atidentity.Local(safeClient, localNet.plc, localNet.pds)
 		oauthApp = newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
@@ -197,7 +197,9 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		// Each generation can cost model calls, so a reader gets a bounded number per hour.
 		Limiter: ratelimit.New(20, time.Hour, nil),
 	})
-	fetcherInst := fetcher.New(fetcher.WithLocalFeeds(func(u *url.URL) bool { return webSources.IsFeedURL(u.String()) }, webSources.FeedHandler()))
+	// WithLocalFeeds wraps the transport the fixture options build, so it must come after them.
+	fetcherOpts := append(feedFetchOptions(localNet), fetcher.WithLocalFeeds(func(u *url.URL) bool { return webSources.IsFeedURL(u.String()) }, webSources.FeedHandler()))
+	fetcherInst := fetcher.New(fetcherOpts...)
 	pipeline := internalsync.NewFeedPipeline(fetcherInst, qw).WithTxRunner(db.Writer).WithUndatedHistory(webSources.IsFeedURL)
 	stdClient := standardfeed.NewClient(identityDir, safeClient)
 	finder := feedfinder.New(safeClient).WithStandardResolver(stdClient)

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<rss version="2.0">
+<channel>
+<title>Example Grüezi Feed</title>
+<link>{{ORIGIN}}/</link>
+<description>Served as ISO-8859-1 bytes.</description>
+<item>
+<title>Grüße aus Zürich, café crème</title>
+<link>{{ORIGIN}}/posts/latin1</link>
+<guid isPermaLink="false">example-fixture-latin1</guid>
+<pubDate>{{NOW_RFC822}}</pubDate>
+</item>
+</channel>
+</rss>

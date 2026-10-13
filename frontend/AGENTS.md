@@ -10,7 +10,16 @@ paths:
 - Bun only: `bun run <script>`, `bunx` for one-offs, never npm/npx/pnpm. CI rejects any other lockfile.
 - Shadcn uses Base UI primitives from `@base-ui/react`; `components.json` holds the style.
 - Basicons is the only icon source. Use local React SVG markup copied from Basicons, never its runtime embed script. `components.json` names `lucide` only so shadcn installs resolve; eslint rejects `lucide-react` imports.
-- Brand direction lives in `BRAND.md`; visual tokens live in `src/index.css`. Use a relevant animation skill before motion work.
+- Brand direction lives in `BRAND.md`; visual tokens live in `src/index.css`.
+
+## Motion
+
+- Motion is for feedback and temporary context, in keeping with `BRAND.md`'s calm character: nothing decorative, looping or attention-seeking. The `/__dev/styleguide` Motion section shows the rules in use.
+- CSS transitions take their durations from the `--motion-duration-*` tokens and easing from `--ease-*` in `src/index.css`, and list the properties they transition instead of `transition-all`.
+- Animate `transform`, `opacity` and `filter`. Size and position changes go through `motion`'s `layout`, or the keyframes the shadcn primitives already ship; never transition width, height or offsets by hand.
+- Reduced motion is part of every animation: the tokens collapse under `prefers-reduced-motion`, CSS animations sit behind `motion-safe:` or `motion-reduce:`, and `motion/react` code reads `useReducedMotion()` and goes instant.
+- Multi-stage choreography is a storyboard: a header comment listing each stage with its time, then a `TIMING` object and per-element config objects that hold every duration, easing and spring, never inline in JSX. `src/components/add-source-dialog.tsx` is the reference. The pattern is adapted from the Storyboard Animation guide in Josh Puckett's Interface Craft.
+- `test/preload.ts` explains how `motion` runs under happy-dom.
 
 ## Adding shadcn components
 

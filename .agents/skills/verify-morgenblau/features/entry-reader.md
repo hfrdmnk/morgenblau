@@ -22,7 +22,7 @@ Help article: none
 
 Preconditions:
 
-- Doctor exit `0`, `$V login $S`, a newsletter delivered today as in [digest](./digest.md), browser signed in. A blog post entry for `extract` comes from a feed the run adds first, such as the standing feed in [subscriptions](./subscriptions.md) (`GET /api/digest`, `contentType` `blogpost` with a `url`); with none today, try an earlier `date`, else that sub-feature is `blocked`.
+- Doctor exit `0`, `$V login $S`, a newsletter delivered today as in [digest](./digest.md), browser signed in. A blog post entry for `extract` comes from the fixture feed the run adds first, `$F/feeds/valid.xml` as in [subscriptions](./subscriptions.md): `Fixture entry published just now` (`GET /api/digest`, `contentType` `blogpost`) links to a fixture page `$F/posts/fresh` titled `Example fixture article`.
 
 - **Newsletter.** On `/`, `click "getByRole('link', { name: 'Morgenblau local newsletter sample' })"`: lands on `/entry/<entrySlug>?from=<today>`; `snapshot` shows the heading, `Remote images are blocked` and button `Load images`. `eval "() => [...document.querySelectorAll('article img')].map(i => [i.getAttribute('src'), i.naturalWidth])"`: the inline image is `/api/newsletter-assets/<token>` with a width above 0. `screenshot --filename=reader-newsletter-blocked.png`.
 - **Load images.** Click `Load images`: the notice is gone, the remote `img` now has its `src`, and `inspect` shows `remote_images_allowed` 1. `screenshot --filename=reader-newsletter-images.png`.
@@ -39,6 +39,6 @@ Preconditions:
 
 ## Gotchas
 
-- Extraction fetches the entry's original page from the public internet through the SSRF-guarded client; an unreachable site answers `502` and the page says `The full article could not be loaded`. That is `blocked` for the drive, not a product failure.
+- Extraction fetches the entry's original page through the SSRF-guarded client, which reaches the run's fixture origin and the public internet only. An unreachable site answers `502` and the page says `The full article could not be loaded`: `blocked` for a public page, a failure for a fixture page.
 - An extracted body is cached in the run DB, so a second `extract` returns it without fetching.
 - Tenant checks for another reader's entry live in [tenant-isolation](./tenant-isolation.md).

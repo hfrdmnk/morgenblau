@@ -36,8 +36,5 @@
                 ]
             }
         ]
-    },
-    "enabledPlugins": {
-        "atproto-skills@atproto-skills": true
     }
 }

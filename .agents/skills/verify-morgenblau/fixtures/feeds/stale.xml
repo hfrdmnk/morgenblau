@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<title>Example Stale Feed</title>
+<link>{{ORIGIN}}/</link>
+<description>A feed whose last entry is years old.</description>
+<item>
+<title>Stale fixture entry from 2019</title>
+<link>{{ORIGIN}}/posts/stale</link>
+<guid isPermaLink="false">example-fixture-stale</guid>
+<pubDate>Tue, 01 Jan 2019 08:00:00 +0000</pubDate>
+</item>
+</channel>
+</rss>

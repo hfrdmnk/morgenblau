@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<title>Example Toggle Feed</title>
+<link>{{ORIGIN}}/</link>
+<description>Answers 503 while the fixture server's toggle is down.</description>
+<item>
+<title>Toggle fixture entry</title>
+<link>{{ORIGIN}}/posts/toggle</link>
+<guid isPermaLink="false">example-fixture-toggle</guid>
+<pubDate>{{NOW_RFC822}}</pubDate>
+</item>
+</channel>
+</rss>

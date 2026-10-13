@@ -1,6 +1,6 @@
 ---
 name: verify-morgenblau
-description: "Drive the real Morgenblau app like a user to prove a change works or reproduce a bug: an instance with its own ports and SQLite DB, the React UI in a real browser, the JSON API, inbound newsletter SMTP, sync jobs, evidence in .scratch/verify/, outcome pass, fail or blocked. Each run gets its own throwaway PDS and account, so runs are parallel-safe and no record lands on a PDS outside the run. Also says which static checks (Go, lint, Bun, sqlc, Linux build) a change needs. Use after any user-facing change, before opening a PR, when asked to verify, reproduce or show proof, and when a feature file in features/ matches the work."
+description: "Drive the real Morgenblau app like a user to prove a change works or reproduce a bug: an instance with its own ports and SQLite DB, the React UI in a real browser, the JSON API, inbound newsletter SMTP, sync jobs, evidence in .scratch/verify/, outcome pass, fail or blocked. Each run gets its own throwaway PDS, account and local fixture feeds, so runs are parallel-safe, need no network for feeds, and no record lands on a PDS outside the run. Also says which static checks (Go, lint, Bun, sqlc, Linux build) a change needs. Use after any user-facing change, before opening a PR, when asked to verify, reproduce or show proof, and when a feature file in features/ matches the work."
 ---
 
 # Verify Morgenblau
@@ -18,7 +18,9 @@ $V doctor
 
 Run it before the first drive and again after anything surprising. Exit `0`: prerequisites are available, including a successful Chrome launch. Exit `3`: Node is too old for the local PDS, so only anonymous surfaces (public pages, auth denial, SMTP ingest, jobs without a session) can be driven; every signed-in step is `blocked` with that reason. Exit `1`: fix what it names first; a missing or outdated `tools/` package (the PDS and the browser driver) is one, with its install command. `.agents/setup` provisions the orb prerequisites; doctor does not prove application behavior.
 
-Runs need no `.env`. `up` boots a throwaway PLC and PDS from [`tools/boot.mjs`](tools/boot.mjs) (`@atproto/dev-env`, pinned with the browser driver in `tools/package.json`), creates one `.test` account on it, and starts the server from the run dir with fresh secrets pointed at that account; `down` deletes all of it.
+Runs need no `.env`. `up` boots a throwaway PLC and PDS from [`tools/boot.mjs`](tools/boot.mjs) (`@atproto/dev-env`, pinned with the browser driver in `tools/package.json`), creates one `.test` account on it, starts the fixture feed server from [`tools/feed-fixtures.mjs`](tools/feed-fixtures.mjs), and starts the server from the run dir with fresh secrets pointed at that account; `down` deletes all of it.
+
+The skill and its harness are plain shell and Node, so Amp and Claude Code drive them the same way; only process supervision differs (below).
 
 A sandboxed shell may be unable to bind ports or run `node`; rerun the helper outside the sandbox before calling the run `blocked`.
 
@@ -26,7 +28,7 @@ A sandboxed shell may be unable to bind ports or run `node`; rerun the helper ou
 
 | Need | Command |
 |---|---|
-| Isolated instance: own HTTP, SMTP, Vite, PLC and PDS ports, fresh migrated DB, own account | `$V up <slug>` (prints state JSON: `base_url`, `smtp`, and `pds` with the account's `handle`, or `null` when doctor exits `3`) |
+| Isolated instance: own HTTP, SMTP, Vite, PLC, PDS and fixture feed ports, fresh migrated DB, own account | `$V up <slug>` (prints state JSON: `base_url`, `smtp`, `pds` with the account's `handle`, and `fixtures` with `url` and `decoy_url`; `pds` and `fixtures` are `null` when doctor exits `3`) |
 | Sign in as the run's account (API cookie jar) and wait for the login sync | `$V login <slug>` (dev login) or `$V oauth <slug>` (real OAuth through the run's PDS) |
 | Call the API as that user, or anonymously | `$V api <slug> GET /api/digest --out digest` (`--data JSON`, `--anon`) |
 | Read state as JSON | `$V inspect <slug> --out inspect-before` |
@@ -37,9 +39,9 @@ A sandboxed shell may be unable to bind ports or run `node`; rerun the helper ou
 | List runs and whether their server is still alive | `$V status` |
 | Sweep runs left behind: a recorded process died, or started over `STALE_HOURS` ago (`bin/verify`); other agents' live runs stay up | `$V stale` (`--dry-run` lists them) |
 
-The instance runs the working tree with `APP_ENV=local`, its own PDS and `DEV_LOGIN_ENABLED` unless doctor exits `3`, the global feed refresher off (`--fetch-minutes N` turns it on), and newsletters on `newsletter.localhost`. `PLC_URL` and the loopback PDS are local-only exceptions: `loadLocalNetwork` and the local block in `NewServer` (`internal/server/`) own them. It never touches `./data/morgenblau.db`, `.env` or a server the user already runs on `:8000`.
+The instance runs the working tree with `APP_ENV=local`, its own PDS and `DEV_LOGIN_ENABLED` unless doctor exits `3`, the global feed refresher off (`--fetch-minutes N` turns it on), and newsletters on `newsletter.localhost`. `PLC_URL`, the loopback PDS and `FEED_FIXTURE_ORIGIN` are local-only exceptions: `loadLocalNetwork` and the local block in `NewServer` (`internal/server/`) own them, and they apply only beside a run's `PLC_URL` under `APP_ENV=local`. The fixture origin is the one loopback port feed fetching and discovery may reach. The decoy beside it serves a valid feed on a port the instance is never told, so negative proofs can show that other loopback ports and redirects off the fixture origin stay blocked. `curl -X POST <fixtures.url>/control/toggle/down` (or `up`) flips `/feeds/toggle.xml` between `503` and a valid feed for failure-and-recovery recipes. It never touches `./data/morgenblau.db`, `.env` or a server the user already runs on `:8000`.
 
-In an Amp orb, `start_process` in `bin/verify` supervises the PDS, Vite and backend; `process_status` reads service liveness from systemd, so a restarted service's old PID cannot make it stale. Unavailable supervisor status is `unknown`; `stale` reports `blocked` and preserves that run. Elsewhere it checks ordinary process identity. A `starting` run belongs to its recorded startup process; `stale` reclaims it when that owner is gone, never while startup is still live. Slug reservation is atomic. Use a unique feature-prefixed slug for every concurrent attempt.
+In an Amp orb, `start_process` in `bin/verify` supervises the PDS, the fixture server, Vite and the backend; `process_status` reads service liveness from systemd, so a restarted service's old PID cannot make it stale. Unavailable supervisor status is `unknown`; `stale` reports `blocked` and preserves that run. Elsewhere it checks ordinary process identity. A `starting` run belongs to its recorded startup process; `stale` reclaims it when that owner is gone, never while startup is still live. Slug reservation is atomic. Use a unique feature-prefixed slug for every concurrent attempt.
 
 In the browser, sign in the way a user does: open `/login` and click `Log me in` (`$V browser <slug> click "getByRole('button', { name: 'Log me in' })"`). The browser and `$V login` share the server's single dev session, so logging out in one logs out both. For real OAuth, type the run's handle (`pds.handle`) on `/login`, click `Continue`, put the password in with `$V browser <slug> fill-password <target>`, and click `Sign in` and `Authorize`; [sign-in](features/sign-in.md) has the steps. `open` installs the harness-owned secret map from `run/playwright.config.json`; `fill-password` passes only its secret key, never the password in argv. Target elements by role and accessible name, then label; read the page with `snapshot` or `find`. Use a snapshot ref only for a control without an accessible name, never class names or DOM position. Browser sessions are not supervised: after a lost session, reopen and authenticate again; application-service supervision does not prove browser continuity.
 
@@ -71,7 +73,7 @@ Run the same protocol with the report's steps in place of the feature file's use
 - **Frontend:** the relevant test files while working; finish with the Bun `test`, `lint` and `build` scripts (the build runs the TypeScript check). `frontend/AGENTS.md` owns the per-branch `doctor` rule.
 - **Embedded app or deploy build:** `make build-linux` (it already builds the frontend; do not build twice).
 - **Schema or queries:** `make sqlc`, read the regenerated diff, run the affected storage tests against real temporary SQLite. Migrations are tried on a disposable DB (`$V up` gives you one), never on `./data`.
-- **Verification harness:** `bash .agents/skills/verify-morgenblau/tools/test-harness.sh`, plus a disposable live drive through the changed lever. Browser redaction changes also run that script with `test_live_browser_redacts_password`; it starts and cleans up its own instance and retains safe proof under `.scratch/verify/`. CI runs only the shell regression suite without starting servers.
+- **Verification harness:** `bash .agents/skills/verify-morgenblau/tools/test-harness.sh` (it starts the fixture server on spare loopback ports, so it needs `node`), plus a disposable live drive through the changed lever. Browser redaction changes also run that script with `test_live_browser_redacts_password`; it starts and cleans up its own instance and retains safe proof under `.scratch/verify/`. CI runs only the shell regression suite without starting servers.
 - **Always:** `git diff --check` and a read of the final diff, new files included. Docs-only changes need content, link and format checks instead of app test runs.
 
 ## Proof standards
@@ -80,7 +82,7 @@ Run the same protocol with the report's steps in place of the feature file's use
 - Capture the action and the resulting state: the screen or response, and the `inspect` delta.
 - A step that could not run is not a pass. Proving a feature through a different entry point than the one changed does not count.
 - `fail` means the app misbehaved. When a step fails because the feature file is wrong (a renamed button, a changed flow), fix the feature file and drive again. When it fails because the product is wrong, stop driving that feature and report the bug with its evidence; never rewrite the feature file around it.
-- `blocked` names its reason: doctor exit 3 for a signed-in step, an unreachable network for feed or publication calls, a sandbox that cannot bind ports.
+- `blocked` names its reason: doctor exit 3 for a signed-in step, an unreachable network for a public feed, Standardfeed publication or model call, a sandbox that cannot bind ports. Fixture feeds need no network, so a fixture step that misbehaves is a `fail`.
 
 ## Report
 
@@ -96,7 +98,7 @@ static checks: <commands and results>
 
 ## Safety
 
-- One instance, one DB, one PDS and one account per run, created by `up`, removed by `down`. Runs share no state, so any number can run in parallel. Every listener binds `127.0.0.1`, and the PDS's admin password and JWT secret are fresh per run.
+- One instance, one DB, one PDS, one fixture server and one account per run, created by `up`, removed by `down`. Runs share no state, so any number can run in parallel. Every listener binds `127.0.0.1`, and the PDS's admin password and JWT secret are fresh per run.
 - Never drive the user's own server, database or personal account.
 - Newsletter mail goes only to the instance's `127.0.0.1` SMTP port. The app sends no outbound mail and has no payments or admin panel.
 - Keep secrets out of evidence: never print or copy secret files under `run/`. Account files, cookie jars, service launch scripts and the browser secret map hold run credentials; `down` removes them. The harness's `state.json` output is safe metadata. The driver's secret map redacts literal account/app passwords in text output, snapshots and logs; it does not sanitize encoded values, other tokens or binary artifacts. Never reveal a password for a screenshot, and inspect evidence before retaining or sharing it.

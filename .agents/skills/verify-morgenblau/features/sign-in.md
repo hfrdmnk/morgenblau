@@ -19,7 +19,7 @@ Help article: none
 - Browser: `/login`, or any app path while signed out.
 - `Development login` panel on `/login`, button `Log me in` (only when the run has its PDS).
 - App header (`frontend/src/components/app-header.tsx`) on `/`, `/sources`, `/library` and `/settings/*`: button `Open account menu`, then `Log out`.
-- API: `GET /dev/login` reports availability, `POST /dev/login` signs in (the `$V login` lever). `$V oauth` drives `POST /oauth/login` through the callback the way a browser does.
+- API: `GET /__dev/login` reports availability, `POST /__dev/login` signs in (the `$V login` lever). `$V oauth` drives `POST /oauth/login` through the callback the way a browser does.
 
 ## Drive and prove
 
@@ -29,7 +29,7 @@ Preconditions:
 
 - **Login page.** `$V browser $S open /login`, then `snapshot`. Heading `Sign in with your Atmosphere account`, textbox `Handle`, button `Continue`.
 - **Anonymous redirect.** `$V browser $S goto /settings`, then `eval "() => location.href"`: ends on `/login`. `$V api $S GET /api/digest --anon --out anon-digest`: status `401`.
-- **Dev login unavailable.** On a doctor-exit-3 run, `$V api $S GET /dev/login --anon --out dev-login`: `404`, and `find "Log me in"` on `/login` finds nothing.
+- **Dev login unavailable.** On a doctor-exit-3 run, `$V api $S GET /__dev/login --anon --out dev-login`: `404`, and `find "Log me in"` on `/login` finds nothing.
 - **OAuth sign-in.** On `/login`, `fill "getByRole('textbox', { name: 'Handle' })" "<handle>"`, click `Continue`, and poll `eval "() => location.href"` until it is the PDS's `/oauth/authorize`. `$V browser $S fill-password "getByRole('textbox', { name: 'Password' })"`, click `Sign in`, wait for `snapshot` to show the `Authorize` button (`screenshot --filename=oauth-consent.png`), click it. Poll until the URL is the instance root; `snapshot` shows `Digest date` and `Open account menu`; `screenshot --filename=oauth-digest.png`. `$V inspect $S` counts one more `oauth_sessions` row.
 - **OAuth into the API jar.** `$V oauth $S`, then `$V api $S GET /api/profiles/me --out profile-me` (`200`, the `.test` handle, `needsReauth` false) and `GET /api/digest --out digest` (`200`).
 - **Dev login.** On `/login`, `find "Development login"` shows the panel; `click "getByRole('button', { name: 'Log me in' })"`. Poll `eval "() => location.href"` until it is the instance root. `snapshot` shows the date navigation `Digest date` and the button `Open account menu`.
@@ -46,9 +46,9 @@ Preconditions:
 
 ## Gotchas
 
-- `Log me in` only renders in the Vite dev build and when `GET /dev/login` answers `{"enabled":true}`; `up` sets `DEV_LOGIN_ENABLED` only when it started the run's PDS (doctor exit `0`).
+- `Log me in` only renders in the Vite dev build and when `GET /__dev/login` answers `{"enabled":true}`; `up` sets `DEV_LOGIN_ENABLED` only when it started the run's PDS (doctor exit `0`).
 - The server holds one dev session in memory. Browser and `$V login` share it, so logging out in either signs both out, and restarting the instance drops it. OAuth sessions live in the run DB, one per sign-in.
-- Console noise on every page: the Vite HMR websocket through the auth gate fails with 302, and `/dev/login` is 404 on anonymous runs. Neither is a failure.
+- Console noise on every page: the Vite HMR websocket through the auth gate fails with 302, and `/__dev/login` is 404 on anonymous runs. Neither is a failure.
 - Runs sign in as the loopback public client (`internal/oauth/config/config.go`), whose callback follows the instance's `PORT`; the confidential client and its metadata document are not exercised.
 - The run's PDS cannot resolve the `include:blue.morgen.access` permission set, so `up` asks for the permissions it lists (`local_oauth_scope` in `bin/verify`). The consent screen therefore shows those repo permissions, not the permission set's title and detail.
 - `Continue` with any handle but the run's starts OAuth on that account's real server. Drive only the run's handle.

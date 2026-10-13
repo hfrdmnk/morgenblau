@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>Example Fixture Atom</title>
+<link href="{{ORIGIN}}/"/>
+<link rel="self" href="{{ORIGIN}}/feeds/atom.xml"/>
+<id>{{ORIGIN}}/feeds/atom.xml</id>
+<updated>{{NOW_RFC3339}}</updated>
+<entry>
+<title>Atom fixture entry published just now</title>
+<link href="{{ORIGIN}}/posts/atom-fresh"/>
+<id>example-fixture-atom-fresh</id>
+<updated>{{NOW_RFC3339}}</updated>
+<published>{{NOW_RFC3339}}</published>
+<summary>An Atom fixture entry dated one minute before the fetch.</summary>
+</entry>
+</feed>

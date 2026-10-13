@@ -8,7 +8,8 @@ umask 077
 USAGE='usage: verify <command> [args]
 
   doctor                          check this machine can verify; exit 0 ok, 3 no local PDS (anonymous only), 1 fail
-  up <slug> [--fetch-minutes N]   start an isolated instance (own ports, fresh DB, own Vite, own PDS and account); prints its state
+  up <slug> [--fetch-minutes N]   start an isolated instance (own ports, fresh DB, own Vite, own PDS and account,
+                                  own fixture feed server); prints its state
                                   --fetch-minutes turns on the global feed refresher (default off)
   login <slug>                    sign the run cookie jar in as the run account (dev login) and wait for the login sync
   oauth <slug>                    sign the run cookie jar in through real OAuth on the run PDS, then wait like login
@@ -27,7 +28,8 @@ USAGE='usage: verify <command> [args]
   status                          list runs and whether their processes are alive
 
 The instance runs the working tree: a Go binary built by up, a Vite dev server on a spare port,
-a throwaway PLC and PDS (tools/boot.mjs) holding one .test account, fresh secrets, APP_ENV=local,
+a throwaway PLC and PDS (tools/boot.mjs) holding one .test account, a fixture feed server
+(tools/feed-fixtures.mjs, the only loopback feed origin the instance may fetch), fresh secrets, APP_ENV=local,
 FETCH_INTERVAL_MINUTES=0 unless asked, newsletter SMTP on 127.0.0.1 for newsletter.localhost.
 It never touches ./data/morgenblau.db, .env or a server the user already runs.'
 
@@ -277,6 +279,21 @@ start_pds() {
         PDS_ADMIN_PASSWORD="$(openssl rand -hex 32)" PDS_JWT_SECRET="$(openssl rand -hex 32)" -- node boot.mjs
 }
 
+# The fixture server and its decoy are the run's only feed sources on loopback; the instance is told only the fixture origin.
+start_fixtures() {
+    start_process "$1" fixtures "$ROOT/$TOOLS" FIXTURE_PORT="$2" DECOY_PORT="$3" -- node feed-fixtures.mjs
+}
+
+wait_for_fixtures() {
+    local dir="$1" url="$2" i
+    for i in $(seq 1 40); do
+        curl -fsS -o /dev/null "$url/" 2>/dev/null && return 0
+        [[ "$(process_status "$dir" fixtures)" == yes ]] || return 1
+        sleep 0.25
+    done
+    return 1
+}
+
 wait_for_pds() {
     local dir="$1" url="$2" i
     for i in $(seq 1 120); do
@@ -316,7 +333,7 @@ abort_up() {
 }
 
 up() {
-    local slug="$1" fetch="${2:-0}" dir run http smtp vite plc="" pds="" claimed dev=false pds_url="" plc_url="" handle="" password="" scope i
+    local slug="$1" fetch="${2:-0}" dir run http smtp vite plc="" pds="" fixtures="" decoy="" claimed dev=false pds_url="" plc_url="" fixtures_url="" handle="" password="" scope i
     [[ "$fetch" =~ ^[0-9]+$ ]] || die "--fetch-minutes takes a whole number of minutes"
     [[ "$slug" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "slug '$slug' must be lowercase letters, digits and dashes."
     dir="$VERIFY_ROOT/$(date +%F)-$slug"
@@ -337,24 +354,31 @@ up() {
     vite="$(free_port 5180 "$claimed")"; claimed+=$'\n'"$vite"
     if [ "$dev" = true ]; then
         plc="$(free_port 2700 "$claimed")"; claimed+=$'\n'"$plc"
-        pds="$(free_port 2700 "$claimed")"
-        plc_url="http://localhost:$plc"; pds_url="http://localhost:$pds"
+        pds="$(free_port 2700 "$claimed")"; claimed+=$'\n'"$pds"
+        fixtures="$(free_port 2800 "$claimed")"; claimed+=$'\n'"$fixtures"
+        decoy="$(free_port 2800 "$claimed")"
+        plc_url="http://localhost:$plc"; pds_url="http://localhost:$pds"; fixtures_url="http://127.0.0.1:$fixtures"
     fi
     jq -n --arg slug "$slug" --arg dir "$dir" --arg base "http://127.0.0.1:$http" \
         --argjson http "$http" --argjson smtp "$smtp" --argjson vite "$vite" --argjson dev "$dev" \
         --arg plc "$plc" --arg pds "$pds" --arg plc_url "$plc_url" --arg pds_url "$pds_url" \
+        --arg fixtures "$fixtures" --arg decoy "$decoy" --arg fixtures_url "$fixtures_url" \
         --arg domain "$NEWSLETTER_DOMAIN" --arg started "$(date -u +%FT%TZ)" --argjson epoch "$(date +%s)" \
         --argjson startup_pid "$$" --arg startup_start "$(pid_start "$$")" \
         '{slug:$slug, dir:$dir, status:"starting", base_url:$base, http_port:$http, smtp:("127.0.0.1:"+($smtp|tostring)),
           vite_url:("http://127.0.0.1:"+($vite|tostring)), newsletter_domain:$domain, logged_in:false,
           pds:(if $dev then {url:$pds_url, plc_url:$plc_url} else null end),
-          ports:([$http, $smtp, $vite] + ([$plc, $pds] | map(select(. != "") | tonumber))),
+          fixtures:(if $dev then {url:$fixtures_url, decoy_url:("http://127.0.0.1:"+$decoy)} else null end),
+          ports:([$http, $smtp, $vite] + ([$plc, $pds, $fixtures, $decoy] | map(select(. != "") | tonumber))),
           pids:{}, pid_starts:{}, services:{}, startup_pid:$startup_pid, startup_start:$startup_start,
           started_at:$started, started_epoch:$epoch}' >"$run/state.json"
     unlock_ports
     trap "abort_up $(printf %q "$dir")" EXIT
 
-    [ "$dev" = false ] || start_pds "$dir" "$plc" "$pds"
+    if [ "$dev" = true ]; then
+        start_pds "$dir" "$plc" "$pds"
+        start_fixtures "$dir" "$fixtures" "$decoy"
+    fi
     start_process "$dir" vite "$ROOT/frontend" -- ./node_modules/.bin/vite --port "$vite" --strictPort
 
     goose -dir internal/database/migrations sqlite3 "$run/morgenblau.db" up >"$run/migrate.log" 2>&1 \
@@ -362,6 +386,7 @@ up() {
     go build -o "$run/morgenblau" ./cmd/api >"$run/build.log" 2>&1 || die "go build failed; see $run/build.log"
     if [ "$dev" = true ]; then
         wait_for_pds "$dir" "$pds_url" || die "the local PDS did not start; see $dir/pds.log"
+        wait_for_fixtures "$dir" "$fixtures_url" || die "the fixture feed server did not start; see $dir/fixtures.log"
         create_account "$dir" "$pds_url" "$(run_handle "$slug")" || die "could not create the run's account on $pds_url"
         handle="$(jq -r .handle "$run/account.json")"
         password="$(jq -r .app_password "$run/account.json")"
@@ -370,7 +395,7 @@ up() {
     # The run dir as working directory keeps godotenv from loading the checkout's .env into the instance.
     start_process "$dir" server "$run" PORT="$http" DB_PATH="$run/morgenblau.db" APP_ENV=local FETCH_INTERVAL_MINUTES="$fetch" \
         VITE_URL="http://127.0.0.1:$vite" DEV_LOGIN_ENABLED="$dev" \
-        ATPROTO_HANDLE="$handle" ATPROTO_PASSWORD="$password" ATPROTO_PDS="$pds_url" PLC_URL="$plc_url" \
+        ATPROTO_HANDLE="$handle" ATPROTO_PASSWORD="$password" ATPROTO_PDS="$pds_url" PLC_URL="$plc_url" FEED_FIXTURE_ORIGIN="$fixtures_url" \
         SESSION_COOKIE_KEY="$(openssl rand -base64 32)" SESSION_STORE_KEYS="$(openssl rand -base64 32)" \
         BLUESKY_OAUTH_PRIVATE_KEY="$(oauth_private_key)" BLUESKY_OAUTH_SCOPE="$scope" \
         BLUESKY_CLIENT_ID= BLUESKY_REDIRECT= BLUESKY_OAUTH_CLIENT_NAME= BLUESKY_OAUTH_CLIENT_URI= \
@@ -422,8 +447,8 @@ login() {
     local dir="$1" status body
     require_account "$dir"
     body="$(mktemp)"
-    status="$(call "$dir" POST /dev/login "" false "$body")"
-    [ "$status" = 204 ] || die "POST /dev/login returned $status: $(cat "$body"); see $dir/server.log and $dir/pds.log"
+    status="$(call "$dir" POST /__dev/login "" false "$body")"
+    [ "$status" = 204 ] || die "POST /__dev/login returned $status: $(cat "$body"); see $dir/server.log and $dir/pds.log"
     rm -f "$body"
     wait_for_jobs "$dir"
     set_state "$dir" '.logged_in = true'
@@ -675,11 +700,11 @@ down_run() {
     local dir="$1" dry="$2" name pid slug service failed=false
     slug="$(state "$dir" .slug)"
     if [ "$dry" = true ]; then
-        say "would stop the recorded services/processes, close browser session $slug, delete the run DB, PDS data and account"
+        say "would stop the recorded services/processes (fixture server included), close browser session $slug, delete the run DB, PDS data and account"
         return 0
     fi
     (cd "$dir" && playwright_cli -s="$slug" close >/dev/null 2>&1) || true
-    for name in server vite pds; do
+    for name in server vite pds fixtures; do
         service="$(state "$dir" ".services.$name // empty")"
         if [[ -n "$service" ]]; then
             if ! amp orb service stop "$service"; then say "could not stop $service"; failed=true; fi
@@ -690,7 +715,7 @@ down_run() {
     done
     [[ "$failed" == false ]] || die "some services could not stop; run data kept"
     rm -rf "$dir"/run/morgenblau.db* "$dir/run/cookies.txt" "$dir/run/as-cookies.txt" "$dir/run/morgenblau" "$dir/run/pds" "$dir/run/account.json"
-    rm -f "$dir"/run/{pds,vite,server}.{sh,pid} "$dir/run/playwright.config.json"
+    rm -f "$dir"/run/{pds,vite,server,fixtures}.{sh,pid} "$dir/run/playwright.config.json"
     set_state "$dir" '.status = "down" | .logged_in = false'
     say "down: $slug; evidence kept in $dir"
 }
@@ -746,8 +771,8 @@ status() {
         [ -f "$state_file" ] || continue
         dir="$(dirname "$(dirname "$state_file")")"
         jq -c --arg server "$(process_status "$dir" server)" \
-            --arg pds "$(process_status "$dir" pds)" \
-            '{slug, status, base_url, logged_in, handle: .pds.handle, server_alive: $server, pds_alive: $pds, dir}' "$state_file"
+            --arg pds "$(process_status "$dir" pds)" --arg fixtures "$(process_status "$dir" fixtures)" \
+            '{slug, status, base_url, logged_in, handle: .pds.handle, server_alive: $server, pds_alive: $pds, fixtures_alive: $fixtures, dir}' "$state_file"
     done
 }
 

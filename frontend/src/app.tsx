@@ -60,7 +60,7 @@ export default function App() {
                     </Suspense>
                 </Route>
                 {DevRoutes ? (
-                    <Route path="/dev/styleguide">
+                    <Route path="/__dev/styleguide">
                         <Suspense fallback={<Placeholder label="Loading" />}>
                             <DevRoutes />
                         </Suspense>

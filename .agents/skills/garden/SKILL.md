@@ -1,11 +1,17 @@
 ---
 name: garden
-description: Static gardening sweep of the repo. Runs the Go checks (gofmt, vet, golangci-lint, race suite, go mod tidy, sqlc freshness), the frontend test, lint and build scripts, and fallow's whole-tree dead-code, health and dupes views; checks that every test LAWS.md names still exists; and checks AGENTS.md files, SPEC.md, LAWS.md and the repo skills for stale references, rules no check enforces, skill drift and skill size. Ships mechanical fixes as one PR on garden/<date> and files judgment calls as GitHub issues labelled gardening. Use when a scheduled gardening run fires, or when the user says "garden" or "/garden". "/garden dry-run" sweeps without writing anything.
+description: "Explicit invocation only: run when the user asks for garden or /garden, or a scheduled gardening run fires; never load it on your own because a task looks like cleanup. Static gardening sweep of the repo: the Go checks (gofmt, vet, golangci-lint, race suite, go mod tidy, sqlc freshness), the frontend test, lint and build scripts, fallow's whole-tree dead-code, health and dupes views, the tests LAWS.md names, and stale references, unchecked rules, drift and size in AGENTS.md files, SPEC.md, LAWS.md and the repo skills. Ships mechanical fixes as one PR on garden/<date> and files judgment calls as GitHub issues labelled gardening. \"/garden dry-run\" sweeps without writing anything."
 argument-hint: "[dry-run]"
 disable-model-invocation: true
 ---
 
 # Garden
+
+## Invocation
+
+Run this skill only when someone asked for it by name: the user says `garden` or `/garden`, or a scheduled gardening run fires. Its own text is the authorization for the branch, PR and issues below; a task that merely resembles cleanup grants none of that. `disable-model-invocation` keeps Claude Code from loading it on its own; other harnesses may ignore that field, so this section and the description carry the rule.
+
+## Unattended runs
 
 Runs unattended. Never ask a question and never wait for input: when a step cannot run, finish what is safe, then end with outcome `blocked` and the reason.
 

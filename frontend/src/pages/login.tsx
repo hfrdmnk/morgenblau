@@ -58,7 +58,7 @@ function DevelopmentLogin() {
 
     useEffect(() => {
         const controller = new AbortController();
-        void api<{ enabled: boolean }>('/dev/login', { signal: controller.signal })
+        void api<{ enabled: boolean }>('/__dev/login', { signal: controller.signal })
             .then((result) => setEnabled(result.enabled))
             .catch(() => {});
         return () => controller.abort();
@@ -68,7 +68,7 @@ function DevelopmentLogin() {
         setPending(true);
         setError(false);
         try {
-            await api('/dev/login', { method: 'POST' });
+            await api('/__dev/login', { method: 'POST' });
             window.location.assign(PATHS.digest);
         } catch {
             setError(true);

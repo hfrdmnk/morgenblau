@@ -1,6 +1,6 @@
 ---
 name: maintain-verification-skill
-description: "Maintains Morgenblau's verification feature map, recipes and isolated harness from live evidence. Use for biweekly maintenance in a fresh orb or when asked to check verification-skill drift; leaves fixes local for review."
+description: "Maintains Morgenblau's verification feature map, recipes, fixture feeds and isolated harness from live evidence. Use for biweekly maintenance in a fresh orb or clean checkout, or when asked to check verification-skill drift; leaves fixes local for review."
 ---
 
 # Maintain Verification Skill
@@ -9,17 +9,17 @@ Compare verification coverage with the current app, drive the recipes, and repai
 
 ## Scope and authority
 
-- Intended cadence: every two weeks, each invocation in a fresh orb. This file defines the job, not a schedule; provisioning or changing a schedule requires separate authorization.
+- Intended cadence: every two weeks, each invocation in a fresh orb (Amp) or a clean checkout whose prerequisites pass the verification doctor (Claude Code or elsewhere). This file defines the job, not a schedule; provisioning or changing a schedule requires separate authorization.
 - Run unattended: make safe decisions, finish independent work, and report unavailable prerequisites as `blocked`, never `pass`.
-- Own the behavioral maintenance of [verify-morgenblau](../verify-morgenblau/SKILL.md), its [feature map and recipes](../verify-morgenblau/features/README.md), and its isolated harness. Keep fixes within that skill directory.
+- Own the behavioral maintenance of [verify-morgenblau](../verify-morgenblau/SKILL.md), its [feature map and recipes](../verify-morgenblau/features/README.md), its fixture feeds, and its isolated harness. Keep fixes within that skill directory.
 - [Garden](../garden/SKILL.md) owns the broad static sweep and reference audit. Do not invoke its shipping workflow or duplicate its repository-wide checks.
 - Leave all edits local for review. Do not commit, push, open PRs, create or update issues, send messages, publish evidence, or make other shared writes without additional user authorization.
 - Do not change application behavior, spec decisions, or repo-wide rules. Record product bugs and ambiguous expectations for review instead.
 
 ## 1. Fresh-run preflight
 
-1. Read the repository guidance, `SPEC.md` and `LAWS.md`. Load `verify-morgenblau` and use its current protocol, safety rules, proof standards and change-type checks throughout; do not substitute a copied command table. Load `building-skills` before editing any skill documentation.
-2. Confirm this is a fresh orb and the checkout is clean, including untracked files. If not, stop as `blocked`; never reset, stash or overwrite someone else's work.
+1. Read the repository guidance, `SPEC.md` and `LAWS.md`. Load `verify-morgenblau` and use its current protocol, safety rules, proof standards and change-type checks throughout; do not substitute a copied command table. Load `building-skills` before editing any skill documentation, and follow the [repo's skill conventions](../README.md).
+2. Confirm this is a fresh orb or environment and the checkout is clean, including untracked files. If not, stop as `blocked`; never reset, stash or overwrite someone else's work.
 3. Fetch `origin`, switch to `main`, fast-forward only to `origin/main`, and verify a clean tree and identical HEAD. Record the baseline SHA. Fetch failure, divergence or inability to establish latest main is `blocked`; do not drive an old revision as current. Unshallow before any history investigation if needed.
 4. Inspect the current verification harness help, dependency manifests and setup instructions. Install only the documented prerequisites using pinned versions; do not use personal credentials or copy a user's `.env`. Run the verification doctor before drives and again after surprises. Preserve its exit-code distinctions, including signed-in coverage blocked by unsupported Node.
 5. Discover the harness smoke/regression entry point from the current skill directory, package scripts, Makefile or CI. If present, read its isolation requirements and run the actual command, recording output and exit status. Do not invent a target or assume one exists. If absent, report `not available` and use disposable smoke drives; missing dependencies for an existing check are `blocked`.
@@ -42,7 +42,7 @@ Follow the loaded verification workflow for every recipe, including its state in
 - Use only harness-created instances, disposable PDSes and accounts. Never touch the user's server, account, database, `data/`, or a public PDS. Do not substitute an external account when local sign-in is blocked.
 - Wrap each run in shell cleanup or equivalent `try/finally`: register the matching `down` before attempting `up`, and call it even after partial startup, failed assertions or abandoned work. Confirm the recorded processes and disposable state are gone while evidence remains. Cleanup failures are `blocked` and name the remaining run; never kill by process name.
 - Keep secrets out of logs, screenshots and reports. Do not print account files, cookies, passwords, tokens, `.env` or secret-bearing state. Use the harness's secret-safe login controls and inspect evidence before retaining it. Evidence stays local in the verification workflow's evidence directories.
-- Capture the actual action, observable result and state delta. Missing network access, fixtures, tools or safe isolation means `blocked`, not a skipped assertion counted as success.
+- Capture the actual action, observable result and state delta. Feed recipes run against the run's fixture feeds; only steps a recipe marks as needing a public feed, publication or model may be `blocked` for missing network. Missing tools or safe isolation means `blocked`, not a skipped assertion counted as success.
 
 ## 4. Classify, repair, re-drive
 

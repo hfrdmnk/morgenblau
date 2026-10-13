@@ -43,9 +43,9 @@ Install goose, sqlc and golangci-lint once, at the versions `.github/workflows/c
 - `scripts/sync-tangled.sh` is the manual recovery path when the mirror workflow needs to be retried outside GitHub.
 - Never bypass repository Git hooks with `--no-verify` unless the user explicitly approves it for that invocation. Investigate and resolve hook failures instead.
 
-## ATProto Skills
+## ATProto
 
-For ATProto protocol work, invoke the matching `atproto-*` skill.
+Protocol work starts from the project's own sources: `SPEC.md` for the data model and ownership, [lexicons/AGENTS.md](lexicons/AGENTS.md) for schemas, and the SSRF and PDS-mutation rules in [internal/AGENTS.md](internal/AGENTS.md). For protocol details they don't cover, read the documentation at [atproto.com/docs](https://atproto.com/docs).
 
 ## atproto.md
 
