@@ -25,7 +25,7 @@ Docs point, they don't mirror. In durable project docs (this file, `SPEC.md`, `.
 
 ## Testing
 
-Identity fixtures are invented: use `example.com` subdomains for ordinary hosts, `*.example` handles, names like "Example Publication", and placeholder DIDs. Real protocol/provider hostnames are allowed only when the hostname itself is required to test behavior; accounts, publications and other identity data remain invented. Real-world observations belong in research notes or `SPEC.md`.
+Review identity fixtures: use `example.com` subdomains for ordinary hosts, `*.example` handles, names like "Example Publication", and placeholder DIDs. Real protocol/provider hostnames are allowed only when the hostname itself is required to test behavior; accounts, publications and other identity data remain invented. Real-world observations belong in research notes or `SPEC.md`.
 
 ## Lexicons
 

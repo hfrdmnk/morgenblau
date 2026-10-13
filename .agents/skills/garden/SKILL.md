@@ -152,7 +152,7 @@ Judgment only; never edit. For each rule in the AGENTS.md files, look for the ch
 - a rule cites files, functions or routes as examples instead of stating the principle (naming the canonical artifact to use is fine)
 - a check's failure message says what is wrong without saying why
 
-Skip rules no check could express, such as how to write comments.
+Skip missing-check findings for rules explicitly assigned to human review, and rules no check could express, such as how to write comments. Still report concrete rule violations; review ownership does not waive the rule or any existing automated check.
 
 Group these findings: one issue per doc file keyed `prose:<doc path>`, with each finding as a checklist item, and one issue keyed `prose:failure-messages` for every failure message that lacks its why. A rule the code already breaks gets its own issue as well, keyed `rule-violation:<violating path>:<rule slug>`, with the violating lines as evidence.
 
