@@ -173,7 +173,7 @@ func TestEveryReconcilePassCarriesTheListingGuard(t *testing.T) {
 		})
 	}
 	if passes == 0 {
-		t.Error("found no reconcilePass literals")
+		t.Error("found no reconcilePass literals; restore pass discovery so law 2 protects newer mirror writes from stale PDS listings")
 	}
 }
 

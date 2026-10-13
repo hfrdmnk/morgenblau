@@ -174,7 +174,7 @@ func TestEveryPDSRouteIsDrivenByTheRouteChecks(t *testing.T) {
 		}
 	}
 	if len(wired) == 0 {
-		t.Fatal("found no PDS routes in routes.go")
+		t.Fatal("found no PDS routes in routes.go; restore route discovery so law 1 checks the application's real PDS write paths")
 	}
 }
 

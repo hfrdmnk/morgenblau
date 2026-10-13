@@ -66,16 +66,19 @@ func TestNewsletterQueriesAreScopedByOwnerDID(t *testing.T) {
 		_, unscoped := unscopedNewsletterQueries[query.name]
 		switch {
 		case unscoped && len(problems) == 0:
-			t.Errorf("%s is owner-scoped; drop it from unscopedNewsletterQueries", query.name)
+			t.Errorf("%s is owner-scoped; drop it from unscopedNewsletterQueries so an obsolete exception cannot hide a future private-data scoping regression", query.name)
 		case !unscoped:
 			for _, problem := range problems {
 				t.Errorf("%s: %s; every newsletter query filters by the owner DID so one reader can never reach another's data (law 3)", query.name, problem)
 			}
 		}
 	}
-	for name := range unscopedNewsletterQueries {
+	for name, reason := range unscopedNewsletterQueries {
+		if strings.TrimSpace(reason) == "" {
+			t.Errorf("unscopedNewsletterQueries lists %s without a reason; justify every owner-scoping exception so its private-data isolation trade-off remains auditable (law 3)", name)
+		}
 		if !seen[name] {
-			t.Errorf("unscopedNewsletterQueries lists %s, which is not in %s", name, newsletterQueryFile)
+			t.Errorf("unscopedNewsletterQueries lists %s, which is not in %s; remove stale exceptions so the audited private-data boundary matches the queries that run", name, newsletterQueryFile)
 		}
 	}
 }

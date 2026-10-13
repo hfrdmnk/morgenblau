@@ -73,7 +73,7 @@ func respondCodes(t *testing.T) map[string]bool {
 		}
 	}
 	if len(codes) == 0 {
-		t.Fatal("respond.go declares no error codes")
+		t.Fatal("respond.go declares no error codes; restore code discovery so the envelope check protects the slugs the frontend depends on")
 	}
 	return codes
 }

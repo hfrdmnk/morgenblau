@@ -16,7 +16,7 @@ func TestEmbeddedSchemasMatchTheLexiconsDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(entries) == 0 {
-		t.Fatal("no embedded schemas found")
+		t.Fatal("no embedded schemas found; restore embedded schemas so runtime PDS validation can be checked against the schema authority")
 	}
 	for _, entry := range entries {
 		embeddedJSON, err := schemaFS.ReadFile("schemas/" + entry.Name())

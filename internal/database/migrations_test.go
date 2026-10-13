@@ -16,7 +16,7 @@ func TestEveryMigrationRollsBackCleanly(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(versions) == 0 {
-		t.Fatal("no migrations found")
+		t.Fatal("no migrations found; restore migration discovery so rollback safety is checked against the schema changes that deploy")
 	}
 	databasePath := filepath.Join(t.TempDir(), "rollback.db")
 	db := openMigrationDB(t, databasePath)

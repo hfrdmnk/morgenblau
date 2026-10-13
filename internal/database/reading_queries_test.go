@@ -2,6 +2,7 @@ package database
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -24,7 +25,7 @@ func TestReadingIndexQueriesAreScopedByOwnerDID(t *testing.T) {
 		_, unscoped := unscopedReadingQueries[query.name]
 		switch {
 		case unscoped && len(problems) == 0:
-			t.Errorf("%s is owner-scoped; drop it from unscopedReadingQueries", query.name)
+			t.Errorf("%s is owner-scoped; drop it from unscopedReadingQueries so an obsolete exception cannot hide a future ownership regression", query.name)
 		case !unscoped:
 			for _, problem := range problems {
 				t.Errorf("%s in %s: %s; bind every reading-index table to the caller DID so one reader cannot reach another's subscriptions or saves", query.name, query.file, problem)
@@ -34,9 +35,12 @@ func TestReadingIndexQueriesAreScopedByOwnerDID(t *testing.T) {
 	if checked == 0 {
 		t.Fatal("no reading-index queries checked; ownership protection must cover the SQL that actually runs")
 	}
-	for name := range unscopedReadingQueries {
+	for name, reason := range unscopedReadingQueries {
+		if strings.TrimSpace(reason) == "" {
+			t.Errorf("unscopedReadingQueries lists %s without a reason; justify every owner-scoping exception so its isolation trade-off remains auditable", name)
+		}
 		if !seen[name] {
-			t.Errorf("unscopedReadingQueries lists %s, which reads no reading-index table", name)
+			t.Errorf("unscopedReadingQueries lists %s, which reads no reading-index table; remove stale exceptions so the audited ownership boundary matches the queries that run", name)
 		}
 	}
 }
