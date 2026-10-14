@@ -52,6 +52,35 @@ test_restarted_service_is_live() {
     [[ "$(process_status "$dir" server)" == yes ]]
 }
 
+# dev-env keeps the PLC in memory, so a supervisor-restarted PDS has forgotten the run's account.
+test_restarted_pds_breaks_the_run() {
+    local dir="$VERIFY_ROOT/$(date +%F)-pds-restart" result
+    mkdir -p "$dir/run"
+    jq -n --argjson now "$(date +%s)" \
+        '{slug:"pds-restart", status:"up", base_url:"http://127.0.0.1:9", pds:{}, pids:{pds:111, server:222}, services:{pds:"verify-example-pds", server:"verify-example-server"}, started_epoch:$now}' >"$dir/run/state.json"
+    printf '111\n' >"$dir/run/pds.pid"
+    systemctl() { printf 'LoadState=loaded\nActiveState=active\n'; }
+    if stale_reason "$dir" >/dev/null; then return 1; fi
+    printf '333\n' >"$dir/run/pds.pid"
+    result="$(stale_reason "$dir")"
+    [[ "$result" == *"PDS restarted"* ]]
+    result="$( (api "$dir" GET /api/digest) 2>&1)" && return 1
+    [[ "$result" == *"PDS restarted"* && "$result" == *"verify down pds-restart"* ]]
+    [[ "$(status | jq -r .pds_alive)" == restarted ]]
+}
+
+test_restarted_service_keeps_its_crash_output() {
+    local dir="$VERIFY_ROOT/crash-log"
+    mkdir -p "$dir/run"
+    printf '%s\n' '{"slug":"crash-log","pids":{},"pid_starts":{},"services":{}}' >"$dir/run/state.json"
+    AMP_ORB=1
+    amp() { "$dir/run/pds.sh" || true; "$dir/run/pds.sh" || true; }
+    printf 'line from an earlier run of this slug\n' >"$dir/pds.log"
+    start_process "$dir" pds "$ROOT" -- sh -c 'echo "crash $$"; exit 1'
+    [[ "$(grep -c '^crash ' "$dir/pds.log")" == 2 ]]
+    if grep -q 'earlier run' "$dir/pds.log"; then return 1; fi
+}
+
 test_unavailable_supervisor_blocks_cleanup() {
     local dir="$VERIFY_ROOT/unavailable" code
     mkdir -p "$dir/run"
@@ -297,7 +326,7 @@ test_feed_fixtures_serve_each_case() {
 if [[ $# -gt 0 ]]; then "$1"; exit; fi
 
 failed=0
-for test in test_same_slug_is_checked_under_lock test_abandoned_startup_is_stale test_live_startup_is_not_stale test_restarted_service_is_live test_unavailable_supervisor_blocks_cleanup test_stopped_service_is_stale test_doctor_rejects_unusable_browser test_orb_services_keep_secrets_out_of_command test_service_secret_assertion_rejects_a_leak test_browser_uses_owned_secret_config test_cleanup_continues_after_service_stop_failure test_browser_guard_rejects_escapes \
+for test in test_same_slug_is_checked_under_lock test_abandoned_startup_is_stale test_live_startup_is_not_stale test_restarted_service_is_live test_restarted_pds_breaks_the_run test_restarted_service_keeps_its_crash_output test_unavailable_supervisor_blocks_cleanup test_stopped_service_is_stale test_doctor_rejects_unusable_browser test_orb_services_keep_secrets_out_of_command test_service_secret_assertion_rejects_a_leak test_browser_uses_owned_secret_config test_cleanup_continues_after_service_stop_failure test_browser_guard_rejects_escapes \
     test_up_gives_only_the_server_the_fixture_origin test_anonymous_up_has_no_fixture_origin \
     test_feed_fixtures_serve_each_case; do
     if bash "$test_file" "$test" >"$tmp/result" 2>&1; then

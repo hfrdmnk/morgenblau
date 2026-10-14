@@ -175,6 +175,21 @@ process_status() {
     fi
 }
 
+# The orb supervisor restarts an exited service, and the restarted wrapper writes a new pid; dev-env's PLC lives in memory, so that PDS no longer knows the run's account.
+pds_restarted() {
+    local dir="$1" recorded current
+    recorded="$(state "$dir" '.pids.pds // empty')"
+    [[ -n "$recorded" && -s "$dir/run/pds.pid" ]] || return 1
+    current="$(cat "$dir/run/pds.pid")"
+    [[ "$current" != "$recorded" ]]
+}
+
+require_intact_pds() {
+    local dir="$1"
+    pds_restarted "$dir" || return 0
+    die "the run's PDS restarted, so its in-memory PLC lost the account; see $dir/pds.log for why it exited. Run: verify down $(state "$dir" .slug) && verify up $(state "$dir" .slug)"
+}
+
 kill_tree() {
     local pid="$1" signal="${2:-TERM}" child
     for child in $(pgrep -P "$pid" 2>/dev/null); do kill_tree "$child" "$signal"; done
@@ -246,9 +261,11 @@ start_process() {
     local dir="$1" name="$2" cwd="$3" script="$1/run/$2.sh" pid_file="$1/run/$2.pid" service i
     shift 3
     rm -f "$pid_file"
+    # A same-day rerun of a slug reuses its dir; the wrapper appends so a supervisor restart keeps the crash, so truncate once here.
+    : >"$dir/$name.log"
     {
         printf '#!/usr/bin/env bash\nset -euo pipefail\n'
-        printf 'exec > %q 2>&1\n' "$dir/$name.log"
+        printf 'exec >> %q 2>&1\n' "$dir/$name.log"
         printf 'cd %q\nprintf "%%s\\n" "$$" > %q\n' "$cwd" "$pid_file"
         while [[ "$1" != -- ]]; do printf 'export %q\n' "$1"; shift; done
         shift
@@ -446,6 +463,7 @@ require_account() {
 login() {
     local dir="$1" status body
     require_account "$dir"
+    require_intact_pds "$dir"
     body="$(mktemp)"
     status="$(call "$dir" POST /__dev/login "" false "$body")"
     [ "$status" = 204 ] || die "POST /__dev/login returned $status: $(cat "$body"); see $dir/server.log and $dir/pds.log"
@@ -459,6 +477,7 @@ login() {
 oauth() {
     local dir="$1" base iss did jar as_jar authorize csrf body consent callback result
     require_account "$dir"
+    require_intact_pds "$dir"
     base="$(state "$dir" .base_url)"; iss="$(state "$dir" .pds.url)"; did="$(state "$dir" .pds.did)"
     jar="$dir/run/cookies.txt"; as_jar="$dir/run/as-cookies.txt"
     body="$(mktemp)"
@@ -505,6 +524,7 @@ api() {
         esac
     done
     [[ "$path" == /* ]] || die "path must start with /"
+    [ "$anon" = true ] || require_intact_pds "$dir"
     body="$(mktemp)"
     status="$(call "$dir" "$method" "$path" "$data" "$anon" "$body")"
     if [ -n "$out" ]; then
@@ -661,6 +681,7 @@ browser() {
     local dir="$1" config var
     shift
     [ $# -gt 0 ] || die "browser needs a playwright-cli command; see: verify browser <slug> --help"
+    require_intact_pds "$dir"
     for config in "$dir/.playwright/cli.config.json" "$HOME/.playwright/cli.config.json"; do
         [ ! -e "$config" ] || refuse "$config would reconfigure the driver; move it away first."
     done
@@ -731,6 +752,10 @@ stale_reason() {
         fi
         return 1
     fi
+    if pds_restarted "$dir"; then
+        printf 'its PDS restarted and lost the account'
+        return 0
+    fi
     for name in $(jq -r '.pids | keys[]' "$dir/run/state.json"); do
         case "$(process_status "$dir" "$name")" in
             no) dead="$name" ;;
@@ -766,12 +791,14 @@ stale() {
 }
 
 status() {
-    local state_file dir
+    local state_file dir pds
     for state_file in "$VERIFY_ROOT"/*/run/state.json; do
         [ -f "$state_file" ] || continue
         dir="$(dirname "$(dirname "$state_file")")"
+        pds="$(process_status "$dir" pds)"
+        if pds_restarted "$dir"; then pds=restarted; fi
         jq -c --arg server "$(process_status "$dir" server)" \
-            --arg pds "$(process_status "$dir" pds)" --arg fixtures "$(process_status "$dir" fixtures)" \
+            --arg pds "$pds" --arg fixtures "$(process_status "$dir" fixtures)" \
             '{slug, status, base_url, logged_in, handle: .pds.handle, server_alive: $server, pds_alive: $pds, fixtures_alive: $fixtures, dir}' "$state_file"
     done
 }
