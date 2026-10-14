@@ -186,6 +186,11 @@
         min-height: 100%;
     }
 
+    /* Reserve the scrollbar's space up front so content doesn't shift sideways once a page grows tall enough to scroll. */
+    html {
+        scrollbar-gutter: stable;
+    }
+
     body {
         @apply bg-background font-sans text-base text-foreground;
         margin: 0;
