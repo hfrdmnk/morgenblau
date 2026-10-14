@@ -70,3 +70,24 @@ test('subscription changes cancel old health requests and ignore their late resp
     await Bun.sleep(30);
     expect(requests).toHaveLength(2);
 });
+
+test('a new path never shows the previous source, even when its request fails', async () => {
+    const requests: { url: string; resolve: (response: Response) => void }[] = [];
+    globalThis.fetch = Object.assign((url: Parameters<typeof fetch>[0]) => new Promise<Response>((resolve) => {
+        requests.push({ url: String(url), resolve });
+    }), { preconnect: realFetch.preconnect });
+    function Detail({ path }: { path: string }) {
+        const state = useSources<{ title: string }>(path);
+        return <p>{state.status === 'loaded' ? state.data.title : state.status}</p>;
+    }
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    cleanup = () => { root.unmount(); container.remove(); };
+    await act(async () => root.render(<Detail path="/api/subscriptions/a" />));
+    await act(async () => requests[0].resolve(Response.json({ title: 'Example Publication' })));
+    expect(container.textContent).toBe('Example Publication');
+    await act(async () => root.render(<Detail path="/api/subscriptions/b" />));
+    expect(container.textContent).toBe('loading');
+    await act(async () => requests[1].resolve(Response.json({ code: 'internal_error', message: 'internal error' }, { status: 500 })));
+    expect(container.textContent).toBe('error');
+});

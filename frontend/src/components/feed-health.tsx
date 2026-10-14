@@ -20,3 +20,17 @@ export function GeneratedNote({ source }: { source: FeedSource }) {
     }
     return <p className="mt-1.5 text-xs text-muted-foreground">{note}</p>;
 }
+
+export function SourceHealth({ source }: { source: FeedSource }) {
+    return (
+        <>
+            {source.fetchStatus === 'unavailable' ? (
+                <p className="mt-3 flex items-center gap-2.5 text-sm text-muted-foreground">
+                    <FeedHealth source={source} />
+                    Posts aren’t fetching right now. Morgenblau retries automatically.
+                </p>
+            ) : null}
+            <GeneratedNote source={source} />
+        </>
+    );
+}

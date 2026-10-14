@@ -1,6 +1,6 @@
-import { Link as RouterLink } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
+import { ItemList, ListItem, ListSkeleton } from '@/components/item-list';
 import { useDigest, type DigestEntry } from '@/hooks/use-digest';
 import { parseDigestDate, toDateKey } from '@/lib/digest-dates';
 import { entryHref } from '@/lib/paths';
@@ -26,7 +26,7 @@ export function Digest() {
 }
 
 function DigestContent({ date, state }: { date: string; state: ReturnType<typeof useDigest> }) {
-    if (state.status === 'loading') return <DigestSkeleton />;
+    if (state.status === 'loading') return <ListSkeleton label="Loading digest" />;
     if (state.status === 'error') {
         return (
             <p className="py-8 text-sm text-muted-foreground" role="alert">
@@ -54,59 +54,24 @@ function LoadedDigest({
         );
     }
     return (
-        <ol className="space-y-9">
+        <ItemList ordered>
             {digest.entries.map((entry) => (
                 <DigestItem date={date} entry={entry} key={`${entry.id}-${entry.entrySlug}`} />
             ))}
-        </ol>
+        </ItemList>
     );
 }
 
 function DigestItem({ date, entry }: { date: string; entry: DigestEntry }) {
     const sourceTitle = entry.source.title || hostLabel(firstDefined(entry.source.siteUrl, entry.source.feedUrl));
     const postHost = hostLabel(firstDefined(entry.url, entry.source.siteUrl, entry.source.feedUrl));
-    const sourceDetails = [sourceTitle, postHost].filter(Boolean).join(' · ');
-
     return (
-        <li>
-            <RouterLink
-                className="inline-block rounded-sm text-xl font-medium text-foreground hover:text-foreground/75"
-                href={entryHref(entry.entrySlug, date)}
-            >
-                {entry.title || 'Untitled'}
-            </RouterLink>
-            <div className="mt-2.5 flex items-center gap-2.5 text-sm text-subtle-foreground">
-                {entry.source.faviconUrl ? (
-                    <img
-                        alt=""
-                        className="size-4 shrink-0 rounded-sm object-cover"
-                        loading="lazy"
-                        onError={(event) => {
-                            event.currentTarget.hidden = true;
-                        }}
-                        referrerPolicy="no-referrer"
-                        src={entry.source.faviconUrl}
-                    />
-                ) : null}
-                <span className="truncate">{sourceDetails}</span>
-            </div>
-        </li>
-    );
-}
-
-function DigestSkeleton() {
-    return (
-        <div aria-label="Loading digest" className="space-y-10" role="status">
-            {[72, 88, 64].map((width) => (
-                <div className="space-y-3" key={width}>
-                    <div
-                        className="h-7 animate-pulse rounded bg-muted"
-                        style={{ width: `${width}%` }}
-                    />
-                    <div className="h-5 w-2/5 animate-pulse rounded bg-muted" />
-                </div>
-            ))}
-        </div>
+        <ListItem
+            href={entryHref(entry.entrySlug, date)}
+            icon={entry.source.faviconUrl}
+            meta={[sourceTitle, postHost].filter(Boolean).join(' · ')}
+            title={entry.title || 'Untitled'}
+        />
     );
 }
 

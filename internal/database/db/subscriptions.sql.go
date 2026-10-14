@@ -71,6 +71,9 @@ SELECT
     us.created_at, us.updated_at,
     f.site_url, f.icon_url,
     f.title AS catalog_title,
+    f.last_fetched_at,
+    f.next_fetch_at,
+    COALESCE(f.consecutive_failures, 0) AS consecutive_failures,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
     COALESCE((SELECT MIN(NULLIF(published_at, '')) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?1 AND fe.published_at < ?2) AS count_7d,
@@ -78,50 +81,61 @@ SELECT
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?4 AND fe.published_at < ?2) AS count_56d,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?5 AND fe.published_at < ?2) AS count_84d,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url) AS total_entries,
-    (SELECT COUNT(*) FROM user_saves s WHERE s.did = us.did AND s.feed_url = us.feed_url) AS saved_by_you
+    (SELECT COUNT(*) FROM user_saves s WHERE s.did = us.did AND s.feed_url = us.feed_url) AS saved_by_you,
+    ws.health AS web_health,
+    ws.health_reason AS web_health_reason
 FROM user_subscriptions us
 LEFT JOIN feeds f ON f.feed_url = us.feed_url
-WHERE us.did = ?6 AND us.rkey = ?7
+LEFT JOIN web_sources ws ON CAST(?6 AS TEXT) <> ''
+    AND substr(us.feed_url, 1, length(?6)) = ?6
+    AND ws.id = substr(us.feed_url, length(?6) + 1)
+WHERE us.did = ?7 AND us.rkey = ?8
 `
 
 type GetUserSourceWithStatsParams struct {
-	Cutoff7d  string `json:"cutoff_7d"`
-	Now       string `json:"now"`
-	Cutoff28d string `json:"cutoff_28d"`
-	Cutoff56d string `json:"cutoff_56d"`
-	Cutoff84d string `json:"cutoff_84d"`
-	Did       string `json:"did"`
-	Rkey      string `json:"rkey"`
+	Cutoff7d      string `json:"cutoff_7d"`
+	Now           string `json:"now"`
+	Cutoff28d     string `json:"cutoff_28d"`
+	Cutoff56d     string `json:"cutoff_56d"`
+	Cutoff84d     string `json:"cutoff_84d"`
+	WebFeedPrefix string `json:"web_feed_prefix"`
+	Did           string `json:"did"`
+	Rkey          string `json:"rkey"`
 }
 
 type GetUserSourceWithStatsRow struct {
-	Did              string      `json:"did"`
-	Rkey             string      `json:"rkey"`
-	AtUri            string      `json:"at_uri"`
-	FeedUrl          string      `json:"feed_url"`
-	Kind             string      `json:"kind"`
-	SidecarRkey      *string     `json:"sidecar_rkey"`
-	Title            *string     `json:"title"`
-	IsPrimary        int64       `json:"is_primary"`
-	Tags             *string     `json:"tags"`
-	CreatedAt        string      `json:"created_at"`
-	UpdatedAt        string      `json:"updated_at"`
-	SiteUrl          *string     `json:"site_url"`
-	IconUrl          *string     `json:"icon_url"`
-	CatalogTitle     *string     `json:"catalog_title"`
-	LastPublishedAt  interface{} `json:"last_published_at"`
-	FirstPublishedAt interface{} `json:"first_published_at"`
-	Count7d          int64       `json:"count_7d"`
-	Count28d         int64       `json:"count_28d"`
-	Count56d         int64       `json:"count_56d"`
-	Count84d         int64       `json:"count_84d"`
-	TotalEntries     int64       `json:"total_entries"`
-	SavedByYou       int64       `json:"saved_by_you"`
+	Did                 string      `json:"did"`
+	Rkey                string      `json:"rkey"`
+	AtUri               string      `json:"at_uri"`
+	FeedUrl             string      `json:"feed_url"`
+	Kind                string      `json:"kind"`
+	SidecarRkey         *string     `json:"sidecar_rkey"`
+	Title               *string     `json:"title"`
+	IsPrimary           int64       `json:"is_primary"`
+	Tags                *string     `json:"tags"`
+	CreatedAt           string      `json:"created_at"`
+	UpdatedAt           string      `json:"updated_at"`
+	SiteUrl             *string     `json:"site_url"`
+	IconUrl             *string     `json:"icon_url"`
+	CatalogTitle        *string     `json:"catalog_title"`
+	LastFetchedAt       *string     `json:"last_fetched_at"`
+	NextFetchAt         *string     `json:"next_fetch_at"`
+	ConsecutiveFailures int64       `json:"consecutive_failures"`
+	LastPublishedAt     interface{} `json:"last_published_at"`
+	FirstPublishedAt    interface{} `json:"first_published_at"`
+	Count7d             int64       `json:"count_7d"`
+	Count28d            int64       `json:"count_28d"`
+	Count56d            int64       `json:"count_56d"`
+	Count84d            int64       `json:"count_84d"`
+	TotalEntries        int64       `json:"total_entries"`
+	SavedByYou          int64       `json:"saved_by_you"`
+	WebHealth           *string     `json:"web_health"`
+	WebHealthReason     *string     `json:"web_health_reason"`
 }
 
 // Single-source counterpart to ListUserSourcesWithStats, keyed by (did, rkey).
-// Carries the same windowed counts plus total_entries and saved_by_you so the
-// source detail page can render its stat row in one query.
+// Carries the same windowed counts and health plus total_entries and
+// saved_by_you so the source detail page can render its stat row in one query.
 func (q *Queries) GetUserSourceWithStats(ctx context.Context, arg GetUserSourceWithStatsParams) (GetUserSourceWithStatsRow, error) {
 	row := q.db.QueryRowContext(ctx, getUserSourceWithStats,
 		arg.Cutoff7d,
@@ -129,6 +143,7 @@ func (q *Queries) GetUserSourceWithStats(ctx context.Context, arg GetUserSourceW
 		arg.Cutoff28d,
 		arg.Cutoff56d,
 		arg.Cutoff84d,
+		arg.WebFeedPrefix,
 		arg.Did,
 		arg.Rkey,
 	)
@@ -148,6 +163,9 @@ func (q *Queries) GetUserSourceWithStats(ctx context.Context, arg GetUserSourceW
 		&i.SiteUrl,
 		&i.IconUrl,
 		&i.CatalogTitle,
+		&i.LastFetchedAt,
+		&i.NextFetchAt,
+		&i.ConsecutiveFailures,
 		&i.LastPublishedAt,
 		&i.FirstPublishedAt,
 		&i.Count7d,
@@ -156,6 +174,8 @@ func (q *Queries) GetUserSourceWithStats(ctx context.Context, arg GetUserSourceW
 		&i.Count84d,
 		&i.TotalEntries,
 		&i.SavedByYou,
+		&i.WebHealth,
+		&i.WebHealthReason,
 	)
 	return i, err
 }

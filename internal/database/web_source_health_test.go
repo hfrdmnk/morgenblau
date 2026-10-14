@@ -56,6 +56,20 @@ func TestSourceListCarriesGeneratedFeedHealthOnlyForOwnWebFeeds(t *testing.T) {
 		}
 	}
 
+	for rkey := range feeds {
+		detail, err := q.GetUserSourceWithStats(ctx, db.GetUserSourceWithStatsParams{Did: did, Rkey: rkey, Now: now, WebFeedPrefix: prefix})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if generated := detail.WebHealth != nil && *detail.WebHealth == "needs_attention" && detail.WebHealthReason != nil; generated != (rkey == "generated") {
+			t.Errorf("detail health for %s: %+v", rkey, detail)
+		}
+	}
+	detail, err := q.GetUserSourceWithStats(ctx, db.GetUserSourceWithStatsParams{Did: did, Rkey: "generated", Now: now})
+	if err != nil || detail.WebHealth != nil {
+		t.Errorf("without a web feed prefix the detail is not generated: %+v, %v", detail, err)
+	}
+
 	rows, err = q.ListUserSourcesWithStats(ctx, db.ListUserSourcesWithStatsParams{Did: did, Now: now})
 	if err != nil {
 		t.Fatal(err)

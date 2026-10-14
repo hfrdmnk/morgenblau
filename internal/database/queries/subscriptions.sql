@@ -125,14 +125,17 @@ ORDER BY COALESCE(NULLIF(us.title, ''), f.title, us.feed_url) COLLATE NOCASE ASC
 
 -- name: GetUserSourceWithStats :one
 -- Single-source counterpart to ListUserSourcesWithStats, keyed by (did, rkey).
--- Carries the same windowed counts plus total_entries and saved_by_you so the
--- source detail page can render its stat row in one query.
+-- Carries the same windowed counts and health plus total_entries and
+-- saved_by_you so the source detail page can render its stat row in one query.
 SELECT
     us.did, us.rkey, us.at_uri, us.feed_url, us.kind, us.sidecar_rkey, us.title,
     us.is_primary, us.tags,
     us.created_at, us.updated_at,
     f.site_url, f.icon_url,
     f.title AS catalog_title,
+    f.last_fetched_at,
+    f.next_fetch_at,
+    COALESCE(f.consecutive_failures, 0) AS consecutive_failures,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
     COALESCE((SELECT MIN(NULLIF(published_at, '')) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_7d) AND fe.published_at < sqlc.arg(now)) AS count_7d,
@@ -140,9 +143,14 @@ SELECT
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_56d) AND fe.published_at < sqlc.arg(now)) AS count_56d,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_84d) AND fe.published_at < sqlc.arg(now)) AS count_84d,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url) AS total_entries,
-    (SELECT COUNT(*) FROM user_saves s WHERE s.did = us.did AND s.feed_url = us.feed_url) AS saved_by_you
+    (SELECT COUNT(*) FROM user_saves s WHERE s.did = us.did AND s.feed_url = us.feed_url) AS saved_by_you,
+    ws.health AS web_health,
+    ws.health_reason AS web_health_reason
 FROM user_subscriptions us
 LEFT JOIN feeds f ON f.feed_url = us.feed_url
+LEFT JOIN web_sources ws ON CAST(sqlc.arg(web_feed_prefix) AS TEXT) <> ''
+    AND substr(us.feed_url, 1, length(sqlc.arg(web_feed_prefix))) = sqlc.arg(web_feed_prefix)
+    AND ws.id = substr(us.feed_url, length(sqlc.arg(web_feed_prefix)) + 1)
 WHERE us.did = sqlc.arg(did) AND us.rkey = sqlc.arg(rkey);
 
 -- name: ListUserSubscriptionsWithSiteURL :many

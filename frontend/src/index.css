@@ -335,7 +335,8 @@ html:has(.app-header) {
     .app-mode-link {
         min-height: 2rem;
         align-items: flex-start;
-        font-size: var(--text-sm);
+        font-size: var(--text-base);
+        font-weight: 500;
     }
 
     .app-mode-artwork {

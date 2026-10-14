@@ -38,6 +38,20 @@ export default defineConfig([
           message: 'Call api() from src/lib/api.ts: it parses the {code, message} error body and throws ApiError, which reauth and form errors depend on.',
         })),
       ],
+      'no-restricted-syntax': [
+        'error',
+        ...[
+          ":matches(JSXOpeningElement[name.name='Suspense'], JSXOpeningElement[name.property.name='Suspense']) > JSXAttribute[name.name='fallback'] > Literal",
+          ":matches(JSXOpeningElement[name.name='Suspense'], JSXOpeningElement[name.property.name='Suspense']) > JSXAttribute[name.name='fallback'] > JSXExpressionContainer > :not(Literal[raw='null'], JSXElement[openingElement.name.name=/Skeleton$/])",
+        ].map((selector) => ({
+          selector,
+          message: 'A Suspense fallback is null or the page’s own *Skeleton, never a generic loading screen. Prefer importing the page eagerly.',
+        })),
+        {
+          selector: "ImportSpecifier[imported.name='Suspense'][local.name!='Suspense']",
+          message: 'Import Suspense under its own name so the fallback rule can see it.',
+        },
+      ],
       'no-restricted-imports': [
         'error',
         {

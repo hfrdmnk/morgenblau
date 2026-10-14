@@ -32,8 +32,9 @@ type SourceEntriesReader interface {
 	ListEntriesForSource(ctx context.Context, arg db.ListEntriesForSourceParams) ([]db.ListEntriesForSourceRow, error)
 }
 
-// SubscriptionGetHandler returns a subscription with feed stats; the frequency bucket uses the same rule as the list endpoint.
-func SubscriptionGetHandler(reader SourceDetailReader) http.Handler {
+// SubscriptionGetHandler returns a subscription with feed stats; frequency and health use the same rules as the list endpoint.
+// webFeedPrefix is this server's generated-feed URL up to the id; empty marks no subscription as generated.
+func SubscriptionGetHandler(reader SourceDetailReader, webFeedPrefix string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -47,13 +48,14 @@ func SubscriptionGetHandler(reader SourceDetailReader) http.Handler {
 
 		now := time.Now().UTC()
 		row, err := reader.GetUserSourceWithStats(r.Context(), db.GetUserSourceWithStatsParams{
-			Did:       sess.Data.AccountDID.String(),
-			Rkey:      rkey,
-			Now:       now.Format(time.RFC3339),
-			Cutoff7d:  now.AddDate(0, 0, -7).Format(time.RFC3339),
-			Cutoff28d: now.AddDate(0, 0, -28).Format(time.RFC3339),
-			Cutoff56d: now.AddDate(0, 0, -56).Format(time.RFC3339),
-			Cutoff84d: now.AddDate(0, 0, -84).Format(time.RFC3339),
+			Did:           sess.Data.AccountDID.String(),
+			Rkey:          rkey,
+			Now:           now.Format(time.RFC3339),
+			Cutoff7d:      now.AddDate(0, 0, -7).Format(time.RFC3339),
+			Cutoff28d:     now.AddDate(0, 0, -28).Format(time.RFC3339),
+			Cutoff56d:     now.AddDate(0, 0, -56).Format(time.RFC3339),
+			Cutoff84d:     now.AddDate(0, 0, -84).Format(time.RFC3339),
+			WebFeedPrefix: webFeedPrefix,
 		})
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -117,23 +119,26 @@ func SubscriptionEntriesHandler(reader SourceEntriesReader) http.Handler {
 
 func sourceDetailRowToWire(row db.GetUserSourceWithStatsRow, now time.Time) SubscriptionDetailWire {
 	wire := subscriptionStatsRowToWire(subscriptionStatsFields{
-		Rkey:             row.Rkey,
-		AtUri:            row.AtUri,
-		FeedUrl:          row.FeedUrl,
-		Kind:             row.Kind,
-		Title:            row.Title,
-		IsPrimary:        row.IsPrimary,
-		Tags:             row.Tags,
-		SiteUrl:          row.SiteUrl,
-		IconUrl:          row.IconUrl,
-		CatalogTitle:     row.CatalogTitle,
-		LastPublishedAt:  row.LastPublishedAt,
-		FirstPublishedAt: row.FirstPublishedAt,
-		Count7d:          row.Count7d,
-		Count28d:         row.Count28d,
-		Count56d:         row.Count56d,
-		Count84d:         row.Count84d,
+		Rkey:                row.Rkey,
+		AtUri:               row.AtUri,
+		FeedUrl:             row.FeedUrl,
+		Kind:                row.Kind,
+		Title:               row.Title,
+		IsPrimary:           row.IsPrimary,
+		Tags:                row.Tags,
+		SiteUrl:             row.SiteUrl,
+		IconUrl:             row.IconUrl,
+		CatalogTitle:        row.CatalogTitle,
+		LastFetchedAt:       row.LastFetchedAt,
+		ConsecutiveFailures: row.ConsecutiveFailures,
+		LastPublishedAt:     row.LastPublishedAt,
+		FirstPublishedAt:    row.FirstPublishedAt,
+		Count7d:             row.Count7d,
+		Count28d:            row.Count28d,
+		Count56d:            row.Count56d,
+		Count84d:            row.Count84d,
 	}, now)
+	wire = withSourceHealth(wire, row.ConsecutiveFailures, row.NextFetchAt, row.WebHealth, row.WebHealthReason)
 	return SubscriptionDetailWire{
 		SubscriptionWire: wire,
 		TotalEntries:     row.TotalEntries,

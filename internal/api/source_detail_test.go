@@ -18,6 +18,7 @@ type fakeSourceDetail struct {
 	subRows map[string]map[string]db.UserSubscription          // did → rkey → row
 	entries map[string][]db.ListEntriesForSourceRow            // feed_url → rows
 	err     error
+	params  db.GetUserSourceWithStatsParams
 }
 
 func newFakeSourceDetail() *fakeSourceDetail {
@@ -29,6 +30,7 @@ func newFakeSourceDetail() *fakeSourceDetail {
 }
 
 func (f *fakeSourceDetail) GetUserSourceWithStats(_ context.Context, arg db.GetUserSourceWithStatsParams) (db.GetUserSourceWithStatsRow, error) {
+	f.params = arg
 	if f.err != nil {
 		return db.GetUserSourceWithStatsRow{}, f.err
 	}
@@ -86,7 +88,7 @@ func TestSubscriptionGet_HappyPath(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake))
+	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake, ""))
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions/3la", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -132,10 +134,52 @@ func TestSubscriptionGet_HappyPath(t *testing.T) {
 	}
 }
 
+// The detail page shows the same health as the Sources list, so both read it through one rule.
+func TestSubscriptionGet_CarriesFetchAndGeneratedHealth(t *testing.T) {
+	const prefix = "https://app.example.com/web/"
+	next := "2026-10-14T15:00:00Z"
+	health, reason := "needs_attention", "Morgenblau isn't sure which links are posts"
+	fake := newFakeSourceDetail()
+	fake.rows["did:plc:alice"] = map[string]db.GetUserSourceWithStatsRow{
+		"failing":   {Rkey: "failing", FeedUrl: "https://news.example.com/feed.xml", ConsecutiveFailures: 2, NextFetchAt: &next},
+		"generated": {Rkey: "generated", FeedUrl: prefix + "generated", LastFetchedAt: &next, WebHealth: &health, WebHealthReason: &reason},
+		"waiting":   {Rkey: "waiting", FeedUrl: "https://new.example.com/feed.xml"},
+	}
+	mux := http.NewServeMux()
+	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake, prefix))
+
+	get := func(rkey string) SubscriptionDetailWire {
+		t.Helper()
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions/"+rkey, nil), "did:plc:alice", "sid-1"))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d, body = %s", rkey, rr.Code, rr.Body.String())
+		}
+		var got SubscriptionDetailWire
+		if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if fake.params.WebFeedPrefix != prefix {
+			t.Fatalf("web feed prefix = %q, want %q", fake.params.WebFeedPrefix, prefix)
+		}
+		return got
+	}
+
+	if got := get("failing"); got.FetchStatus != "unavailable" || got.NextFetchAt != next || got.Generated != nil {
+		t.Errorf("failing source = %+v", got.SubscriptionWire)
+	}
+	if got := get("generated"); got.FetchStatus != "ready" || got.Generated == nil || got.Generated.Health != health || got.Generated.HealthReason != reason {
+		t.Errorf("generated source = %+v", got.SubscriptionWire)
+	}
+	if got := get("waiting"); got.FetchStatus != "waiting" || got.NextFetchAt != "" {
+		t.Errorf("unfetched source = %+v", got.SubscriptionWire)
+	}
+}
+
 func TestSubscriptionGet_NotFound_404(t *testing.T) {
 	fake := newFakeSourceDetail()
 	mux := http.NewServeMux()
-	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake))
+	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake, ""))
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions/missing", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -153,7 +197,7 @@ func TestSubscriptionGet_ForeignRkey_404(t *testing.T) {
 		"3la": {Did: "did:plc:bob", Rkey: "3la", FeedUrl: "https://bob.test/feed", Title: &bobTitle},
 	}
 	mux := http.NewServeMux()
-	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake))
+	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake, ""))
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions/3la", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()

@@ -99,7 +99,7 @@ export function AppHeader() {
                     )}
                 </div>
             </header>
-            <nav ref={modeNavRef} aria-label="Modes" className="app-mode-nav text-sm">
+            <nav ref={modeNavRef} aria-label="Modes" className="app-mode-nav">
                 {APP_MODES.map((mode) => {
                     const active = current === mode;
                     const { Icon, color, tabSize } = artwork[mode.href];

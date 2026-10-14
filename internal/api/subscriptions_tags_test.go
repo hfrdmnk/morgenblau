@@ -302,7 +302,7 @@ func TestSubscriptionsTags_RouteWinsOverRkeyWildcard(t *testing.T) {
 	fakeDetail := newFakeSourceDetail()
 	mux := http.NewServeMux()
 	mux.Handle("GET /api/subscriptions/tags", SubscriptionsTagsHandler(idx))
-	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fakeDetail))
+	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fakeDetail, ""))
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions/tags", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()

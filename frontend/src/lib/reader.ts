@@ -6,7 +6,7 @@ export type ReaderEntry = {
     publishedAt: string;
     body: string | null;
     metadata?: string | null;
-    source: { title: string | null; siteUrl: string | null; feedUrl?: string };
+    source: { kind?: string; id?: string; rkey?: string; title: string | null; siteUrl: string | null; feedUrl?: string };
     newsletter?: {
         messageId: string;
         senderName: string | null;

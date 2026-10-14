@@ -60,8 +60,8 @@ type Querier interface {
 	GetUserSave(ctx context.Context, arg GetUserSaveParams) (UserSave, error)
 	GetUserSaveByItemURL(ctx context.Context, arg GetUserSaveByItemURLParams) (UserSave, error)
 	// Single-source counterpart to ListUserSourcesWithStats, keyed by (did, rkey).
-	// Carries the same windowed counts plus total_entries and saved_by_you so the
-	// source detail page can render its stat row in one query.
+	// Carries the same windowed counts and health plus total_entries and
+	// saved_by_you so the source detail page can render its stat row in one query.
 	GetUserSourceWithStats(ctx context.Context, arg GetUserSourceWithStatsParams) (GetUserSourceWithStatsRow, error)
 	GetUserSubscription(ctx context.Context, arg GetUserSubscriptionParams) (UserSubscription, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserSubscriptionByFeedURLParams) (UserSubscription, error)

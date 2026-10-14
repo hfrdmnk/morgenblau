@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { subscriptionChanges, type GeneratedHealth } from '@/lib/add-source';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 
 export type FeedSource = {
     rkey: string;
@@ -17,6 +17,13 @@ export type FeedSource = {
     generated?: { health: GeneratedHealth; healthReason: string };
 };
 
+export type FeedSourceDetail = FeedSource & {
+    frequency?: string;
+    lastPublishedAt?: string;
+    tags?: string[];
+    totalEntries: number;
+};
+
 export type NewsletterSource = {
     id: string;
     title: string;
@@ -24,13 +31,32 @@ export type NewsletterSource = {
     primary: boolean;
 };
 
+export type NewsletterSourceDetail = NewsletterSource & {
+    senderName: string | null;
+    status: 'active' | 'stopped';
+    lastReceivedAt: string | null;
+    frequency: string;
+    tags: string[];
+    issueCount: number;
+};
+
+export type SourceEntry = {
+    id: number | string;
+    entrySlug: string;
+    title: string | null;
+    url?: string;
+    contentType: string;
+    publishedAt: string;
+};
+
 type State<T> =
     | { status: 'loading' }
     | { status: 'loaded'; data: T }
-    | { status: 'error' };
+    | { status: 'error'; notFound?: boolean };
 
 export function useSources<T>(path: string, pollInterval = 0) {
-    const [state, setState] = useState<State<T>>({ status: 'loading' });
+    // Keyed by path so a page reused for another source never shows the previous one's data.
+    const [state, setState] = useState<State<T> & { path?: string }>({ status: 'loading' });
     const [attempt, setAttempt] = useState(0);
 
     useEffect(() => {
@@ -43,10 +69,13 @@ export function useSources<T>(path: string, pollInterval = 0) {
         async function load() {
             try {
                 const data = await api<T>(path, { signal: controller.signal });
-                if (!controller.signal.aborted) setState({ status: 'loaded', data });
-            } catch {
+                if (!controller.signal.aborted) setState({ status: 'loaded', data, path });
+            } catch (error) {
                 if (!controller.signal.aborted) {
-                    setState((previous) => previous.status === 'loaded' ? previous : { status: 'error' });
+                    const notFound = error instanceof ApiError && error.status === 404;
+                    setState((previous) => previous.status === 'loaded' && previous.path === path && !notFound
+                        ? previous
+                        : { status: 'error', notFound, path });
                 }
             } finally {
                 if (pollInterval > 0 && !controller.signal.aborted) {
@@ -63,9 +92,10 @@ export function useSources<T>(path: string, pollInterval = 0) {
     }, [path, attempt, pollInterval]);
 
     function retry() {
-        setState({ status: 'loading' });
+        setState({ status: 'loading', path });
         setAttempt((value) => value + 1);
     }
 
-    return { ...state, retry };
+    const current: State<T> = state.path === path ? state : { status: 'loading' };
+    return { ...current, retry };
 }

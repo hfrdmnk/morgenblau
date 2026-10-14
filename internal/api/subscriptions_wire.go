@@ -166,16 +166,20 @@ func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) Subscrip
 		Count56d:            row.Count56d,
 		Count84d:            row.Count84d,
 	}, now)
+	return withSourceHealth(wire, row.ConsecutiveFailures, row.NextFetchAt, row.WebHealth, row.WebHealthReason)
+}
+
+func withSourceHealth(wire SubscriptionWire, failures int64, nextFetchAt, webHealth, webHealthReason *string) SubscriptionWire {
 	wire.FetchStatus = "waiting"
 	if wire.LastFetchedAt != "" {
 		wire.FetchStatus = "ready"
 	}
-	if row.ConsecutiveFailures > 0 {
+	if failures > 0 {
 		wire.FetchStatus = "unavailable"
-		wire.NextFetchAt = derefStr(row.NextFetchAt)
+		wire.NextFetchAt = derefStr(nextFetchAt)
 	}
-	if row.WebHealth != nil {
-		wire.Generated = &GeneratedHealthWire{Health: *row.WebHealth, HealthReason: derefStr(row.WebHealthReason)}
+	if webHealth != nil {
+		wire.Generated = &GeneratedHealthWire{Health: *webHealth, HealthReason: derefStr(webHealthReason)}
 	}
 	return wire
 }

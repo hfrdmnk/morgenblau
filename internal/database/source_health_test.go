@@ -38,6 +38,13 @@ func TestSourceListReadsPersistentFetchHealthAndRecovery(t *testing.T) {
 	if rows[0].ConsecutiveFailures != 1 || rows[0].NextFetchAt == nil || *rows[0].NextFetchAt != next || rows[0].LastFetchedAt != nil {
 		t.Fatalf("first failure lost: %+v", rows[0])
 	}
+	detail, err := q.GetUserSourceWithStats(ctx, db.GetUserSourceWithStatsParams{Did: "did:plc:example", Rkey: "example", Now: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.ConsecutiveFailures != 1 || detail.NextFetchAt == nil || *detail.NextFetchAt != next || detail.LastFetchedAt != nil {
+		t.Fatalf("detail lost the first failure: %+v", detail)
+	}
 	if err := q.UpdateFeedFetchState(ctx, db.UpdateFeedFetchStateParams{FeedUrl: url, LastFetchedAt: &next, UpdatedAt: next}); err != nil {
 		t.Fatal(err)
 	}
@@ -47,6 +54,13 @@ func TestSourceListReadsPersistentFetchHealthAndRecovery(t *testing.T) {
 	}
 	if rows[0].ConsecutiveFailures != 0 || rows[0].NextFetchAt != nil || rows[0].LastFetchedAt == nil || *rows[0].LastFetchedAt != next {
 		t.Fatalf("recovery lost: %+v", rows[0])
+	}
+	detail, err = q.GetUserSourceWithStats(ctx, db.GetUserSourceWithStatsParams{Did: "did:plc:example", Rkey: "example", Now: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.ConsecutiveFailures != 0 || detail.NextFetchAt != nil || detail.LastFetchedAt == nil || *detail.LastFetchedAt != next {
+		t.Fatalf("detail lost the recovery: %+v", detail)
 	}
 	params.Did = "did:plc:other"
 	rows, err = q.ListUserSourcesWithStats(ctx, params)

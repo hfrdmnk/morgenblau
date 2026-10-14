@@ -2,29 +2,30 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
-import { ArrowRightIcon, ExternalLinkIcon } from '@/components/icons';
+import { BackLink } from '@/components/back-link';
+import { ExternalLinkIcon } from '@/components/icons';
 import { NewsletterImages } from '@/components/newsletter-images';
 import { ReaderNotice } from '@/components/reader-notice';
 import { Button } from '@/components/ui/button';
 import { useReaderFont } from '@/hooks/use-reader-font';
 import { api, ApiError } from '@/lib/api';
 import { parseDigestDate, toDateKey } from '@/lib/digest-dates';
-import { digestHref, PATHS } from '@/lib/paths';
+import { digestHref, PATHS, readerSourceHref, sourceOrigin } from '@/lib/paths';
 import { hasNewReaderContent, httpURL, readerBody, readerMetadata, youtubeID, type ReaderEntry } from '@/lib/reader';
 import './reader.css';
 
 export function Entry() {
     const { slug = '' } = useParams<{ slug: string }>();
-    const search = useSearch();
-    const from = parseDigestDate(new URLSearchParams(search).get('from'));
+    const from = new URLSearchParams(useSearch()).get('from');
+    const source = sourceOrigin(from);
+    const date = parseDigestDate(from);
 
     return (
         <div className="min-h-dvh bg-background">
             <nav aria-label="Reader" className="mx-auto max-w-3xl px-5 pt-6 sm:px-8 sm:pt-10">
-                <Link className="inline-flex min-h-10 items-center gap-2 rounded-sm text-sm text-muted-foreground hover:text-foreground" href={digestHref(from ? toDateKey(from) : undefined)}>
-                    <ArrowRightIcon className="size-4 rotate-180" />
-                    Back to digest
-                </Link>
+                {source
+                    ? <BackLink href={source} label="Back to source" />
+                    : <BackLink href={digestHref(date ? toDateKey(date) : undefined)} label="Back to digest" />}
             </nav>
             <main className="mx-auto max-w-3xl px-5 pb-24 pt-12 sm:px-8 sm:pt-16" id="reader">
                 <EntryLoader key={slug} slug={slug} />
@@ -202,7 +203,7 @@ function ReaderHeader({ entry }: { entry: ReaderEntry }) {
     const labels: Record<string, string> = { newsletter: ' · Newsletter', video: ' · Video', microblog: ' · Post' };
     return (
         <header className="mb-10">
-            <p className="mb-4 text-sm text-muted-foreground">{source}{labels[entry.contentType]}</p>
+            <p className="mb-4 text-sm text-muted-foreground"><SourceLink entry={entry}>{source}</SourceLink>{labels[entry.contentType]}</p>
             <h1 className="text-3xl font-medium text-balance break-words" id="entry-title">{entryTitle(entry)}</h1>
             <div className="mt-4 flex flex-wrap gap-x-3 gap-y-1 text-sm text-subtle-foreground">
                 {author ? <span>{author}</span> : null}
@@ -211,6 +212,12 @@ function ReaderHeader({ entry }: { entry: ReaderEntry }) {
             <OriginalSource entry={entry} />
         </header>
     );
+}
+
+function SourceLink({ entry, children }: { entry: ReaderEntry; children: string }) {
+    const href = readerSourceHref(entry.source);
+    if (!href) return children;
+    return <Link className="rounded-sm hover:text-foreground" href={href}>{children}</Link>;
 }
 
 function sourceActionLabel(entry: ReaderEntry): string {

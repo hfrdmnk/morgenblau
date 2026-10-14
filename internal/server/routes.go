@@ -62,7 +62,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /api/subscriptions/import", api.SubscriptionsImportHandler(s.db, s.pds, s.sync))
 	mux.Handle("POST /api/subscriptions/export", api.SubscriptionsExportHandler(s.pds))
 	mux.Handle("GET /api/subscriptions/tags", api.SubscriptionsTagsHandler(s.qr))
-	mux.Handle("GET /api/subscriptions/{rkey}", api.SubscriptionGetHandler(s.qr))
+	mux.Handle("GET /api/subscriptions/{rkey}", api.SubscriptionGetHandler(s.qr, webFeedPrefix))
 	mux.Handle("GET /api/subscriptions/{rkey}/entries", api.SubscriptionEntriesHandler(s.qr))
 	mux.Handle("PATCH /api/subscriptions/{rkey}", api.OneCommitPerRequest(api.SubscriptionsPatchHandler(s.qr, s.qw, gated, s.sync)))
 	mux.Handle("DELETE /api/subscriptions/{rkey}", api.OneCommitPerRequest(api.SubscriptionsDeleteHandler(s.qr, s.qw, gated, s.sync)))

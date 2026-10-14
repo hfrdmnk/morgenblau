@@ -2,9 +2,10 @@ import type { ReactNode } from 'react';
 import { Link } from 'wouter';
 
 import { FeedHealth, GeneratedNote } from '@/components/feed-health';
-import { Button } from '@/components/ui/button';
+import { ItemList, ListError, ListItem, ListSkeleton } from '@/components/item-list';
 import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-sources';
-import { PATHS } from '@/lib/paths';
+import { newsletterSourceHref, PATHS, sourceHref } from '@/lib/paths';
+import { displayURL } from '@/lib/source-display';
 
 export function Sources() {
     return (
@@ -22,15 +23,14 @@ function FeedList() {
         <SourceSection title="Feeds">
             {state.status === 'loaded' ? (
                 state.data.length ? (
-                    <ul className="space-y-8">
+                    <ItemList>
                         {state.data.map((source) => (
-                            <SourceRow key={source.rkey} title={source.title}
+                            <SourceRow key={source.rkey} href={sourceHref(source.rkey)} title={source.title}
                                 identity={source.siteUrl || source.feedUrl} favicon={source.faviconUrl}
-                                primary={source.primary} note={<GeneratedNote source={source} />}>
-                                <FeedHealth source={source} />
-                            </SourceRow>
+                                primary={source.primary} health={<FeedHealth source={source} />}
+                                note={<GeneratedNote source={source} />} />
                         ))}
-                    </ul>
+                    </ItemList>
                 ) : <p className="text-sm text-muted-foreground">No feeds yet. <Link href={PATHS.import} className="underline underline-offset-4">Import feeds</Link> to get started.</p>
             ) : <ListStatus label="feeds" state={state} />}
         </SourceSection>
@@ -68,40 +68,25 @@ function SourceSection({ title, children }: { title: string; children: ReactNode
 
 function NewsletterRows({ sources, stopped = false }: { sources: NewsletterSource[]; stopped?: boolean }) {
     return (
-        <ul className="space-y-8">
+        <ItemList>
             {sources.map((source) => (
-                <SourceRow key={source.id} title={source.title} identity={source.senderAddress}
-                    primary={!stopped && source.primary} />
+                <SourceRow key={source.id} href={newsletterSourceHref(source.id)} title={source.title}
+                    identity={source.senderAddress} primary={!stopped && source.primary} />
             ))}
-        </ul>
+        </ItemList>
     );
 }
 
-function SourceRow({ title, identity, favicon, primary, note, children }: {
-    title?: string; identity: string; favicon?: string; primary: boolean; note?: ReactNode; children?: ReactNode;
+function SourceRow({ href, title, identity, favicon, primary, health, note }: {
+    href: string; title?: string; identity: string; favicon?: string; primary: boolean; health?: ReactNode; note?: ReactNode;
 }) {
     return (
-        <li>
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <h3 className="min-w-0 break-words text-xl font-medium [overflow-wrap:anywhere]">{title || identity}</h3>
-                {primary ? <span className="text-xs text-muted-foreground">Primary</span> : null}
-            </div>
-            <div className="mt-2 flex items-center gap-2.5 text-sm text-subtle-foreground">
-                {favicon ? <img alt="" src={favicon} loading="lazy" referrerPolicy="no-referrer" className="size-4 shrink-0 rounded-sm object-cover" onError={(event) => { event.currentTarget.hidden = true; }} /> : null}
-                <span className="min-w-0 break-all">{identity.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
-                {children}
-            </div>
-            {note}
-        </li>
+        <ListItem href={href} title={title || displayURL(identity)} icon={favicon}
+            aside={primary ? 'Primary' : undefined} note={note}
+            meta={displayURL(identity)} status={health} />
     );
 }
 
 function ListStatus({ label, state }: { label: string; state: { status: 'loading' | 'error'; retry: () => void } }) {
-    if (state.status === 'error') return (
-        <div role="alert" className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-            <p>Couldn’t load {label}.</p>
-            <Button onClick={state.retry} variant="secondary" size="sm">Try again</Button>
-        </div>
-    );
-    return <div role="status" aria-label={`Loading ${label}`} className="space-y-6">{[64, 48].map((width) => <div key={width} className="space-y-3"><div className="h-6 rounded bg-muted" style={{ width: `${width}%` }} /><div className="h-4 w-1/3 rounded bg-muted" /></div>)}</div>;
+    return state.status === 'error' ? <ListError label={label} retry={state.retry} /> : <ListSkeleton label={`Loading ${label}`} />;
 }

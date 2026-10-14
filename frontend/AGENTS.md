@@ -37,6 +37,10 @@ paths:
 - `eslint.config.js` and the `lint` script in `package.json` own enforcement; fix violations in code.
 - Shared hooks live in `src/hooks/`, since a component file may export only components.
 
+## Loading
+
+- A page shows its own skeleton from the first frame. Import pages eagerly; never put a generic "Loading" screen in front of one. A `Suspense` fallback is `null` or the page's `*Skeleton`, and `eslint.config.js` enforces that.
+
 ## API
 
 - `api()` in `src/lib/api.ts` is the API boundary; `eslint.config.js` owns its enforcement. Review cancellable calls for a passed `signal`.
