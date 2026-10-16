@@ -4,6 +4,7 @@ import {
     addCalendarDays,
     digestDateRange,
     parseDigestDate,
+    selectedDigestDate,
     toDateKey,
 } from './digest-dates';
 
@@ -46,6 +47,15 @@ describe('digest dates', () => {
             '2026-09-11',
             '2026-09-12',
         ]);
+    });
+
+    test('the digest shows the requested day, or today for a future or malformed one', () => {
+        const today = new Date(2026, 8, 12);
+
+        expect(toDateKey(selectedDigestDate('?date=2026-09-08', today))).toBe('2026-09-08');
+        expect(toDateKey(selectedDigestDate('?date=2026-09-13', today))).toBe('2026-09-12');
+        expect(toDateKey(selectedDigestDate('?date=2026-09-31', today))).toBe('2026-09-12');
+        expect(toDateKey(selectedDigestDate('', today))).toBe('2026-09-12');
     });
 
     test('calendar arithmetic crosses month boundaries', () => {

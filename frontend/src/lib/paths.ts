@@ -1,3 +1,5 @@
+import { parseDigestDate } from '@/lib/digest-dates';
+
 export const PATHS = {
     login: '/login',
     digest: '/',
@@ -13,9 +15,9 @@ export const PATHS = {
 } as const;
 
 export const APP_MODES = [
-    { label: 'Digest', href: PATHS.digest },
-    { label: 'Sources', href: PATHS.sources },
-    { label: 'Library', href: PATHS.library },
+    { label: 'Digest', href: PATHS.digest, shortcut: 'Shift+D' },
+    { label: 'Sources', href: PATHS.sources, shortcut: 'Shift+S' },
+    { label: 'Library', href: PATHS.library, shortcut: 'Shift+L' },
 ] as const;
 
 export function appMode(path: string) {
@@ -54,4 +56,23 @@ export function sourceOrigin(from: string | null): string | null {
 
 export function digestHref(date?: string): string {
     return date ? `${PATHS.digest}?date=${encodeURIComponent(date)}` : PATHS.digest;
+}
+
+const NEWSLETTER_PAGE = /^\/sources\/newsletters\/(.+)$/;
+
+// The API path that returns the list behind an entry's `from`, in the order that list shows it.
+export function entryListPath(from: string | null, timezone: string): string | null {
+    const source = sourceOrigin(from);
+    if (source) {
+        const newsletter = NEWSLETTER_PAGE.exec(source);
+        return newsletter
+            ? `/api/newsletters/${newsletter[1]}/entries`
+            : `/api/subscriptions/${source.slice(PATHS.sources.length + 1)}/entries`;
+    }
+    if (!from || !parseDigestDate(from)) return null;
+    return digestApiPath(from, timezone);
+}
+
+export function digestApiPath(date: string, timezone: string): string {
+    return `/api/digest?${new URLSearchParams({ date, timezone })}`;
 }

@@ -9,6 +9,7 @@ Help article: none
 - `digest-today` `/` lists today's entries, or `Nothing was published here today.` when empty, or `New entries are still being collected.` while a sync runs.
 - `digest-date` `/?date=YYYY-MM-DD` shows that day; the UI shows today for a future date.
 - `date-nav` the header's `Digest date` navigation (`DigestDateNav` in `frontend/src/components/app-header.tsx`, only on `/`) links three days before the selected day and up to three after it, never past today (`digestDateRange` in `frontend/src/lib/digest-dates.ts`); the selected one has `aria-current="date"`.
+- `day-keys` on `/`, `Shift+ArrowLeft`/`Shift+ArrowRight` (or `h`/`l`) move one day and `Shift+T` goes to today; past today an info toast answers instead. `Shift+D`/`Shift+S`/`Shift+L` switch modes anywhere signed in (`APP_MODES` in `frontend/src/lib/paths.ts`); `shortcutKey` in `frontend/src/lib/shortcuts.ts` leaves keys alone in text fields and dialogs.
 - `digest-api` `GET /api/digest?date=&timezone=` returns `{date, entries, hasActiveJob}`. It does not clamp a future date (it answers that day, empty); a bad `date` or unknown `timezone` is `400`.
 - `entry-api` `GET /api/entries/{slug}` returns one entry (feed entry or newsletter message) for the reader.
 

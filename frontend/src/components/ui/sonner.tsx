@@ -1,6 +1,6 @@
 import { Toaster as Sonner } from 'sonner';
 
-import { AlertIcon, CheckIcon, LoadingIcon } from '@/components/icons';
+import { AlertIcon, CheckIcon, InfoIcon, LoadingIcon } from '@/components/icons';
 
 export function Toaster() {
     return (
@@ -10,7 +10,7 @@ export function Toaster() {
                 success: <CheckIcon className="size-4 text-success-icon" />,
                 error: <AlertIcon className="size-4 text-error-icon" />,
                 warning: <AlertIcon className="size-4 text-warning" />,
-                info: <AlertIcon className="size-4 text-neutral" />,
+                info: <InfoIcon className="size-4 text-neutral" />,
                 loading: <LoadingIcon className="size-4 text-neutral" />,
             }}
             toastOptions={{

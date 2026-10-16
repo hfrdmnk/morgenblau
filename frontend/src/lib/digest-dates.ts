@@ -38,6 +38,15 @@ export function digestDateRange(selected: Date, today: Date): Date[] {
     return dates;
 }
 
+export function startOfToday(): Date {
+    return startOfDay(new Date());
+}
+
+export function selectedDigestDate(search: string, today: Date): Date {
+    const requested = parseDigestDate(new URLSearchParams(search).get('date'));
+    return requested && requested <= today ? requested : today;
+}
+
 function startOfDay(date: Date): Date {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { subscriptionChanges } from '@/lib/add-source';
 import { api } from '@/lib/api';
+import { digestApiPath } from '@/lib/paths';
 
 type Source = {
     title: string | null;
@@ -47,12 +48,11 @@ export function useDigest(date: string) {
         let timer: ReturnType<typeof setTimeout>;
         if (collection.current.date !== date) collection.current = { date, active: false };
         let collecting = collection.current.active;
-        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const params = new URLSearchParams({ date, timezone });
+        const path = digestApiPath(date, Intl.DateTimeFormat().resolvedOptions().timeZone);
 
         async function load() {
             try {
-                const data = await api<DigestResponse>(`/api/digest?${params}`, { signal: controller.signal });
+                const data = await api<DigestResponse>(path, { signal: controller.signal });
                 if (controller.signal.aborted) return;
                 setState({ status: 'loaded', data, date });
                 collecting = data.hasActiveJob;

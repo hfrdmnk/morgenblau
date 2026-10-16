@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { entryHref, newsletterSourceHref, readerSourceHref, sourceHref, sourceOrigin } from './paths';
+import { entryHref, entryListPath, newsletterSourceHref, readerSourceHref, sourceHref, sourceOrigin } from './paths';
 
 describe('reader origin', () => {
     test('a source page round-trips through the entry link', () => {
@@ -22,5 +22,19 @@ describe('reader source link', () => {
         expect(readerSourceHref({ kind: 'newsletter', id: 'nl_example', rkey: 'ignored' })).toBe('/sources/newsletters/nl_example');
         expect(readerSourceHref({ rkey: '3kexample2a' })).toBe('/sources/3kexample2a');
         expect(readerSourceHref({ kind: 'newsletter' })).toBeNull();
+    });
+});
+
+describe('entry list', () => {
+    test('an entry steps through the list it was opened from', () => {
+        expect(entryListPath(sourceHref('3kexample2a'), 'Europe/Berlin')).toBe('/api/subscriptions/3kexample2a/entries');
+        expect(entryListPath(newsletterSourceHref('nl_example'), 'Europe/Berlin')).toBe('/api/newsletters/nl_example/entries');
+        expect(entryListPath('2026-10-14', 'Europe/Berlin')).toBe('/api/digest?date=2026-10-14&timezone=Europe%2FBerlin');
+    });
+
+    test('an entry without a trusted origin has no list', () => {
+        for (const from of [null, '', '2026-02-30', '/library', '/sources']) {
+            expect(entryListPath(from, 'Europe/Berlin')).toBeNull();
+        }
     });
 });

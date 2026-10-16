@@ -5,6 +5,7 @@ import { AppHeader } from '@/components/app-header';
 import { ErrorState } from '@/components/status-state';
 import { Button } from '@/components/ui/button';
 import { useNavigationScrollRestoration } from '@/hooks/use-app-location';
+import { useModeShortcuts } from '@/hooks/use-shortcuts';
 import { api, ApiError } from '@/lib/api';
 import {
     AppProfileContext,
@@ -41,6 +42,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     const [attempt, setAttempt] = useState(0);
     const [state, setState] = useState<AppProfileState>({ kind: 'loading' });
     useNavigationScrollRestoration();
+    useModeShortcuts();
 
     useEffect(() => {
         const controller = new AbortController();

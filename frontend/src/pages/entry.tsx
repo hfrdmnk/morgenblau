@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'wouter';
+import { Link, useLocation, useParams } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
 import { BackLink } from '@/components/back-link';
@@ -7,7 +7,9 @@ import { ExternalLinkIcon } from '@/components/icons';
 import { NewsletterImages } from '@/components/newsletter-images';
 import { ReaderNotice } from '@/components/reader-notice';
 import { Button } from '@/components/ui/button';
+import { useEntrySteps } from '@/hooks/use-entry-steps';
 import { useReaderFont } from '@/hooks/use-reader-font';
+import { useModeShortcuts, useShortcuts } from '@/hooks/use-shortcuts';
 import { api, ApiError } from '@/lib/api';
 import { parseDigestDate, toDateKey } from '@/lib/digest-dates';
 import { digestHref, PATHS, readerSourceHref, sourceOrigin } from '@/lib/paths';
@@ -19,13 +21,16 @@ export function Entry() {
     const from = new URLSearchParams(useSearch()).get('from');
     const source = sourceOrigin(from);
     const date = parseDigestDate(from);
+    const back = source ?? digestHref(date ? toDateKey(date) : undefined);
+    const [, navigate] = useLocation();
+    useModeShortcuts();
+    useEntrySteps(slug, from);
+    useShortcuts({ Escape: () => navigate(back) });
 
     return (
         <div className="min-h-dvh bg-background">
             <nav aria-label="Reader" className="mx-auto max-w-3xl px-5 pt-6 sm:px-8 sm:pt-10">
-                {source
-                    ? <BackLink href={source} label="Back to source" />
-                    : <BackLink href={digestHref(date ? toDateKey(date) : undefined)} label="Back to digest" />}
+                <BackLink href={back} keyShortcut="Escape" label={source ? 'Back to source' : 'Back to digest'} />
             </nav>
             <main className="mx-auto max-w-3xl px-5 pb-24 pt-12 sm:px-8 sm:pt-16" id="reader">
                 <EntryLoader key={slug} slug={slug} />

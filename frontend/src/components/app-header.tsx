@@ -13,7 +13,7 @@ import {
 import type { AppNavigationState } from '@/hooks/use-app-location';
 import { useAppProfile } from '@/hooks/use-app-profile';
 import { useHeightProperty } from '@/hooks/use-height-property';
-import { addCalendarDays, digestDateRange, parseDigestDate, toDateKey } from '@/lib/digest-dates';
+import { addCalendarDays, digestDateRange, selectedDigestDate, startOfToday, toDateKey } from '@/lib/digest-dates';
 import { APP_MODES, appMode, digestHref, isSettingsPath, PATHS } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 
@@ -108,6 +108,7 @@ export function AppHeader() {
                             key={mode.href}
                             href={mode.href}
                             aria-current={active ? 'page' : undefined}
+                            aria-keyshortcuts={mode.shortcut}
                             className={cn(
                                 'app-mode-link',
                                 active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
@@ -167,10 +168,8 @@ function SettingsNav({ location }: { location: string }) {
 
 function DigestDateNav() {
     const search = useSearch();
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const requestedDate = parseDigestDate(new URLSearchParams(search).get('date'));
-    const selectedDate = requestedDate && requestedDate <= today ? requestedDate : today;
+    const today = startOfToday();
+    const selectedDate = selectedDigestDate(search, today);
     const todayKey = toDateKey(today);
     const selectedKey = toDateKey(selectedDate);
     const dates = digestDateRange(selectedDate, today);

@@ -506,6 +506,9 @@ export function Styleguide() {
                             <Button variant="secondary" onClick={() => toast.error('Could not import sources', { description: 'Please try again.' })}>
                                 Show error toast
                             </Button>
+                            <Button variant="secondary" onClick={() => toast.info('No next article in this digest')}>
+                                Show info toast
+                            </Button>
                         </div>
                     </Section>
 

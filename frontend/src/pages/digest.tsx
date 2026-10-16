@@ -1,19 +1,21 @@
+import { useLocation } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
 import { ItemList, ListItem, ListSkeleton } from '@/components/item-list';
 import { useDigest, type DigestEntry } from '@/hooks/use-digest';
-import { parseDigestDate, toDateKey } from '@/lib/digest-dates';
-import { entryHref } from '@/lib/paths';
+import { useShortcuts } from '@/hooks/use-shortcuts';
+import { addCalendarDays, selectedDigestDate, startOfToday, toDateKey } from '@/lib/digest-dates';
+import { digestHref, entryHref } from '@/lib/paths';
+import { showShortcutNotice } from '@/lib/shortcuts';
 
 const dayName = new Intl.DateTimeFormat(undefined, { weekday: 'long' });
 export function Digest() {
     const search = useSearch();
     const today = startOfToday();
-    const requestedDate = parseDigestDate(new URLSearchParams(search).get('date'));
-    const selectedDate =
-        requestedDate && requestedDate <= today ? requestedDate : today;
+    const selectedDate = selectedDigestDate(search, today);
     const selectedKey = toDateKey(selectedDate);
     const digest = useDigest(selectedKey);
+    useDayShortcuts(selectedDate, today);
 
     return (
         <main className="mx-auto w-full max-w-3xl px-5 pb-20 pt-20 sm:px-8 md:pt-24">
@@ -23,6 +25,25 @@ export function Digest() {
             <DigestContent date={selectedKey} state={digest} />
         </main>
     );
+}
+
+function useDayShortcuts(selected: Date, today: Date) {
+    const [, navigate] = useLocation();
+    const todayKey = toDateKey(today);
+    const isToday = toDateKey(selected) === todayKey;
+    const show = (date: Date) => {
+        const key = toDateKey(date);
+        navigate(digestHref(key === todayKey ? undefined : key));
+    };
+    const earlier = () => show(addCalendarDays(selected, -1));
+    const later = () => isToday ? showShortcutNotice('Today is the latest digest') : show(addCalendarDays(selected, 1));
+    useShortcuts({
+        'Shift+ArrowLeft': earlier,
+        h: earlier,
+        'Shift+ArrowRight': later,
+        l: later,
+        'Shift+T': () => isToday ? showShortcutNotice('Already showing today') : show(today),
+    });
 }
 
 function DigestContent({ date, state }: { date: string; state: ReturnType<typeof useDigest> }) {
@@ -73,11 +94,6 @@ function DigestItem({ date, entry }: { date: string; entry: DigestEntry }) {
             title={entry.title || 'Untitled'}
         />
     );
-}
-
-function startOfToday(): Date {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
 function hostLabel(value?: string | null): string {

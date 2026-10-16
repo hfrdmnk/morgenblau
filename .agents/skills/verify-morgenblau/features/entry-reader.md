@@ -7,7 +7,8 @@ Help article: none
 ## Sub-features
 
 - `reader` `/entry/<slug>` (`frontend/src/pages/entry.tsx`) shows the title, source line, body and an original link (`Read original` and others, see `sourceActionLabel`).
-- `back` the `Reader` navigation's `Back to digest` returns to `/?date=<from>`.
+- `back` the `Reader` navigation's `Back to digest` returns to `/?date=<from>`; `Escape` follows the same link.
+- `step` `Shift+ArrowDown`/`Shift+ArrowUp` (or `j`/`k`) open the next/previous entry of the list in `from` (a digest day or a source page), keeping `from`; at either end an info toast says there is none (`useEntrySteps` in `frontend/src/hooks/use-entry-steps.ts`).
 - `extract` a blog post with a web URL shows `Load full article`; it calls `POST /api/entries/{slug}/extract`, which fetches the page, stores `feed_entries.extracted_body` and returns the entry. The page also extracts on load when the entry has no body.
 - `inline-assets` newsletter inline (CID) images load from `GET /api/newsletter-assets/{token}`.
 - `remote-images` a newsletter with remote images shows `Remote images are blocked` and `Load images`, which calls `POST /api/newsletters/messages/{id}/images`.
