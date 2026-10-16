@@ -8,9 +8,9 @@ import {
     ArrowRightIcon,
     DigestIcon,
     LibraryIcon,
-    SettingsIcon,
     SourcesIcon,
 } from '@/components/icons';
+import type { AppNavigationState } from '@/hooks/use-app-location';
 import { useAppProfile } from '@/hooks/use-app-profile';
 import { useHeightProperty } from '@/hooks/use-height-property';
 import { addCalendarDays, digestDateRange, parseDigestDate, toDateKey } from '@/lib/digest-dates';
@@ -66,23 +66,23 @@ export function AppHeader() {
     useHeightProperty(headerRef, '--app-header-height');
     useHeightProperty(modeNavRef, '--app-mode-nav-height');
     const current = appMode(location);
-    const mark = current
-        ? artwork[current.href]
-        : { Icon: SettingsIcon, color: 'text-muted-foreground', size: 'size-8' };
+    const mark = current ? artwork[current.href] : null;
 
     return (
         <>
             <header ref={headerRef} className="app-header grid grid-cols-[1fr_auto] items-start gap-y-6 px-5 sm:px-8 md:grid-cols-3 md:px-14">
-                <span className="flex min-h-10 items-center text-base text-muted-foreground md:hidden">
-                    Morgenblau
-                </span>
-                <span
-                    aria-label={current?.label ?? 'Settings'}
-                    role="img"
-                    className="relative hidden size-10 md:block"
-                >
-                    <mark.Icon className={cn('absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2', mark.size, mark.color)} />
-                </span>
+                {current && mark ? (
+                    <>
+                        <span className="flex min-h-10 items-center text-base text-muted-foreground md:hidden">
+                            Morgenblau
+                        </span>
+                        <span aria-label={current.label} role="img" className="relative hidden size-10 md:block">
+                            <mark.Icon className={cn('absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2', mark.size, mark.color)} />
+                        </span>
+                    </>
+                ) : (
+                    <SettingsReturnLink />
+                )}
                 {location === PATHS.digest ? <DigestDateNav /> : null}
                 {isSettingsPath(location) ? <SettingsNav location={location} /> : null}
                 <div className="col-start-2 row-start-1 flex min-h-10 items-center justify-end gap-4 md:col-start-3">
@@ -122,6 +122,22 @@ export function AppHeader() {
                 })}
             </nav>
         </>
+    );
+}
+
+function SettingsReturnLink() {
+    const state: AppNavigationState | null = window.history.state;
+    const returnTo = state?.settingsReturn ?? { href: PATHS.digest, scrollY: 0 };
+    const label = appMode(returnTo.href.split('?')[0])?.label ?? 'Digest';
+    return (
+        <Link
+            href={returnTo.href}
+            state={{ scrollY: returnTo.scrollY }}
+            className="inline-flex min-h-10 items-center gap-2 justify-self-start md:min-h-11 text-sm text-muted-foreground hover:text-foreground"
+        >
+            <ArrowRightIcon className="size-4 rotate-180" />
+            Back to {label}
+        </Link>
     );
 }
 

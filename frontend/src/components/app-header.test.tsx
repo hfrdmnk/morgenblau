@@ -166,6 +166,8 @@ test('settings return names the previous mode and direct entry falls back to dig
     const container = await render('/sources');
     await act(async () => link(container, 'Open settings').click());
     expect(link(container, 'Back to Sources').getAttribute('href')).toBe('/sources');
+    expect(link(container, 'Back to Sources').closest('header')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Settings"][role="img"]')).toBeNull();
     act(() => unmount());
 
     const direct = await render('/settings/import');
