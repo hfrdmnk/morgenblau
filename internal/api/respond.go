@@ -25,6 +25,7 @@ const (
 	codeUnavailable     = "unavailable"
 	codeRateLimited     = "rate_limited"
 	codeSetupInFlight   = "setup_in_flight"
+	codeBrowserBuilt    = "browser_built"
 )
 
 // errorEnvelope is the single error body shape: a stable machine `code` plus a human `message`.

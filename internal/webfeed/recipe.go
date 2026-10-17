@@ -38,6 +38,7 @@ type Recipe struct {
 	CSS         *CSSRecipe  `json:"css"`
 	ExcludeURLs []string    `json:"exclude_urls"`
 	Lang        string      `json:"lang"`
+	Lazy        bool        `json:"lazy,omitempty"` // posts load through a Livewire lazy request, so the shell's validators say nothing
 	Order       Order       `json:"order"`
 	DateSource  DateSource  `json:"date_source"`
 	Fingerprint Fingerprint `json:"fingerprint"`

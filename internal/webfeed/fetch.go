@@ -69,6 +69,12 @@ func (s *session) setLang(lang string) {
 	s.mu.Unlock()
 }
 
+func (s *session) language() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lang
+}
+
 // cacheKey includes the language, since Accept-Language can change what a page returns.
 func cacheKey(lang, rawURL string) string { return lang + " " + rawURL }
 

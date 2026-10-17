@@ -92,7 +92,7 @@ func TestPollDuePublishesNewItemsOnOK(t *testing.T) {
 		t.Fatalf("polled %d sources, want 1", n)
 	}
 	call := env.gen.polls[0]
-	if string(call.recipe) != `{"version":1,"mode":"streams"}` {
+	if string(call.recipe) != exampleRecipe {
 		t.Errorf("recipe passed to poll = %s", call.recipe)
 	}
 	if len(call.prev.History) != 1 || len(call.prev.History[0].URLs) != 3 || call.prev.History[0].URLTemplate != "news.example.com/posts/*" {

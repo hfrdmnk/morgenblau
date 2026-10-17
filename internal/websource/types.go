@@ -59,6 +59,8 @@ type Cost struct {
 }
 
 type Generated struct {
+	// ListingURL is the listing the setup ended on: a section page when it moved there from the one it was given.
+	ListingURL   string
 	Recipe       json.RawMessage
 	Title        string
 	SiteURL      string
@@ -195,6 +197,8 @@ func (e *RateLimitError) Error() string { return "websource: too many generation
 var (
 	ErrInvalidURL = errors.New("websource: invalid url")
 	ErrGeneration = errors.New("websource: generation failed")
+	// ErrBrowserBuilt is a listing that builds its post list in the browser, so there is nothing to generate a feed from.
+	ErrBrowserBuilt = errors.New("websource: listing is built in the browser")
 	// ErrUnreachable is a generation that failed because the site did not answer, not because it refused us.
 	ErrUnreachable = errors.New("websource: site unreachable")
 	ErrUnavailable = errors.New("websource: feed generation is not available")

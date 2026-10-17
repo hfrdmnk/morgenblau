@@ -194,6 +194,11 @@ type WebSource struct {
 	ServedAt            *string `json:"served_at"`
 }
 
+type WebSourceAlias struct {
+	ListingKey string `json:"listing_key"`
+	SourceID   string `json:"source_id"`
+}
+
 type WebSourceItem struct {
 	SourceID    string  `json:"source_id"`
 	Url         string  `json:"url"`

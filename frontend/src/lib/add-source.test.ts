@@ -284,6 +284,12 @@ test('generation failures read calmly by cause, in house copy', () => {
     expect(generationError(new TypeError('Failed to fetch'))).toBe('Couldn’t generate a feed. Try again.');
 });
 
+test('a site that builds its posts in the browser says so and offers no retry', () => {
+    const built = new ApiError(422, 'browser_built', "This site builds its post list in the browser, so Morgenblau can't follow it yet.");
+    expect(generationError(built)).toBe('This site builds its post list in the browser, so Morgenblau can’t follow it yet.');
+    expect(canRetryGeneration(built)).toBe(false);
+});
+
 test('only a passing fault offers to generate again', () => {
     expect(canRetryGeneration(new ApiError(502, 'upstream_error', 'x'))).toBe(true);
     expect(canRetryGeneration(new ApiError(500, 'internal_error', 'x'))).toBe(true);

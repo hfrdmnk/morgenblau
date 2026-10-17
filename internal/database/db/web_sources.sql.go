@@ -88,6 +88,20 @@ func (q *Queries) CreateWebSource(ctx context.Context, arg CreateWebSourceParams
 	return err
 }
 
+const deleteWebSourceAlias = `-- name: DeleteWebSourceAlias :exec
+DELETE FROM web_source_aliases WHERE listing_key = ?1 AND source_id = ?2
+`
+
+type DeleteWebSourceAliasParams struct {
+	ListingKey string `json:"listing_key"`
+	SourceID   string `json:"source_id"`
+}
+
+func (q *Queries) DeleteWebSourceAlias(ctx context.Context, arg DeleteWebSourceAliasParams) error {
+	_, err := q.db.ExecContext(ctx, deleteWebSourceAlias, arg.ListingKey, arg.SourceID)
+	return err
+}
+
 const deleteWebSourcePolls = `-- name: DeleteWebSourcePolls :exec
 DELETE FROM web_source_polls WHERE source_id = ?
 `
@@ -184,12 +198,17 @@ func (q *Queries) GetWebSource(ctx context.Context, id string) (WebSource, error
 	return i, err
 }
 
-const getWebSourceByListingKey = `-- name: GetWebSourceByListingKey :one
-SELECT id, listing_key, listing_url, site_url, title, recipe, health, health_reason, setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_health_reason, setup_seq, setup_tried_at, last_polled_at, next_poll_at, etag, last_modified, link_set_hash, consecutive_failures, last_checked_at, anchored_by_did, anchored_at, offered_at, served_at FROM web_sources WHERE listing_key = ?
+const getWebSourceByKey = `-- name: GetWebSourceByKey :one
+SELECT ws.id, ws.listing_key, ws.listing_url, ws.site_url, ws.title, ws.recipe, ws.health, ws.health_reason, ws.setup_cost, ws.created_by_did, ws.created_at, ws.updated_at, ws.setup_at, ws.setup_health, ws.setup_health_reason, ws.setup_seq, ws.setup_tried_at, ws.last_polled_at, ws.next_poll_at, ws.etag, ws.last_modified, ws.link_set_hash, ws.consecutive_failures, ws.last_checked_at, ws.anchored_by_did, ws.anchored_at, ws.offered_at, ws.served_at FROM web_sources ws
+LEFT JOIN web_source_aliases a ON a.source_id = ws.id AND a.listing_key = ?1
+WHERE ws.listing_key = ?1 OR a.listing_key IS NOT NULL
+ORDER BY a.listing_key IS NOT NULL
+LIMIT 1
 `
 
-func (q *Queries) GetWebSourceByListingKey(ctx context.Context, listingKey string) (WebSource, error) {
-	row := q.db.QueryRowContext(ctx, getWebSourceByListingKey, listingKey)
+// A listing key finds the source keyed by it, else the source it is an alias of.
+func (q *Queries) GetWebSourceByKey(ctx context.Context, listingKey string) (WebSource, error) {
+	row := q.db.QueryRowContext(ctx, getWebSourceByKey, listingKey)
 	var i WebSource
 	err := row.Scan(
 		&i.ID,
@@ -236,6 +255,21 @@ type InsertModelSpendParams struct {
 
 func (q *Queries) InsertModelSpend(ctx context.Context, arg InsertModelSpendParams) error {
 	_, err := q.db.ExecContext(ctx, insertModelSpend, arg.SpentAt, arg.Kind, arg.Usd)
+	return err
+}
+
+const insertWebSourceAlias = `-- name: InsertWebSourceAlias :exec
+INSERT INTO web_source_aliases (listing_key, source_id) VALUES (?1, ?2)
+ON CONFLICT (listing_key) DO NOTHING
+`
+
+type InsertWebSourceAliasParams struct {
+	ListingKey string `json:"listing_key"`
+	SourceID   string `json:"source_id"`
+}
+
+func (q *Queries) InsertWebSourceAlias(ctx context.Context, arg InsertWebSourceAliasParams) error {
+	_, err := q.db.ExecContext(ctx, insertWebSourceAlias, arg.ListingKey, arg.SourceID)
 	return err
 }
 
@@ -603,6 +637,28 @@ func (q *Queries) ListWebSourcesCreatedSince(ctx context.Context, arg ListWebSou
 	return items, nil
 }
 
+const markWebSourceSectionChecked = `-- name: MarkWebSourceSectionChecked :execrows
+UPDATE web_sources SET
+    recipe = json_set(recipe, '$.setup.section_checked', json('true')),
+    updated_at = ?1
+WHERE id = ?2 AND setup_seq = ?3
+`
+
+type MarkWebSourceSectionCheckedParams struct {
+	UpdatedAt string `json:"updated_at"`
+	ID        string `json:"id"`
+	SetupSeq  int64  `json:"setup_seq"`
+}
+
+// Matches nothing when a setup replaced the source while the check ran; that setup answers for itself.
+func (q *Queries) MarkWebSourceSectionChecked(ctx context.Context, arg MarkWebSourceSectionCheckedParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markWebSourceSectionChecked, arg.UpdatedAt, arg.ID, arg.SetupSeq)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const markWebSourceServed = `-- name: MarkWebSourceServed :exec
 UPDATE web_sources SET served_at = ?1 WHERE id = ?2
 `
@@ -632,7 +688,12 @@ func (q *Queries) MarkWebSourceSetupTried(ctx context.Context, arg MarkWebSource
 }
 
 const offerWebSourceByListingKey = `-- name: OfferWebSourceByListingKey :one
-UPDATE web_sources SET offered_at = ?1 WHERE listing_key = ?2 RETURNING id, listing_key, listing_url, site_url, title, recipe, health, health_reason, setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_health_reason, setup_seq, setup_tried_at, last_polled_at, next_poll_at, etag, last_modified, link_set_hash, consecutive_failures, last_checked_at, anchored_by_did, anchored_at, offered_at, served_at
+UPDATE web_sources SET offered_at = ?1
+WHERE id = COALESCE(
+    (SELECT own.id FROM web_sources own WHERE own.listing_key = ?2),
+    (SELECT a.source_id FROM web_source_aliases a WHERE a.listing_key = ?2)
+)
+RETURNING id, listing_key, listing_url, site_url, title, recipe, health, health_reason, setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_health_reason, setup_seq, setup_tried_at, last_polled_at, next_poll_at, etag, last_modified, link_set_hash, consecutive_failures, last_checked_at, anchored_by_did, anchored_at, offered_at, served_at
 `
 
 type OfferWebSourceByListingKeyParams struct {
@@ -642,6 +703,7 @@ type OfferWebSourceByListingKeyParams struct {
 
 // Finding the source and stamping it are one statement: a reader shown it may follow it any time now, so the sweep
 // must never delete it between the lookup and the stamp.
+// A key a source moved away from finds it through its alias; a source's own key wins over another source's alias.
 func (q *Queries) OfferWebSourceByListingKey(ctx context.Context, arg OfferWebSourceByListingKeyParams) (WebSource, error) {
 	row := q.db.QueryRowContext(ctx, offerWebSourceByListingKey, arg.OfferedAt, arg.ListingKey)
 	var i WebSource
@@ -716,6 +778,20 @@ type PruneWebSourceRepairsParams struct {
 
 func (q *Queries) PruneWebSourceRepairs(ctx context.Context, arg PruneWebSourceRepairsParams) error {
 	_, err := q.db.ExecContext(ctx, pruneWebSourceRepairs, arg.SourceID, arg.Before)
+	return err
+}
+
+const rekeyWebSource = `-- name: RekeyWebSource :exec
+UPDATE web_sources SET listing_key = ?1 WHERE id = ?2
+`
+
+type RekeyWebSourceParams struct {
+	ListingKey string `json:"listing_key"`
+	ID         string `json:"id"`
+}
+
+func (q *Queries) RekeyWebSource(ctx context.Context, arg RekeyWebSourceParams) error {
+	_, err := q.db.ExecContext(ctx, rekeyWebSource, arg.ListingKey, arg.ID)
 	return err
 }
 

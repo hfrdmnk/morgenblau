@@ -15,6 +15,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mmcdole/gofeed"
@@ -206,6 +207,13 @@ func evalSite(ctx context.Context, s site, opts options, e env) result {
 		}
 		client = snapshotDoer{listingURL: s.ListingURL, body: body, next: client}
 	}
+	counter := &countingDoer{next: client}
+	client = counter
+	if opts.explain {
+		defer func() {
+			slog.Info("fetches", "id", s.ID, "requests", counter.requests.Load(), "posts", counter.posts.Load(), "bytes", counter.bytes.Load())
+		}()
+	}
 	if !opts.skipFeed {
 		finder := feedfinder.New(client)
 		if e.standard != nil {
@@ -296,6 +304,38 @@ func (d snapshotDoer) Do(req *http.Request) (*http.Response, error) {
 		Body:       io.NopCloser(bytes.NewReader(d.body)),
 		Request:    req,
 	}, nil
+}
+
+// countingDoer tallies one site's requests and the response bytes its readers consumed, for -explain.
+type countingDoer struct {
+	next     webfeed.Doer
+	requests atomic.Int64
+	posts    atomic.Int64
+	bytes    atomic.Int64
+}
+
+func (c *countingDoer) Do(req *http.Request) (*http.Response, error) {
+	c.requests.Add(1)
+	if req.Method == http.MethodPost {
+		c.posts.Add(1)
+	}
+	resp, err := c.next.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	resp.Body = countingBody{ReadCloser: resp.Body, n: &c.bytes}
+	return resp, nil
+}
+
+type countingBody struct {
+	io.ReadCloser
+	n *atomic.Int64
+}
+
+func (b countingBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	b.n.Add(int64(n))
+	return n, err
 }
 
 func explain(s site, res *webfeed.Result) {

@@ -45,6 +45,8 @@ const (
 	// setupSlots bounds concurrent setups, each of which can hold tens of megabytes of pages.
 	setupSlots       = 2
 	modelSpendWindow = 24 * time.Hour
+	// sectionChecksPerSweep spreads the one-time section check of older sources over sweeps, so a deploy does not stampede sites.
+	sectionChecksPerSweep = 3
 )
 
 // SetupTimeout bounds one setup, waiting for a slot included; the create route keeps its connection open longer.
@@ -212,7 +214,7 @@ func (s *Service) generate(ctx context.Context, did, key string, listing *url.UR
 	// One deadline covers the setup and its model check, so the answer still reaches the reader's open request.
 	setupCtx, cancel := context.WithTimeout(ctx, s.setupTimeout)
 	defer cancel()
-	gen, err := s.runSetup(setupCtx, listing.String(), anchorURL)
+	gen, err := s.runSetup(setupCtx, listing.String(), anchorURL, true)
 	if err != nil {
 		if regenerate {
 			// The deadline may be what failed the setup, and the next visitor should not pay for it again at once.
@@ -242,7 +244,10 @@ func (s *Service) generate(ctx context.Context, did, key string, listing *url.UR
 	if anchorURL != "" {
 		setup.anchoredBy = did
 	}
-	id, kept, err := s.storeSetup(ctx, did, setup, regenerate)
+	if regenerate {
+		setup.replaces = existing.ID
+	}
+	id, kept, err := s.storeSetup(ctx, did, setup)
 	if err != nil {
 		return Preview{}, err
 	}
@@ -257,11 +262,15 @@ func (s *Service) generate(ctx context.Context, did, key string, listing *url.UR
 	return p, err
 }
 
-// setupRow is a finished setup as the source row stores it.
+// setupRow is a finished setup as the source row stores it. key and listingURL name the listing the setup ended on;
+// pastedKey names the one it was given, which differs when the setup moved to a section page.
 type setupRow struct {
-	key, listingURL, siteURL, title, recipe, cost string
-	anchoredBy                                    string
-	gen                                           Generated
+	key, pastedKey, listingURL, siteURL, title, recipe, cost string
+	anchoredBy                                               string
+	// replaces is the source a regenerated setup is a candidate for; atSeq, when set, drops it once another setup replaced that source.
+	replaces string
+	atSeq    *int64
+	gen      Generated
 }
 
 // vetAnchor holds an anchored setup that would replace a source other readers follow to two checks: the page links the
@@ -303,8 +312,9 @@ func newSetupRow(key string, listing *url.URL, gen Generated) (setupRow, error) 
 	if err != nil {
 		return setupRow{}, err
 	}
+	ended := endedOn(listing, gen.ListingURL)
 	row := setupRow{
-		key: key, listingURL: listing.String(), recipe: string(gen.Recipe), cost: string(cost), gen: gen,
+		key: listingKey(ended), pastedKey: key, listingURL: ended.String(), recipe: string(gen.Recipe), cost: string(cost), gen: gen,
 		title: strings.TrimSpace(gen.Title), siteURL: strings.TrimSpace(gen.SiteURL),
 	}
 	if row.recipe == "" {
@@ -319,10 +329,22 @@ func newSetupRow(key string, listing *url.URL, gen Generated) (setupRow, error) 
 	return row, nil
 }
 
-// storeSetup writes a setup in one transaction: a new source, or a replacement of the site's source when regenerate and
-// the setup improves on it; kept reports a regenerated setup that did not. Its items join as history; a healthy setup
+// endedOn is the listing a setup of listing ended on: the section page it moved to, else listing itself.
+func endedOn(listing *url.URL, genListing string) *url.URL {
+	u, err := parseHTTPURL(genListing)
+	// A move off the site would let a paste of one site claim another site's key.
+	if err != nil || !sameSite(u.Hostname(), listing.Hostname()) || listingKey(u) == listingKey(listing) {
+		return listing
+	}
+	postkey.StripTracking(u)
+	return u
+}
+
+// storeSetup writes a setup in one transaction: a new source, or a replacement of setup.replaces when the setup improves
+// on it; kept reports a regenerated setup that did not. A source is keyed by the listing its setup ended on, and the
+// pasted listing becomes an alias when the setup moved to a section page. Its items join as history; a healthy setup
 // also starts the detector's history.
-func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow, regenerate bool) (id string, kept bool, err error) {
+func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow) (id string, kept bool, err error) {
 	gen := setup.gen
 	now := s.now().UTC()
 	nextPoll := formatTime(now.Add(s.interval))
@@ -334,14 +356,19 @@ func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow, re
 		if err := recordSpend(ctx, q, now, "setup", gen.Cost.USD); err != nil {
 			return err
 		}
-		row, err := q.GetWebSourceByListingKey(ctx, setup.key)
+		row, err := storedSource(ctx, q, setup)
 		switch {
-		case err == nil && !regenerate:
-			// Another reader generated this site while our setup ran; theirs stands.
+		case err == nil && row.ID != setup.replaces:
+			// Another reader generated this site, or the section it moved to, while our setup ran; theirs stands.
 			id = row.ID
-			return nil
+			return addAlias(ctx, q, setup.pastedKey, row)
 		case err == nil:
 			id = row.ID
+			if setup.atSeq != nil && row.SetupSeq != *setup.atSeq {
+				slog.Info("web source setup dropped; a newer setup replaced the source while it ran", "id", id)
+				kept = true
+				return nil
+			}
 			if !improves(gen.Health, row) {
 				slog.Info("web source setup kept the old one", "id", id, "old", row.SetupHealth, "new", gen.Health)
 				kept = true
@@ -353,6 +380,9 @@ func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow, re
 				SetupCost: setup.cost, UpdatedAt: formatTime(now), NextPollAt: &nextPoll,
 				AnchoredByDid: anchoredBy, AnchoredAt: anchoredAt,
 			}); err != nil {
+				return err
+			}
+			if err := rekey(ctx, q, row, setup.key); err != nil {
 				return err
 			}
 			// Readers already have the old items, so they stay; the detector's history belongs to the old recipe.
@@ -371,6 +401,9 @@ func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow, re
 			}); err != nil {
 				return err
 			}
+			if err := addAlias(ctx, q, setup.pastedKey, db.WebSource{ID: id, ListingKey: setup.key}); err != nil {
+				return err
+			}
 		default:
 			return err
 		}
@@ -386,17 +419,65 @@ func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow, re
 	return id, kept, err
 }
 
-// runSetup runs one setup in a slot, with the model only while the daily budget lasts.
-func (s *Service) runSetup(ctx context.Context, listingURL, anchorURL string) (Generated, error) {
+// storedSource is the source a setup lands on: the one it replaces, else the one its pasted listing or the section it
+// moved to already has.
+func storedSource(ctx context.Context, q *db.Queries, setup setupRow) (db.WebSource, error) {
+	if setup.replaces != "" {
+		if row, err := q.GetWebSource(ctx, setup.replaces); !errors.Is(err, sql.ErrNoRows) {
+			return row, err
+		}
+	}
+	row, err := q.GetWebSourceByKey(ctx, setup.pastedKey)
+	if errors.Is(err, sql.ErrNoRows) && setup.key != setup.pastedKey {
+		return q.GetWebSourceByKey(ctx, setup.key)
+	}
+	return row, err
+}
+
+// addAlias lets key find row; a key another source already answers to stays with it.
+func addAlias(ctx context.Context, q *db.Queries, key string, row db.WebSource) error {
+	if key == row.ListingKey {
+		return nil
+	}
+	return q.InsertWebSourceAlias(ctx, db.InsertWebSourceAliasParams{ListingKey: key, SourceID: row.ID})
+}
+
+// rekey moves row to the key of the listing its new setup ended on, and its old key becomes an alias. When another source
+// already answers to that key, row keeps its own: ids never change and sources never merge.
+func rekey(ctx context.Context, q *db.Queries, row db.WebSource, key string) error {
+	if key == row.ListingKey {
+		return nil
+	}
+	switch owner, err := q.GetWebSourceByKey(ctx, key); {
+	case err == nil && owner.ID != row.ID:
+		slog.Info("web source keeps its key; another source has the listing its setup moved to", "id", row.ID, "other", owner.ID)
+		return nil
+	case err != nil && !errors.Is(err, sql.ErrNoRows):
+		return err
+	}
+	if err := q.DeleteWebSourceAlias(ctx, db.DeleteWebSourceAliasParams{ListingKey: key, SourceID: row.ID}); err != nil {
+		return err
+	}
+	if err := q.RekeyWebSource(ctx, db.RekeyWebSourceParams{ID: row.ID, ListingKey: key}); err != nil {
+		return err
+	}
+	return q.InsertWebSourceAlias(ctx, db.InsertWebSourceAliasParams{ListingKey: row.ListingKey, SourceID: row.ID})
+}
+
+// runSetup runs one setup in a slot; mayUseModel lets it use the model while the daily budget lasts.
+func (s *Service) runSetup(ctx context.Context, listingURL, anchorURL string, mayUseModel bool) (Generated, error) {
 	select {
 	case s.slots <- struct{}{}:
 	case <-ctx.Done():
 		return Generated{}, ErrBusy
 	}
 	defer func() { <-s.slots }()
-	allowModel, err := s.modelBudgetLeft(ctx)
-	if err != nil {
-		return Generated{}, err
+	allowModel := false
+	if mayUseModel {
+		var err error
+		if allowModel, err = s.modelBudgetLeft(ctx); err != nil {
+			return Generated{}, err
+		}
 	}
 	gen, err := s.gen.Setup(ctx, listingURL, anchorURL, allowModel)
 	if err == nil && !gen.Health.valid() {
@@ -538,7 +619,7 @@ func (s *Service) PollDue(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	polled := 0
+	polled, checks := 0, 0
 	for _, src := range due {
 		if err := s.pollOne(ctx, src); err != nil {
 			if ctx.Err() != nil {
@@ -548,8 +629,56 @@ func (s *Service) PollDue(ctx context.Context) (int, error) {
 			continue
 		}
 		polled++
+		// The check follows the poll, so a source is polled as usual whatever the check finds or fails at.
+		if checks < sectionChecksPerSweep && needsSectionCheck(src) {
+			checks++
+			if err := s.checkSection(ctx, src); err != nil {
+				if ctx.Err() != nil {
+					return polled, ctx.Err()
+				}
+				slog.Info("web source section check left for a later sweep", "id", src.ID, "err", err)
+			}
+		}
 	}
 	return polled, nil
+}
+
+// needsSectionCheck is a plain streams or css setup stored before setup looked for a section page.
+func needsSectionCheck(src db.WebSource) bool {
+	var r webfeed.Recipe
+	if src.AnchoredByDid != nil || json.Unmarshal([]byte(src.Recipe), &r) != nil {
+		return false
+	}
+	return (r.Mode == webfeed.ModeStreams || r.Mode == webfeed.ModeCSS) && r.Setup.Anchor == "" && !r.Setup.SectionChecked
+}
+
+// checkSection runs one free setup of a source's listing. A healthy move to a section page becomes the source's setup,
+// so readers gain the section's posts as history; any other answer marks the recipe checked so the check never repeats.
+func (s *Service) checkSection(ctx context.Context, src db.WebSource) error {
+	listing, err := parseHTTPURL(src.ListingUrl)
+	if err != nil {
+		return err
+	}
+	setupCtx, cancel := context.WithTimeout(ctx, s.setupTimeout)
+	defer cancel()
+	gen, err := s.runSetup(setupCtx, listing.String(), "", false)
+	if err != nil && !errors.Is(err, ErrBrowserBuilt) {
+		return err
+	}
+	setup, err := newSetupRow(listingKey(listing), listing, gen)
+	if err != nil {
+		return err
+	}
+	if setup.key != setup.pastedKey && gen.Health == HealthOK {
+		slog.Info("web source moves to its section page", "id", src.ID, "from", src.ListingUrl, "to", setup.listingURL)
+		setup.replaces, setup.atSeq = src.ID, &src.SetupSeq
+		_, _, err = s.storeSetup(ctx, src.CreatedByDid, setup)
+		return err
+	}
+	_, err = db.New(s.writer).MarkWebSourceSectionChecked(ctx, db.MarkWebSourceSectionCheckedParams{
+		ID: src.ID, SetupSeq: src.SetupSeq, UpdatedAt: formatTime(s.now().UTC()),
+	})
+	return err
 }
 
 func (s *Service) pollOne(ctx context.Context, src db.WebSource) error {

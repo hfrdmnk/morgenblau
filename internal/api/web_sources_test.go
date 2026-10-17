@@ -183,3 +183,14 @@ func TestWebSourcesCreate_UnreachableSiteSaysSoRatherThanBlocked(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body)
 	}
 }
+
+func TestWebSourcesCreate_BrowserBuiltSiteSaysWhyWithoutARetry(t *testing.T) {
+	err := fmt.Errorf("%w: %w", websource.ErrGeneration, websource.ErrBrowserBuilt)
+	rr := postWebSource(t, &fakeWebSources{err: err}, `{"url":"https://app.example.com/"}`)
+	var env errorEnvelope
+	_ = json.Unmarshal(rr.Body.Bytes(), &env)
+	if rr.Code != http.StatusUnprocessableEntity || env.Code != codeBrowserBuilt ||
+		env.Message != "This site builds its post list in the browser, so Morgenblau can't follow it yet." {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body)
+	}
+}

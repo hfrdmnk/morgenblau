@@ -25,24 +25,29 @@ const (
 
 var testNow = time.Date(2026, 10, 10, 9, 0, 0, 0, time.UTC)
 
+// exampleRecipe is a plain setup's recipe, which records that setup looked for a section page.
+const exampleRecipe = `{"version":1,"mode":"streams","setup":{"section_checked":true}}`
+
 type pollCall struct {
 	recipe json.RawMessage
 	prev   PollState
 }
 
 type fakeGenerator struct {
-	mu          sync.Mutex
-	generated   Generated
-	setupErr    error
-	setups      []string
-	anchors     []string
-	allowModel  []bool
-	setupCtxs   []context.Context
-	outcomes    []PollOutcome
-	pollErr     error
-	polls       []pollCall
-	beforeSetup func(ctx context.Context)
-	duringPoll  func()
+	mu        sync.Mutex
+	generated Generated
+	// generatedFor answers a setup of one listing URL instead of generated.
+	generatedFor map[string]Generated
+	setupErr     error
+	setups       []string
+	anchors      []string
+	allowModel   []bool
+	setupCtxs    []context.Context
+	outcomes     []PollOutcome
+	pollErr      error
+	polls        []pollCall
+	beforeSetup  func(ctx context.Context)
+	duringPoll   func()
 }
 
 func (f *fakeGenerator) Setup(ctx context.Context, listingURL, anchorURL string, allowModel bool) (Generated, error) {
@@ -55,6 +60,9 @@ func (f *fakeGenerator) Setup(ctx context.Context, listingURL, anchorURL string,
 	f.anchors = append(f.anchors, anchorURL)
 	f.allowModel = append(f.allowModel, allowModel)
 	f.setupCtxs = append(f.setupCtxs, ctx)
+	if g, ok := f.generatedFor[listingURL]; ok {
+		return g, f.setupErr
+	}
 	return f.generated, f.setupErr
 }
 
@@ -134,7 +142,7 @@ func day(d int) time.Time { return time.Date(2026, 10, d, 8, 0, 0, 0, time.UTC) 
 
 func exampleGenerated() Generated {
 	return Generated{
-		Recipe:  json.RawMessage(`{"version":1,"mode":"streams"}`),
+		Recipe:  json.RawMessage(exampleRecipe),
 		Title:   "Example Publication",
 		SiteURL: "https://news.example.com/",
 		Health:  HealthOK,

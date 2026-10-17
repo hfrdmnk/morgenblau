@@ -79,7 +79,7 @@ func Poll(ctx context.Context, in PollInput, opts Options) (*PollResult, error) 
 		return nil, err
 	}
 	out := &PollResult{ETag: resp.header.Get("ETag"), LastModified: resp.header.Get("Last-Modified")}
-	if resp.err == nil && resp.status == http.StatusNotModified {
+	if !r.Lazy && resp.err == nil && resp.status == http.StatusNotModified {
 		out.Verdict, out.NotModified = PollOK, true
 		out.ETag, out.LastModified, out.LinkSetHash = in.ETag, in.LastModified, in.LinkSetHash
 		return out, nil
@@ -88,6 +88,9 @@ func Poll(ctx context.Context, in PollInput, opts Options) (*PollResult, error) 
 		return broken(out, reason, blocked), nil
 	}
 
+	if wantHTML {
+		resp, _ = s.expandLazy(ctx, resp, r.Lang, opts.Robots)
+	}
 	var p *pageDoc
 	var items []Item
 	body := resp.body
@@ -206,10 +209,10 @@ func broken(out *PollResult, reason Reason, blocked bool) *PollResult {
 	return out
 }
 
-// pollFetch is one GET, conditional unless the poll must see the page.
+// pollFetch is one GET, conditional unless the poll must see the page or the page is a lazy list's unchanging shell.
 func (s *session) pollFetch(ctx context.Context, rawURL, lang string, in PollInput) *response {
 	h := http.Header{}
-	if !in.Unconditional {
+	if !in.Unconditional && !in.Recipe.Lazy {
 		if in.ETag != "" {
 			h.Set("If-None-Match", in.ETag)
 		}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -189,5 +190,25 @@ func TestEvalReportsTheListingTheRecipeEndedUpOn(t *testing.T) {
 	}
 	if r := got.Results[0]; r.ListingURL != srv.URL+"/" || r.RecipeListingURL != srv.URL+"/blog" || len(r.Items) != 5 {
 		t.Fatalf("result = %+v", r)
+	}
+}
+
+func TestCountingDoerTalliesRequestsAndBodyBytes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, strings.Repeat("x", 100))
+	}))
+	t.Cleanup(srv.Close)
+	c := &countingDoer{next: srv.Client()}
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		req, _ := http.NewRequest(method, srv.URL+"/page", nil)
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.ReadAll(resp.Body)
+		resp.Body.Close()
+	}
+	if c.requests.Load() != 2 || c.posts.Load() != 1 || c.bytes.Load() != 200 {
+		t.Fatalf("requests %d, posts %d, bytes %d", c.requests.Load(), c.posts.Load(), c.bytes.Load())
 	}
 }

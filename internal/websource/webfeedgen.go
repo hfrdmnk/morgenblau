@@ -47,12 +47,16 @@ func (g *WebfeedGenerator) Setup(ctx context.Context, listingURL, anchorURL stri
 		}
 		return paid, err
 	}
+	if res.BrowserBuilt() {
+		return Generated{Cost: setupCost(res.Recipe.Setup)}, ErrBrowserBuilt
+	}
 	recipe, err := json.Marshal(res.Recipe)
 	if err != nil {
 		return Generated{}, err
 	}
 	health := SetupHealth(res)
 	gen := Generated{
+		ListingURL:   res.Recipe.ListingURL,
 		Recipe:       recipe,
 		Title:        res.Title,
 		Health:       health,

@@ -14,8 +14,30 @@ INSERT INTO web_sources (
 -- name: GetWebSource :one
 SELECT * FROM web_sources WHERE id = ?;
 
--- name: GetWebSourceByListingKey :one
-SELECT * FROM web_sources WHERE listing_key = ?;
+-- name: GetWebSourceByKey :one
+-- A listing key finds the source keyed by it, else the source it is an alias of.
+SELECT ws.* FROM web_sources ws
+LEFT JOIN web_source_aliases a ON a.source_id = ws.id AND a.listing_key = sqlc.arg(listing_key)
+WHERE ws.listing_key = sqlc.arg(listing_key) OR a.listing_key IS NOT NULL
+ORDER BY a.listing_key IS NOT NULL
+LIMIT 1;
+
+-- name: InsertWebSourceAlias :exec
+INSERT INTO web_source_aliases (listing_key, source_id) VALUES (sqlc.arg(listing_key), sqlc.arg(source_id))
+ON CONFLICT (listing_key) DO NOTHING;
+
+-- name: DeleteWebSourceAlias :exec
+DELETE FROM web_source_aliases WHERE listing_key = sqlc.arg(listing_key) AND source_id = sqlc.arg(source_id);
+
+-- name: RekeyWebSource :exec
+UPDATE web_sources SET listing_key = sqlc.arg(listing_key) WHERE id = sqlc.arg(id);
+
+-- name: MarkWebSourceSectionChecked :execrows
+-- Matches nothing when a setup replaced the source while the check ran; that setup answers for itself.
+UPDATE web_sources SET
+    recipe = json_set(recipe, '$.setup.section_checked', json('true')),
+    updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id) AND setup_seq = sqlc.arg(setup_seq);
 
 -- name: ReplaceWebSourceSetup :exec
 UPDATE web_sources SET
@@ -47,7 +69,13 @@ WHERE id = sqlc.arg(id);
 -- name: OfferWebSourceByListingKey :one
 -- Finding the source and stamping it are one statement: a reader shown it may follow it any time now, so the sweep
 -- must never delete it between the lookup and the stamp.
-UPDATE web_sources SET offered_at = sqlc.arg(offered_at) WHERE listing_key = sqlc.arg(listing_key) RETURNING *;
+-- A key a source moved away from finds it through its alias; a source's own key wins over another source's alias.
+UPDATE web_sources SET offered_at = sqlc.arg(offered_at)
+WHERE id = COALESCE(
+    (SELECT own.id FROM web_sources own WHERE own.listing_key = sqlc.arg(listing_key)),
+    (SELECT a.source_id FROM web_source_aliases a WHERE a.listing_key = sqlc.arg(listing_key))
+)
+RETURNING *;
 
 -- name: MarkWebSourceServed :exec
 UPDATE web_sources SET served_at = sqlc.arg(served_at) WHERE id = sqlc.arg(id);

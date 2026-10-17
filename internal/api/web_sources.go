@@ -92,6 +92,9 @@ func WebSourcesCreateHandler(svc WebSourceCreator) http.Handler {
 			slog.Warn("/api/web-sources: site unreachable", "url", body.URL, "err", err)
 			writeError(w, http.StatusBadGateway, codeUpstreamError, "Couldn't reach that site")
 			return
+		case errors.Is(err, websource.ErrBrowserBuilt):
+			writeError(w, http.StatusUnprocessableEntity, codeBrowserBuilt, "This site builds its post list in the browser, so Morgenblau can't follow it yet.")
+			return
 		case errors.Is(err, websource.ErrGeneration):
 			slog.Warn("/api/web-sources: generation failed", "url", body.URL, "err", err)
 			writeError(w, http.StatusBadGateway, codeUpstreamError, "Couldn't read that page")

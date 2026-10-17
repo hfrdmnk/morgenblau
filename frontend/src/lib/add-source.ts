@@ -114,17 +114,30 @@ function limitMessage(error: ApiError) {
     return setupInFlight(error) ? SETUP_IN_FLIGHT : RATE_LIMITED;
 }
 
+const CODE_MESSAGES: Record<string, string> = {
+    browser_built:
+        'This site builds its post list in the browser, so Morgenblau can’t follow it yet.',
+};
+
+const STATUS_MESSAGES: Record<number, string> = {
+    400: 'Enter a website URL.',
+    502: 'Couldn’t read that page.',
+    503: 'Feed generation isn’t available right now.',
+};
+
+function apiGenerationError(error: ApiError) {
+    if (error.status === 429 || error.code === 'rate_limited')
+        return limitMessage(error);
+    const known =
+        (error.code && CODE_MESSAGES[error.code]) ?? STATUS_MESSAGES[error.status];
+    if (known) return known;
+    return error.status < 500 ? error.message : undefined;
+}
+
 // Server messages are terse logs, so every failure reads in the dialog's own words.
 export function generationError(error: unknown) {
-    if (error instanceof ApiError) {
-        if (error.status === 429 || error.code === 'rate_limited')
-            return limitMessage(error);
-        if (error.status === 400) return 'Enter a website URL.';
-        if (error.status === 502) return 'Couldn’t read that page.';
-        if (error.status === 503)
-            return 'Feed generation isn’t available right now.';
-        if (error.status < 500) return error.message;
-    }
+    const api = error instanceof ApiError ? apiGenerationError(error) : undefined;
+    if (api) return api;
     return error instanceof Error &&
         !(error instanceof TypeError) &&
         !(error instanceof ApiError)

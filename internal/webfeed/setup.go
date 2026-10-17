@@ -1,6 +1,7 @@
 package webfeed
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -71,7 +72,7 @@ func Setup(ctx context.Context, listingURL string, opts Options) (*Result, error
 		res.release()
 		return res, err
 	}
-	if opts.Model != nil && res.listing != nil && len(res.Items) < induceBelowItems {
+	if opts.Model != nil && res.listing != nil && len(res.Items) < induceBelowItems && !res.BrowserBuilt() {
 		if err := induce(ctx, res, res.listing, opts.Model); err != nil {
 			res.release()
 			return res, err
@@ -81,6 +82,9 @@ func Setup(ctx context.Context, listingURL string, opts Options) (*Result, error
 	res.Recipe.Setup.SectionChecked = true
 	return res, nil
 }
+
+// BrowserBuilt says the listing builds its post list in the browser, so the fetched page holds no posts to follow.
+func (r *Result) BrowserBuilt() bool { return slices.Contains(r.Reasons, ReasonSPAShell) }
 
 // Healthy is a result the self-check does not doubt.
 func (r *Result) Healthy() bool { return len(r.Reasons) == 0 }
@@ -136,6 +140,11 @@ func (s *session) setup(ctx context.Context, listingURL, anchorURL string, model
 	if _, blocked := resp.refusal(); blocked {
 		return s.sitemapSetup(ctx, res, u, rb)
 	}
+	lazy, expanded := s.expandLazy(ctx, resp, s.language(), nil)
+	unloaded := !expanded && bytes.Contains(resp.body, lazyMarker)
+	if expanded {
+		resp, rec.Lazy = lazy, true
+	}
 	p, err := listingPage(resp)
 	if err != nil {
 		return nil, err
@@ -153,6 +162,13 @@ func (s *session) setup(ctx context.Context, listingURL, anchorURL string, model
 	}
 	conf, margin := confidence(top)
 	rec.Setup.Confidence, rec.Setup.Margin = round2(conf), round2(margin)
+	// Checked before the judge, which would otherwise pick the least wrong of the lists the page serves without its posts.
+	// Small server-rendered pages also mount into an app root, so an app root counts only when the page serves no list.
+	unsure := len(top) == 0 || conf < judgeBelowConfidence
+	if anchorURL == "" && ((unloaded && unsure) || (len(top) == 0 && emptyTier0(p, resp.body) == ReasonSPAShell)) {
+		res.Reasons = []Reason{ReasonSPAShell}
+		return res, nil
+	}
 	if len(top) == 0 && anchorURL == "" {
 		res.Reasons = []Reason{ReasonCount}
 		return res, nil

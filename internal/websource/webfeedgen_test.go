@@ -225,3 +225,16 @@ func TestWebfeedGeneratorAnchoredSetupOffersOneModelCheck(t *testing.T) {
 		t.Errorf("without a model: on page %v, confirm %v", noModel.AnchorOnPage, noModel.Confirm != nil)
 	}
 }
+
+func TestWebfeedGeneratorSetupReportsTheSectionItMovedTo(t *testing.T) {
+	web := driftSite()
+	web.set("https://blog.example.com/", driftPage("Example Publication", driftList(2, 5, "blog")))
+	gen := NewWebfeedGenerator(webfeed.Options{Client: web.client()})
+	got, err := gen.Setup(context.Background(), "https://blog.example.com/", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ListingURL != driftListing || len(got.Items) != 8 {
+		t.Fatalf("listing = %q with %d items, want the /blog section's eight", got.ListingURL, len(got.Items))
+	}
+}

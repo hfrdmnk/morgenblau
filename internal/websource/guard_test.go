@@ -110,7 +110,7 @@ func TestCreateKeepsTheOldSetupWhenTheNewOneIsNoBetter(t *testing.T) {
 	if again.Source.Health != HealthNeedsAttention || again.ItemCount != 3 || !again.Source.NeedsAnchor || again.AnchorRejected != AnchorNoBetter {
 		t.Errorf("preview = %+v, want the old setup kept over a blocked one and the reader told", again)
 	}
-	if row := readSource(t, env, first.Source.ID); row.recipe != `{"version":1,"mode":"streams"}` {
+	if row := readSource(t, env, first.Source.ID); row.recipe != exampleRecipe {
 		t.Errorf("recipe = %s, want the old one", row.recipe)
 	}
 

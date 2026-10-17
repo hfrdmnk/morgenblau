@@ -40,6 +40,7 @@ type Querier interface {
 	DeleteUnsavedNewsletterMessages(ctx context.Context, arg DeleteUnsavedNewsletterMessagesParams) error
 	DeleteUserSave(ctx context.Context, arg DeleteUserSaveParams) error
 	DeleteUserSubscription(ctx context.Context, arg DeleteUserSubscriptionParams) error
+	DeleteWebSourceAlias(ctx context.Context, arg DeleteWebSourceAliasParams) error
 	DeleteWebSourcePolls(ctx context.Context, sourceID string) error
 	EnableNewsletterSource(ctx context.Context, arg EnableNewsletterSourceParams) error
 	GetAuthRequest(ctx context.Context, state string) (GetAuthRequestRow, error)
@@ -76,8 +77,10 @@ type Querier interface {
 	GetUserSubscription(ctx context.Context, arg GetUserSubscriptionParams) (UserSubscription, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserSubscriptionByFeedURLParams) (UserSubscription, error)
 	GetWebSource(ctx context.Context, id string) (WebSource, error)
-	GetWebSourceByListingKey(ctx context.Context, listingKey string) (WebSource, error)
+	// A listing key finds the source keyed by it, else the source it is an alias of.
+	GetWebSourceByKey(ctx context.Context, listingKey string) (WebSource, error)
 	InsertModelSpend(ctx context.Context, arg InsertModelSpendParams) error
+	InsertWebSourceAlias(ctx context.Context, arg InsertWebSourceAliasParams) error
 	InsertWebSourceItem(ctx context.Context, arg InsertWebSourceItemParams) error
 	InsertWebSourcePoll(ctx context.Context, arg InsertWebSourcePollParams) error
 	InsertWebSourceRepair(ctx context.Context, arg InsertWebSourceRepairParams) error
@@ -130,11 +133,14 @@ type Querier interface {
 	ListWebSourcesCreatedSince(ctx context.Context, arg ListWebSourcesCreatedSinceParams) ([]string, error)
 	MarkNewsletterReceiptFailed(ctx context.Context, arg MarkNewsletterReceiptFailedParams) error
 	MarkOrphanedFeeds(ctx context.Context, now *string) error
+	// Matches nothing when a setup replaced the source while the check ran; that setup answers for itself.
+	MarkWebSourceSectionChecked(ctx context.Context, arg MarkWebSourceSectionCheckedParams) (int64, error)
 	MarkWebSourceServed(ctx context.Context, arg MarkWebSourceServedParams) error
 	MarkWebSourceSetupTried(ctx context.Context, arg MarkWebSourceSetupTriedParams) error
 	MoveNewsletterMessage(ctx context.Context, arg MoveNewsletterMessageParams) error
 	// Finding the source and stamping it are one statement: a reader shown it may follow it any time now, so the sweep
 	// must never delete it between the lookup and the stamp.
+	// A key a source moved away from finds it through its alias; a source's own key wins over another source's alias.
 	OfferWebSourceByListingKey(ctx context.Context, arg OfferWebSourceByListingKeyParams) (WebSource, error)
 	PatchNewsletterSource(ctx context.Context, arg PatchNewsletterSourceParams) error
 	PruneModelSpend(ctx context.Context, before string) error
@@ -142,6 +148,7 @@ type Querier interface {
 	PruneWebSourceRepairs(ctx context.Context, arg PruneWebSourceRepairsParams) error
 	PutAuthRequest(ctx context.Context, arg PutAuthRequestParams) error
 	PutSession(ctx context.Context, arg PutSessionParams) error
+	RekeyWebSource(ctx context.Context, arg RekeyWebSourceParams) error
 	ReplaceWebSourceSetup(ctx context.Context, arg ReplaceWebSourceSetupParams) error
 	SetFeedIconURL(ctx context.Context, arg SetFeedIconURLParams) error
 	SetNewsletterSourceStatus(ctx context.Context, arg SetNewsletterSourceStatusParams) error
