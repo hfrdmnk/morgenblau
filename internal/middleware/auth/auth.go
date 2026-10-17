@@ -132,7 +132,9 @@ var publicRoutes = map[string]string{
 }
 
 // publicPrefixes are anonymous on purpose: feed readers fetch generated web source feeds without a session.
+// They match websource.FeedPaths; /web/ is the legacy alias existing subscriptions still name.
 var publicPrefixes = []string{
+	"/feed/",
 	"/web/",
 }
 

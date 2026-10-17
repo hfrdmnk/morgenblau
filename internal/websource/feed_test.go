@@ -14,7 +14,12 @@ import (
 
 func serveFeed(t *testing.T, env *testEnv, id string, header http.Header) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/web/"+id, nil)
+	return serveFeedPath(t, env, "/feed/"+id, header)
+}
+
+func serveFeedPath(t *testing.T, env *testEnv, path string, header http.Header) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
 	for k, v := range header {
 		req.Header[k] = v
 	}
@@ -126,21 +131,67 @@ func TestFeedAnswersConditionalGET(t *testing.T) {
 func TestFeedAnswersUnknownIDsWithNotFound(t *testing.T) {
 	env := newTestEnv(t)
 	for _, id := range []string{"aaaaaaaaaaaaaaaaaaaaaaaaaa", "", "a/b"} {
-		if rr := serveFeed(t, env, id, nil); rr.Code != http.StatusNotFound {
-			t.Errorf("/web/%s status = %d, want 404", id, rr.Code)
+		for _, path := range []string{"/feed/" + id, "/web/" + id} {
+			if rr := serveFeedPath(t, env, path, nil); rr.Code != http.StatusNotFound {
+				t.Errorf("%s status = %d, want 404", path, rr.Code)
+			}
+		}
+	}
+	id := followed(t, env)
+	for _, path := range []string{"/" + id, "/api/" + id, "/feeds/" + id, "/webfeed/" + id} {
+		if rr := serveFeedPath(t, env, path, nil); rr.Code != http.StatusNotFound {
+			t.Errorf("%s status = %d, want 404", path, rr.Code)
+		}
+	}
+}
+
+// Readers who subscribed before generated feeds moved to /feed/ still hold /web/ URLs in their PDS records.
+func TestFeedServesTheSameFeedAtTheLegacyPath(t *testing.T) {
+	env := newTestEnv(t)
+	id := followed(t, env)
+
+	current, legacy := serveFeed(t, env, id, nil), serveFeedPath(t, env, "/web/"+id, nil)
+	if current.Code != http.StatusOK || legacy.Code != http.StatusOK {
+		t.Fatalf("status /feed/ = %d, /web/ = %d", current.Code, legacy.Code)
+	}
+	if legacy.Body.String() != current.Body.String() || legacy.Header().Get("ETag") != current.Header().Get("ETag") {
+		t.Errorf("/web/%s serves a different feed than /feed/%s", id, id)
+	}
+}
+
+func TestSameFeedURLsNameBothPathsOfOneOfOurFeeds(t *testing.T) {
+	svc := NewService(nil, nil, nil, Config{PublicBaseURL: "https://app.example.com"})
+	both := "[https://app.example.com/feed/abc https://app.example.com/web/abc]"
+	for raw, want := range map[string]string{
+		"https://app.example.com/feed/abc":                        both,
+		"https://app.example.com/web/abc":                         both,
+		"https://APP.example.com/web/abc":                         both,
+		"https://other.example.com/feed/abc":                      "[]",
+		"https://app.example.com/feeds/abc":                       "[]",
+		"at://did:plc:example/site.standard.publication/3example": "[]",
+	} {
+		if got := fmt.Sprint(svc.SameFeedURLs(raw)); got != want {
+			t.Errorf("SameFeedURLs(%q) = %s, want %s", raw, got, want)
 		}
 	}
 }
 
 func TestFeedURLsBelongToThePublicBase(t *testing.T) {
 	svc := NewService(nil, nil, nil, Config{PublicBaseURL: "https://app.example.com/"})
-	if got := svc.FeedURL("abc"); got != "https://app.example.com/web/abc" {
+	if got := svc.FeedURL("abc"); got != "https://app.example.com/feed/abc" {
 		t.Fatalf("FeedURL = %q", got)
 	}
-	if got := svc.FeedURLPrefix(); got != "https://app.example.com/web/" {
-		t.Fatalf("FeedURLPrefix = %q", got)
+	if got, want := svc.FeedURLPrefixes(), (FeedPrefixes{Current: "https://app.example.com/feed/", Legacy: "https://app.example.com/web/"}); got != want {
+		t.Fatalf("FeedURLPrefixes = %+v, want %+v", got, want)
 	}
 	for raw, want := range map[string]string{
+		"https://app.example.com/feed/abc":     "abc",
+		"https://APP.example.com/feed/abc":     "abc",
+		"http://app.example.com/feed/abc":      "",
+		"https://app.example.com/feed/":        "",
+		"https://app.example.com/feed/abc/rss": "",
+		"https://app.example.com/feeds/abc":    "",
+		"https://other.example.com/feed/abc":   "",
 		"https://app.example.com/web/abc":      "abc",
 		"https://APP.example.com/web/abc":      "abc",
 		"HTTPS://app.example.com/web/abc":      "abc",

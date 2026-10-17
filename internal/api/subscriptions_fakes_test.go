@@ -14,6 +14,7 @@ import (
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/feedfinder"
+	"morgenblau/internal/websource"
 )
 
 // testPublication is the canonical standardfeed publication at-uri shared across resolve, create, and list tests.
@@ -32,7 +33,7 @@ type fakeIndex struct {
 	lastFetchedAt       map[string]*string    // feedURL → feeds.last_fetched_at for the stats join
 	consecutiveFailures map[string]int64      // feedURL → feeds.consecutive_failures for the stats join
 	webHealth           map[string][2]string  // feedURL → web_sources (health, health_reason) for own generated feeds
-	lastWebFeedPrefix   string
+	lastWebFeedPrefixes websource.FeedPrefixes
 }
 
 func newFakeIndex() *fakeIndex {
@@ -76,11 +77,11 @@ func (f *fakeIndex) ListUserSubscriptions(_ context.Context, did string) ([]db.U
 func (f *fakeIndex) ListUserSourcesWithStats(_ context.Context, arg db.ListUserSourcesWithStatsParams) ([]db.ListUserSourcesWithStatsRow, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.lastWebFeedPrefix = arg.WebFeedPrefix
+	f.lastWebFeedPrefixes = websource.FeedPrefixes{Current: arg.WebFeedPrefix, Legacy: arg.LegacyWebFeedPrefix}
 	out := make([]db.ListUserSourcesWithStatsRow, 0)
 	for _, r := range f.rows[arg.Did] {
 		var webHealth, webHealthReason *string
-		if h, ok := f.webHealth[r.FeedUrl]; ok && arg.WebFeedPrefix != "" && strings.HasPrefix(r.FeedUrl, arg.WebFeedPrefix) {
+		if h, ok := f.webHealth[r.FeedUrl]; ok && arg.WebFeedPrefix != "" && (strings.HasPrefix(r.FeedUrl, arg.WebFeedPrefix) || strings.HasPrefix(r.FeedUrl, arg.LegacyWebFeedPrefix)) {
 			webHealth, webHealthReason = &h[0], &h[1]
 		}
 		out = append(out, db.ListUserSourcesWithStatsRow{

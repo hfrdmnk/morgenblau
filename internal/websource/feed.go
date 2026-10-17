@@ -40,11 +40,28 @@ type rssGUID struct {
 	Value       string `xml:",chardata"`
 }
 
-// FeedHandler serves GET /web/<id> as RSS 2.0; it reads the id from the path so it also runs outside a mux pattern.
+const (
+	feedPath       = "/feed/"
+	legacyFeedPath = "/web/"
+)
+
+// FeedPaths are the server paths a generated feed is served under, its id following; each needs a public route.
+var FeedPaths = []string{feedPath, legacyFeedPath}
+
+func feedID(path string) (string, bool) {
+	for _, prefix := range FeedPaths {
+		if id, ok := strings.CutPrefix(path, prefix); ok && id != "" && !strings.Contains(id, "/") {
+			return id, true
+		}
+	}
+	return "", false
+}
+
+// FeedHandler serves GET /feed/<id> and its legacy alias /web/<id> as RSS 2.0; it reads the id from the path so it also runs outside a mux pattern.
 func (s *Service) FeedHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id, ok := strings.CutPrefix(r.URL.Path, "/web/")
-		if !ok || id == "" || strings.Contains(id, "/") {
+		id, ok := feedID(r.URL.Path)
+		if !ok {
 			http.NotFound(w, r)
 			return
 		}

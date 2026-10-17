@@ -30,7 +30,7 @@ afterAll(() => {
 
 const preview = {
     id: 'abc',
-    feedUrl: 'https://app.example.com/web/abc',
+    feedUrl: 'https://app.example.com/feed/abc',
     title: 'Example Publication',
     siteUrl: 'https://news.example.com/',
     health: 'ok',
@@ -159,7 +159,7 @@ test('offers to generate, waits calmly, previews the posts and subscribes throug
     expect(calls.map((call) => call.url)).toEqual(['/api/web-sources', '/api/subscriptions']);
     expect(calls[0].body).toEqual({ url: 'https://news.example.com/' });
     expect(calls[1].body).toEqual({
-        feedUrl: 'https://app.example.com/web/abc',
+        feedUrl: 'https://app.example.com/feed/abc',
         title: 'Example Publication',
         siteUrl: 'https://news.example.com/',
     });

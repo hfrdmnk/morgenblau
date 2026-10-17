@@ -1,4 +1,4 @@
-// Package websource owns server-generated feeds for sites without one: their storage, the RSS served at /web/<id>, and the poll schedule.
+// Package websource owns server-generated feeds for sites without one: their storage, the RSS served at /feed/<id> (and its legacy alias /web/<id>), and the poll schedule.
 package websource
 
 import (

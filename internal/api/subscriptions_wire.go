@@ -80,7 +80,7 @@ type SubscriptionWire struct {
 	Muted           bool     `json:"muted,omitempty"`
 	Primary         bool     `json:"primary"`
 	Tags            []string `json:"tags,omitempty"`
-	// Generated is set only for this server's own /web/ feeds; their health is the generator's, not the fetch's.
+	// Generated is set only for this server's own generated feeds, at /feed/ or the legacy /web/; their health is the generator's, not the fetch's.
 	Generated *GeneratedHealthWire `json:"generated,omitempty"`
 }
 

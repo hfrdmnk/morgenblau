@@ -179,6 +179,27 @@ func TestAnAnchorOfASharedSourceThatFailsLeavesItAsItWas(t *testing.T) {
 	}
 }
 
+func TestAnAnchorCannotReplaceASourceAnotherReaderFollowsAtItsLegacyURL(t *testing.T) {
+	env := newTestEnv(t)
+	first := unsureSource(t, env)
+	legacy := testBase + "/web/" + first.Source.ID
+	if _, err := env.writer.Exec(`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES (?, 't', 't')`, legacy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.writer.Exec(`INSERT INTO user_subscriptions (did, rkey, at_uri, feed_url, created_at, updated_at) VALUES (?, '3example', ?, ?, 't', 't')`,
+		otherReader, "at://"+otherReader+"/app.example.subscription/3example", legacy); err != nil {
+		t.Fatal(err)
+	}
+	env.gen.generated = anchoredGenerated(false, &confirmer{reply: Confirmation{Agreed: true}})
+	got, err := env.service.Create(context.Background(), testDID, "https://news.example.com/", "https://news.example.com/related/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AnchorRejected != AnchorNotOnPage || got.Source != first.Source {
+		t.Errorf("preview = %+v, want the shared source kept with %q", got, AnchorNotOnPage)
+	}
+}
+
 func TestAConfirmedAnchorReplacesASharedSourceAndRecordsWhoPointed(t *testing.T) {
 	env := newTestEnv(t)
 	first := unsureSource(t, env, otherReader)

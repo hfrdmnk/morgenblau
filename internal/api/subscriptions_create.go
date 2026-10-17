@@ -51,12 +51,39 @@ type FetchDispatcher interface {
 	StartFetchOneFeed(did syntax.DID, feedURL string) string
 }
 
+// FeedAliases names every URL that serves the same feed as feedURL, so following it at any of them counts; nil means none.
+type FeedAliases func(feedURL string) []string
+
+type subscriptionByFeedURL interface {
+	GetUserSubscriptionByFeedURL(ctx context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error)
+}
+
+// findSubscription is the reader's subscription to key, or to any alias of it; sql.ErrNoRows when there is none.
+func findSubscription(ctx context.Context, reader subscriptionByFeedURL, did, key string, aliases FeedAliases) (db.UserSubscription, error) {
+	keys := []string{key}
+	if aliases != nil {
+		for _, alias := range aliases(key) {
+			if alias != key {
+				keys = append(keys, alias)
+			}
+		}
+	}
+	for _, k := range keys {
+		row, err := reader.GetUserSubscriptionByFeedURL(ctx, db.GetUserSubscriptionByFeedURLParams{Did: did, FeedUrl: k})
+		if !errors.Is(err, sql.ErrNoRows) {
+			return row, err
+		}
+	}
+	return db.UserSubscription{}, sql.ErrNoRows
+}
+
 // SubscriptionsCreateHandler dedupes, makes one PDS commit, mirrors Tier-2 then Tier-1, then dispatches fetch_one_feed.
 func SubscriptionsCreateHandler(
 	reader IndexReader,
 	writer IndexWriter,
 	pds atprepo.Writer,
 	disp FetchDispatcher,
+	aliases FeedAliases,
 ) http.Handler {
 	clock := syntax.NewTIDClock(uint(rand.IntN(1024)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -99,10 +126,7 @@ func SubscriptionsCreateHandler(
 		}
 
 		// Step 1: dedupe guard.
-		if row, err := reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
-			Did:     didStr,
-			FeedUrl: key,
-		}); err == nil {
+		if row, err := findSubscription(r.Context(), reader, didStr, key, aliases); err == nil {
 			writeJSON(w, subscriptionResponse{SubscriptionWire: rowToWire(row)})
 			return
 		} else if !errors.Is(err, sql.ErrNoRows) {

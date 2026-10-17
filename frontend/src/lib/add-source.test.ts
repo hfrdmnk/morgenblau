@@ -224,7 +224,7 @@ test('subscription permission failure preserves the reauthentication signal', as
 
 const generated = {
     id: 'abc',
-    feedUrl: 'https://app.example.com/web/abc',
+    feedUrl: 'https://app.example.com/feed/abc',
     title: 'Example Publication',
     siteUrl: 'https://news.example.com/',
     health: 'ok' as const,
@@ -352,7 +352,7 @@ test('a generated feed subscribes through the ordinary add path with its title a
     });
     await addSource(generatedCandidate(generated));
     expect(bodies).toEqual([
-        { feedUrl: 'https://app.example.com/web/abc', title: 'Example Publication', siteUrl: 'https://news.example.com/' },
+        { feedUrl: 'https://app.example.com/feed/abc', title: 'Example Publication', siteUrl: 'https://news.example.com/' },
     ]);
 });
 

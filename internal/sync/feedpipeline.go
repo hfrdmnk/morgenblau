@@ -85,7 +85,7 @@ func (p *FeedPipeline) WithFaviconDiscoverer(d FaviconDiscoverer) *FeedPipeline 
 	return p
 }
 
-// WithUndatedHistory marks feeds that date every new item themselves (generated /web/ feeds), so an undated item there is setup history and skips the first-seen fallback.
+// WithUndatedHistory marks feeds that date every new item themselves (generated feeds), so an undated item there is setup history and skips the first-seen fallback.
 func (p *FeedPipeline) WithUndatedHistory(isHistory func(feedURL string) bool) *FeedPipeline {
 	p.undatedHistory = isHistory
 	return p

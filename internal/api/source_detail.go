@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/websource"
 )
 
 // sourceEntriesLimit caps the per-source entry list at 200; pagination is deferred until a real source needs more.
@@ -33,8 +34,8 @@ type SourceEntriesReader interface {
 }
 
 // SubscriptionGetHandler returns a subscription with feed stats; frequency and health use the same rules as the list endpoint.
-// webFeedPrefix is this server's generated-feed URL up to the id; empty marks no subscription as generated.
-func SubscriptionGetHandler(reader SourceDetailReader, webFeedPrefix string) http.Handler {
+// webFeeds names this server's generated feeds; the zero value marks no subscription as generated.
+func SubscriptionGetHandler(reader SourceDetailReader, webFeeds websource.FeedPrefixes) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -48,14 +49,15 @@ func SubscriptionGetHandler(reader SourceDetailReader, webFeedPrefix string) htt
 
 		now := time.Now().UTC()
 		row, err := reader.GetUserSourceWithStats(r.Context(), db.GetUserSourceWithStatsParams{
-			Did:           sess.Data.AccountDID.String(),
-			Rkey:          rkey,
-			Now:           now.Format(time.RFC3339),
-			Cutoff7d:      now.AddDate(0, 0, -7).Format(time.RFC3339),
-			Cutoff28d:     now.AddDate(0, 0, -28).Format(time.RFC3339),
-			Cutoff56d:     now.AddDate(0, 0, -56).Format(time.RFC3339),
-			Cutoff84d:     now.AddDate(0, 0, -84).Format(time.RFC3339),
-			WebFeedPrefix: webFeedPrefix,
+			Did:                 sess.Data.AccountDID.String(),
+			Rkey:                rkey,
+			Now:                 now.Format(time.RFC3339),
+			Cutoff7d:            now.AddDate(0, 0, -7).Format(time.RFC3339),
+			Cutoff28d:           now.AddDate(0, 0, -28).Format(time.RFC3339),
+			Cutoff56d:           now.AddDate(0, 0, -56).Format(time.RFC3339),
+			Cutoff84d:           now.AddDate(0, 0, -84).Format(time.RFC3339),
+			WebFeedPrefix:       webFeeds.Current,
+			LegacyWebFeedPrefix: webFeeds.Legacy,
 		})
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {

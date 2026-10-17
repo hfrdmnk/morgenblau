@@ -116,10 +116,14 @@ SELECT
     ws.health_reason AS web_health_reason
 FROM user_subscriptions us
 LEFT JOIN feeds f ON f.feed_url = us.feed_url
--- Own generated feeds are web_feed_prefix || id; matching on the extracted id keeps the primary-key lookup.
+-- Own generated feeds are web_feed_prefix || id or legacy_web_feed_prefix || id; matching on the extracted id keeps the primary-key lookup.
 LEFT JOIN web_sources ws ON CAST(sqlc.arg(web_feed_prefix) AS TEXT) <> ''
-    AND substr(us.feed_url, 1, length(sqlc.arg(web_feed_prefix))) = sqlc.arg(web_feed_prefix)
-    AND ws.id = substr(us.feed_url, length(sqlc.arg(web_feed_prefix)) + 1)
+    AND ws.id = CASE
+        WHEN substr(us.feed_url, 1, length(sqlc.arg(web_feed_prefix))) = sqlc.arg(web_feed_prefix)
+            THEN substr(us.feed_url, length(sqlc.arg(web_feed_prefix)) + 1)
+        WHEN substr(us.feed_url, 1, length(CAST(sqlc.arg(legacy_web_feed_prefix) AS TEXT))) = sqlc.arg(legacy_web_feed_prefix)
+            THEN substr(us.feed_url, length(sqlc.arg(legacy_web_feed_prefix)) + 1)
+    END
 WHERE us.did = sqlc.arg(did)
 ORDER BY COALESCE(NULLIF(us.title, ''), f.title, us.feed_url) COLLATE NOCASE ASC;
 
@@ -149,8 +153,12 @@ SELECT
 FROM user_subscriptions us
 LEFT JOIN feeds f ON f.feed_url = us.feed_url
 LEFT JOIN web_sources ws ON CAST(sqlc.arg(web_feed_prefix) AS TEXT) <> ''
-    AND substr(us.feed_url, 1, length(sqlc.arg(web_feed_prefix))) = sqlc.arg(web_feed_prefix)
-    AND ws.id = substr(us.feed_url, length(sqlc.arg(web_feed_prefix)) + 1)
+    AND ws.id = CASE
+        WHEN substr(us.feed_url, 1, length(sqlc.arg(web_feed_prefix))) = sqlc.arg(web_feed_prefix)
+            THEN substr(us.feed_url, length(sqlc.arg(web_feed_prefix)) + 1)
+        WHEN substr(us.feed_url, 1, length(CAST(sqlc.arg(legacy_web_feed_prefix) AS TEXT))) = sqlc.arg(legacy_web_feed_prefix)
+            THEN substr(us.feed_url, length(sqlc.arg(legacy_web_feed_prefix)) + 1)
+    END
 WHERE us.did = sqlc.arg(did) AND us.rkey = sqlc.arg(rkey);
 
 -- name: ListUserSubscriptionsWithSiteURL :many

@@ -14,7 +14,7 @@ func TestUndatedEntriesStayOutOfTheDigestAndSourceStats(t *testing.T) {
 	runGoose(t, path, "up")
 	q := db.New(openMigrationDB(t, path))
 	ctx := context.Background()
-	did, url, now := "did:plc:example", "https://app.example.com/web/example", "2026-10-10T12:00:00Z"
+	did, url, now := "did:plc:example", "https://app.example.com/feed/example", "2026-10-10T12:00:00Z"
 	if err := q.UpsertFeed(ctx, db.UpsertFeedParams{FeedUrl: url, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}

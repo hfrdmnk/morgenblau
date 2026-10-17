@@ -17,7 +17,7 @@ func TestSubscriptionsResolve_ReturnsCandidates(t *testing.T) {
 	finder := &fakeFinder{candidates: []feedfinder.Candidate{
 		{FeedURL: "https://example.test/feed.xml", Title: "Example"},
 	}}
-	h := SubscriptionsResolveHandler(idx, finder)
+	h := SubscriptionsResolveHandler(idx, finder, nil)
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions/resolve",
 		strings.NewReader(`{"url":"https://example.test"}`)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -44,7 +44,7 @@ func TestSubscriptionsResolve_FlagsExisting(t *testing.T) {
 	finder := &fakeFinder{candidates: []feedfinder.Candidate{
 		{FeedURL: feed, Title: "Example"},
 	}}
-	h := SubscriptionsResolveHandler(idx, finder)
+	h := SubscriptionsResolveHandler(idx, finder, nil)
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions/resolve",
 		strings.NewReader(`{"url":"https://example.test"}`)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -54,6 +54,33 @@ func TestSubscriptionsResolve_FlagsExisting(t *testing.T) {
 	_ = json.Unmarshal(rr.Body.Bytes(), &got)
 	if len(got.ExistingSubscriptions) != 1 {
 		t.Errorf("existing = %+v", got.ExistingSubscriptions)
+	}
+}
+
+func TestSubscriptionsResolve_FlagsAGeneratedFeedFollowedAtItsOtherURL(t *testing.T) {
+	const current, legacy = "https://app.example.com/feed/abc", "https://app.example.com/web/abc"
+	aliases := func(feedURL string) []string {
+		if feedURL == current || feedURL == legacy {
+			return []string{current, legacy}
+		}
+		return nil
+	}
+	idx := newFakeIndex()
+	idx.rows["did:plc:alice"] = map[string]db.UserSubscription{
+		legacy: {Did: "did:plc:alice", FeedUrl: legacy, Title: ptrString("Saved")},
+	}
+	finder := &fakeFinder{candidates: []feedfinder.Candidate{{FeedURL: current, Title: "Example Publication"}}}
+	rr := httptest.NewRecorder()
+	SubscriptionsResolveHandler(idx, finder, aliases).ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions/resolve",
+		strings.NewReader(`{"url":"`+current+`"}`)), "did:plc:alice", "sid-1"))
+
+	var got resolveResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	// The picker matches existing subscriptions to candidates by the candidate's own URL.
+	if len(got.ExistingSubscriptions) != 1 || got.ExistingSubscriptions[0].FeedURL != current {
+		t.Errorf("existing = %+v, want the candidate %s flagged", got.ExistingSubscriptions, current)
 	}
 }
 
@@ -116,7 +143,7 @@ func TestSubscriptionsResolve_SiblingMatrix(t *testing.T) {
 				idx.catalogTitles[tt.sub.FeedUrl] = tt.subCat
 			}
 			finder := &fakeFinder{candidates: []feedfinder.Candidate{tt.candidate}}
-			h := SubscriptionsResolveHandler(idx, finder)
+			h := SubscriptionsResolveHandler(idx, finder, nil)
 			req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions/resolve",
 				strings.NewReader(`{"url":"https://blog.example.test"}`)), "did:plc:alice", "sid-1")
 			rr := httptest.NewRecorder()
@@ -154,7 +181,7 @@ func TestSubscriptionsResolve_ExistingProbeUsesPublication(t *testing.T) {
 	finder := &fakeFinder{candidates: []feedfinder.Candidate{
 		{Kind: "standardfeed", Publication: testPublication, SiteURL: "https://blog.example.test"},
 	}}
-	h := SubscriptionsResolveHandler(idx, finder)
+	h := SubscriptionsResolveHandler(idx, finder, nil)
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions/resolve",
 		strings.NewReader(`{"url":"https://blog.example.test"}`)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -171,7 +198,7 @@ func TestSubscriptionsResolve_ExistingProbeUsesPublication(t *testing.T) {
 
 func TestSubscriptionsResolve_Errors(t *testing.T) {
 	t.Run("finder error", func(t *testing.T) {
-		h := SubscriptionsResolveHandler(newFakeIndex(), &fakeFinder{err: errors.New("upstream down")})
+		h := SubscriptionsResolveHandler(newFakeIndex(), &fakeFinder{err: errors.New("upstream down")}, nil)
 		req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions/resolve",
 			strings.NewReader(`{"url":"https://example.test"}`)), "did:plc:alice", "sid-1")
 		rr := httptest.NewRecorder()
@@ -183,7 +210,7 @@ func TestSubscriptionsResolve_Errors(t *testing.T) {
 	})
 
 	t.Run("empty url", func(t *testing.T) {
-		h := SubscriptionsResolveHandler(newFakeIndex(), &fakeFinder{})
+		h := SubscriptionsResolveHandler(newFakeIndex(), &fakeFinder{}, nil)
 		req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions/resolve",
 			strings.NewReader(`{"url":"   "}`)), "did:plc:alice", "sid-1")
 		rr := httptest.NewRecorder()

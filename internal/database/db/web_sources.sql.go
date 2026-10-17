@@ -330,18 +330,19 @@ func (q *Queries) InsertWebSourceRepair(ctx context.Context, arg InsertWebSource
 
 const isWebSourceFollowedByOthers = `-- name: IsWebSourceFollowedByOthers :one
 SELECT EXISTS (
-    SELECT 1 FROM user_subscriptions us WHERE us.feed_url = ?1 AND us.did <> ?2
+    SELECT 1 FROM user_subscriptions us WHERE us.feed_url IN (?1, ?2) AND us.did <> ?3
 ) AS followed
 `
 
 type IsWebSourceFollowedByOthersParams struct {
-	FeedUrl string `json:"feed_url"`
-	Did     string `json:"did"`
+	FeedUrl       string `json:"feed_url"`
+	LegacyFeedUrl string `json:"legacy_feed_url"`
+	Did           string `json:"did"`
 }
 
 // Answers yes or no and never names a follower; an anchored rebuild of a feed other readers follow must be confirmed first.
 func (q *Queries) IsWebSourceFollowedByOthers(ctx context.Context, arg IsWebSourceFollowedByOthersParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, isWebSourceFollowedByOthers, arg.FeedUrl, arg.Did)
+	row := q.db.QueryRowContext(ctx, isWebSourceFollowedByOthers, arg.FeedUrl, arg.LegacyFeedUrl, arg.Did)
 	var followed bool
 	err := row.Scan(&followed)
 	return followed, err
@@ -352,21 +353,27 @@ SELECT ws.id, ws.listing_key, ws.listing_url, ws.site_url, ws.title, ws.recipe, 
 WHERE ws.setup_health IN ('ok', 'needs_attention')
   AND ws.next_poll_at IS NOT NULL
   AND ws.next_poll_at <= ?1
-  AND EXISTS (SELECT 1 FROM feeds f WHERE f.feed_url = ?2 || ws.id)
+  AND EXISTS (SELECT 1 FROM feeds f WHERE f.feed_url IN (?2 || ws.id, ?3 || ws.id))
 ORDER BY ws.next_poll_at, ws.id
-LIMIT ?3
+LIMIT ?4
 `
 
 type ListDueWebSourcesParams struct {
-	Now           *string `json:"now"`
-	FeedUrlPrefix string  `json:"feed_url_prefix"`
-	Limit         int64   `json:"limit"`
+	Now                 *string `json:"now"`
+	FeedUrlPrefix       string  `json:"feed_url_prefix"`
+	LegacyFeedUrlPrefix string  `json:"legacy_feed_url_prefix"`
+	Limit               int64   `json:"limit"`
 }
 
-// A web source counts as followed once its feed URL is in the shared feeds catalog, the same set the global refresher fetches.
+// A web source counts as followed once either of its feed URLs is in the shared feeds catalog, the same set the global refresher fetches.
 // A setup the site refused has nothing to poll; an unsure one is polled, since the reader chose it from its preview.
 func (q *Queries) ListDueWebSources(ctx context.Context, arg ListDueWebSourcesParams) ([]WebSource, error) {
-	rows, err := q.db.QueryContext(ctx, listDueWebSources, arg.Now, arg.FeedUrlPrefix, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listDueWebSources,
+		arg.Now,
+		arg.FeedUrlPrefix,
+		arg.LegacyFeedUrlPrefix,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}

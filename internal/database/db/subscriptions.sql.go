@@ -87,20 +87,25 @@ SELECT
 FROM user_subscriptions us
 LEFT JOIN feeds f ON f.feed_url = us.feed_url
 LEFT JOIN web_sources ws ON CAST(?6 AS TEXT) <> ''
-    AND substr(us.feed_url, 1, length(?6)) = ?6
-    AND ws.id = substr(us.feed_url, length(?6) + 1)
-WHERE us.did = ?7 AND us.rkey = ?8
+    AND ws.id = CASE
+        WHEN substr(us.feed_url, 1, length(?6)) = ?6
+            THEN substr(us.feed_url, length(?6) + 1)
+        WHEN substr(us.feed_url, 1, length(CAST(?7 AS TEXT))) = ?7
+            THEN substr(us.feed_url, length(?7) + 1)
+    END
+WHERE us.did = ?8 AND us.rkey = ?9
 `
 
 type GetUserSourceWithStatsParams struct {
-	Cutoff7d      string `json:"cutoff_7d"`
-	Now           string `json:"now"`
-	Cutoff28d     string `json:"cutoff_28d"`
-	Cutoff56d     string `json:"cutoff_56d"`
-	Cutoff84d     string `json:"cutoff_84d"`
-	WebFeedPrefix string `json:"web_feed_prefix"`
-	Did           string `json:"did"`
-	Rkey          string `json:"rkey"`
+	Cutoff7d            string `json:"cutoff_7d"`
+	Now                 string `json:"now"`
+	Cutoff28d           string `json:"cutoff_28d"`
+	Cutoff56d           string `json:"cutoff_56d"`
+	Cutoff84d           string `json:"cutoff_84d"`
+	WebFeedPrefix       string `json:"web_feed_prefix"`
+	LegacyWebFeedPrefix string `json:"legacy_web_feed_prefix"`
+	Did                 string `json:"did"`
+	Rkey                string `json:"rkey"`
 }
 
 type GetUserSourceWithStatsRow struct {
@@ -144,6 +149,7 @@ func (q *Queries) GetUserSourceWithStats(ctx context.Context, arg GetUserSourceW
 		arg.Cutoff56d,
 		arg.Cutoff84d,
 		arg.WebFeedPrefix,
+		arg.LegacyWebFeedPrefix,
 		arg.Did,
 		arg.Rkey,
 	)
@@ -259,20 +265,25 @@ SELECT
 FROM user_subscriptions us
 LEFT JOIN feeds f ON f.feed_url = us.feed_url
 LEFT JOIN web_sources ws ON CAST(?6 AS TEXT) <> ''
-    AND substr(us.feed_url, 1, length(?6)) = ?6
-    AND ws.id = substr(us.feed_url, length(?6) + 1)
-WHERE us.did = ?7
+    AND ws.id = CASE
+        WHEN substr(us.feed_url, 1, length(?6)) = ?6
+            THEN substr(us.feed_url, length(?6) + 1)
+        WHEN substr(us.feed_url, 1, length(CAST(?7 AS TEXT))) = ?7
+            THEN substr(us.feed_url, length(?7) + 1)
+    END
+WHERE us.did = ?8
 ORDER BY COALESCE(NULLIF(us.title, ''), f.title, us.feed_url) COLLATE NOCASE ASC
 `
 
 type ListUserSourcesWithStatsParams struct {
-	Cutoff7d      string `json:"cutoff_7d"`
-	Now           string `json:"now"`
-	Cutoff28d     string `json:"cutoff_28d"`
-	Cutoff56d     string `json:"cutoff_56d"`
-	Cutoff84d     string `json:"cutoff_84d"`
-	WebFeedPrefix string `json:"web_feed_prefix"`
-	Did           string `json:"did"`
+	Cutoff7d            string `json:"cutoff_7d"`
+	Now                 string `json:"now"`
+	Cutoff28d           string `json:"cutoff_28d"`
+	Cutoff56d           string `json:"cutoff_56d"`
+	Cutoff84d           string `json:"cutoff_84d"`
+	WebFeedPrefix       string `json:"web_feed_prefix"`
+	LegacyWebFeedPrefix string `json:"legacy_web_feed_prefix"`
+	Did                 string `json:"did"`
 }
 
 type ListUserSourcesWithStatsRow struct {
@@ -306,7 +317,7 @@ type ListUserSourcesWithStatsRow struct {
 // One row per subscription with feed metadata and windowed entry stats. The
 // four window cutoffs (7d, 28d, 56d, 84d as ISO timestamps) and "now" are
 // passed in by the handler so all rows share a single clock.
-// Own generated feeds are web_feed_prefix || id; matching on the extracted id keeps the primary-key lookup.
+// Own generated feeds are web_feed_prefix || id or legacy_web_feed_prefix || id; matching on the extracted id keeps the primary-key lookup.
 func (q *Queries) ListUserSourcesWithStats(ctx context.Context, arg ListUserSourcesWithStatsParams) ([]ListUserSourcesWithStatsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listUserSourcesWithStats,
 		arg.Cutoff7d,
@@ -315,6 +326,7 @@ func (q *Queries) ListUserSourcesWithStats(ctx context.Context, arg ListUserSour
 		arg.Cutoff56d,
 		arg.Cutoff84d,
 		arg.WebFeedPrefix,
+		arg.LegacyWebFeedPrefix,
 		arg.Did,
 	)
 	if err != nil {

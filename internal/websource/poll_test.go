@@ -140,6 +140,21 @@ func TestPollDueSkipsSourcesNobodyFollowsOrNotYetDue(t *testing.T) {
 	}
 }
 
+func TestPollDuePollsASourceFollowedOnlyAtItsLegacyURL(t *testing.T) {
+	env := newTestEnv(t)
+	preview, err := env.service.Create(context.Background(), testDID, "https://news.example.com/", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.writer.Exec(`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES (?, 't', 't')`, testBase+"/web/"+preview.Source.ID); err != nil {
+		t.Fatal(err)
+	}
+	env.advance(time.Hour)
+	if n := pollDue(t, env); n != 1 {
+		t.Errorf("polled %d sources, want the one followed at /web/", n)
+	}
+}
+
 func TestPollDueSuspectPublishesNothing(t *testing.T) {
 	env := newTestEnv(t)
 	id := followed(t, env)

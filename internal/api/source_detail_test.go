@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/websource"
 )
 
 // --- Source detail (GET /api/subscriptions/{rkey}) ---
@@ -88,7 +89,7 @@ func TestSubscriptionGet_HappyPath(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake, ""))
+	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake, websource.FeedPrefixes{}))
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions/3la", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -136,17 +137,17 @@ func TestSubscriptionGet_HappyPath(t *testing.T) {
 
 // The detail page shows the same health as the Sources list, so both read it through one rule.
 func TestSubscriptionGet_CarriesFetchAndGeneratedHealth(t *testing.T) {
-	const prefix = "https://app.example.com/web/"
+	prefixes := websource.FeedPrefixes{Current: "https://app.example.com/feed/", Legacy: "https://app.example.com/web/"}
 	next := "2026-10-14T15:00:00Z"
 	health, reason := "needs_attention", "Morgenblau isn't sure which links are posts"
 	fake := newFakeSourceDetail()
 	fake.rows["did:plc:alice"] = map[string]db.GetUserSourceWithStatsRow{
 		"failing":   {Rkey: "failing", FeedUrl: "https://news.example.com/feed.xml", ConsecutiveFailures: 2, NextFetchAt: &next},
-		"generated": {Rkey: "generated", FeedUrl: prefix + "generated", LastFetchedAt: &next, WebHealth: &health, WebHealthReason: &reason},
+		"generated": {Rkey: "generated", FeedUrl: prefixes.Current + "generated", LastFetchedAt: &next, WebHealth: &health, WebHealthReason: &reason},
 		"waiting":   {Rkey: "waiting", FeedUrl: "https://new.example.com/feed.xml"},
 	}
 	mux := http.NewServeMux()
-	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake, prefix))
+	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake, prefixes))
 
 	get := func(rkey string) SubscriptionDetailWire {
 		t.Helper()
@@ -159,8 +160,8 @@ func TestSubscriptionGet_CarriesFetchAndGeneratedHealth(t *testing.T) {
 		if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 			t.Fatal(err)
 		}
-		if fake.params.WebFeedPrefix != prefix {
-			t.Fatalf("web feed prefix = %q, want %q", fake.params.WebFeedPrefix, prefix)
+		if fake.params.WebFeedPrefix != prefixes.Current || fake.params.LegacyWebFeedPrefix != prefixes.Legacy {
+			t.Fatalf("web feed prefixes = %q, %q; want %+v", fake.params.WebFeedPrefix, fake.params.LegacyWebFeedPrefix, prefixes)
 		}
 		return got
 	}
@@ -179,7 +180,7 @@ func TestSubscriptionGet_CarriesFetchAndGeneratedHealth(t *testing.T) {
 func TestSubscriptionGet_NotFound_404(t *testing.T) {
 	fake := newFakeSourceDetail()
 	mux := http.NewServeMux()
-	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake, ""))
+	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake, websource.FeedPrefixes{}))
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions/missing", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -197,7 +198,7 @@ func TestSubscriptionGet_ForeignRkey_404(t *testing.T) {
 		"3la": {Did: "did:plc:bob", Rkey: "3la", FeedUrl: "https://bob.test/feed", Title: &bobTitle},
 	}
 	mux := http.NewServeMux()
-	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake, ""))
+	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake, websource.FeedPrefixes{}))
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions/3la", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()

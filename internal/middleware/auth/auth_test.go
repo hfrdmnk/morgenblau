@@ -128,6 +128,8 @@ func TestMiddleware_Table(t *testing.T) {
 		{name: "favicon", path: "/favicon.svg", method: "GET", wantCode: 200, wantNext: true},
 
 		// Feed readers fetch generated web source feeds without a session.
+		{name: "generated feed unauthed", path: "/feed/abcdefghijklmnopqrstuvwxyz", method: "GET", wantCode: 200, wantNext: true},
+		{name: "generated feed authed", path: "/feed/abcdefghijklmnopqrstuvwxyz", method: "GET", authed: true, wantCode: 200, wantNext: true},
 		{name: "web feed unauthed", path: "/web/abcdefghijklmnopqrstuvwxyz", method: "GET", wantCode: 200, wantNext: true},
 		{name: "web feed authed", path: "/web/abcdefghijklmnopqrstuvwxyz", method: "GET", authed: true, wantCode: 200, wantNext: true},
 		{name: "web lookalike unauthed", path: "/webhooks", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},

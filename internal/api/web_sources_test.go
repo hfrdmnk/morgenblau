@@ -71,7 +71,7 @@ func postWebSource(t *testing.T, svc WebSourceCreator, body string) *httptest.Re
 func TestWebSourcesCreate_ReturnsThePreview(t *testing.T) {
 	svc := &fakeWebSources{preview: websource.Preview{
 		Source: websource.Source{
-			ID: "abc", FeedURL: "https://app.example.com/web/abc", Title: "Example Publication", SiteURL: "https://news.example.com/",
+			ID: "abc", FeedURL: "https://app.example.com/feed/abc", Title: "Example Publication", SiteURL: "https://news.example.com/",
 			Health: websource.HealthNeedsAttention, HealthReason: "only two posts found", NeedsAnchor: true,
 		},
 		Items: []websource.Item{
@@ -87,7 +87,7 @@ func TestWebSourcesCreate_ReturnsThePreview(t *testing.T) {
 	if want := "did:plc:reader|https://news.example.com/|https://news.example.com/posts/a"; len(svc.calls) != 1 || svc.calls[0] != want {
 		t.Errorf("calls = %v, want %q", svc.calls, want)
 	}
-	want := `{"id":"abc","feedUrl":"https://app.example.com/web/abc","title":"Example Publication","siteUrl":"https://news.example.com/",` +
+	want := `{"id":"abc","feedUrl":"https://app.example.com/feed/abc","title":"Example Publication","siteUrl":"https://news.example.com/",` +
 		`"health":"needs_attention","healthReason":"only two posts found","needsAnchor":true,` +
 		`"items":[{"url":"https://news.example.com/posts/b","title":"B","date":"2026-10-08T08:00:00Z"},{"url":"https://news.example.com/posts/a","title":"A","date":null}],` +
 		`"itemCount":14}`

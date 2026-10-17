@@ -180,7 +180,7 @@ func TestCreateStoresSetupItemsAsHistory(t *testing.T) {
 	if !regexp.MustCompile(`^[a-z2-7]{26}$`).MatchString(preview.Source.ID) {
 		t.Errorf("id = %q, want 128 random bits as lowercase base32", preview.Source.ID)
 	}
-	if want := testBase + "/web/" + preview.Source.ID; preview.Source.FeedURL != want {
+	if want := testBase + "/feed/" + preview.Source.ID; preview.Source.FeedURL != want {
 		t.Errorf("feed URL = %q, want %q", preview.Source.FeedURL, want)
 	}
 	if preview.Source.Title != "Example Publication" || preview.Source.SiteURL != "https://news.example.com/" || preview.Source.Health != HealthOK {

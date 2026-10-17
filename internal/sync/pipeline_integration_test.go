@@ -463,7 +463,7 @@ func TestStandardfeedPipeline_FetchAndStore_DeleteSweepAndMalformedProtection(t 
 	}
 }
 
-// Generated /web/ feeds date every item a later poll finds, so an undated one is setup history and must stay out of the digest.
+// Generated feeds date every item a later poll finds, so an undated one is setup history and must stay out of the digest.
 func TestFeedPipeline_OwnWebFeedUndatedItemsStayUndated(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>Example Publication</title><link>https://site.example.com/</link>` +
@@ -472,7 +472,7 @@ func TestFeedPipeline_OwnWebFeedUndatedItemsStayUndated(t *testing.T) {
 			`</channel></rss>`))
 	}))
 	defer srv.Close()
-	plainURL, webURL := srv.URL+"/feed.xml", srv.URL+"/web/abc"
+	plainURL, webURL := srv.URL+"/feed.xml", srv.URL+"/feed/abc"
 	dbs := openPipelineTestDB(t)
 	seedCatalogFeed(t, dbs, plainURL)
 	seedCatalogFeed(t, dbs, webURL)

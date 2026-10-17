@@ -14,7 +14,7 @@ func TestSourceListCarriesGeneratedFeedHealthOnlyForOwnWebFeeds(t *testing.T) {
 	q := db.New(openMigrationDB(t, path))
 	ctx := context.Background()
 	did, now := "did:plc:example", "2026-10-10T12:00:00Z"
-	const prefix = "https://app.example.com/web/"
+	const prefix, legacy = "https://app.example.com/feed/", "https://app.example.com/web/"
 	if err := q.CreateWebSource(ctx, db.CreateWebSourceParams{
 		ID: "generated", ListingKey: "news.example.com/", ListingUrl: "https://news.example.com/", SiteUrl: "https://news.example.com/",
 		Title: "Example Publication", Recipe: "{}", Health: "needs_attention", HealthReason: "Morgenblau isn't sure which links are posts",
@@ -24,6 +24,7 @@ func TestSourceListCarriesGeneratedFeedHealthOnlyForOwnWebFeeds(t *testing.T) {
 	}
 	feeds := map[string]string{
 		"generated": prefix + "generated",
+		"legacy":    legacy + "generated",
 		"plain":     "https://news.example.com/feed.xml",
 		// Same id under another origin is somebody else's feed, not one of ours.
 		"foreign": "https://other.example.com/web/generated",
@@ -40,12 +41,12 @@ func TestSourceListCarriesGeneratedFeedHealthOnlyForOwnWebFeeds(t *testing.T) {
 		}
 	}
 
-	rows, err := q.ListUserSourcesWithStats(ctx, db.ListUserSourcesWithStatsParams{Did: did, Now: now, WebFeedPrefix: prefix})
+	rows, err := q.ListUserSourcesWithStats(ctx, db.ListUserSourcesWithStatsParams{Did: did, Now: now, WebFeedPrefix: prefix, LegacyWebFeedPrefix: legacy})
 	if err != nil || len(rows) != len(feeds) {
 		t.Fatalf("list: %v, %v", rows, err)
 	}
 	for _, row := range rows {
-		if row.Rkey == "generated" {
+		if row.Rkey == "generated" || row.Rkey == "legacy" {
 			if row.WebHealth == nil || *row.WebHealth != "needs_attention" || row.WebHealthReason == nil || *row.WebHealthReason != "Morgenblau isn't sure which links are posts" {
 				t.Errorf("generated feed lost its health: %+v", row)
 			}
@@ -57,11 +58,11 @@ func TestSourceListCarriesGeneratedFeedHealthOnlyForOwnWebFeeds(t *testing.T) {
 	}
 
 	for rkey := range feeds {
-		detail, err := q.GetUserSourceWithStats(ctx, db.GetUserSourceWithStatsParams{Did: did, Rkey: rkey, Now: now, WebFeedPrefix: prefix})
+		detail, err := q.GetUserSourceWithStats(ctx, db.GetUserSourceWithStatsParams{Did: did, Rkey: rkey, Now: now, WebFeedPrefix: prefix, LegacyWebFeedPrefix: legacy})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if generated := detail.WebHealth != nil && *detail.WebHealth == "needs_attention" && detail.WebHealthReason != nil; generated != (rkey == "generated") {
+		if generated := detail.WebHealth != nil && *detail.WebHealth == "needs_attention" && detail.WebHealthReason != nil; generated != (rkey == "generated" || rkey == "legacy") {
 			t.Errorf("detail health for %s: %+v", rkey, detail)
 		}
 	}

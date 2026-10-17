@@ -52,7 +52,7 @@ type FeedFinder interface {
 }
 
 // SubscriptionsResolveHandler turns a pasted URL into feed candidates, flags ones the user already subscribes to, and annotates cross-kind siblings.
-func SubscriptionsResolveHandler(reader ResolveReader, finder FeedFinder) http.Handler {
+func SubscriptionsResolveHandler(reader ResolveReader, finder FeedFinder, aliases FeedAliases) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -103,13 +103,10 @@ func SubscriptionsResolveHandler(reader ResolveReader, finder FeedFinder) http.H
 			if c.Publication != "" {
 				probeKey = c.Publication
 			}
-			row, err := reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
-				Did:     sess.Data.AccountDID.String(),
-				FeedUrl: probeKey,
-			})
+			row, err := findSubscription(r.Context(), reader, sess.Data.AccountDID.String(), probeKey, aliases)
 			switch {
 			case err == nil:
-				existing = append(existing, existingSubMeta{FeedURL: row.FeedUrl, Title: row.Title})
+				existing = append(existing, existingSubMeta{FeedURL: probeKey, Title: row.Title})
 			case !errors.Is(err, sql.ErrNoRows):
 				slog.Warn("/api/subscriptions/resolve: index probe failed", "err", err)
 			}

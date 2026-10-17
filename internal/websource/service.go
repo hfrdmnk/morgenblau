@@ -54,7 +54,7 @@ const SetupTimeout = 90 * time.Second
 const timeLayout = "2006-01-02T15:04:05Z"
 
 type Config struct {
-	// PublicBaseURL is the origin readers reach this server on; feed URLs are PublicBaseURL + "/web/" + id.
+	// PublicBaseURL is the origin readers reach this server on; feed URLs are PublicBaseURL + "/feed/" + id.
 	PublicBaseURL string
 	PollInterval  time.Duration
 	// Limiter caps generations per reader DID; nil means no cap.
@@ -102,10 +102,18 @@ func NewService(reader, writer *sql.DB, gen Generator, cfg Config) *Service {
 }
 
 // FeedURL is the address readers subscribe to for one web source.
-func (s *Service) FeedURL(id string) string { return s.FeedURLPrefix() + id }
+func (s *Service) FeedURL(id string) string { return s.FeedURLPrefixes().Current + id }
 
-// FeedURLPrefix is every generated feed's URL up to its id, for SQL that recognizes them by prefix.
-func (s *Service) FeedURLPrefix() string { return s.base + "/web/" }
+// FeedPrefixes are every generated feed's URL up to its id, for SQL that recognizes them by prefix; the zero value matches none.
+type FeedPrefixes struct {
+	Current string
+	// Legacy is where feeds were served first; readers' PDS records still name it, so it stays one of ours.
+	Legacy string
+}
+
+func (s *Service) FeedURLPrefixes() FeedPrefixes {
+	return FeedPrefixes{Current: s.base + feedPath, Legacy: s.base + legacyFeedPath}
+}
 
 // IDFromFeedURL names the web source a feed URL serves, when it is one of this server's generated feeds.
 func (s *Service) IDFromFeedURL(raw string) (string, bool) {
@@ -114,11 +122,17 @@ func (s *Service) IDFromFeedURL(raw string) (string, bool) {
 	if err != nil || berr != nil || base.Host == "" || !strings.EqualFold(u.Scheme, base.Scheme) || !strings.EqualFold(u.Host, base.Host) {
 		return "", false
 	}
-	id, ok := strings.CutPrefix(u.Path, "/web/")
-	if !ok || id == "" || strings.Contains(id, "/") {
-		return "", false
+	return feedID(u.Path)
+}
+
+// SameFeedURLs are the URLs serving the same generated feed as raw, current first; none when raw is not one of ours.
+func (s *Service) SameFeedURLs(raw string) []string {
+	id, ok := s.IDFromFeedURL(raw)
+	if !ok {
+		return nil
 	}
-	return id, true
+	p := s.FeedURLPrefixes()
+	return []string{p.Current + id, p.Legacy + id}
 }
 
 // IsFeedURL reports one of this server's generated feeds.
@@ -252,7 +266,9 @@ type setupRow struct {
 // vetAnchor holds an anchored setup that would replace a source other readers follow to two checks: the page links the
 // reader's post, and the model agrees the new list is the site's posts. It says why the source stays, or nothing.
 func (s *Service) vetAnchor(ctx context.Context, did string, existing db.WebSource, gen Generated) (AnchorRejection, error) {
-	followed, err := s.read.IsWebSourceFollowedByOthers(ctx, db.IsWebSourceFollowedByOthersParams{FeedUrl: s.FeedURL(existing.ID), Did: did})
+	followed, err := s.read.IsWebSourceFollowedByOthers(ctx, db.IsWebSourceFollowedByOthersParams{
+		FeedUrl: s.FeedURL(existing.ID), LegacyFeedUrl: s.FeedURLPrefixes().Legacy + existing.ID, Did: did,
+	})
 	if err != nil || !followed {
 		return "", err
 	}
@@ -513,7 +529,8 @@ func (s *Service) PollDue(ctx context.Context) (int, error) {
 		return 0, ErrUnavailable
 	}
 	now := formatTime(s.now().UTC())
-	due, err := s.read.ListDueWebSources(ctx, db.ListDueWebSourcesParams{Now: &now, FeedUrlPrefix: s.FeedURLPrefix(), Limit: pollBatch})
+	prefixes := s.FeedURLPrefixes()
+	due, err := s.read.ListDueWebSources(ctx, db.ListDueWebSourcesParams{Now: &now, FeedUrlPrefix: prefixes.Current, LegacyFeedUrlPrefix: prefixes.Legacy, Limit: pollBatch})
 	if err != nil {
 		return 0, err
 	}

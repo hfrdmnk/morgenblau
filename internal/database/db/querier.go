@@ -75,7 +75,7 @@ type Querier interface {
 	IsWebSourceFollowedByOthers(ctx context.Context, arg IsWebSourceFollowedByOthersParams) (bool, error)
 	ListAllFeedURLs(ctx context.Context) ([]string, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
-	// A web source counts as followed once its feed URL is in the shared feeds catalog, the same set the global refresher fetches.
+	// A web source counts as followed once either of its feed URLs is in the shared feeds catalog, the same set the global refresher fetches.
 	// A setup the site refused has nothing to poll; an unsure one is polled, since the reader chose it from its preview.
 	ListDueWebSources(ctx context.Context, arg ListDueWebSourcesParams) ([]WebSource, error)
 	// Entries from a single feed, newest first, bounded by limit. The join to
@@ -99,7 +99,7 @@ type Querier interface {
 	// One row per subscription with feed metadata and windowed entry stats. The
 	// four window cutoffs (7d, 28d, 56d, 84d as ISO timestamps) and "now" are
 	// passed in by the handler so all rows share a single clock.
-	// Own generated feeds are web_feed_prefix || id; matching on the extracted id keeps the primary-key lookup.
+	// Own generated feeds are web_feed_prefix || id or legacy_web_feed_prefix || id; matching on the extracted id keeps the primary-key lookup.
 	ListUserSourcesWithStats(ctx context.Context, arg ListUserSourcesWithStatsParams) ([]ListUserSourcesWithStatsRow, error)
 	// Ordered by rkey (a TID, so creation order) to make "first-seen casing wins"
 	// deterministic across a tag case-collision.

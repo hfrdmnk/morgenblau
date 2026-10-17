@@ -28,7 +28,7 @@ test('recovery removes the dot, and an unchecked feed never shows one', () => {
 });
 
 test('a generated feed is marked quietly and says when it needs attention', () => {
-    const generated = { ...source, feedUrl: 'https://app.example.com/web/abc', fetchStatus: 'ready' as const };
+    const generated = { ...source, feedUrl: 'https://app.example.com/feed/abc', fetchStatus: 'ready' as const };
     expect(renderToStaticMarkup(<GeneratedNote source={source} />)).toBe('');
     expect(renderToStaticMarkup(<GeneratedNote source={{ ...generated, generated: { health: 'ok', healthReason: '' } }} />))
         .toContain('>Generated feed</p>');

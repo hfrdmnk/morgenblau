@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/websource"
 )
 
 // --- List handler ---
@@ -23,7 +24,7 @@ func TestSubscriptionsList_FromIndex(t *testing.T) {
 			FeedUrl: "https://example.test/feed.xml",
 		},
 	}
-	h := SubscriptionsListHandler(idx, "")
+	h := SubscriptionsListHandler(idx, websource.FeedPrefixes{})
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -54,7 +55,7 @@ func TestSubscriptionsList_Standardfeed_CatalogTitleFallback(t *testing.T) {
 	}
 	idx.catalogTitles[testPublication] = ptrString("Publication Name")
 
-	h := SubscriptionsListHandler(idx, "")
+	h := SubscriptionsListHandler(idx, websource.FeedPrefixes{})
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -94,7 +95,7 @@ func TestSubscriptionsList_RoundTripsPrimaryAndTags(t *testing.T) {
 			Tags:      &tags,
 		},
 	}
-	h := SubscriptionsListHandler(idx, "")
+	h := SubscriptionsListHandler(idx, websource.FeedPrefixes{})
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -172,7 +173,7 @@ func TestSubscriptionsList_MutedAtTwentyConsecutiveFailures(t *testing.T) {
 	idx.consecutiveFailures["https://a.example/feed.xml"] = 20
 	idx.consecutiveFailures["https://b.example/feed.xml"] = 19
 
-	h := SubscriptionsListHandler(idx, "")
+	h := SubscriptionsListHandler(idx, websource.FeedPrefixes{})
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -203,7 +204,7 @@ func TestSubscriptionsList_BelowThresholdOmitsMutedFromJSON(t *testing.T) {
 	}
 	idx.consecutiveFailures["https://a.example/feed.xml"] = 19
 
-	h := SubscriptionsListHandler(idx, "")
+	h := SubscriptionsListHandler(idx, websource.FeedPrefixes{})
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -223,7 +224,7 @@ func TestSubscriptionsList_CarriesLastFetchedAt(t *testing.T) {
 	}
 	idx.lastFetchedAt["https://a.example/feed.xml"] = ptrString("2026-07-12T08:00:00Z")
 
-	h := SubscriptionsListHandler(idx, "")
+	h := SubscriptionsListHandler(idx, websource.FeedPrefixes{})
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -245,7 +246,7 @@ func TestSubscriptionsList_CarriesLastFetchedAt(t *testing.T) {
 	}
 	reqNone := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:bob", "sid-1")
 	rrNone := httptest.NewRecorder()
-	SubscriptionsListHandler(idxNone, "").ServeHTTP(rrNone, reqNone)
+	SubscriptionsListHandler(idxNone, websource.FeedPrefixes{}).ServeHTTP(rrNone, reqNone)
 
 	if rrNone.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rrNone.Code, rrNone.Body.String())
@@ -302,7 +303,7 @@ func TestSubscriptionsTags_RouteWinsOverRkeyWildcard(t *testing.T) {
 	fakeDetail := newFakeSourceDetail()
 	mux := http.NewServeMux()
 	mux.Handle("GET /api/subscriptions/tags", SubscriptionsTagsHandler(idx))
-	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fakeDetail, ""))
+	mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fakeDetail, websource.FeedPrefixes{}))
 
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions/tags", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -333,24 +334,24 @@ func TestSubscriptionsTags_EmptyIsArrayNotNull(t *testing.T) {
 }
 
 func TestSubscriptionsList_GeneratedFeedsCarryTheirHealth(t *testing.T) {
-	const prefix = "https://app.example.com/web/"
+	prefixes := websource.FeedPrefixes{Current: "https://app.example.com/feed/", Legacy: "https://app.example.com/web/"}
 	idx := newFakeIndex()
 	idx.rows["did:plc:alice"] = map[string]db.UserSubscription{
-		prefix + "unsure":                   {Did: "did:plc:alice", Rkey: "1", FeedUrl: prefix + "unsure"},
-		prefix + "fine":                     {Did: "did:plc:alice", Rkey: "2", FeedUrl: prefix + "fine"},
+		prefixes.Current + "unsure":         {Did: "did:plc:alice", Rkey: "1", FeedUrl: prefixes.Current + "unsure"},
+		prefixes.Legacy + "fine":            {Did: "did:plc:alice", Rkey: "2", FeedUrl: prefixes.Legacy + "fine"},
 		"https://news.example.com/feed.xml": {Did: "did:plc:alice", Rkey: "3", FeedUrl: "https://news.example.com/feed.xml"},
 	}
-	idx.webHealth[prefix+"unsure"] = [2]string{"needs_attention", "Morgenblau isn't sure which links are posts"}
-	idx.webHealth[prefix+"fine"] = [2]string{"ok", ""}
+	idx.webHealth[prefixes.Current+"unsure"] = [2]string{"needs_attention", "Morgenblau isn't sure which links are posts"}
+	idx.webHealth[prefixes.Legacy+"fine"] = [2]string{"ok", ""}
 
 	rr := httptest.NewRecorder()
-	SubscriptionsListHandler(idx, prefix).ServeHTTP(rr,
+	SubscriptionsListHandler(idx, prefixes).ServeHTTP(rr,
 		withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil), "did:plc:alice", "sid-1"))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
-	if idx.lastWebFeedPrefix != prefix {
-		t.Errorf("handler queried with web feed prefix %q, want %q", idx.lastWebFeedPrefix, prefix)
+	if idx.lastWebFeedPrefixes != prefixes {
+		t.Errorf("handler queried with web feed prefixes %+v, want %+v", idx.lastWebFeedPrefixes, prefixes)
 	}
 	var got []map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {

@@ -57,24 +57,27 @@ func TestWebSourceRoutesAreRegistered(t *testing.T) {
 	}
 	srv := &Server{webSources: svc}
 
-	rr := httptest.NewRecorder()
-	srv.RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/web/abc", nil))
-	if rr.Code != http.StatusOK || rr.Header().Get("Content-Type") != "application/rss+xml; charset=utf-8" {
-		t.Fatalf("anonymous GET /web/abc = %d %q: %s", rr.Code, rr.Header().Get("Content-Type"), rr.Body)
-	}
-	if feed, err := gofeed.NewParser().ParseString(rr.Body.String()); err != nil || len(feed.Items) != 1 {
-		t.Errorf("feed = %v, %v", feed, err)
-	}
-	rr = httptest.NewRecorder()
-	srv.RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/web/missing", nil))
-	if rr.Code != http.StatusNotFound {
-		t.Errorf("unknown id = %d, want 404", rr.Code)
+	// /web/ is the legacy alias: subscriptions made before /feed/ still name it.
+	for _, path := range []string{"/feed/", "/web/"} {
+		rr := httptest.NewRecorder()
+		srv.RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path+"abc", nil))
+		if rr.Code != http.StatusOK || rr.Header().Get("Content-Type") != "application/rss+xml; charset=utf-8" {
+			t.Fatalf("anonymous GET %sabc = %d %q: %s", path, rr.Code, rr.Header().Get("Content-Type"), rr.Body)
+		}
+		if feed, err := gofeed.NewParser().ParseString(rr.Body.String()); err != nil || len(feed.Items) != 1 {
+			t.Errorf("%sabc feed = %v, %v", path, feed, err)
+		}
+		rr = httptest.NewRecorder()
+		srv.RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path+"missing", nil))
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("%smissing = %d, want 404", path, rr.Code)
+		}
 	}
 
 	did, _ := syntax.ParseDID("did:plc:reader")
 	req := httptest.NewRequest(http.MethodPost, "/api/web-sources", strings.NewReader(`{"url":"https://other.example.com/"}`))
 	req = req.WithContext(auth.WithSession(req.Context(), &session.Session{Data: &session.Data{AccountDID: did, SessionID: "sid-1"}}))
-	rr = httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	srv.routes().ServeHTTP(rr, req)
 	if rr.Code != http.StatusServiceUnavailable || !strings.Contains(rr.Body.String(), `"code":"unavailable"`) {
 		t.Errorf("POST /api/web-sources without a generator = %d: %s", rr.Code, rr.Body)
@@ -118,9 +121,10 @@ func TestSourceListMarksOwnGeneratedFeeds(t *testing.T) {
 	for _, stmt := range []string{
 		`INSERT INTO web_sources (id, listing_key, listing_url, site_url, title, recipe, health, health_reason, created_by_did, created_at, updated_at, setup_at, setup_health, setup_tried_at)
 		VALUES ('abc', 'news.example.com', 'https://news.example.com/', 'https://news.example.com/', 'Example Publication', '{}', 'needs_attention', 'Morgenblau isn''t sure which links are posts', 'did:plc:reader', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z', 'needs_attention', '2026-10-10T09:00:00Z')`,
-		`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES ('https://app.example.com/web/abc', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z')`,
+		`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES ('https://app.example.com/feed/abc', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z'), ('https://app.example.com/web/abc', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z')`,
 		`INSERT INTO user_subscriptions (did, rkey, at_uri, feed_url, created_at, updated_at)
-		VALUES ('did:plc:reader', '3gen', 'at://did:plc:reader/blue.morgen.feed.subscription/3gen', 'https://app.example.com/web/abc', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z')`,
+		VALUES ('did:plc:reader', '3gen', 'at://did:plc:reader/blue.morgen.feed.subscription/3gen', 'https://app.example.com/feed/abc', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z'),
+		('did:plc:reader', '3old', 'at://did:plc:reader/blue.morgen.feed.subscription/3old', 'https://app.example.com/web/abc', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z')`,
 	} {
 		if _, err := dbs.Writer.Exec(stmt); err != nil {
 			t.Fatal(err)
@@ -134,7 +138,7 @@ func TestSourceListMarksOwnGeneratedFeeds(t *testing.T) {
 	rr := httptest.NewRecorder()
 	srv.routes().ServeHTTP(rr, req)
 	want := `"generated":{"health":"needs_attention","healthReason":"Morgenblau isn't sure which links are posts"}`
-	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), want) {
-		t.Errorf("GET /api/subscriptions = %d %s, want it to contain %s", rr.Code, rr.Body, want)
+	if rr.Code != http.StatusOK || strings.Count(rr.Body.String(), want) != 2 {
+		t.Errorf("GET /api/subscriptions = %d %s, want %s on both the /feed/ and the legacy /web/ subscription", rr.Code, rr.Body, want)
 	}
 }

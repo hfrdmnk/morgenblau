@@ -63,20 +63,20 @@ UPDATE web_sources SET
 WHERE id = sqlc.arg(id) AND setup_seq = sqlc.arg(setup_seq);
 
 -- name: ListDueWebSources :many
--- A web source counts as followed once its feed URL is in the shared feeds catalog, the same set the global refresher fetches.
+-- A web source counts as followed once either of its feed URLs is in the shared feeds catalog, the same set the global refresher fetches.
 -- A setup the site refused has nothing to poll; an unsure one is polled, since the reader chose it from its preview.
 SELECT ws.* FROM web_sources ws
 WHERE ws.setup_health IN ('ok', 'needs_attention')
   AND ws.next_poll_at IS NOT NULL
   AND ws.next_poll_at <= sqlc.arg(now)
-  AND EXISTS (SELECT 1 FROM feeds f WHERE f.feed_url = sqlc.arg(feed_url_prefix) || ws.id)
+  AND EXISTS (SELECT 1 FROM feeds f WHERE f.feed_url IN (sqlc.arg(feed_url_prefix) || ws.id, sqlc.arg(legacy_feed_url_prefix) || ws.id))
 ORDER BY ws.next_poll_at, ws.id
 LIMIT sqlc.arg(limit);
 
 -- name: IsWebSourceFollowedByOthers :one
 -- Answers yes or no and never names a follower; an anchored rebuild of a feed other readers follow must be confirmed first.
 SELECT EXISTS (
-    SELECT 1 FROM user_subscriptions us WHERE us.feed_url = sqlc.arg(feed_url) AND us.did <> sqlc.arg(did)
+    SELECT 1 FROM user_subscriptions us WHERE us.feed_url IN (sqlc.arg(feed_url), sqlc.arg(legacy_feed_url)) AND us.did <> sqlc.arg(did)
 ) AS followed;
 
 -- name: InsertWebSourceItem :exec

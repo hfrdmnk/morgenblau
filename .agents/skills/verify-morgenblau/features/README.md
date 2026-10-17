@@ -19,7 +19,7 @@ UI and public:
 - [Daily digest](./digest.md): `/` and `/?date=`, the header date navigation, digest API, entry API.
 - [Entry reader](./entry-reader.md): `/entry/<slug>`, `Load full article` (extract), newsletter inline assets and `Load images`, `Back to digest`.
 - [Subscriptions and Sources](./subscriptions.md): `/sources`, the `Add a source` dialog, the mode selector, resolve, add, edit, remove (PDS writes).
-- [Generated feeds](./generated-feeds.md): `Generate a feed` for a page without one, the preview, pointing at a post, blocked sites, the hourly limit, generated-feed health on `/sources`, the public `/web/<id>` feed.
+- [Generated feeds](./generated-feeds.md): `Generate a feed` for a page without one, the preview, pointing at a post, blocked sites, the hourly limit, generated-feed health on `/sources`, the public `/feed/<id>` feed and its `/web/<id>` alias.
 - [Import and export](./import-export.md): `/settings/import` (OPML, Skyreader, Glean), `/settings/export`, the import and export API (PDS writes).
 
 API and background:
