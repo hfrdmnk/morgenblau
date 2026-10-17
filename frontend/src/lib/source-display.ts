@@ -18,6 +18,24 @@ export function displayURL(value: string): string {
     return value.replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
 
+const labelOrder = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+
+function initialOf(label: string): string {
+    const first = label.trim().normalize('NFD').charAt(0).toLocaleUpperCase();
+    return /\p{L}/u.test(first) ? first : '#';
+}
+
+// Sorts by the shown label rather than trusting server order, which falls back to the feed URL for untitled feeds.
+export function groupByInitial<T>(items: T[], label: (item: T) => string): { initial: string; items: T[] }[] {
+    const groups = new Map<string, T[]>();
+    for (const item of [...items].sort((a, b) => labelOrder.compare(label(a), label(b)))) {
+        const initial = initialOf(label(item));
+        groups.set(initial, [...(groups.get(initial) ?? []), item]);
+    }
+    return [...groups].map(([initial, members]) => ({ initial, items: members }))
+        .sort((a, b) => Number(a.initial === '#') - Number(b.initial === '#'));
+}
+
 const longDate = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
 
 export function formatDate(value?: string | null): string | undefined {

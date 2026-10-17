@@ -5,7 +5,7 @@ import { FeedHealth, GeneratedNote } from '@/components/feed-health';
 import { ItemList, ListError, ListItem, ListSkeleton } from '@/components/item-list';
 import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-sources';
 import { newsletterSourceHref, PATHS, sourceHref } from '@/lib/paths';
-import { displayURL } from '@/lib/source-display';
+import { displayURL, groupByInitial } from '@/lib/source-display';
 
 export function Sources() {
     return (
@@ -23,14 +23,13 @@ function FeedList() {
         <SourceSection title="Feeds">
             {state.status === 'loaded' ? (
                 state.data.length ? (
-                    <ItemList>
-                        {state.data.map((source) => (
+                    <LetterGroups sources={state.data} label={(source) => sourceLabel(source.title, source.siteUrl || source.feedUrl)}
+                        row={(source) => (
                             <SourceRow key={source.rkey} href={sourceHref(source.rkey)} title={source.title}
                                 identity={source.siteUrl || source.feedUrl} favicon={source.faviconUrl}
                                 primary={source.primary} health={<FeedHealth source={source} />}
                                 note={<GeneratedNote source={source} />} />
-                        ))}
-                    </ItemList>
+                        )} />
                 ) : <p className="text-sm text-muted-foreground">No feeds yet. <Link href={PATHS.import} className="underline underline-offset-4">Import feeds</Link> to get started.</p>
             ) : <ListStatus label="feeds" state={state} />}
         </SourceSection>
@@ -68,20 +67,36 @@ function SourceSection({ title, children }: { title: string; children: ReactNode
 
 function NewsletterRows({ sources, stopped = false }: { sources: NewsletterSource[]; stopped?: boolean }) {
     return (
-        <ItemList>
-            {sources.map((source) => (
+        <LetterGroups sources={sources} label={(source) => sourceLabel(source.title, source.senderAddress)}
+            row={(source) => (
                 <SourceRow key={source.id} href={newsletterSourceHref(source.id)} title={source.title}
                     identity={source.senderAddress} primary={!stopped && source.primary} />
-            ))}
-        </ItemList>
+            )} />
     );
+}
+
+function LetterGroups<T>({ sources, label, row }: { sources: T[]; label: (source: T) => string; row: (source: T) => ReactNode }) {
+    return (
+        <div className="space-y-12">
+            {groupByInitial(sources, label).map(({ initial, items }) => (
+                <div key={initial}>
+                    <h3 className="text-sm font-medium text-subtle-foreground">{initial}</h3>
+                    <div className="mt-5"><ItemList>{items.map(row)}</ItemList></div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function sourceLabel(title: string | undefined, identity: string): string {
+    return title || displayURL(identity);
 }
 
 function SourceRow({ href, title, identity, favicon, primary, health, note }: {
     href: string; title?: string; identity: string; favicon?: string; primary: boolean; health?: ReactNode; note?: ReactNode;
 }) {
     return (
-        <ListItem href={href} title={title || displayURL(identity)} icon={favicon}
+        <ListItem href={href} title={sourceLabel(title, identity)} icon={favicon}
             aside={primary ? 'Primary' : undefined} note={note}
             meta={displayURL(identity)} status={health} />
     );
