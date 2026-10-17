@@ -191,8 +191,9 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 			}
 		}
 
+		// Undated items already in a feed's first successful fetch are its back catalogue, not today's news.
 		var keepUndated int64
-		if p.undatedHistory != nil && p.undatedHistory(feedURL) {
+		if existing.LastFetchedAt == nil || (p.undatedHistory != nil && p.undatedHistory(feedURL)) {
 			keepUndated = 1
 		}
 		for _, item := range res.Feed.Items {

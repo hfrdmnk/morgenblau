@@ -42,3 +42,4 @@ Preconditions:
 
 - The digest groups by the browser's local day. Pass `timezone` explicitly on API calls and use the same zone as the browser, or a late-evening delivery lands on another day.
 - Feeds the run adds bring their entries next to the newsletter. Assert on titles, not on counts. For a feed entry today without network, follow `$F/feeds/valid.xml` as in [subscriptions](./subscriptions.md): `Fixture entry published just now` lands on today.
+- Undated items: `$F/feeds/undated.xml` carries a Hugo zero-date `Fixture about page`, which stays out of every digest and is listed undated on its source page. `curl -X POST $F/control/undated/later` adds `Fixture undated entry found later`, which the next refresh puts on today.

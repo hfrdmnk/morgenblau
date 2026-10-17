@@ -113,9 +113,9 @@ func TestFeedPipeline_PublicationDateRepairAndStability(t *testing.T) {
 			t.Errorf("published_at = %s, want %s", entry.PublishedAt, want)
 		}
 	}
-	check("2026-10-05T12:00:00Z")
+	check("")
 	now = now.Add(24 * time.Hour)
-	check("2026-10-05T12:00:00Z")
+	check("")
 
 	mu.Lock()
 	date = "2025-11-08  T00:00:00Z"
@@ -464,11 +464,77 @@ func TestStandardfeedPipeline_FetchAndStore_DeleteSweepAndMalformedProtection(t 
 	}
 }
 
+// Undated items a feed already carries when Morgenblau first fetches it are history; one that appears later belongs to the day it was first seen.
+func TestFeedPipeline_UndatedItemsFromTheFirstFetchStayUndated(t *testing.T) {
+	var mu sync.Mutex
+	status, later := http.StatusInternalServerError, ""
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if status != http.StatusOK {
+			w.WriteHeader(status)
+			return
+		}
+		// Hugo renders an undated page with Go's zero time.
+		_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>Example Publication</title><link>https://site.example.com/</link>` + later +
+			`<item><title>About</title><link>https://site.example.com/about/</link><guid>https://site.example.com/about/</guid><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate></item>` +
+			`<item><title>Dated</title><link>https://site.example.com/dated</link><guid>https://site.example.com/dated</guid><pubDate>Thu, 01 Oct 2026 08:00:00 +0000</pubDate></item>` +
+			`</channel></rss>`))
+	}))
+	defer srv.Close()
+	feedURL := srv.URL + "/feed.xml"
+	dbs := openPipelineTestDB(t)
+	seedCatalogFeed(t, dbs, feedURL)
+	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+	p := NewFeedPipeline(fetcher.New(fetcher.WithSafeHTTPOptions(safehttp.WithAllowLoopback())), db.New(dbs.Writer)).
+		WithFaviconDiscoverer(&fakeFaviconDiscoverer{}).WithTxRunner(dbs.Writer)
+	p.now = func() time.Time { return now }
+	poll := func() {
+		t.Helper()
+		now = now.Add(24 * time.Hour)
+		if err := p.FetchAndStore(context.Background(), feedURL); err != nil && status == http.StatusOK {
+			t.Fatal(err)
+		}
+	}
+	published := func(guid string) string {
+		t.Helper()
+		entry, err := db.New(dbs.Reader).GetFeedEntryBySlug(context.Background(), EntrySlug(feedURL, guid))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return entry.PublishedAt
+	}
+
+	poll()
+	status = http.StatusOK
+	poll()
+	if got := published("https://site.example.com/about/"); got != "" {
+		t.Errorf("first fetch undated published_at = %q, want empty", got)
+	}
+	if got := published("https://site.example.com/dated"); got != "2026-10-01T08:00:00Z" {
+		t.Errorf("dated published_at = %q", got)
+	}
+
+	mu.Lock()
+	later = `<item><title>Later</title><link>https://site.example.com/later</link><guid>https://site.example.com/later</guid></item>`
+	mu.Unlock()
+	poll()
+	if got := published("https://site.example.com/later"); got != "2026-10-13T12:00:00Z" {
+		t.Errorf("later undated published_at = %q, want the first-seen time", got)
+	}
+	if got := published("https://site.example.com/about/"); got != "" {
+		t.Errorf("history item published_at = %q after a later poll, want empty", got)
+	}
+}
+
 // Generated feeds date every item a later poll finds, so an undated one is setup history and must stay out of the digest.
 func TestFeedPipeline_OwnWebFeedUndatedItemsStayUndated(t *testing.T) {
+	var mu sync.Mutex
+	undated := ""
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>Example Publication</title><link>https://site.example.com/</link>` +
-			`<item><title>Undated</title><link>https://site.example.com/undated</link><guid>https://site.example.com/undated</guid></item>` +
+		mu.Lock()
+		defer mu.Unlock()
+		_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>Example Publication</title><link>https://site.example.com/</link>` + undated +
 			`<item><title>Dated</title><link>https://site.example.com/dated</link><guid>https://site.example.com/dated</guid><pubDate>Thu, 01 Oct 2026 08:00:00 +0000</pubDate></item>` +
 			`</channel></rss>`))
 	}))
@@ -491,21 +557,29 @@ func TestFeedPipeline_OwnWebFeedUndatedItemsStayUndated(t *testing.T) {
 		}
 		return entry.PublishedAt
 	}
-	for range 2 {
+	for i := range 3 {
+		if i == 1 {
+			mu.Lock()
+			undated = `<item><title>Undated</title><link>https://site.example.com/undated</link><guid>https://site.example.com/undated</guid></item>`
+			mu.Unlock()
+		}
 		for _, feedURL := range []string{plainURL, webURL} {
 			if err := p.FetchAndStore(context.Background(), feedURL); err != nil {
 				t.Fatal(err)
 			}
 		}
+		now = now.Add(24 * time.Hour)
+		if i == 0 {
+			continue
+		}
 		if got := published(webURL, "https://site.example.com/undated"); got != "" {
 			t.Errorf("web feed undated published_at = %q, want empty", got)
 		}
-		if got := published(plainURL, "https://site.example.com/undated"); got != "2026-10-10T12:00:00Z" {
+		if got := published(plainURL, "https://site.example.com/undated"); got != "2026-10-11T12:00:00Z" {
 			t.Errorf("plain feed undated published_at = %q, want the first-seen time", got)
 		}
 		if got := published(webURL, "https://site.example.com/dated"); got != "2026-10-01T08:00:00Z" {
 			t.Errorf("web feed dated published_at = %q", got)
 		}
-		now = now.Add(24 * time.Hour)
 	}
 }

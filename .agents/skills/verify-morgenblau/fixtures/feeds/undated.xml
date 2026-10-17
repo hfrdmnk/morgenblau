@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<title>Example Undated Feed</title>
+<link>{{ORIGIN}}/</link>
+<description>A Hugo-style feed whose pages carry no date.</description>
+{{LATER}}<item>
+<title>Fixture about page</title>
+<link>{{ORIGIN}}/posts/about</link>
+<guid isPermaLink="false">example-undated-about</guid>
+<pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+<description>&lt;p&gt;Hugo renders an undated page with Go's zero time.&lt;/p&gt;</description>
+</item>
+<item>
+<title>Fixture undated entry published just now</title>
+<link>{{ORIGIN}}/posts/undated-fresh</link>
+<guid isPermaLink="false">example-undated-fresh</guid>
+<pubDate>{{NOW_RFC822}}</pubDate>
+<description>&lt;p&gt;A dated entry beside the undated ones.&lt;/p&gt;</description>
+</item>
+</channel>
+</rss>

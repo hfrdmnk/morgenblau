@@ -56,7 +56,7 @@ Terms that are easy to conflate. Each line states the distinction; the linked se
 | Generated feed | A feed Morgenblau builds from the listing page of a site with no feed at all; called a web source in code. Server-owned, one per site, shared by all its readers, served at `/feed/<id>`. |
 | Listing page | The page that links to a site's posts, such as a blog index. A generated feed is built from it, never from the posts themselves. |
 | Setup and poll | Setup builds a generated feed once and may ask the model. A poll re-reads the listing through the stored recipe and never calls a model on its own. |
-| History | Posts a generated feed found at setup. Undated ones are stored without a date, which keeps them out of every digest. Do not backfill them with the fetch time. |
+| History | Posts a feed already carries when Morgenblau first fetches it, or a generated feed found at setup. Undated ones are stored without a date: Sources lists them, no digest does. Do not backfill them with the fetch time. An undated post that appears later belongs to the day Morgenblau first saw it. |
 | Health | Whether a generated feed currently serves the site's posts: fine, needs attention, or blocked by the site. Shown in Sources, never in the digest. |
 | Pointing at a post | A reader's fix for an unsure generated feed: paste one real post and setup rebuilds around it. Because the feed is shared, the rebuild must be confirmed before it replaces what other readers see. |
 | Blocked by site | The site refuses honest bots. Morgenblau reports it and never works around it. Distinct from unreachable, which is a network or server failure. |

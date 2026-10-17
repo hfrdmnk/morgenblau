@@ -13,6 +13,7 @@ const decoyOrigin = `http://127.0.0.1:${decoyPort}`
 // gofeed reads up to the fetcher's 5 MiB cap; one byte more makes the feed too large.
 const HUGE_BYTES = 5 * 1024 * 1024 + 1024
 let toggleUp = true
+let undatedLater = false
 
 // Entries dated a minute before the request land in today's digest whatever time the run starts, except in the first minute after midnight.
 function render(name) {
@@ -21,6 +22,7 @@ function render(name) {
     .replaceAll('{{ORIGIN}}', origin)
     .replaceAll('{{NOW_RFC822}}', now.toUTCString().replace('GMT', '+0000'))
     .replaceAll('{{NOW_RFC3339}}', now.toISOString())
+    .replaceAll('{{LATER}}', undatedLater ? '<item><title>Fixture undated entry found later</title><link>' + origin + '/posts/undated-later</link><guid isPermaLink="false">example-undated-later</guid></item>\n' : '')
 }
 
 function send(res, status, type, body) {
@@ -41,6 +43,7 @@ const feeds = {
   '/feeds/atom.xml': () => ['application/atom+xml; charset=utf-8', render('atom.xml')],
   '/feeds/stale.xml': () => ['application/rss+xml; charset=utf-8', render('stale.xml')],
   '/feeds/broken.xml': () => ['application/rss+xml; charset=utf-8', render('broken.xml')],
+  '/feeds/undated.xml': () => ['application/rss+xml; charset=utf-8', render('undated.xml')],
   '/feeds/latin1.xml': () => ['application/rss+xml; charset=ISO-8859-1', Buffer.from(render('latin1.xml'), 'latin1')],
 }
 
@@ -49,6 +52,10 @@ const fixtures = http.createServer((req, res) => {
   if (req.method === 'POST' && /^\/control\/toggle\/(up|down)$/.test(pathname)) {
     toggleUp = pathname.endsWith('/up')
     return send(res, 200, 'application/json', JSON.stringify({ toggle: toggleUp ? 'up' : 'down' }))
+  }
+  if (req.method === 'POST' && pathname === '/control/undated/later') {
+    undatedLater = true
+    return send(res, 200, 'application/json', JSON.stringify({ undated: 'later' }))
   }
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'text/plain', 'method not allowed\n')
   if (feeds[pathname]) return send(res, 200, ...feeds[pathname]())

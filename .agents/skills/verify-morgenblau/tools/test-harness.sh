@@ -320,6 +320,9 @@ test_feed_fixtures_serve_each_case() {
     [[ "$(curl -sS -o /dev/null -w '%{http_code}' "$origin/feeds/toggle.xml")" == 503 ]]
     curl -fsS -X POST "$origin/control/toggle/up" >/dev/null
     curl -fsS "$origin/feeds/toggle.xml" | grep -q 'Example Toggle Feed'
+    if curl -fsS "$origin/feeds/undated.xml" | grep -q 'undated-later'; then return 1; fi
+    curl -fsS -X POST "$origin/control/undated/later" >/dev/null
+    curl -fsS "$origin/feeds/undated.xml" | grep -q "<link>$origin/posts/undated-later</link>"
     [[ "$(curl -sS -o /dev/null -w '%{http_code}' "$origin/feeds/../../tools/package.json")" == 404 ]]
 }
 
