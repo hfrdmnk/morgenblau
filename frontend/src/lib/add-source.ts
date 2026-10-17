@@ -128,8 +128,7 @@ const STATUS_MESSAGES: Record<number, string> = {
 function apiGenerationError(error: ApiError) {
     if (error.status === 429 || error.code === 'rate_limited')
         return limitMessage(error);
-    const known =
-        (error.code && CODE_MESSAGES[error.code]) ?? STATUS_MESSAGES[error.status];
+    const known = CODE_MESSAGES[error.code ?? ''] ?? STATUS_MESSAGES[error.status];
     if (known) return known;
     return error.status < 500 ? error.message : undefined;
 }

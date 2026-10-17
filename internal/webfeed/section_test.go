@@ -204,6 +204,9 @@ func TestSectionCandidate(t *testing.T) {
 		{"teaser leaves a one-segment page", "https://www.example.com/home", `<nav><a href="/blog">Blog</a></nav>`, items("/blog/one", "/blog/two"), false, "https://www.example.com/blog"},
 		{"healthy ignores blog-like words", "https://www.example.com/", nav, items("/a-year-in"), false, ""},
 		{"weak skips other hosts", "https://www.example.com/", `<nav><a href="https://other.example.com/blog">Blog</a></nav>`, nil, true, ""},
+		{"www. is the same site", "https://www.example.com/", `<nav><a href="https://example.com/blog">Blog</a></nav>`, nil, true, "https://example.com/blog"},
+		{"teaser items without www.", "https://www.example.com/", `<nav><a href="https://example.com/blog">Blog</a></nav>`, []Item{{URL: "https://example.com/blog/one"}, {URL: "https://example.com/blog/two"}}, false, "https://example.com/blog"},
+		{"another port is another site", "https://example.com/", `<nav><a href="https://example.com:8443/blog">Blog</a></nav>`, nil, true, ""},
 		{"teaser wins over weak", "https://www.example.com/", `<nav><a href="/blog">Blog</a><a href="/updates">Updates</a></nav>`, items("/updates/one", "/updates/two"), true, "https://www.example.com/updates"},
 	}
 	for _, tc := range cases {
@@ -303,5 +306,22 @@ func TestPollReadsTheSectionAMovedRecipePointsAt(t *testing.T) {
 	}
 	if s.hits["/blog"] != 1 || s.hits["/"] != 0 || polled.Verdict != PollOK || len(polled.Items) != 5 {
 		t.Fatalf("hits %v verdict %s items %d", s.hits, polled.Verdict, len(polled.Items))
+	}
+}
+
+func TestSetupMovesABrowserBuiltFrontPageToItsServedSection(t *testing.T) {
+	s := newTestSite(t)
+	s.addBlog(5)
+	s.set("/", strings.Replace(appShell(), `<div id="root">`, `<header><a href="/blog">Blog</a></header><div id="root">`, 1))
+	if home := homeOnly(t, s, "/"); !home.BrowserBuilt() {
+		t.Fatalf("fixture: homepage reasons %v, want it browser-built", home.Reasons)
+	}
+
+	res, err := Setup(context.Background(), s.url("/"), s.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Recipe.ListingURL != s.url("/blog") || res.BrowserBuilt() || !res.Healthy() || len(res.Items) != 5 {
+		t.Fatalf("listing %s reasons %v items %v; want the served section's working feed", res.Recipe.ListingURL, res.Reasons, itemURLs(res.Items))
 	}
 }

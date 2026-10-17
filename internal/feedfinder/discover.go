@@ -248,10 +248,7 @@ func (f *Finder) probeFeed(ctx context.Context, p probe, lang string) *probedFee
 		return nil
 	}
 
-	final := req.URL
-	if resp.Request != nil && resp.Request.URL != nil {
-		final = resp.Request.URL
-	}
+	final := finalURL(resp, req.URL)
 	keys := make(map[string]struct{}, len(parsed.Items))
 	hosts := map[string]struct{}{}
 	for _, item := range parsed.Items {
@@ -266,7 +263,7 @@ func (f *Finder) probeFeed(ctx context.Context, p probe, lang string) *probedFee
 	return &probedFeed{
 		probe:       p,
 		finalURL:    final.String(),
-		contentType: strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0]),
+		contentType: mediaType(resp),
 		title:       strings.TrimSpace(parsed.Title),
 		itemKeys:    keys,
 		itemHosts:   hosts,

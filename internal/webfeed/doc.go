@@ -17,8 +17,7 @@
 //     can raise an alarm, never close one (WeeklyCheck).
 //   - Section: the one-segment page a pasted listing links that lists all its posts; setup moves there when it holds
 //     the listing's posts and more, and keeps the pasted page's title (preferSection).
-//   - Lazy list: a Livewire placeholder the page's own script fills with one POST; setup and polls send that request too,
-//     and a lazy recipe's polls skip conditional GETs, since the shell stays the same while the list changes (expandLazy).
+//   - Lazy list: a Livewire placeholder the page's own script fills with one POST (expandLazy).
 //   - Anchor: a post URL the reader points at so setup rebuilds around lists holding it or sharing its shape.
 //   - Blocked: the site refuses honest bots (401/403/429, a challenge page, or robots.txt); Morgenblau does not
 //     work around it.

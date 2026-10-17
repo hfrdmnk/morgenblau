@@ -7,16 +7,8 @@ import (
 	"strings"
 
 	"morgenblau/internal/postkey"
+	"morgenblau/internal/sitesection"
 )
-
-// sectionWords name the one-segment pages where sites keep their full list of posts; discovery reads them too.
-var sectionWords = map[string]bool{
-	"blog": true, "blogs": true, "writing": true, "writings": true, "posts": true, "post": true, "articles": true,
-	"notes": true, "essays": true, "journal": true, "thoughts": true, "updates": true, "news": true, "changelog": true, "log": true,
-}
-
-// SectionName reports a one-segment path such as "blog" or "Writing" that sites use for their list of posts.
-func SectionName(segment string) bool { return sectionWords[strings.ToLower(segment)] }
 
 // sectionMinItems is how many posts a healthy listing shows before setup stops looking for a fuller section page.
 const sectionMinItems = 5
@@ -75,7 +67,7 @@ func sectionCandidate(p *pageDoc, items []Item, weak bool) string {
 	links := map[string]string{}
 	for _, a := range p.anchors {
 		u, err := url.Parse(a.url)
-		if err != nil || !strings.EqualFold(u.Host, p.url.Host) {
+		if err != nil || !sitesection.SameSite(u, p.url) {
 			continue
 		}
 		seg := strings.Trim(u.Path, "/")
@@ -88,13 +80,13 @@ func sectionCandidate(p *pageDoc, items []Item, weak bool) string {
 			order = append(order, seg)
 		}
 	}
-	if seg := teaserSection(p.url.Host, items); seg != "" && links[seg] != "" {
+	if seg := teaserSection(p.url, items); seg != "" && links[seg] != "" {
 		return links[seg]
 	}
 	// A named page the reader pasted, such as /updates, is a stream of its own; only the front page gives way to a sibling.
 	if weak && (listing == "" || defaultDocuments[listing]) {
 		for _, seg := range order {
-			if SectionName(seg) {
+			if sitesection.Name(seg) {
 				return links[seg]
 			}
 		}
@@ -102,12 +94,13 @@ func sectionCandidate(p *pageDoc, items []Item, weak bool) string {
 	return ""
 }
 
-// teaserSection is the first path segment every item on host lives under, with more path after it; "" when they differ.
-func teaserSection(host string, items []Item) string {
+// teaserSection is the first path segment every item on the listing's site lives under, with more path after it; "" when
+// they differ.
+func teaserSection(listing *url.URL, items []Item) string {
 	section := ""
 	for _, it := range items {
 		u, err := url.Parse(it.URL)
-		if err != nil || !strings.EqualFold(u.Host, host) {
+		if err != nil || !sitesection.SameSite(u, listing) {
 			continue
 		}
 		first, rest, _ := strings.Cut(strings.Trim(u.Path, "/"), "/")

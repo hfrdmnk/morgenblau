@@ -41,7 +41,7 @@ type livewirePage struct {
 // expandLazy loads a listing's Livewire lazy components with the one POST the page's script makes and splices their
 // HTML in; any failure returns r untouched and false.
 func (s *session) expandLazy(ctx context.Context, r *response, lang string, cache *RobotsCache) (*response, bool) {
-	if r.err != nil || r.status < 200 || r.status > 299 || !bytes.Contains(r.body, lazyMarker) {
+	if s.post == nil || r.err != nil || r.status < 200 || r.status > 299 || !bytes.Contains(r.body, lazyMarker) {
 		return r, false
 	}
 	lw := scanLivewire(r.body)
@@ -116,7 +116,7 @@ func (s *session) postLazy(ctx context.Context, updateURL, lang string, lw livew
 	if len(cookies) > 0 {
 		req.Header.Set("Cookie", strings.Join(cookies, "; "))
 	}
-	resp, err := s.client.Do(req)
+	resp, err := s.post.Do(req)
 	if err != nil {
 		return nil, false
 	}

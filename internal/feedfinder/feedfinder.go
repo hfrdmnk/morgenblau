@@ -72,6 +72,19 @@ func newGET(ctx context.Context, rawURL string) (*http.Request, error) {
 	return req, nil
 }
 
+// mediaType is the response's Content-Type without its parameters, in the case the server sent.
+func mediaType(resp *http.Response) string {
+	return strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0])
+}
+
+// finalURL is where the client ended up after redirects, or requested when the response does not say.
+func finalURL(resp *http.Response, requested *url.URL) *url.URL {
+	if resp.Request != nil && resp.Request.URL != nil {
+		return resp.Request.URL
+	}
+	return requested
+}
+
 // feed content types we recognize as "this URL is already a feed."
 var feedContentTypes = map[string]struct{}{
 	"application/rss+xml":   {},
@@ -139,12 +152,8 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 	}
 	defer resp.Body.Close()
 
-	base := u
-	if resp.Request != nil && resp.Request.URL != nil {
-		base = resp.Request.URL
-	}
-
-	ct := strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0])
+	base := finalURL(resp, u)
+	ct := mediaType(resp)
 	if _, isFeed := feedContentTypes[strings.ToLower(ct)]; isFeed {
 		// Passthrough: the parsed body gives the dialog its title and the feed's own site link.
 		title, link := sniffFeed(resp.Body)

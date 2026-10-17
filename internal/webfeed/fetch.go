@@ -40,6 +40,7 @@ type response struct {
 
 type session struct {
 	client   Doer
+	post     Doer
 	mu       sync.Mutex
 	lang     string
 	cache    map[string]*response
@@ -56,7 +57,7 @@ var ErrUnreachable = errors.New("webfeed: site unreachable")
 var errBudget = errors.New("webfeed: setup byte budget spent")
 
 func newSession(opts Options) *session {
-	s := &session{client: opts.Client, budget: opts.MaxSetupBytes, cache: map[string]*response{}, articles: map[string]*articleInfo{}, robots: map[string]robots{}}
+	s := &session{client: opts.Client, post: opts.PostClient, budget: opts.MaxSetupBytes, cache: map[string]*response{}, articles: map[string]*articleInfo{}, robots: map[string]robots{}}
 	if s.budget <= 0 {
 		s.budget = defaultMaxSetupBytes
 	}

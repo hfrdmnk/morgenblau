@@ -293,3 +293,33 @@ func TestRepairRejectsAModelStepWhoseSetupIsBlocked(t *testing.T) {
 		t.Fatalf("tried %v (model %v), want the judge step tried last without a model call", got.Tried, got.UsedModel)
 	}
 }
+
+func TestRepairNeverMovesTheRecipeOffItsListing(t *testing.T) {
+	s := newTestSite(t)
+	s.addBlog(5)
+	s.set("/", teaserHome(3))
+	home := homeOnly(t, s, "/")
+	if home.Recipe.ListingURL != s.url("/") || len(home.Items) != 3 {
+		t.Fatalf("fixture: homepage listing %s items %v", home.Recipe.ListingURL, itemURLs(home.Items))
+	}
+	p := mustPage(t, teaserHome(3), s.url("/"))
+	items, err := applyPage(home.Recipe, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	polled := &PollResult{Verdict: PollOK, Items: items, page: &fetchedPage{body: []byte(teaserHome(3)), doc: p}}
+	opts := s.opts()
+	opts.Model = countingJudge()
+
+	got, err := Repair(context.Background(), polled, RepairInput{Recipe: home.Recipe, History: historyFrom(home), Doubted: true, AllowModel: true}, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Accepted && got.Recipe.ListingURL != s.url("/") {
+		t.Fatalf("repair accepted by %q at %q moved the recipe to %s; websource stores a repair under the old listing",
+			got.Rule, got.Step, got.Recipe.ListingURL)
+	}
+	if !slices.Contains(got.Tried, RepairJudge) {
+		t.Fatalf("tried %v, want the setup rung reached", got.Tried)
+	}
+}

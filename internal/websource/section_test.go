@@ -30,6 +30,8 @@ func movedGenerated() Generated {
 		Items: []Item{
 			{URL: "https://news.example.com/posts/fifth", Title: "Fifth post", Date: day(9)},
 			{URL: "https://news.example.com/posts/third", Title: "Third post", Date: day(8)},
+			{URL: "https://news.example.com/posts/second", Title: "Second post"},
+			{URL: "https://news.example.com/posts/first", Title: "First post", Date: day(6)},
 			{URL: "https://news.example.com/posts/older", Title: "Older post"},
 		},
 		Fingerprint: Fingerprint{URLTemplate: "news.example.com/posts/*", DateFrac: 0.67, TitleShape: 1},
@@ -337,7 +339,7 @@ func TestPollDueSectionCheckNeverOverwritesANewerSetup(t *testing.T) {
 	}
 }
 
-func TestPollDueLeavesTheSectionCheckForLaterWhenTheSiteFails(t *testing.T) {
+func TestPollDueMarksTheSectionCheckOfAFailingSite(t *testing.T) {
 	env := newTestEnv(t)
 	id := uncheckedSource(t, env, homeURL)
 	env.gen.setupErr = fmt.Errorf("%w: connection refused", ErrUnreachable)
@@ -346,6 +348,24 @@ func TestPollDueLeavesTheSectionCheckForLaterWhenTheSiteFails(t *testing.T) {
 	if n := pollDue(t, env); n != 1 || len(env.gen.polls) != 1 {
 		t.Fatalf("polled %d with %d polls, want the source polled despite the failed check", n, len(env.gen.polls))
 	}
+	if row := readKeyed(t, env, id); !strings.Contains(row.recipe, `"section_checked":true`) {
+		t.Errorf("recipe = %s, want a failed check marked so it never holds a setup slot again", row.recipe)
+	}
+	env.gen.setupErr = nil
+	env.advance(31 * time.Minute)
+	pollDue(t, env)
+	if got := setupsOf(env); len(got) != 2 {
+		t.Errorf("setups = %v, want no second check", got)
+	}
+}
+
+func TestPollDueLeavesTheSectionCheckForLaterWhenSetupsAreBusy(t *testing.T) {
+	env := newTestEnv(t)
+	id := uncheckedSource(t, env, homeURL)
+	env.gen.setupErr = ErrBusy
+	env.advance(31 * time.Minute)
+	pollDue(t, env)
+
 	if row := readKeyed(t, env, id); strings.Contains(row.recipe, "section_checked") {
 		t.Errorf("recipe = %s, want it left unchecked", row.recipe)
 	}
@@ -354,6 +374,56 @@ func TestPollDueLeavesTheSectionCheckForLaterWhenTheSiteFails(t *testing.T) {
 	pollDue(t, env)
 	if got := setupsOf(env); len(got) != 3 {
 		t.Errorf("setups = %v, want the check tried again on the next sweep", got)
+	}
+}
+
+func TestPollDueKeepsASourceWhoseSectionDropsAPostReadersSee(t *testing.T) {
+	env := newTestEnv(t)
+	id := uncheckedSource(t, env, homeURL)
+	env.gen.generated = movedGenerated()
+	env.gen.generated.Items = slices.DeleteFunc(env.gen.generated.Items, func(it Item) bool { return strings.HasSuffix(it.URL, "/second") })
+	env.advance(31 * time.Minute)
+	pollDue(t, env)
+
+	row := readKeyed(t, env, id)
+	if row.listingKey != "news.example.com" || row.setupSeq != 0 || !strings.Contains(row.recipe, `"section_checked":true`) {
+		t.Errorf("row = %+v, want the source kept on its list and marked checked", row)
+	}
+}
+
+func TestCreateNeverKeysASourceByAnotherSitesPage(t *testing.T) {
+	env := newTestEnv(t)
+	env.gen.generated = movedGenerated()
+	env.gen.generated.ListingURL = "https://other.example.org/blog"
+
+	id := create(t, env, testDID, homeURL).Source.ID
+	if row := readKeyed(t, env, id); row.listingKey != "news.example.com" || row.listingURL != homeURL {
+		t.Errorf("row = %+v, want the pasted site's key", row)
+	}
+	if got := aliases(t, env); len(got) != 0 {
+		t.Errorf("aliases = %v, want none", got)
+	}
+}
+
+func TestRegenerateMovesASectionSourceBackToItsHomepage(t *testing.T) {
+	env := newTestEnv(t)
+	env.gen.generated = movedGenerated()
+	env.gen.generated.Health = HealthNeedsAttention
+	id := create(t, env, testDID, homeURL).Source.ID
+	env.advance(staleSetup + time.Minute)
+	env.gen.generated = exampleGenerated()
+
+	if got := create(t, env, testDID, homeURL).Source.ID; got != id {
+		t.Fatalf("regenerated into %s, want %s", got, id)
+	}
+	if row := readKeyed(t, env, id); row.listingKey != "news.example.com" || row.listingURL != homeURL {
+		t.Errorf("row = %+v, want it keyed by the homepage again", row)
+	}
+	if got := aliases(t, env); len(got) != 1 || got["news.example.com/blog"] != id {
+		t.Errorf("aliases = %v, want only the section aliased", got)
+	}
+	if got := create(t, env, testDID, sectionURL).Source.ID; got != id {
+		t.Errorf("section paste found %s, want %s", got, id)
 	}
 }
 

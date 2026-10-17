@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"morgenblau/internal/safehttp"
 )
 
 // testSite is an invented publication served over httptest, recording how it was fetched.
@@ -27,10 +29,15 @@ type testSite struct {
 }
 
 func newTestSite(t *testing.T) *testSite {
-	s := &testSite{t: t, pages: map[string]string{}, status: map[string]int{}, hits: map[string]int{}, agents: map[string]bool{}, langs: map[string]string{}}
+	s := unservedTestSite(t)
 	s.srv = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.srv.Close)
 	return s
+}
+
+// unservedTestSite is a testSite with no server yet, for a handler that wraps its serve.
+func unservedTestSite(t *testing.T) *testSite {
+	return &testSite{t: t, pages: map[string]string{}, status: map[string]int{}, hits: map[string]int{}, agents: map[string]bool{}, langs: map[string]string{}}
 }
 
 func (s *testSite) serve(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +89,9 @@ func (s *testSite) url(path string) string { return s.srv.URL + path }
 
 func (s *testSite) host() string { return strings.TrimPrefix(s.srv.URL, "http://") }
 
-func (s *testSite) opts() Options { return Options{Client: s.srv.Client()} }
+func (s *testSite) opts() Options {
+	return Options{Client: s.srv.Client(), PostClient: safehttp.NewClient(5*time.Second, 0, safehttp.WithAllowLoopback())}
+}
 
 // article is a post page with og:title and a publish date.
 func article(title, ogTitle, published string) string {

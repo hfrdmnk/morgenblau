@@ -52,10 +52,11 @@ func webModelDailyUSD(getenv func(string) string) (float64, error) {
 	return usd, nil
 }
 
-// newWebGenerator builds feed generation over client, which must be SSRF-safe; with an API key in cfg, Haiku judges
-// unsure setups, induces recipes, runs the daily model repair and the weekly check.
-func newWebGenerator(client webfeed.Doer, cfg claude.Config) (websource.Generator, bool, error) {
-	opts := webfeed.Options{Client: client}
+// newWebGenerator builds feed generation over client and postClient, both SSRF-safe and postClient following no
+// redirects; with an API key in cfg, Haiku judges unsure setups, induces recipes, runs the daily model repair and the
+// weekly check.
+func newWebGenerator(client, postClient webfeed.Doer, cfg claude.Config) (websource.Generator, bool, error) {
+	opts := webfeed.Options{Client: client, PostClient: postClient}
 	if cfg.APIKey == "" {
 		return websource.NewWebfeedGenerator(opts), false, nil
 	}

@@ -288,6 +288,7 @@ test('a site that builds its posts in the browser says so and offers no retry', 
     const built = new ApiError(422, 'browser_built', "This site builds its post list in the browser, so Morgenblau can't follow it yet.");
     expect(generationError(built)).toBe('This site builds its post list in the browser, so Morgenblau can’t follow it yet.');
     expect(canRetryGeneration(built)).toBe(false);
+    expect(generationError(new ApiError(502, '', "Couldn't read that page"))).toBe('Couldn’t read that page.');
 });
 
 test('only a passing fault offers to generate again', () => {

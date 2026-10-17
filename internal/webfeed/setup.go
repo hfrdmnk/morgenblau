@@ -18,6 +18,9 @@ import (
 type Options struct {
 	// Client fetches every page; it must be SSRF-safe for attacker-chosen URLs.
 	Client Doer
+	// PostClient sends the one POST that loads a Livewire lazy list; it must be SSRF-safe and must not follow redirects,
+	// since a 307 or 308 re-sends the body to any host. Nil skips lazy lists.
+	PostClient Doer
 	// Model judges unsure setups and writes a CSS recipe when fewer than 3 items survive; nil keeps the heuristic's
 	// pick, records that the judge was wanted and skips induction.
 	Model Model
@@ -59,6 +62,11 @@ const (
 
 // Setup finds the post stream on a listing page that has no feed and builds its recipe.
 func Setup(ctx context.Context, listingURL string, opts Options) (*Result, error) {
+	return setupListing(ctx, listingURL, opts, true)
+}
+
+// setupListing is Setup, moving to a section page only when toSection allows it.
+func setupListing(ctx context.Context, listingURL string, opts Options, toSection bool) (*Result, error) {
 	if opts.Client == nil {
 		return nil, errClient
 	}
@@ -68,9 +76,11 @@ func Setup(ctx context.Context, listingURL string, opts Options) (*Result, error
 		return res, err
 	}
 	// Induction waits for the section check, so it is never paid for on a listing the check replaces.
-	if res, err = s.preferSection(ctx, res); err != nil {
-		res.release()
-		return res, err
+	if toSection {
+		if res, err = s.preferSection(ctx, res); err != nil {
+			res.release()
+			return res, err
+		}
 	}
 	if opts.Model != nil && res.listing != nil && len(res.Items) < induceBelowItems && !res.BrowserBuilt() {
 		if err := induce(ctx, res, res.listing, opts.Model); err != nil {
@@ -79,7 +89,7 @@ func Setup(ctx context.Context, listingURL string, opts Options) (*Result, error
 		}
 	}
 	res.release()
-	res.Recipe.Setup.SectionChecked = true
+	res.Recipe.Setup.SectionChecked = toSection
 	return res, nil
 }
 

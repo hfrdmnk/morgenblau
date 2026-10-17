@@ -45,8 +45,6 @@ const (
 	// setupSlots bounds concurrent setups, each of which can hold tens of megabytes of pages.
 	setupSlots       = 2
 	modelSpendWindow = 24 * time.Hour
-	// sectionChecksPerSweep spreads the one-time section check of older sources over sweeps, so a deploy does not stampede sites.
-	sectionChecksPerSweep = 3
 )
 
 // SetupTimeout bounds one setup, waiting for a slot included; the create route keeps its connection open longer.
@@ -641,44 +639,6 @@ func (s *Service) PollDue(ctx context.Context) (int, error) {
 		}
 	}
 	return polled, nil
-}
-
-// needsSectionCheck is a plain streams or css setup stored before setup looked for a section page.
-func needsSectionCheck(src db.WebSource) bool {
-	var r webfeed.Recipe
-	if src.AnchoredByDid != nil || json.Unmarshal([]byte(src.Recipe), &r) != nil {
-		return false
-	}
-	return (r.Mode == webfeed.ModeStreams || r.Mode == webfeed.ModeCSS) && r.Setup.Anchor == "" && !r.Setup.SectionChecked
-}
-
-// checkSection runs one free setup of a source's listing. A healthy move to a section page becomes the source's setup,
-// so readers gain the section's posts as history; any other answer marks the recipe checked so the check never repeats.
-func (s *Service) checkSection(ctx context.Context, src db.WebSource) error {
-	listing, err := parseHTTPURL(src.ListingUrl)
-	if err != nil {
-		return err
-	}
-	setupCtx, cancel := context.WithTimeout(ctx, s.setupTimeout)
-	defer cancel()
-	gen, err := s.runSetup(setupCtx, listing.String(), "", false)
-	if err != nil && !errors.Is(err, ErrBrowserBuilt) {
-		return err
-	}
-	setup, err := newSetupRow(listingKey(listing), listing, gen)
-	if err != nil {
-		return err
-	}
-	if setup.key != setup.pastedKey && gen.Health == HealthOK {
-		slog.Info("web source moves to its section page", "id", src.ID, "from", src.ListingUrl, "to", setup.listingURL)
-		setup.replaces, setup.atSeq = src.ID, &src.SetupSeq
-		_, _, err = s.storeSetup(ctx, src.CreatedByDid, setup)
-		return err
-	}
-	_, err = db.New(s.writer).MarkWebSourceSectionChecked(ctx, db.MarkWebSourceSectionCheckedParams{
-		ID: src.ID, SetupSeq: src.SetupSeq, UpdatedAt: formatTime(s.now().UTC()),
-	})
-	return err
 }
 
 func (s *Service) pollOne(ctx context.Context, src db.WebSource) error {

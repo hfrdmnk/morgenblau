@@ -44,7 +44,8 @@ type lazySite struct {
 	lmu    sync.Mutex
 	update string
 	lists  map[string]string
-	// postStatus and reply, when set, answer every POST instead of the registered lists.
+	// redirect, postStatus and reply, when set, answer every POST instead of the registered lists.
+	redirect   string
 	postStatus int
 	reply      string
 	etag       string
@@ -53,8 +54,7 @@ type lazySite struct {
 }
 
 func newLazySite(t *testing.T) *lazySite {
-	l := &lazySite{update: "/livewire/update", lists: map[string]string{}, etag: `"shell-1"`}
-	l.testSite = &testSite{t: t, pages: map[string]string{}, status: map[string]int{}, hits: map[string]int{}, agents: map[string]bool{}, langs: map[string]string{}}
+	l := &lazySite{testSite: unservedTestSite(t), update: "/livewire/update", lists: map[string]string{}, etag: `"shell-1"`}
 	l.srv = httptest.NewServer(l)
 	t.Cleanup(l.srv.Close)
 	return l
@@ -88,6 +88,9 @@ func (l *lazySite) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path != l.update:
 		http.NotFound(w, r)
+		return
+	case l.redirect != "":
+		http.Redirect(w, r, l.redirect, http.StatusTemporaryRedirect)
 		return
 	case l.postStatus != 0:
 		w.WriteHeader(l.postStatus)
@@ -320,5 +323,74 @@ func TestPollReadsALivewireLazyListUnconditionally(t *testing.T) {
 	second, err := Poll(ctx, in, l.opts())
 	if err != nil || second.NotModified || len(second.Items) != 9 || !slices.Contains(itemURLs(second.Items), l.url("/blog/a-brand-new-post-today")) {
 		t.Fatalf("poll after the list changed behind an identical shell = %+v, %v", second, err)
+	}
+}
+
+func TestLazyListPostFollowsNoRedirect(t *testing.T) {
+	var otherHits int
+	var mu sync.Mutex
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		otherHits++
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"components":[{"effects":{"html":"<p>relayed</p>"}}]}`)
+	}))
+	t.Cleanup(other.Close)
+	l := lazyBlog(t, 8)
+	l.redirect = other.URL + "/livewire/update"
+
+	s := newSession(l.opts())
+	resp := s.get(context.Background(), l.url("/blog"))
+	got, ok := s.expandLazy(context.Background(), resp, "", nil)
+	mu.Lock()
+	defer mu.Unlock()
+	if ok || otherHits != 0 || !bytes.Equal(got.body, resp.body) {
+		t.Fatalf("expanded %v, other host received %d POSTs; a redirect must not carry the POST anywhere", ok, otherHits)
+	}
+}
+
+func TestLazyListNeedsAPostClient(t *testing.T) {
+	l := lazyBlog(t, 8)
+	opts := l.opts()
+	opts.PostClient = nil
+	s := newSession(opts)
+	resp := s.get(context.Background(), l.url("/blog"))
+	if got, ok := s.expandLazy(context.Background(), resp, "", nil); ok || !bytes.Equal(got.body, resp.body) || l.postCount() != 0 {
+		t.Fatalf("expanded %v, %d POSTs without a client that refuses redirects", ok, l.postCount())
+	}
+}
+
+func TestPollOfALazyListWhosePostFailsIsUnreachable(t *testing.T) {
+	l := lazyBlog(t, 8)
+	res := setupRecipe(t, l.testSite, "/blog")
+	in := PollInput{Recipe: res.Recipe, History: historyFrom(res), ETag: l.etag}
+	ctx := context.Background()
+	first, err := Poll(ctx, in, l.opts())
+	if err != nil || first.Verdict != PollOK {
+		t.Fatalf("first poll = %+v, %v", first, err)
+	}
+
+	l.lmu.Lock()
+	l.postStatus, l.reply = http.StatusInternalServerError, "oops"
+	l.lmu.Unlock()
+	in.LinkSetHash = first.LinkSetHash
+	got, err := Poll(ctx, in, l.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Verdict != PollBroken || got.Reason != ReasonUnreachable || got.Blocked || got.NotModified {
+		t.Fatalf("verdict %s reason %s blocked %v not modified %v; a failed lazy load is the site being unreachable, not a changed page",
+			got.Verdict, got.Reason, got.Blocked, got.NotModified)
+	}
+}
+
+func TestPollOfALazyRecipeReadsAListTheSiteNowServes(t *testing.T) {
+	l := lazyBlog(t, 8)
+	res := setupRecipe(t, l.testSite, "/blog")
+	l.set("/blog", page("Blog | Example Publication", siteNav+blogList(8)+siteFooter))
+	got, err := Poll(context.Background(), PollInput{Recipe: res.Recipe, History: historyFrom(res)}, l.opts())
+	if err != nil || got.Verdict != PollOK || len(got.Items) != 8 {
+		t.Fatalf("poll = %+v, %v; want the served list read without a lazy load", got, err)
 	}
 }

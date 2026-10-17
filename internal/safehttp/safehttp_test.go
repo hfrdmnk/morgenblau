@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -156,6 +157,27 @@ func TestNewClient_RedirectCap(t *testing.T) {
 	}
 	if !errors.Is(err, ErrTooManyRedirects) {
 		t.Errorf("err = %v, want ErrTooManyRedirects", err)
+	}
+}
+
+// With no redirects allowed, a 307 is refused before its target sees the re-sent POST body.
+func TestNewClient_ZeroRedirectsSendsNothingToTheTarget(t *testing.T) {
+	var targetHits atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { targetHits.Add(1) }))
+	defer target.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/", http.StatusTemporaryRedirect)
+	}))
+	defer srv.Close()
+
+	c := NewClient(2*time.Second, 0, WithAllowLoopback())
+	resp, err := c.Post(srv.URL, "application/json", strings.NewReader(`{"a":1}`))
+	if err == nil {
+		resp.Body.Close()
+		t.Fatal("expected too-many-redirects error")
+	}
+	if !errors.Is(err, ErrTooManyRedirects) || targetHits.Load() != 0 {
+		t.Errorf("err = %v, target hits = %d; want ErrTooManyRedirects and no request to the target", err, targetHits.Load())
 	}
 }
 

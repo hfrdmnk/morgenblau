@@ -100,8 +100,10 @@ func Repair(ctx context.Context, polled *PollResult, in RepairInput, opts Option
 	if !in.AllowModel || opts.Model == nil {
 		return out, nil
 	}
-	res, err := Setup(ctx, in.Recipe.ListingURL, opts)
+	// websource stores a repair under the source's listing, so the rung must not move to a section page.
+	res, err := setupListing(ctx, in.Recipe.ListingURL, opts, false)
 	if res != nil {
+		res.Recipe.Setup.SectionChecked = in.Recipe.Setup.SectionChecked
 		out.Tried = append(out.Tried, RepairJudge)
 		// Setup asks a model only when unsure, so a confident re-run spends no model slot and earns no model leniency.
 		calls, usd := res.Recipe.Setup.ModelCost()

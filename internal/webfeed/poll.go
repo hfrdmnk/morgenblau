@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -56,7 +55,7 @@ type fetchedPage struct {
 // Poll fetches the listing once and runs the detector; it never calls a model.
 func Poll(ctx context.Context, in PollInput, opts Options) (*PollResult, error) {
 	if opts.Client == nil {
-		return nil, errors.New("webfeed: Options.Client is required")
+		return nil, errClient
 	}
 	r := in.Recipe
 	target, wantHTML := r.ListingURL, true
@@ -79,7 +78,7 @@ func Poll(ctx context.Context, in PollInput, opts Options) (*PollResult, error) 
 		return nil, err
 	}
 	out := &PollResult{ETag: resp.header.Get("ETag"), LastModified: resp.header.Get("Last-Modified")}
-	if !r.Lazy && resp.err == nil && resp.status == http.StatusNotModified {
+	if resp.err == nil && resp.status == http.StatusNotModified {
 		out.Verdict, out.NotModified = PollOK, true
 		out.ETag, out.LastModified, out.LinkSetHash = in.ETag, in.LastModified, in.LinkSetHash
 		return out, nil
@@ -89,7 +88,12 @@ func Poll(ctx context.Context, in PollInput, opts Options) (*PollResult, error) 
 	}
 
 	if wantHTML {
-		resp, _ = s.expandLazy(ctx, resp, r.Lang, opts.Robots)
+		var expanded bool
+		resp, expanded = s.expandLazy(ctx, resp, r.Lang, opts.Robots)
+		// The shell alone reads as an emptied list, which would send a passing outage to a paid repair.
+		if r.Lazy && !expanded && len(scanLivewire(resp.body).placeholders) > 0 {
+			return broken(out, ReasonUnreachable, false), nil
+		}
 	}
 	var p *pageDoc
 	var items []Item

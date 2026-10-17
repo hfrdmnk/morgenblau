@@ -16,11 +16,11 @@ import (
 )
 
 func TestWebGeneratorAlwaysGeneratesAndUsesTheModelOnlyWithAKey(t *testing.T) {
-	gen, model, err := newWebGenerator(http.DefaultClient, claude.Config{})
+	gen, model, err := newWebGenerator(http.DefaultClient, http.DefaultClient, claude.Config{})
 	if err != nil || gen == nil || model {
 		t.Fatalf("without a key: generator %v, model %v, err %v", gen, model, err)
 	}
-	gen, model, err = newWebGenerator(http.DefaultClient, claude.Config{APIKey: "sk-ant-example"})
+	gen, model, err = newWebGenerator(http.DefaultClient, http.DefaultClient, claude.Config{APIKey: "sk-ant-example"})
 	if err != nil || gen == nil || !model {
 		t.Fatalf("with a key: generator %v, model %v, err %v", gen, model, err)
 	}
@@ -121,7 +121,7 @@ func TestWebGeneratorWiresEveryModelStepToClaude(t *testing.T) {
 	}))
 	t.Cleanup(site.Close)
 
-	gen, model, err := newWebGenerator(site.Client(), claude.Config{APIKey: "sk-ant-example", BaseURL: apiSrv.URL})
+	gen, model, err := newWebGenerator(site.Client(), site.Client(), claude.Config{APIKey: "sk-ant-example", BaseURL: apiSrv.URL})
 	if err != nil || !model {
 		t.Fatalf("generator: model %v, err %v", model, err)
 	}
