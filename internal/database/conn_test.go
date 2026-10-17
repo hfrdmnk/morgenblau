@@ -10,7 +10,7 @@ import (
 	"morgenblau/internal/database/db"
 )
 
-// Minimal feeds table, enough for UpsertFeed / GetFeed / ListAllFeedURLs.
+// Minimal feeds table, enough for UpsertFeed / GetFeed.
 const feedsSchema = `
 CREATE TABLE feeds (
     feed_url         TEXT PRIMARY KEY,
@@ -25,7 +25,8 @@ CREATE TABLE feeds (
     created_at       TEXT NOT NULL,
     updated_at       TEXT NOT NULL,
     consecutive_failures INTEGER NOT NULL DEFAULT 0,
-    next_fetch_at    TEXT
+    next_fetch_at    TEXT,
+    orphaned_at      TEXT
 );`
 
 func openTestDB(t *testing.T) *DB {
@@ -112,18 +113,8 @@ func TestWithTx_ReaderSeesCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A read begun after the commit must observe it, even across pools (WAL).
-	urls, err := db.New(dbs.Reader).ListAllFeedURLs(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, u := range urls {
-		if u == "https://c.example.com/feed" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("reader pool didn't see committed row: %v", urls)
+	if _, err := db.New(dbs.Reader).GetFeed(ctx, "https://c.example.com/feed"); err != nil {
+		t.Errorf("reader pool didn't see committed row: %v", err)
 	}
 }
 

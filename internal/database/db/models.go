@@ -18,6 +18,7 @@ type Feed struct {
 	UpdatedAt           string  `json:"updated_at"`
 	ConsecutiveFailures int64   `json:"consecutive_failures"`
 	NextFetchAt         *string `json:"next_fetch_at"`
+	OrphanedAt          *string `json:"orphaned_at"`
 }
 
 type FeedEntry struct {
@@ -189,6 +190,8 @@ type WebSource struct {
 	LastCheckedAt       *string `json:"last_checked_at"`
 	AnchoredByDid       *string `json:"anchored_by_did"`
 	AnchoredAt          *string `json:"anchored_at"`
+	OfferedAt           string  `json:"offered_at"`
+	ServedAt            *string `json:"served_at"`
 }
 
 type WebSourceItem struct {

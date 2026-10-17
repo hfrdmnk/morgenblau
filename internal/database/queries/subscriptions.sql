@@ -2,6 +2,8 @@
 -- kind defaults to 'rss' via NULLIF so pre-standardfeed callers passing the
 -- zero value keep working; it is never changed on conflict. title is the
 -- cached publication name; COALESCE keeps rss callers (nil) from clobbering it.
+-- Every upsert claims the feed for the sweep: clearing orphaned_at is what keeps it from deleting a feed
+-- between a subscribe's catalog upsert and its subscription row.
 -- All params are named (not positional): mixing sqlc.arg() with bare ? makes
 -- sqlc emit non-contiguous placeholder numbers that modernc.org/sqlite can't
 -- bind ("missing argument with index N").
@@ -17,12 +19,13 @@ VALUES (
 ON CONFLICT (feed_url) DO UPDATE SET
     site_url = COALESCE(NULLIF(excluded.site_url, ''), feeds.site_url),
     title = COALESCE(excluded.title, feeds.title),
-    updated_at = excluded.updated_at;
+    updated_at = excluded.updated_at,
+    orphaned_at = NULL;
 
 -- name: GetFeed :one
 -- Column order matches the table's physical layout so sqlc reuses the Feed
 -- model instead of minting a one-off row type.
-SELECT feed_url, kind, site_url, title, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at, consecutive_failures, next_fetch_at
+SELECT feed_url, kind, site_url, title, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at, consecutive_failures, next_fetch_at, orphaned_at
 FROM feeds WHERE feed_url = ?;
 
 -- name: GetFeedIconURL :one

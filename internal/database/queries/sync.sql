@@ -6,5 +6,6 @@ WHERE did = ?;
 -- name: ListFeedURLsForUser :many
 SELECT feed_url FROM user_subscriptions WHERE did = ?;
 
--- name: ListAllFeedURLs :many
-SELECT feed_url FROM feeds ORDER BY feed_url;
+-- name: ListFollowedFeedURLs :many
+-- A feed nobody follows only feeds a cache nobody reads; the sweep's orphaned_at lags by up to a sweep, so it is not the test.
+SELECT DISTINCT feed_url FROM user_subscriptions ORDER BY feed_url;

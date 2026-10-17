@@ -10,13 +10,13 @@ import (
 	"time"
 )
 
-// fakeFeedLister stands in for *db.Queries.ListAllFeedURLs.
+// fakeFeedLister stands in for *db.Queries.ListFollowedFeedURLs.
 type fakeFeedLister struct {
 	urls []string
 	err  error
 }
 
-func (l fakeFeedLister) ListAllFeedURLs(_ context.Context) ([]string, error) {
+func (l fakeFeedLister) ListFollowedFeedURLs(_ context.Context) ([]string, error) {
 	return l.urls, l.err
 }
 

@@ -39,9 +39,7 @@ func TestPollDueDatesANewPostTheWaySetupDid(t *testing.T) {
 	if preview.Source.Health != HealthOK {
 		t.Fatalf("setup = %+v", preview.Source)
 	}
-	if _, err := env.writer.Exec(`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES (?, 't', 't')`, preview.Source.FeedURL); err != nil {
-		t.Fatal(err)
-	}
+	subscribe(t, env, preview.Source.FeedURL)
 	id := preview.Source.ID
 
 	jsonLDSite(web, 1, 10)

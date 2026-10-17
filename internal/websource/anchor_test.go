@@ -85,6 +85,10 @@ func sourceState(t *testing.T, env *testEnv, id string) string {
 				t.Fatal(err)
 			}
 			for i, c := range cols {
+				// Offering the source to the anchoring reader is bookkeeping for the sweep, not a change to the source.
+				if c == "offered_at" {
+					continue
+				}
 				fmt.Fprintf(&b, "%s=%v ", c, vals[i])
 			}
 			b.WriteByte('\n')

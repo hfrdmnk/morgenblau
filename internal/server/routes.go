@@ -112,7 +112,7 @@ func (s *Server) routes() *http.ServeMux {
 		// Server-owned storage only: generating a feed commits nothing to the PDS, so it stays out of CommitGate.
 		mux.Handle("POST /api/web-sources", api.WebSourcesCreateHandler(s.webSources))
 		for _, path := range websource.FeedPaths {
-			mux.Handle("GET "+path+"{id}", s.webSources.FeedHandler())
+			mux.Handle("GET "+path+"{id}", s.webSources.PublicFeedHandler())
 		}
 	}
 

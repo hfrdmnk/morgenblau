@@ -9,12 +9,12 @@ import (
 	"context"
 )
 
-const listAllFeedURLs = `-- name: ListAllFeedURLs :many
-SELECT feed_url FROM feeds ORDER BY feed_url
+const listFeedURLsForUser = `-- name: ListFeedURLsForUser :many
+SELECT feed_url FROM user_subscriptions WHERE did = ?
 `
 
-func (q *Queries) ListAllFeedURLs(ctx context.Context) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listAllFeedURLs)
+func (q *Queries) ListFeedURLsForUser(ctx context.Context, did string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listFeedURLsForUser, did)
 	if err != nil {
 		return nil, err
 	}
@@ -36,12 +36,13 @@ func (q *Queries) ListAllFeedURLs(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
-const listFeedURLsForUser = `-- name: ListFeedURLsForUser :many
-SELECT feed_url FROM user_subscriptions WHERE did = ?
+const listFollowedFeedURLs = `-- name: ListFollowedFeedURLs :many
+SELECT DISTINCT feed_url FROM user_subscriptions ORDER BY feed_url
 `
 
-func (q *Queries) ListFeedURLsForUser(ctx context.Context, did string) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listFeedURLsForUser, did)
+// A feed nobody follows only feeds a cache nobody reads; the sweep's orphaned_at lags by up to a sweep, so it is not the test.
+func (q *Queries) ListFollowedFeedURLs(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listFollowedFeedURLs)
 	if err != nil {
 		return nil, err
 	}

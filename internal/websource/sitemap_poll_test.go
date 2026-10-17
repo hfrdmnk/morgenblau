@@ -50,9 +50,7 @@ func TestSitemapSourcesPollTheirSitemap(t *testing.T) {
 	if preview.Source.Health != HealthOK || preview.ItemCount != 4 || !strings.Contains(readSource(t, env, preview.Source.ID).recipe, `"mode":"sitemap"`) {
 		t.Fatalf("setup = %+v with %d items", preview.Source, preview.ItemCount)
 	}
-	if _, err := env.writer.Exec(`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES (?, 't', 't')`, preview.Source.FeedURL); err != nil {
-		t.Fatal(err)
-	}
+	subscribe(t, env, preview.Source.FeedURL)
 	id := preview.Source.ID
 	poll := func() {
 		t.Helper()

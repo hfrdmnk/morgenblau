@@ -9,6 +9,11 @@ import (
 // Every other reading-index query must bind each reading table it touches to the caller's DID.
 var unscopedReadingQueries = map[string]string{
 	"IsWebSourceFollowedByOthers": "a shared generated feed asks only whether anyone else follows it, a yes or no that names no reader",
+	"ClaimFollowedFeeds":          "the shared-cache sweep asks only whether anyone follows a feed, a yes or no that names no reader",
+	"MarkOrphanedFeeds":           "the shared-cache sweep asks only whether anyone follows a feed, a yes or no that names no reader",
+	"DeleteOrphanedFeeds":         "the shared-cache sweep asks only whether anyone follows a feed or saved one of its entries, a yes or no that names no reader",
+	"ListFollowedFeedURLs":        "the global refresher needs every feed anyone follows; it reads feed URLs and names no reader",
+	"ListDueWebSources":           "the web poller asks only whether anyone follows a generated feed, a yes or no that names no reader",
 }
 
 func TestReadingIndexQueriesAreScopedByOwnerDID(t *testing.T) {

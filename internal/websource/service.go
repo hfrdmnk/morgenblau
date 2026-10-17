@@ -161,7 +161,8 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 		anchorURL = anchor.String()
 	}
 	key := listingKey(listing)
-	existing, err := s.read.GetWebSourceByListingKey(ctx, key)
+	offered := db.OfferWebSourceByListingKeyParams{ListingKey: key, OfferedAt: formatTime(s.now().UTC())}
+	existing, err := db.New(s.writer).OfferWebSourceByListingKey(ctx, offered)
 	switch {
 	case err == nil:
 		takesAnchor := Health(existing.Health) != HealthOK || Health(existing.SetupHealth) == HealthNeedsAttention
@@ -530,7 +531,10 @@ func (s *Service) PollDue(ctx context.Context) (int, error) {
 	}
 	now := formatTime(s.now().UTC())
 	prefixes := s.FeedURLPrefixes()
-	due, err := s.read.ListDueWebSources(ctx, db.ListDueWebSourcesParams{Now: &now, FeedUrlPrefix: prefixes.Current, LegacyFeedUrlPrefix: prefixes.Legacy, Limit: pollBatch})
+	servedSince := formatTime(s.now().UTC().Add(-database.FeedSweepGrace))
+	due, err := s.read.ListDueWebSources(ctx, db.ListDueWebSourcesParams{
+		Now: &now, FeedUrlPrefix: prefixes.Current, LegacyFeedUrlPrefix: prefixes.Legacy, ServedSince: &servedSince, Limit: pollBatch,
+	})
 	if err != nil {
 		return 0, err
 	}

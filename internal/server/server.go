@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -267,6 +268,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 
 	srv.gcWG.Go(func() { runAuthRequestGC(gcCtx, st) })
 	srv.gcWG.Go(func() { runJobsGC(gcCtx, tracker) })
+	srv.gcWG.Go(func() { runFeedSweep(gcCtx, db.Writer, time.Hour) })
 	if fetchMinutes > 0 {
 		interval := time.Duration(fetchMinutes) * time.Minute
 		refresher := internalsync.NewGlobalRefresher(qr, router)
@@ -450,6 +452,26 @@ func runGlobalFetch(ctx context.Context, r *internalsync.GlobalRefresher, every 
 				continue
 			}
 			slog.Info("global feed fetch", "feeds", n)
+		}
+	}
+}
+
+// runFeedSweep also sweeps at start: a server restarted more often than its interval would otherwise never sweep.
+func runFeedSweep(ctx context.Context, writer *sql.DB, every time.Duration) {
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		res, err := database.SweepUnfollowedFeeds(ctx, writer, time.Now())
+		switch {
+		case err != nil && ctx.Err() == nil:
+			slog.Warn("feed sweep", "err", err)
+		case res.Feeds > 0 || res.WebSources > 0:
+			slog.Info("feed sweep", "feeds", res.Feeds, "web_sources", res.WebSources)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
 		}
 	}
 }

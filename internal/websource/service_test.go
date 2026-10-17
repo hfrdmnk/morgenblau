@@ -14,6 +14,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+
+	"morgenblau/internal/database"
 )
 
 const (
@@ -269,6 +271,51 @@ func TestCreateReusesTheSourceForTheSameSite(t *testing.T) {
 	}
 	if again.ItemCount != 3 || len(again.Items) != 3 {
 		t.Errorf("reused preview = %+v", again)
+	}
+}
+
+func TestCreateKeepsAReusedSourceFromTheSweepWhileTheReaderDecides(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	first, err := env.service.Create(ctx, testDID, "https://news.example.com/blog/", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.advance(database.FeedSweepGrace + 24*time.Hour)
+	if _, err := env.service.Create(ctx, "did:plc:other", "https://news.example.com/blog/", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SweepUnfollowedFeeds(ctx, env.writer, env.now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.service.read.GetWebSource(ctx, first.Source.ID); err != nil {
+		t.Fatalf("the source a reader was just offered was swept before they could follow it: %v", err)
+	}
+}
+
+func TestCreateNeverHandsOutASourceTheSweepDeletedDuringARegeneration(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	env.gen.generated.Health = HealthNeedsAttention
+	if _, err := env.service.Create(ctx, testDID, "https://news.example.com/", ""); err != nil {
+		t.Fatal(err)
+	}
+	env.advance(database.FeedSweepGrace + 24*time.Hour)
+	env.gen.setupErr = errors.New("the site timed out")
+	env.gen.beforeSetup = func(context.Context) {
+		if _, err := database.SweepUnfollowedFeeds(ctx, env.writer, env.now); err != nil {
+			t.Error(err)
+		}
+	}
+	p, err := env.service.Create(ctx, "did:plc:other", "https://news.example.com/", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.gen.setupCount() != 2 {
+		t.Fatalf("setups = %d, want the stale unsure source regenerated", env.gen.setupCount())
+	}
+	if _, err := env.service.read.GetWebSource(ctx, p.Source.ID); err != nil {
+		t.Fatalf("the preview names source %s, which the sweep deleted while it regenerated: %v", p.Source.ID, err)
 	}
 }
 

@@ -1,6 +1,7 @@
 package websource
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -57,8 +58,17 @@ func feedID(path string) (string, bool) {
 	return "", false
 }
 
-// FeedHandler serves GET /feed/<id> and its legacy alias /web/<id> as RSS 2.0; it reads the id from the path so it also runs outside a mux pattern.
-func (s *Service) FeedHandler() http.Handler {
+// servedStampEvery bounds the writes anonymous fetches can cause; against FeedSweepGrace an hourly stamp loses nothing.
+const servedStampEvery = time.Hour
+
+// FeedHandler serves GET /feed/<id> and its legacy alias /web/<id> as RSS 2.0 to Morgenblau's own in-process fetcher; it
+// reads the id from the path so it also runs outside a mux pattern.
+func (s *Service) FeedHandler() http.Handler { return s.feedHandler(false) }
+
+// PublicFeedHandler serves the same feed to outside feed readers and records that one still follows the source.
+func (s *Service) PublicFeedHandler() http.Handler { return s.feedHandler(true) }
+
+func (s *Service) feedHandler(public bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, ok := feedID(r.URL.Path)
 		if !ok {
@@ -74,6 +84,9 @@ func (s *Service) FeedHandler() http.Handler {
 			slog.Error("web feed: load source", "id", id, "err", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
+		}
+		if public {
+			s.markServed(r.Context(), src)
 		}
 		rows, err := s.read.ListWebSourceFeedItems(r.Context(), db.ListWebSourceFeedItemsParams{SourceID: id, Limit: feedItems})
 		if err != nil {
@@ -98,6 +111,20 @@ func (s *Service) FeedHandler() http.Handler {
 		w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
 		_, _ = w.Write(body)
 	})
+}
+
+// markServed never fails the response: a missed stamp is retried by the reader's next fetch.
+func (s *Service) markServed(ctx context.Context, src db.WebSource) {
+	now := s.now().UTC()
+	if src.ServedAt != nil {
+		if last, err := time.Parse(timeLayout, *src.ServedAt); err == nil && now.Sub(last) < servedStampEvery {
+			return
+		}
+	}
+	served := db.MarkWebSourceServedParams{ID: src.ID, ServedAt: ptr(formatTime(now))}
+	if err := db.New(s.writer).MarkWebSourceServed(ctx, served); err != nil {
+		slog.Warn("web feed: mark served", "id", src.ID, "err", err)
+	}
 }
 
 // renderRSS also returns when the served items last changed: the newest first sighting among them, since setup and polls stamp every item they add.

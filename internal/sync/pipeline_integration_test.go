@@ -34,7 +34,8 @@ CREATE TABLE feeds (
     created_at       TEXT NOT NULL,
     updated_at       TEXT NOT NULL,
     consecutive_failures INTEGER NOT NULL DEFAULT 0,
-    next_fetch_at    TEXT
+    next_fetch_at    TEXT,
+    orphaned_at      TEXT
 );
 CREATE TABLE feed_entries (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,

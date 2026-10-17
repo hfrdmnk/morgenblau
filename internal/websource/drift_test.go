@@ -156,9 +156,7 @@ func newDriftEnv(t *testing.T, model webfeed.Model) *driftEnv {
 	if preview.Source.Health != HealthOK || preview.ItemCount != 8 {
 		t.Fatalf("setup = %+v with %d items", preview.Source, preview.ItemCount)
 	}
-	if _, err := env.writer.Exec(`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES (?, 't', 't')`, preview.Source.FeedURL); err != nil {
-		t.Fatal(err)
-	}
+	subscribe(t, env, preview.Source.FeedURL)
 	return &driftEnv{testEnv: env, web: web, service: svc, id: preview.Source.ID}
 }
 

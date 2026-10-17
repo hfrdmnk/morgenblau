@@ -1,6 +1,6 @@
 # Sync jobs
 
-Background work that keeps the local reading index in step with the PDS and the feeds. Signing in starts a sync that reconciles subscriptions and saves from the PDS and fetches their feeds. A reader can refresh the digest by hand. A global refresher re-fetches every feed on an interval. Newsletter receipts are processed by their own loop (see [newsletters](./newsletters.md)).
+Background work that keeps the local reading index in step with the PDS and the feeds. Signing in starts a sync that reconciles subscriptions and saves from the PDS and fetches their feeds. A reader can refresh the digest by hand. A global refresher re-fetches every followed feed on an interval, and an hourly sweep deletes feeds and web sources nobody has followed for 30 days. Newsletter receipts are processed by their own loop (see [newsletters](./newsletters.md)).
 
 Help article: none
 

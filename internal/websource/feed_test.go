@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/mmcdole/gofeed"
+
+	"morgenblau/internal/database"
 )
 
 func serveFeed(t *testing.T, env *testEnv, id string, header http.Header) *httptest.ResponseRecorder {
@@ -208,5 +210,51 @@ func TestFeedURLsBelongToThePublicBase(t *testing.T) {
 		if id != want || ok != (want != "") || svc.IsFeedURL(raw) != ok {
 			t.Errorf("IDFromFeedURL(%q) = %q, %v; want %q", raw, id, ok, want)
 		}
+	}
+}
+
+func TestAnOutsideFeedReaderKeepsAGeneratedFeedPolledAndKept(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	preview, err := env.service.Create(ctx, testDID, "https://news.example.com/", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := preview.Source.ID
+	read := func(h http.Handler) {
+		t.Helper()
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/web/"+id, nil))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+	}
+	sweep := func() {
+		t.Helper()
+		if _, err := database.SweepUnfollowedFeeds(ctx, env.writer, env.now); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Long after the offer: from here only the outside reader can keep the source.
+	env.advance(database.FeedSweepGrace + 24*time.Hour)
+	read(env.service.FeedHandler())
+	if n := pollDue(t, env); n != 0 {
+		t.Fatalf("polled %d: Morgenblau's own in-process fetch is not a reader", n)
+	}
+	read(env.service.PublicFeedHandler())
+	if n := pollDue(t, env); n != 1 {
+		t.Fatalf("polled %d, want the source an outside feed reader follows", n)
+	}
+
+	env.advance(database.FeedSweepGrace - time.Hour)
+	sweep()
+	if _, err := env.service.read.GetWebSource(ctx, id); err != nil {
+		t.Fatalf("a source an outside reader fetched within the grace was swept: %v", err)
+	}
+	env.advance(2 * time.Hour)
+	sweep()
+	if _, err := env.service.read.GetWebSource(ctx, id); err == nil {
+		t.Error("a source nobody has read for the whole grace survived the sweep")
 	}
 }

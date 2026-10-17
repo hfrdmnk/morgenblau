@@ -10,17 +10,27 @@ import (
 	"time"
 )
 
-// followed creates a web source and puts its feed URL in the shared feeds catalog, as a subscription would.
+// followed creates a web source and subscribes a reader to its feed.
 func followed(t *testing.T, env *testEnv) string {
 	t.Helper()
 	preview, err := env.service.Create(context.Background(), testDID, "https://news.example.com/", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := env.writer.Exec(`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES (?, 't', 't')`, preview.Source.FeedURL); err != nil {
+	subscribe(t, env, preview.Source.FeedURL)
+	return preview.Source.ID
+}
+
+// subscribe writes the catalog row and a reader's subscription to it, as the subscribe mirror does.
+func subscribe(t *testing.T, env *testEnv, feedURL string) {
+	t.Helper()
+	if _, err := env.writer.Exec(`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES (?, 't', 't')`, feedURL); err != nil {
 		t.Fatal(err)
 	}
-	return preview.Source.ID
+	if _, err := env.writer.Exec(`INSERT INTO user_subscriptions (did, rkey, at_uri, feed_url, created_at, updated_at) VALUES (?, '3follow', ?, ?, 't', 't')`,
+		testDID, "at://"+testDID+"/blue.morgen.feed.subscription/3follow", feedURL); err != nil {
+		t.Fatal(err)
+	}
 }
 
 type sourceRow struct {
@@ -146,9 +156,7 @@ func TestPollDuePollsASourceFollowedOnlyAtItsLegacyURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := env.writer.Exec(`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES (?, 't', 't')`, testBase+"/web/"+preview.Source.ID); err != nil {
-		t.Fatal(err)
-	}
+	subscribe(t, env, testBase+"/web/"+preview.Source.ID)
 	env.advance(time.Hour)
 	if n := pollDue(t, env); n != 1 {
 		t.Errorf("polled %d sources, want the one followed at /web/", n)

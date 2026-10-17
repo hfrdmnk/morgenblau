@@ -2,13 +2,13 @@
 INSERT INTO web_sources (
     id, listing_key, listing_url, site_url, title, recipe, health, health_reason,
     setup_cost, created_by_did, created_at, updated_at, setup_at, setup_health, setup_health_reason,
-    setup_tried_at, next_poll_at, anchored_by_did, anchored_at
+    setup_tried_at, next_poll_at, anchored_by_did, anchored_at, offered_at
 ) VALUES (
     sqlc.arg(id), sqlc.arg(listing_key), sqlc.arg(listing_url), sqlc.arg(site_url), sqlc.arg(title),
     sqlc.arg(recipe), sqlc.arg(health), sqlc.arg(health_reason),
     sqlc.arg(setup_cost), sqlc.arg(created_by_did), sqlc.arg(created_at), sqlc.arg(created_at), sqlc.arg(created_at),
     sqlc.arg(health), sqlc.arg(health_reason), sqlc.arg(created_at), sqlc.narg(next_poll_at),
-    sqlc.narg(anchored_by_did), sqlc.narg(anchored_at)
+    sqlc.narg(anchored_by_did), sqlc.narg(anchored_at), sqlc.arg(created_at)
 );
 
 -- name: GetWebSource :one
@@ -40,8 +40,17 @@ UPDATE web_sources SET
     consecutive_failures = 0,
     last_checked_at = NULL,
     anchored_by_did = sqlc.narg(anchored_by_did),
-    anchored_at = sqlc.narg(anchored_at)
+    anchored_at = sqlc.narg(anchored_at),
+    offered_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id);
+
+-- name: OfferWebSourceByListingKey :one
+-- Finding the source and stamping it are one statement: a reader shown it may follow it any time now, so the sweep
+-- must never delete it between the lookup and the stamp.
+UPDATE web_sources SET offered_at = sqlc.arg(offered_at) WHERE listing_key = sqlc.arg(listing_key) RETURNING *;
+
+-- name: MarkWebSourceServed :exec
+UPDATE web_sources SET served_at = sqlc.arg(served_at) WHERE id = sqlc.arg(id);
 
 -- name: MarkWebSourceSetupTried :exec
 UPDATE web_sources SET setup_tried_at = sqlc.arg(tried_at) WHERE id = sqlc.arg(id);
@@ -63,13 +72,14 @@ UPDATE web_sources SET
 WHERE id = sqlc.arg(id) AND setup_seq = sqlc.arg(setup_seq);
 
 -- name: ListDueWebSources :many
--- A web source counts as followed once either of its feed URLs is in the shared feeds catalog, the same set the global refresher fetches.
+-- A web source counts as followed while a reader subscribes to either of its feed URLs or an outside feed reader fetched it lately.
 -- A setup the site refused has nothing to poll; an unsure one is polled, since the reader chose it from its preview.
 SELECT ws.* FROM web_sources ws
 WHERE ws.setup_health IN ('ok', 'needs_attention')
   AND ws.next_poll_at IS NOT NULL
   AND ws.next_poll_at <= sqlc.arg(now)
-  AND EXISTS (SELECT 1 FROM feeds f WHERE f.feed_url IN (sqlc.arg(feed_url_prefix) || ws.id, sqlc.arg(legacy_feed_url_prefix) || ws.id))
+  AND (EXISTS (SELECT 1 FROM user_subscriptions us WHERE us.feed_url IN (sqlc.arg(feed_url_prefix) || ws.id, sqlc.arg(legacy_feed_url_prefix) || ws.id))
+       OR ws.served_at > sqlc.arg(served_since))
 ORDER BY ws.next_poll_at, ws.id
 LIMIT sqlc.arg(limit);
 

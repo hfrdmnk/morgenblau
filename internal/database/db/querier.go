@@ -10,6 +10,7 @@ import (
 
 type Querier interface {
 	AllowNewsletterRemoteImages(ctx context.Context, arg AllowNewsletterRemoteImagesParams) error
+	ClaimFollowedFeeds(ctx context.Context) error
 	CountModelRepairsSince(ctx context.Context, arg CountModelRepairsSinceParams) (int64, error)
 	CountWebSourceItems(ctx context.Context, sourceID string) (int64, error)
 	CreateManualNewsletterSource(ctx context.Context, arg CreateManualNewsletterSourceParams) error
@@ -25,8 +26,14 @@ type Querier interface {
 	DeleteFeedEntry(ctx context.Context, arg DeleteFeedEntryParams) error
 	DeleteNewsletterReceipt(ctx context.Context, id string) error
 	DeleteNewsletterSave(ctx context.Context, arg DeleteNewsletterSaveParams) error
+	// A saved entry keeps its feed: the Library reads a save's title and reader link from the cached entry.
+	DeleteOrphanedFeeds(ctx context.Context, cutoff *string) (int64, error)
 	DeleteSession(ctx context.Context, arg DeleteSessionParams) error
 	DeleteStoppedUnsavedNewsletterMessage(ctx context.Context, arg DeleteStoppedUnsavedNewsletterMessageParams) error
+	// Runs after DeleteOrphanedFeeds, so a source whose feed was swept goes in the same pass. A feed on any origin counts:
+	// readers keep the URL they subscribed under when the server's public origin changes, and ids carry no GLOB metacharacters.
+	// The paths are websource.FeedPaths: /feed/ and its legacy alias /web/.
+	DeleteUnfollowedWebSources(ctx context.Context, cutoff string) (int64, error)
 	DeleteUnsavedNewsletterMessages(ctx context.Context, arg DeleteUnsavedNewsletterMessagesParams) error
 	DeleteUserSave(ctx context.Context, arg DeleteUserSaveParams) error
 	DeleteUserSubscription(ctx context.Context, arg DeleteUserSubscriptionParams) error
@@ -73,9 +80,8 @@ type Querier interface {
 	InsertWebSourceRepair(ctx context.Context, arg InsertWebSourceRepairParams) error
 	// Answers yes or no and never names a follower; an anchored rebuild of a feed other readers follow must be confirmed first.
 	IsWebSourceFollowedByOthers(ctx context.Context, arg IsWebSourceFollowedByOthersParams) (bool, error)
-	ListAllFeedURLs(ctx context.Context) ([]string, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
-	// A web source counts as followed once either of its feed URLs is in the shared feeds catalog, the same set the global refresher fetches.
+	// A web source counts as followed while a reader subscribes to either of its feed URLs or an outside feed reader fetched it lately.
 	// A setup the site refused has nothing to poll; an unsure one is polled, since the reader chose it from its preview.
 	ListDueWebSources(ctx context.Context, arg ListDueWebSourcesParams) ([]WebSource, error)
 	// Entries from a single feed, newest first, bounded by limit. The join to
@@ -84,6 +90,8 @@ type Querier interface {
 	ListEntriesForSource(ctx context.Context, arg ListEntriesForSourceParams) ([]ListEntriesForSourceRow, error)
 	ListFeedEntriesForDiff(ctx context.Context, feedUrl string) ([]ListFeedEntriesForDiffRow, error)
 	ListFeedURLsForUser(ctx context.Context, did string) ([]string, error)
+	// A feed nobody follows only feeds a cache nobody reads; the sweep's orphaned_at lags by up to a sweep, so it is not the test.
+	ListFollowedFeedURLs(ctx context.Context) ([]string, error)
 	ListNewsletterMessagesForDigest(ctx context.Context, arg ListNewsletterMessagesForDigestParams) ([]ListNewsletterMessagesForDigestRow, error)
 	ListNewsletterMessagesForSource(ctx context.Context, arg ListNewsletterMessagesForSourceParams) ([]ListNewsletterMessagesForSourceRow, error)
 	ListNewsletterSaves(ctx context.Context, did string) ([]ListNewsletterSavesRow, error)
@@ -116,8 +124,13 @@ type Querier interface {
 	ListWebSourcePolls(ctx context.Context, arg ListWebSourcePollsParams) ([]WebSourcePoll, error)
 	ListWebSourcesCreatedSince(ctx context.Context, arg ListWebSourcesCreatedSinceParams) ([]string, error)
 	MarkNewsletterReceiptFailed(ctx context.Context, arg MarkNewsletterReceiptFailedParams) error
+	MarkOrphanedFeeds(ctx context.Context, now *string) error
+	MarkWebSourceServed(ctx context.Context, arg MarkWebSourceServedParams) error
 	MarkWebSourceSetupTried(ctx context.Context, arg MarkWebSourceSetupTriedParams) error
 	MoveNewsletterMessage(ctx context.Context, arg MoveNewsletterMessageParams) error
+	// Finding the source and stamping it are one statement: a reader shown it may follow it any time now, so the sweep
+	// must never delete it between the lookup and the stamp.
+	OfferWebSourceByListingKey(ctx context.Context, arg OfferWebSourceByListingKeyParams) (WebSource, error)
 	PatchNewsletterSource(ctx context.Context, arg PatchNewsletterSourceParams) error
 	PruneModelSpend(ctx context.Context, before string) error
 	PruneWebSourcePolls(ctx context.Context, arg PruneWebSourcePollsParams) error
@@ -139,6 +152,8 @@ type Querier interface {
 	// kind defaults to 'rss' via NULLIF so pre-standardfeed callers passing the
 	// zero value keep working; it is never changed on conflict. title is the
 	// cached publication name; COALESCE keeps rss callers (nil) from clobbering it.
+	// Every upsert claims the feed for the sweep: clearing orphaned_at is what keeps it from deleting a feed
+	// between a subscribe's catalog upsert and its subscription row.
 	// All params are named (not positional): mixing sqlc.arg() with bare ? makes
 	// sqlc emit non-contiguous placeholder numbers that modernc.org/sqlite can't
 	// bind ("missing argument with index N").
