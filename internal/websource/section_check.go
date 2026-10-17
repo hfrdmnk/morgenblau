@@ -3,7 +3,6 @@ package websource
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/url"
 
@@ -28,20 +27,28 @@ func needsSectionCheck(src db.WebSource) bool {
 }
 
 // checkSection runs one free setup of a source's listing and moves the source when it found a healthy section page that
-// keeps every post readers see now. Any other answer marks the recipe checked; only busy slots leave it for a later sweep.
+// keeps every post readers see now. Any other answer marks the recipe checked; only taken slots leave it for a later sweep.
 func (s *Service) checkSection(ctx context.Context, src db.WebSource) error {
 	listing, err := parseHTTPURL(src.ListingUrl)
 	if err != nil {
 		return err
 	}
-	setupCtx, cancel := context.WithTimeout(ctx, s.setupTimeout)
-	defer cancel()
-	gen, err := s.runSetup(setupCtx, listing.String(), "", false)
+	// A check never waits for readers' slots: one freed near the deadline would leave the setup too little time, and its
+	// timeout would mark the source checked for good.
+	select {
+	case s.slots <- struct{}{}:
+	default:
+		return ErrBusy
+	}
+	gen, err := func() (Generated, error) {
+		defer func() { <-s.slots }()
+		setupCtx, cancel := context.WithTimeout(ctx, s.setupTimeout)
+		defer cancel()
+		return s.setupInSlot(setupCtx, listing.String(), "", false)
+	}()
 	switch {
 	case ctx.Err() != nil:
 		return ctx.Err()
-	case errors.Is(err, ErrBusy):
-		return err
 	case err != nil:
 		slog.Info("web source section check failed; not retried", "id", src.ID, "err", err)
 	default:

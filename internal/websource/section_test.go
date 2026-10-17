@@ -359,24 +359,6 @@ func TestPollDueMarksTheSectionCheckOfAFailingSite(t *testing.T) {
 	}
 }
 
-func TestPollDueLeavesTheSectionCheckForLaterWhenSetupsAreBusy(t *testing.T) {
-	env := newTestEnv(t)
-	id := uncheckedSource(t, env, homeURL)
-	env.gen.setupErr = ErrBusy
-	env.advance(31 * time.Minute)
-	pollDue(t, env)
-
-	if row := readKeyed(t, env, id); strings.Contains(row.recipe, "section_checked") {
-		t.Errorf("recipe = %s, want it left unchecked", row.recipe)
-	}
-	env.gen.setupErr = nil
-	env.advance(31 * time.Minute)
-	pollDue(t, env)
-	if got := setupsOf(env); len(got) != 3 {
-		t.Errorf("setups = %v, want the check tried again on the next sweep", got)
-	}
-}
-
 func TestPollDueKeepsASourceWhoseSectionDropsAPostReadersSee(t *testing.T) {
 	env := newTestEnv(t)
 	id := uncheckedSource(t, env, homeURL)
@@ -468,5 +450,38 @@ func TestPollDueSectionChecksAFewSourcesPerSweep(t *testing.T) {
 	pollDue(t, env)
 	if got := env.gen.setupCount() - created; got != sectionChecksPerSweep+2 {
 		t.Errorf("checks = %d after two sweeps, want the rest checked", got)
+	}
+}
+
+func TestPollDueLeavesTheCheckForALaterSweepWhenReadersHoldTheSlots(t *testing.T) {
+	env := newTestEnv(t)
+	id := uncheckedSource(t, env, homeURL)
+	env.gen.generated = movedGenerated()
+	env.advance(31 * time.Minute)
+	env.service.setupTimeout = 200 * time.Millisecond
+	for range setupSlots {
+		env.service.slots <- struct{}{}
+	}
+	// Readers finish just before the check's deadline, so a check that waited would start a setup it cannot finish.
+	freed := make(chan struct{})
+	time.AfterFunc(150*time.Millisecond, func() {
+		for range setupSlots {
+			<-env.service.slots
+		}
+		close(freed)
+	})
+	env.gen.beforeSetup = func(ctx context.Context) { <-ctx.Done() }
+	env.gen.setupErr = context.DeadlineExceeded
+	pollDue(t, env)
+	<-freed
+
+	env.gen.beforeSetup, env.gen.setupErr = nil, nil
+	if row := readKeyed(t, env, id); strings.Contains(row.recipe, `"section_checked":true`) {
+		t.Fatalf("row = %+v, want the check left for a later sweep", row)
+	}
+	env.advance(31 * time.Minute)
+	pollDue(t, env)
+	if row := readKeyed(t, env, id); row.listingKey != "news.example.com/blog" {
+		t.Errorf("row = %+v, want the source moved once the slots were free", row)
 	}
 }

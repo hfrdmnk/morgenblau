@@ -202,7 +202,7 @@ var (
 	// ErrUnreachable is a generation that failed because the site did not answer, not because it refused us.
 	ErrUnreachable = errors.New("websource: site unreachable")
 	ErrUnavailable = errors.New("websource: feed generation is not available")
-	// ErrBusy means every setup slot stayed taken until the setup deadline.
+	// ErrBusy means every setup slot stayed taken for as long as the caller would wait.
 	ErrBusy = errors.New("websource: feed generation is busy")
 	// ErrSetupInFlight means this reader's previous setup is still running.
 	ErrSetupInFlight = errors.New("websource: a setup for this reader is still running")

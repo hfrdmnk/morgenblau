@@ -470,6 +470,11 @@ func (s *Service) runSetup(ctx context.Context, listingURL, anchorURL string, ma
 		return Generated{}, ErrBusy
 	}
 	defer func() { <-s.slots }()
+	return s.setupInSlot(ctx, listingURL, anchorURL, mayUseModel)
+}
+
+// setupInSlot runs a setup for a caller that holds a slot.
+func (s *Service) setupInSlot(ctx context.Context, listingURL, anchorURL string, mayUseModel bool) (Generated, error) {
 	allowModel := false
 	if mayUseModel {
 		var err error
