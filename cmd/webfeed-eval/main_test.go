@@ -138,7 +138,7 @@ func TestOutputUsesTheScorerFieldNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{`"results"`, `"id"`, `"listing_url"`, `"mode"`, `"feed_url"`, `"health"`, `"items"`, `"url"`, `"title"`, `"date"`, `"judge_calls"`, `"induce_calls"`, `"cost_usd"`, `"error"`} {
+	for _, f := range []string{`"results"`, `"id"`, `"listing_url"`, `"mode"`, `"feed_url"`, `"health"`, `"items"`, `"url"`, `"title"`, `"date"`, `"judge_calls"`, `"induce_calls"`, `"cost_usd"`, `"error"`, `"recipe_listing_url"`} {
 		if !strings.Contains(string(raw), f) {
 			t.Errorf("output %s lacks %s", raw, f)
 		}
@@ -153,5 +153,41 @@ func TestReadSites(t *testing.T) {
 	sites, err := readSites(path)
 	if err != nil || len(sites) != 1 || sites[0].ListingURL != "https://news.example.com/blog" || sites[0].Snapshot != "" {
 		t.Fatalf("sites %+v err %v", sites, err)
+	}
+}
+
+func TestEvalReportsTheListingTheRecipeEndedUpOn(t *testing.T) {
+	posts := []string{"How we rebuilt the reading queue", "A quieter way to follow the news", "Shipping the offline mode for readers", "What we learned from daily digests", "Designing calm notifications for readers"}
+	list := func(n int) string {
+		var b strings.Builder
+		b.WriteString(`<!doctype html><html lang="en"><head><title>Example Publication</title></head><body><nav><a href="/about">About</a><a href="/blog">Blog</a></nav><main><ul class="posts">`)
+		for i, t := range posts[:n] {
+			fmt.Fprintf(&b, `<li><h2><a href="/blog/%s">%s</a></h2><time datetime="2024-03-%02d"></time></li>`, strings.ReplaceAll(strings.ToLower(t), " ", "-"), t, 10-i)
+		}
+		b.WriteString(`</ul></main></body></html>`)
+		return b.String()
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			fmt.Fprint(w, list(3))
+		case "/blog":
+			fmt.Fprint(w, list(5))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	var out bytes.Buffer
+	err := run(context.Background(), []site{{ID: "home", ListingURL: srv.URL + "/"}}, options{judge: "off", concurrency: 1, timeout: 10 * time.Second}, env{client: srv.Client()}, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got output
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if r := got.Results[0]; r.ListingURL != srv.URL+"/" || r.RecipeListingURL != srv.URL+"/blog" || len(r.Items) != 5 {
+		t.Fatalf("result = %+v", r)
 	}
 }

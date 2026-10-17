@@ -61,12 +61,13 @@ type probedFeed struct {
 }
 
 // discoverFeed finds a feed the page does not advertise with rel=alternate, or returns nil.
-func (f *Finder) discoverFeed(ctx context.Context, doc *goquery.Document, base *url.URL, listingReadable bool) *Candidate {
+// probed carries probe results across the pages of one Resolve, so a second page never refetches a URL.
+func (f *Finder) discoverFeed(ctx context.Context, doc *goquery.Document, base *url.URL, listingReadable bool, probed map[string]*probedFeed) *Candidate {
 	ctx, cancel := context.WithTimeout(ctx, probeBudget)
 	defer cancel()
 
 	lang := safehttp.LanguageTag(doc.Find("html").First().AttrOr("lang", ""))
-	feeds := f.probeAll(ctx, feedProbes(doc, base), lang)
+	feeds := f.probeAll(ctx, feedProbes(doc, base), lang, probed)
 	if len(feeds) == 0 {
 		return nil
 	}
@@ -178,12 +179,21 @@ func anchorLabel(a *goquery.Selection) string {
 	return strings.Join(parts, " ")
 }
 
-// probeAll returns the probes that parsed as feeds, one per final URL after redirects.
-func (f *Finder) probeAll(ctx context.Context, probes []probe, lang string) []*probedFeed {
+// probeAll returns the probes that parsed as feeds, one per final URL after redirects, and records every outcome in probed.
+func (f *Finder) probeAll(ctx context.Context, probes []probe, lang string, probed map[string]*probedFeed) []*probedFeed {
 	results := make([]*probedFeed, len(probes))
 	sem := make(chan struct{}, probeConcurrency)
 	var wg sync.WaitGroup
 	for i, p := range probes {
+		if prev, done := probed[p.url]; done {
+			if prev != nil {
+				// The source is this page's, so a URL this page links outranks the same URL guessed earlier.
+				reused := *prev
+				reused.probe = p
+				results[i] = &reused
+			}
+			continue
+		}
 		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
@@ -191,6 +201,11 @@ func (f *Finder) probeAll(ctx context.Context, probes []probe, lang string) []*p
 		})
 	}
 	wg.Wait()
+	for i, p := range probes {
+		if _, done := probed[p.url]; !done {
+			probed[p.url] = results[i]
+		}
+	}
 
 	var out []*probedFeed
 	seen := map[string]struct{}{}

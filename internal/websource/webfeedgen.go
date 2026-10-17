@@ -297,16 +297,6 @@ func historyItems(history []webfeed.GoodPoll) []webfeed.Item {
 }
 
 func setupCost(r webfeed.SetupRecord) Cost {
-	c := Cost{Stages: r.Stages}
-	if r.Judge != nil {
-		c.JudgeCalls = r.Judge.Calls
-		c.InputTokens += r.Judge.InputTokens
-		c.OutputTokens += r.Judge.OutputTokens
-	}
-	if r.Induce != nil {
-		c.InputTokens += r.Induce.InputTokens
-		c.OutputTokens += r.Induce.OutputTokens
-	}
-	_, c.USD = r.ModelCost()
-	return c
+	u := r.ModelUsage()
+	return Cost{Stages: r.Stages, JudgeCalls: u.JudgeCalls, InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, USD: u.USD}
 }

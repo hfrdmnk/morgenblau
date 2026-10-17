@@ -105,6 +105,16 @@ type SetupRecord struct {
 	Judge        *JudgeRecord  `json:"judge,omitempty"`
 	Induce       *InduceRecord `json:"induce,omitempty"`
 	Anchor       string        `json:"anchor,omitempty"`
+	// Section is set when setup moved from the pasted page to the section page that lists all its posts.
+	Section *SectionRecord `json:"section,omitempty"`
+	// SectionChecked marks a plain setup that looked for a section page; recipes from before that check lack it.
+	SectionChecked bool `json:"section_checked,omitempty"`
+}
+
+// SectionRecord is the page setup moved away from, and the judge it paid for there.
+type SectionRecord struct {
+	From  string       `json:"from"`
+	Judge *JudgeRecord `json:"judge,omitempty"`
 }
 
 // JudgeRecord is the aggregated judge verdict and its metered cost.

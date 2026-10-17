@@ -154,12 +154,9 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse html: %w", err)
 	}
-	out := extractLinkRels(doc, base)
-	if len(out) == 0 {
-		if c := f.discoverFeed(ctx, doc, base, resp.StatusCode >= 200 && resp.StatusCode < 300); c != nil {
-			out = append(out, *c)
-		}
-	}
+	readable := resp.StatusCode >= 200 && resp.StatusCode < 300
+	probed := map[string]*probedFeed{}
+	out := f.pageFeeds(ctx, doc, base, readable, probed)
 	if f.standard != nil {
 		var pubURIs []string
 		if wkURI := <-wellKnown; wkURI != "" {
@@ -173,7 +170,21 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 		}
 		out = append(out, f.publicationCandidates(ctx, pubURIs)...)
 	}
+	if len(out) == 0 && readable {
+		out = f.sectionFeeds(ctx, doc, base, probed)
+	}
 	return out, nil
+}
+
+// pageFeeds is the advertised-then-hidden discovery shared by the pasted page and its section pages.
+func (f *Finder) pageFeeds(ctx context.Context, doc *goquery.Document, base *url.URL, readable bool, probed map[string]*probedFeed) []Candidate {
+	if out := extractLinkRels(doc, base); len(out) > 0 {
+		return out
+	}
+	if c := f.discoverFeed(ctx, doc, base, readable, probed); c != nil {
+		return []Candidate{*c}
+	}
+	return nil
 }
 
 // resolveATURI resolves a pasted at-uri: publication directly, document via its site, other collections yield nothing.

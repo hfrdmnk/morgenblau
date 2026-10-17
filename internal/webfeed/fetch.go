@@ -44,6 +44,7 @@ type session struct {
 	lang     string
 	cache    map[string]*response
 	articles map[string]*articleInfo
+	robots   map[string]robots
 	// budget is what is left of MaxSetupBytes; fetches reserve from it before reading.
 	budget int64
 }
@@ -55,7 +56,7 @@ var ErrUnreachable = errors.New("webfeed: site unreachable")
 var errBudget = errors.New("webfeed: setup byte budget spent")
 
 func newSession(opts Options) *session {
-	s := &session{client: opts.Client, budget: opts.MaxSetupBytes, cache: map[string]*response{}, articles: map[string]*articleInfo{}}
+	s := &session{client: opts.Client, budget: opts.MaxSetupBytes, cache: map[string]*response{}, articles: map[string]*articleInfo{}, robots: map[string]robots{}}
 	if s.budget <= 0 {
 		s.budget = defaultMaxSetupBytes
 	}
@@ -334,11 +335,19 @@ func robotsMatch(pattern, path string) bool {
 
 // robotsFor fetches robots.txt; an unreachable or failing file allows the fetch, since a reader asked for this one page.
 func (s *session) robotsFor(ctx context.Context, origin string) robots {
-	r := s.fetchOnce(ctx, origin+"/robots.txt", maxRobotsBody)
-	if r.err != nil || r.status != http.StatusOK || r.isHTML() {
-		return robots{}
+	s.mu.Lock()
+	rb, ok := s.robots[origin]
+	s.mu.Unlock()
+	if ok {
+		return rb
 	}
-	return parseRobots(string(r.body))
+	if r := s.fetchOnce(ctx, origin+"/robots.txt", maxRobotsBody); r.err == nil && r.status == http.StatusOK && !r.isHTML() {
+		rb = parseRobots(string(r.body))
+	}
+	s.mu.Lock()
+	s.robots[origin] = rb
+	s.mu.Unlock()
+	return rb
 }
 
 type sitemapURL struct {

@@ -83,16 +83,18 @@ type item struct {
 }
 
 type result struct {
-	ID          string  `json:"id"`
-	ListingURL  string  `json:"listing_url"`
-	Mode        string  `json:"mode"`
-	FeedURL     string  `json:"feed_url"`
-	Health      string  `json:"health"`
-	Items       []item  `json:"items"`
-	JudgeCalls  int     `json:"judge_calls"`
-	InduceCalls int     `json:"induce_calls"`
-	CostUSD     float64 `json:"cost_usd"`
-	Error       string  `json:"error"`
+	ID         string `json:"id"`
+	ListingURL string `json:"listing_url"`
+	// RecipeListingURL is the page polls read, a section page when setup moved off the pasted one.
+	RecipeListingURL string  `json:"recipe_listing_url"`
+	Mode             string  `json:"mode"`
+	FeedURL          string  `json:"feed_url"`
+	Health           string  `json:"health"`
+	Items            []item  `json:"items"`
+	JudgeCalls       int     `json:"judge_calls"`
+	InduceCalls      int     `json:"induce_calls"`
+	CostUSD          float64 `json:"cost_usd"`
+	Error            string  `json:"error"`
 }
 
 type output struct {
@@ -228,9 +230,8 @@ func evalSite(ctx context.Context, s site, opts options, e env) result {
 		explain(s, res)
 	}
 	r.Health = string(websource.SetupHealth(res))
-	if rec := res.Recipe.Setup; rec.Judge != nil {
-		r.JudgeCalls = rec.Judge.Calls
-	}
+	r.RecipeListingURL = res.Recipe.ListingURL
+	r.JudgeCalls = res.Recipe.Setup.ModelUsage().JudgeCalls
 	if rec := res.Recipe.Setup; rec.Induce != nil {
 		r.InduceCalls = rec.Induce.Calls
 	}

@@ -58,8 +58,17 @@ const (
 
 // Setup finds the post stream on a listing page that has no feed and builds its recipe.
 func Setup(ctx context.Context, listingURL string, opts Options) (*Result, error) {
-	res, err := setup(ctx, listingURL, "", opts)
+	if opts.Client == nil {
+		return nil, errClient
+	}
+	s := newSession(opts)
+	res, err := s.setup(ctx, listingURL, "", opts.Model)
 	if err != nil {
+		return res, err
+	}
+	// Induction waits for the section check, so it is never paid for on a listing the check replaces.
+	if res, err = s.preferSection(ctx, res); err != nil {
+		res.release()
 		return res, err
 	}
 	if opts.Model != nil && res.listing != nil && len(res.Items) < induceBelowItems {
@@ -69,6 +78,7 @@ func Setup(ctx context.Context, listingURL string, opts Options) (*Result, error
 		}
 	}
 	res.release()
+	res.Recipe.Setup.SectionChecked = true
 	return res, nil
 }
 
@@ -88,7 +98,10 @@ func SetupAnchored(ctx context.Context, listingURL, anchorPostURL string, opts O
 	if URLTemplate(anchorPostURL) == "" {
 		return nil, fmt.Errorf("webfeed: anchor %q is not an http(s) URL", anchorPostURL)
 	}
-	res, err := setup(ctx, listingURL, anchorPostURL, opts)
+	if opts.Client == nil {
+		return nil, errClient
+	}
+	res, err := newSession(opts).setup(ctx, listingURL, anchorPostURL, opts.Model)
 	if res != nil {
 		if res.listing != nil {
 			d := res.listing.digest()
@@ -99,16 +112,14 @@ func SetupAnchored(ctx context.Context, listingURL, anchorPostURL string, opts O
 	return res, err
 }
 
-func setup(ctx context.Context, listingURL, anchorURL string, opts Options) (*Result, error) {
-	if opts.Client == nil {
-		return nil, errors.New("webfeed: Options.Client is required")
-	}
+var errClient = errors.New("webfeed: Options.Client is required")
+
+func (s *session) setup(ctx context.Context, listingURL, anchorURL string, model Model) (*Result, error) {
 	u, err := url.Parse(strings.TrimSpace(listingURL))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, fmt.Errorf("webfeed: %q is not an http(s) URL", listingURL)
 	}
 	u.Fragment = ""
-	s := newSession(opts)
 	res := &Result{Recipe: newRecipe(u.String(), ModeStreams)}
 	rec := &res.Recipe
 
@@ -153,7 +164,7 @@ func setup(ctx context.Context, listingURL, anchorURL string, opts Options) (*Re
 		pool, pick = p.anchoredPick(all, anchorURL)
 		rec.Setup.Stages = append(rec.Setup.Stages, "anchored")
 		rec.Setup.Anchor = anchorURL
-	} else if pick, judgeNone, err = s.choose(ctx, res, top, conf, margin, opts.Model); err != nil {
+	} else if pick, judgeNone, err = s.choose(ctx, res, top, conf, margin, model); err != nil {
 		res.release()
 		return res, err
 	}
@@ -167,7 +178,7 @@ func setup(ctx context.Context, listingURL, anchorURL string, opts Options) (*Re
 	}
 	s.build(ctx, res, p, picked)
 	// Without a judge, an unsure pick is the reader's call: serving it as healthy would be a silent failure.
-	if anchorURL == "" && opts.Model == nil && conf < judgeBelowConfidence {
+	if anchorURL == "" && model == nil && conf < judgeBelowConfidence {
 		res.Reasons = append(res.Reasons, ReasonUnsure)
 	}
 	if judgeNone {

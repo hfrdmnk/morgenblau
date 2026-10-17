@@ -29,3 +29,13 @@ func TestWebfeedGeneratorSetupCutByItsDeadlineReportsWhatItPaid(t *testing.T) {
 		t.Errorf("cost = %+v, want the three judge calls the setup paid for", got.Cost)
 	}
 }
+
+func TestSetupCostCountsTheJudgeOfAPageASectionMoveLeftBehind(t *testing.T) {
+	got := setupCost(webfeed.SetupRecord{
+		Stages:  []string{"heuristic", "verify", "judge", "section", "heuristic", "verify"},
+		Section: &webfeed.SectionRecord{From: "https://www.example.com/", Judge: &webfeed.JudgeRecord{Calls: 3, InputTokens: 7500, OutputTokens: 1800, USD: 0.00162}},
+	})
+	if got.JudgeCalls != 3 || got.InputTokens != 7500 || got.OutputTokens != 1800 || got.USD != 0.00162 {
+		t.Fatalf("cost = %+v, want the left-behind judge's three calls", got)
+	}
+}

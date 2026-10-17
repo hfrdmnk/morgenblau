@@ -41,17 +41,41 @@ type InduceRecord struct {
 	Kept  bool `json:"kept"`
 }
 
+// ModelUsage is every model call a setup paid for, including the judge on a page a section move left behind.
+type ModelUsage struct {
+	Calls, JudgeCalls, InputTokens, OutputTokens int
+	USD                                          float64
+}
+
+func (r SetupRecord) ModelUsage() ModelUsage {
+	var u ModelUsage
+	judges := []*JudgeRecord{r.Judge}
+	if r.Section != nil {
+		judges = append(judges, r.Section.Judge)
+	}
+	for _, j := range judges {
+		if j != nil {
+			u.JudgeCalls += j.Calls
+			u.InputTokens += j.InputTokens
+			u.OutputTokens += j.OutputTokens
+			u.USD += j.USD
+		}
+	}
+	u.Calls = u.JudgeCalls
+	if r.Induce != nil {
+		u.Calls += r.Induce.Calls
+		u.InputTokens += r.Induce.InputTokens
+		u.OutputTokens += r.Induce.OutputTokens
+		u.USD += r.Induce.USD
+	}
+	u.USD = roundUSD(u.USD)
+	return u
+}
+
 // ModelCost sums every model call setup made, for logging and storing per source.
 func (r SetupRecord) ModelCost() (calls int, usd float64) {
-	if r.Judge != nil {
-		calls += r.Judge.Calls
-		usd += r.Judge.USD
-	}
-	if r.Induce != nil {
-		calls += r.Induce.Calls
-		usd += r.Induce.USD
-	}
-	return calls, roundUSD(usd)
+	u := r.ModelUsage()
+	return u.Calls, u.USD
 }
 
 // parseCSSRecipe reads the inducer's reply; every selector must compile.
