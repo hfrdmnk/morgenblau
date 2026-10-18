@@ -6,6 +6,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { useAppLocation } from '@/hooks/use-app-location';
 import { AppShell } from '@/layouts/app-shell';
 import { PATHS } from '@/lib/paths';
+import { Admin } from '@/pages/admin';
 import { Digest } from '@/pages/digest';
 import { Entry } from '@/pages/entry';
 import { ExportSources } from '@/pages/export-sources';
@@ -25,6 +26,7 @@ type PageDef = { path: string; Component: ComponentType };
 
 const CHROME_PAGES: PageDef[] = [
     { path: PATHS.library, Component: Library },
+    { path: PATHS.admin, Component: Admin },
     { path: PATHS.sources, Component: Sources },
     { path: PATHS.settings, Component: Settings },
     { path: PATHS.general, Component: Settings },

@@ -163,6 +163,8 @@ ATProto OAuth is the deployed login mechanism. The Go server is a confidential b
 
 Alpha deployments may restrict admission by DID. `internal/middleware/auth/alpha.go` owns the environment policy; it must gate both verified sign-in and existing sessions, before authenticated application work starts. Public OAuth metadata remains reachable. Enabled alpha mode must refuse startup without a valid non-empty allowlist.
 
+Operator usage pages live under `/admin` and `/api/admin/`. The auth gate in `internal/middleware/auth/` admits only DIDs in `ADMIN_DIDS` there (unset admits nobody) and answers everyone else as if the route did not exist; admin handlers also refuse any request the gate did not mark. They show counts per reader, never feed URLs, titles or newsletter content. `admin_routes_test.go` in `internal/server/` drives every admin route.
+
 Explicitly opted-in local development may sign into a dedicated development account with server-held ATProto credentials, without an OAuth callback. This grants real PDS access, including writes, and must be unavailable outside local mode. `internal/session/` owns the development gate, in-memory password-session lifecycle, and shared session representation. Password authority must not be represented as an OAuth scope grant. Development sessions do not survive server restart; the shortcut can establish a new session independently.
 
 OAuth session material is encrypted at rest. The browser receives only a sealed session reference in an HttpOnly cookie, secure in deployment. Session creation, encryption, refresh coordination, and scope requirements are owned by `internal/oauth/` and `internal/middleware/auth/`.

@@ -81,6 +81,41 @@ func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) ([]byte,
 	return data, err
 }
 
+const listAccountsLastActive = `-- name: ListAccountsLastActive :many
+SELECT did, CAST(MAX(updated_at) AS TEXT) AS last_active_at
+FROM oauth_sessions
+GROUP BY did
+`
+
+type ListAccountsLastActiveRow struct {
+	Did          string `json:"did"`
+	LastActiveAt string `json:"last_active_at"`
+}
+
+// A session row is rewritten on sign-in and token refresh, so its newest updated_at approximates last use.
+func (q *Queries) ListAccountsLastActive(ctx context.Context) ([]ListAccountsLastActiveRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAccountsLastActive)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAccountsLastActiveRow
+	for rows.Next() {
+		var i ListAccountsLastActiveRow
+		if err := rows.Scan(&i.Did, &i.LastActiveAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const putAuthRequest = `-- name: PutAuthRequest :exec
 INSERT INTO oauth_auth_requests (state, data, created_at, expires_at)
 VALUES (?, ?, ?, ?)

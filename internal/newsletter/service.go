@@ -428,3 +428,16 @@ func deref(value *string) string {
 	}
 	return *value
 }
+
+// CountActiveSourcesByOwner returns only counts, keyed by owner DID, for the admin usage page.
+func (s *Service) CountActiveSourcesByOwner(ctx context.Context) (map[string]int64, error) {
+	rows, err := s.read.CountActiveNewsletterSourcesByOwner(ctx)
+	if err != nil {
+		return nil, err
+	}
+	counts := make(map[string]int64, len(rows))
+	for _, row := range rows {
+		counts[row.Did] = row.Active
+	}
+	return counts, nil
+}

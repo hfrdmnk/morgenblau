@@ -82,7 +82,7 @@ func TestAllowlistGatesExistingSessionsBeforeResume(t *testing.T) {
 			resumer := &alphaResumer{}
 			next := &passthroughNext{}
 			rr := httptest.NewRecorder()
-			New(resumer, noopLocker{}, sealer, Allowlist{"did:plc:allowed": {}})(next).ServeHTTP(rr, req)
+			New(resumer, noopLocker{}, sealer, Allowlist{"did:plc:allowed": {}}, nil)(next).ServeHTTP(rr, req)
 			if rr.Code != tc.wantStatus || next.hit != tc.wantNext {
 				t.Fatalf("status=%d next=%v, want status=%d next=%v", rr.Code, next.hit, tc.wantStatus, tc.wantNext)
 			}

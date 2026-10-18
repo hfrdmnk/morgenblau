@@ -80,6 +80,7 @@ type Server struct {
 	newsletters *newsletter.Service
 	webSources  *websource.Service
 	allowedDIDs auth.Allowlist
+	admins      auth.Admins
 
 	gcCancel context.CancelFunc
 	gcWG     sync.WaitGroup
@@ -90,6 +91,10 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	allowedDIDs, err := auth.LoadAllowlist(os.Getenv)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load alpha access: %w", err)
+	}
+	admins, err := auth.LoadAdmins(os.Getenv)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load admin access: %w", err)
 	}
 
 	port, err := envInt(os.Getenv, "PORT", 8000)
@@ -263,6 +268,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		newsletters: newsletterService,
 		webSources:  webSources,
 		allowedDIDs: allowedDIDs,
+		admins:      admins,
 		gcCancel:    gcCancel,
 	}
 

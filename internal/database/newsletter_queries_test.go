@@ -15,11 +15,12 @@ const newsletterQueryFile = "newsletters.sql"
 
 // Every other newsletter query must bind each newsletter table it touches to the caller's DID.
 var unscopedNewsletterQueries = map[string]string{
-	"GetNewsletterAddressByLocalPart": "SMTP routing resolves the owner DID from the inbound local part",
-	"GetNextNewsletterReceipt":        "the ingest worker drains the queue for every owner",
-	"MarkNewsletterReceiptFailed":     "the receipt id comes from the ingest queue, never from a request",
-	"DeleteNewsletterReceipt":         "the receipt id comes from the ingest queue, never from a request",
-	"GetNewsletterGlobalStorageBytes": "the global quota sums storage across all owners",
+	"CountActiveNewsletterSourcesByOwner": "admin usage counts each owner's active newsletters and returns no title, sender or message",
+	"GetNewsletterAddressByLocalPart":     "SMTP routing resolves the owner DID from the inbound local part",
+	"GetNextNewsletterReceipt":            "the ingest worker drains the queue for every owner",
+	"MarkNewsletterReceiptFailed":         "the receipt id comes from the ingest queue, never from a request",
+	"DeleteNewsletterReceipt":             "the receipt id comes from the ingest queue, never from a request",
+	"GetNewsletterGlobalStorageBytes":     "the global quota sums storage across all owners",
 }
 
 type sqlQuery struct {

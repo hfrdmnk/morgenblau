@@ -216,3 +216,9 @@ JOIN newsletter_messages m ON m.id = sv.message_id AND m.did = sv.did
 JOIN newsletter_sources src ON src.id = m.source_id AND src.did = m.did
 WHERE sv.did = ?1
 ORDER BY sv.created_at DESC, sv.id DESC;
+
+-- name: CountActiveNewsletterSourcesByOwner :many
+SELECT did, COUNT(*) AS active
+FROM newsletter_sources
+WHERE status = 'active'
+GROUP BY did;

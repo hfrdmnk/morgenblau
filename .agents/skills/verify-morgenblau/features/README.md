@@ -34,6 +34,7 @@ Email:
 Isolation:
 
 - [Reader isolation](./tenant-isolation.md): a second reader's newsletter data is 404 for the run's account and 401 for anonymous callers.
+- [Admin usage](./admin.md): `/admin` and `/api/admin/usage` for `ADMIN_DIDS` (`up --admin`), 404 for every other reader.
 
 ## Unmapped
 

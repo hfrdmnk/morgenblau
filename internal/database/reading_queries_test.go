@@ -14,6 +14,7 @@ var unscopedReadingQueries = map[string]string{
 	"DeleteOrphanedFeeds":         "the shared-cache sweep asks only whether anyone follows a feed or saved one of its entries, a yes or no that names no reader",
 	"ListFollowedFeedURLs":        "the global refresher needs every feed anyone follows; it reads feed URLs and names no reader",
 	"ListDueWebSources":           "the web poller asks only whether anyone follows a generated feed, a yes or no that names no reader",
+	"CountSubscriptionsByReader":  "admin usage counts each reader's subscriptions by type and names no feed; only the admin gate reaches it",
 }
 
 func TestReadingIndexQueriesAreScopedByOwnerDID(t *testing.T) {

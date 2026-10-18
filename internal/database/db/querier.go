@@ -11,7 +11,10 @@ import (
 type Querier interface {
 	AllowNewsletterRemoteImages(ctx context.Context, arg AllowNewsletterRemoteImagesParams) error
 	ClaimFollowedFeeds(ctx context.Context) error
+	CountActiveNewsletterSourcesByOwner(ctx context.Context) ([]CountActiveNewsletterSourcesByOwnerRow, error)
 	CountModelRepairsSince(ctx context.Context, arg CountModelRepairsSinceParams) (int64, error)
+	// Admin usage only: counts per reader, never which feeds; own generated feeds are web_feed_prefix || id or legacy_web_feed_prefix || id.
+	CountSubscriptionsByReader(ctx context.Context, arg CountSubscriptionsByReaderParams) ([]CountSubscriptionsByReaderRow, error)
 	CountWebSourceItems(ctx context.Context, sourceID string) (int64, error)
 	CreateManualNewsletterSource(ctx context.Context, arg CreateManualNewsletterSourceParams) error
 	CreateNewsletterAddress(ctx context.Context, arg CreateNewsletterAddressParams) error
@@ -80,6 +83,8 @@ type Querier interface {
 	InsertWebSourceRepair(ctx context.Context, arg InsertWebSourceRepairParams) error
 	// Answers yes or no and never names a follower; an anchored rebuild of a feed other readers follow must be confirmed first.
 	IsWebSourceFollowedByOthers(ctx context.Context, arg IsWebSourceFollowedByOthersParams) (bool, error)
+	// A session row is rewritten on sign-in and token refresh, so its newest updated_at approximates last use.
+	ListAccountsLastActive(ctx context.Context) ([]ListAccountsLastActiveRow, error)
 	ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error)
 	// A web source counts as followed while a reader subscribes to either of its feed URLs or an outside feed reader fetched it lately.
 	// A setup the site refused has nothing to poll; an unsure one is polled, since the reader chose it from its preview.

@@ -17,7 +17,7 @@ import (
 
 func (s *Server) RegisterRoutes() http.Handler {
 	mux := s.routes()
-	gate := auth.New(s.sessions, s.store, s.sealer, s.allowedDIDs)
+	gate := auth.New(s.sessions, s.store, s.sealer, s.allowedDIDs, s.admins)
 	root := http.NewServeMux()
 	devLogin := http.NotFoundHandler()
 	if os.Getenv("APP_ENV") == "local" && s.sessions.DevEnabled() {
@@ -45,10 +45,12 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("GET /oauth/callback", signIn.Wrap(handler.CallbackHandler(s.oauthFlow, s.sealer, s.sync, s.allowedDIDs)))
 	mux.Handle("POST /oauth/logout", handler.LogoutHandler(s.sessions, s.sealer, s.store))
 	var addresses api.ProfileAddressInitializer
+	var newsletterUsage api.NewsletterUsageCounter
 	if s.newsletters != nil {
 		addresses = s.newsletters
+		newsletterUsage = s.newsletters
 	}
-	mux.Handle("GET /api/profiles/me", api.MeProfileHandler(s.profiles, s.sync, addresses))
+	mux.Handle("GET /api/profiles/me", api.MeProfileHandler(s.profiles, s.sync, addresses, s.admins))
 
 	// POST/PATCH/DELETE routes below reach the PDS (auth.holdsSessionLock must match); mutations commit once through gated, OPML import once per source.
 	gated := api.CommitGate{Repo: s.pds}
@@ -115,6 +117,9 @@ func (s *Server) routes() *http.ServeMux {
 			mux.Handle("GET "+path+"{id}", s.webSources.PublicFeedHandler())
 		}
 	}
+
+	// The auth gate admits only ADMIN_DIDS to /api/admin/ and /admin; TestEveryAdminRouteRefusesRequestsTheGateDidNotAdmit checks each route here.
+	mux.Handle("GET /api/admin/usage", api.AdminUsageHandler(s.qr, newsletterUsage, s.profiles, webFeeds))
 
 	mux.HandleFunc("/api/", api.NotFound)
 

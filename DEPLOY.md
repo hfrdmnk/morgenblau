@@ -63,12 +63,15 @@ Append these lines in your editor, replacing the DID and bucket placeholders. Va
 
 ```dotenv
 ALPHA_ALLOWED_DIDS=did:plc:your-account-did,did:plc:another-invited-account
+ADMIN_DIDS=did:plc:your-account-did
 LITESTREAM_REPLICA_URL=s3://your-private-bucket/morgenblau?endpoint=t3.storage.dev&region=auto
 LITESTREAM_ALLOW_EMPTY_REPLICA=true
 SMTP_CERT_CONTACT_EMAIL=you@example.com
 ```
 
 Use your account's stable DID, not its handle. You still sign in with your handle normally. `ALPHA_ENABLED=true` is already in `fly.toml`; an empty or malformed list then refuses startup. The callback checks the verified DID before setting a cookie or dispatching sync. Existing sessions are checked before resuming, so removing a DID takes effect after the Machine restarts.
+
+`ADMIN_DIDS` lists the accounts that may open `/admin`. Unset or empty, nobody can; everyone else gets a 404 there. An admin must also be on the alpha allowlist to sign in at all.
 
 The `endpoint=` URL parameter is intentional: setting only `AWS_ENDPOINT_URL_S3` bypasses Litestream's [Tigris-specific detection](https://litestream.io/guides/tigris/). `fly storage create` may set that extra variable, but our explicit URL supplies the correct endpoint.
 

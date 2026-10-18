@@ -3,6 +3,7 @@ package profiles
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -330,4 +331,149 @@ func TestCache_HandleInvalid_Errors(t *testing.T) {
 	if _, err := c.Get(context.Background(), did); err == nil {
 		t.Fatal("expected error on invalid handle")
 	}
+}
+
+type blockingResolver struct{ calls atomic.Int32 }
+
+func (r *blockingResolver) LookupDID(ctx context.Context, _ syntax.DID) (*identity.Identity, error) {
+	r.calls.Add(1)
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// A caller with its own deadline gets its answer by that deadline, not after the shared fetch timeout.
+func TestCache_LookupGivesUpWithTheCaller(t *testing.T) {
+	c := New(&blockingResolver{}, nil)
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		start := time.Now()
+		if _, err := c.Lookup(ctx, "did:plc:slow"); !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Lookup err = %v, want the caller's deadline", err)
+		}
+		if waited := time.Since(start); waited != time.Second {
+			t.Fatalf("Lookup returned after %v, want the caller's 1s deadline", waited)
+		}
+	})
+}
+
+func TestCache_LookupSharesTheCache(t *testing.T) {
+	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
+	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
+	c := New(res, &fakeFetcher{displayName: ptr("Alice")})
+	if p, err := c.Lookup(context.Background(), did); err != nil || p.DisplayName == nil || *p.DisplayName != "Alice" {
+		t.Fatalf("Lookup = %+v, %v", p, err)
+	}
+	if p, err := c.Get(context.Background(), did); err != nil || p.Handle != "user.example.com" {
+		t.Fatalf("Get after Lookup = %+v, %v", p, err)
+	}
+	if got := atomic.LoadInt32(&res.calls); got != 1 {
+		t.Fatalf("resolver calls = %d, want 1; Get must reuse what Lookup cached", got)
+	}
+}
+
+// Giving up mid-fetch must not cache the nameless profile the record failure would otherwise degrade to.
+func TestCache_LookupCancelMidFetchCachesNothing(t *testing.T) {
+	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
+	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
+	fet := newGatedFetcher("Alice")
+	c := New(res, fet)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
+	go func() {
+		_, err := c.Lookup(ctx, did)
+		done <- err
+	}()
+	<-fet.entered
+	cancel()
+	close(fet.proceed)
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("Lookup err = %v, want the caller's cancellation", err)
+	}
+	p, err := c.Get(context.Background(), did)
+	if err != nil || p.DisplayName == nil || *p.DisplayName != "Alice" {
+		t.Fatalf("Get after an abandoned Lookup = %+v, %v; want the real profile, not a cached nameless one", p, err)
+	}
+}
+
+// Past its deadline a caller still gets cached profiles but starts no lookup, since identity resolution may ignore cancellation.
+func TestCache_LookupPastTheDeadlineServesOnlyTheCache(t *testing.T) {
+	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
+	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
+	c := New(res, &fakeFetcher{})
+	expired, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := c.Lookup(expired, "did:plc:uncached"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("uncached Lookup err = %v, want the caller's cancellation", err)
+	}
+	if got := atomic.LoadInt32(&res.calls); got != 0 {
+		t.Fatalf("resolver calls = %d, want 0 after the caller gave up", got)
+	}
+	if _, err := c.Get(context.Background(), did); err != nil {
+		t.Fatal(err)
+	}
+	if p, err := c.Lookup(expired, did); err != nil || p.Handle != "user.example.com" {
+		t.Fatalf("cached Lookup past the deadline = %+v, %v; want the cached profile", p, err)
+	}
+}
+
+// pastDeadline is a caller whose deadline has passed before its Done channel closed, the window in which a socket deadline copied from it has already fired.
+type pastDeadline struct{ context.Context }
+
+func (pastDeadline) Deadline() (time.Time, bool) { return time.Now().Add(-time.Millisecond), true }
+
+type timeoutFetcher struct{ calls atomic.Int32 }
+
+func (f *timeoutFetcher) FetchProfile(context.Context, syntax.DID, string) (ProfileRecord, error) {
+	f.calls.Add(1)
+	return ProfileRecord{}, errors.New("dial tcp: i/o timeout")
+}
+
+func TestCache_LookupPastItsDeadlineCachesNoNamelessProfile(t *testing.T) {
+	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
+	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
+	fet := &timeoutFetcher{}
+	c := New(res, fet)
+	if _, err := c.Lookup(pastDeadline{context.Background()}, did); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Lookup err = %v, want the caller's deadline", err)
+	}
+	if got := fet.calls.Load(); got != 0 {
+		t.Fatalf("fetcher calls = %d, want none once the caller's deadline has passed", got)
+	}
+	if _, ok := c.lru.Get(did.String()); ok {
+		t.Fatal("a caller past its deadline cached a profile")
+	}
+}
+
+// A record fetch that times out on the caller's deadline before its context reports done must still count as the caller giving up.
+func TestCache_LookupRecordTimeoutAtTheDeadlineCachesNothing(t *testing.T) {
+	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
+	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
+	c := New(res, nil)
+	synctest.Test(t, func(t *testing.T) {
+		c.fetcher = deadlineFetcher{}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if _, err := c.Lookup(callerDeadlineOnly{ctx}, did); err == nil {
+			t.Fatal("Lookup succeeded with a degraded profile fetched past the caller's deadline")
+		}
+		if _, ok := c.lru.Get(did.String()); ok {
+			t.Fatal("cached a nameless profile for a caller that ran out of time")
+		}
+	})
+}
+
+// callerDeadlineOnly exposes its parent's deadline but never reports done, like a context whose timer has not fired yet.
+type callerDeadlineOnly struct{ context.Context }
+
+func (callerDeadlineOnly) Done() <-chan struct{} { return nil }
+func (callerDeadlineOnly) Err() error            { return nil }
+
+// deadlineFetcher fails the way a dial does when its socket deadline, copied from ctx, fires.
+type deadlineFetcher struct{}
+
+func (deadlineFetcher) FetchProfile(ctx context.Context, _ syntax.DID, _ string) (ProfileRecord, error) {
+	d, _ := ctx.Deadline()
+	time.Sleep(time.Until(d))
+	return ProfileRecord{}, errors.New("dial tcp: i/o timeout")
 }

@@ -36,10 +36,13 @@ afterAll(() => GlobalRegistrator.unregister());
 function Page() {
     const [location] = useLocation();
     useNavigationScrollRestoration();
-    return location.startsWith('/settings') ? (
-        <DataSettings><h1>Settings content</h1></DataSettings>
-    ) : (
-        <Link href="/settings/general">Open settings</Link>
+    if (location.startsWith('/settings')) return <DataSettings><h1>Settings content</h1></DataSettings>;
+    if (location === '/admin') return <Link href="/settings/general">Open settings</Link>;
+    return (
+        <>
+            <Link href="/settings/general">Open settings</Link>
+            <Link href="/admin">Open admin</Link>
+        </>
     );
 }
 
@@ -172,6 +175,14 @@ test('settings return names the previous mode and direct entry falls back to dig
 
     const direct = await render('/settings/import');
     expect(link(direct, 'Back to Digest').getAttribute('href')).toBe('/');
+});
+
+test('admin, like settings, returns to the mode it was opened from', async () => {
+    const container = await render('/sources');
+    await act(async () => link(container, 'Open admin').click());
+    expect(link(container, 'Back to Sources').getAttribute('href')).toBe('/sources');
+    await act(async () => link(container, 'Open settings').click());
+    expect(link(container, 'Back to Sources').getAttribute('href')).toBe('/sources');
 });
 
 test('the header and mode bar heights reach the page while the header is mounted', async () => {

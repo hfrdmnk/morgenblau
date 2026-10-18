@@ -249,6 +249,11 @@ html:has(.app-header) {
     pointer-events: none;
 }
 
+/* Nothing paints into a reserved scrollbar gutter, so admin pages give it up to let the banner reach the edge. */
+html:has(.admin-banner) {
+    scrollbar-gutter: auto;
+}
+
 .app-shell > main {
     margin-inline: auto;
     padding-top: 2rem;

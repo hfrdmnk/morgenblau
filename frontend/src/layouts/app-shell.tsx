@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
+import { useLocation } from 'wouter';
 
 import { AppHeader } from '@/components/app-header';
 import { ErrorState } from '@/components/status-state';
@@ -12,7 +13,7 @@ import {
     type AppProfile,
     type AppProfileState,
 } from '@/lib/app-profile-context';
-import { PATHS } from '@/lib/paths';
+import { isAdminPath, PATHS } from '@/lib/paths';
 
 function isAbortError(error: unknown): boolean {
     return error instanceof DOMException && error.name === 'AbortError';
@@ -41,6 +42,7 @@ async function loadProfile(signal: AbortSignal): Promise<AppProfileState | null>
 export function AppShell({ children }: { children: ReactNode }) {
     const [attempt, setAttempt] = useState(0);
     const [state, setState] = useState<AppProfileState>({ kind: 'loading' });
+    const [location] = useLocation();
     useNavigationScrollRestoration();
     useModeShortcuts();
 
@@ -81,9 +83,18 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
         <AppProfileContext.Provider value={state}>
             <div className="app-shell min-h-dvh bg-background">
+                {isAdminPath(location) ? <AdminBanner /> : null}
                 <AppHeader />
                 {children}
             </div>
         </AppProfileContext.Provider>
+    );
+}
+
+function AdminBanner() {
+    return (
+        <div className="admin-banner bg-atmosphere-blue px-5 pb-2 pt-[calc(0.5rem+env(safe-area-inset-top))] text-center text-sm font-medium text-white sm:px-8">
+            Admin only
+        </div>
     );
 }

@@ -28,3 +28,9 @@ WHERE state = ?;
 -- name: DeleteExpiredAuthRequests :execrows
 DELETE FROM oauth_auth_requests
 WHERE expires_at < ?;
+
+-- name: ListAccountsLastActive :many
+-- A session row is rewritten on sign-in and token refresh, so its newest updated_at approximates last use.
+SELECT did, CAST(MAX(updated_at) AS TEXT) AS last_active_at
+FROM oauth_sessions
+GROUP BY did;

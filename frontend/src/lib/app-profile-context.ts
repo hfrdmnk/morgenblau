@@ -5,6 +5,7 @@ export type AppProfile = {
     handle: string;
     displayName: string | null;
     avatar: string | null;
+    isAdmin?: boolean;
 };
 
 export type AppProfileState =

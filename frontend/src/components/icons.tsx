@@ -232,6 +232,20 @@ function SettingsIcon(props: IconProps) {
     );
 }
 
+function ShieldIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M12 2L4 5V11C4 16 7.4 20.4 12 22C16.6 20.4 20 16 20 11V5L12 2Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
 function PlusIcon(props: IconProps) {
     return (
         <svg {...iconProps} {...props}>
@@ -317,6 +331,7 @@ export {
     LoadingIcon,
     PlusIcon,
     SettingsIcon,
+    ShieldIcon,
     SourcesIcon,
     UploadIcon,
 };

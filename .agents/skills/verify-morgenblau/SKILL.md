@@ -28,7 +28,7 @@ A sandboxed shell may be unable to bind ports or run `node`; rerun the helper ou
 
 | Need | Command |
 |---|---|
-| Isolated instance: own HTTP, SMTP, Vite, PLC, PDS and fixture feed ports, fresh migrated DB, own account | `$V up <slug>` (prints state JSON: `base_url`, `smtp`, `pds` with the account's `handle`, and `fixtures` with `url` and `decoy_url`; `pds` and `fixtures` are `null` when doctor exits `3`) |
+| Isolated instance: own HTTP, SMTP, Vite, PLC, PDS and fixture feed ports, fresh migrated DB, own account | `$V up <slug>` (`--admin` puts the account in `ADMIN_DIDS`) (prints state JSON: `base_url`, `smtp`, `pds` with the account's `handle`, and `fixtures` with `url` and `decoy_url`; `pds` and `fixtures` are `null` when doctor exits `3`) |
 | Sign in as the run's account (API cookie jar) and wait for the login sync | `$V login <slug>` (dev login) or `$V oauth <slug>` (real OAuth through the run's PDS) |
 | Call the API as that user, or anonymously | `$V api <slug> GET /api/digest --out digest` (`--data JSON`, `--anon`) |
 | Read state as JSON | `$V inspect <slug> --out inspect-before` |
@@ -100,7 +100,7 @@ static checks: <commands and results>
 
 - One instance, one DB, one PDS, one fixture server and one account per run, created by `up`, removed by `down`. Runs share no state, so any number can run in parallel. Every listener binds `127.0.0.1`, and the PDS's admin password and JWT secret are fresh per run.
 - Never drive the user's own server, database or personal account.
-- Newsletter mail goes only to the instance's `127.0.0.1` SMTP port. The app sends no outbound mail and has no payments or admin panel.
+- Newsletter mail goes only to the instance's `127.0.0.1` SMTP port. The app sends no outbound mail and has no payments. Its `/admin` pages admit only `ADMIN_DIDS`, which a run sets only with `up --admin`.
 - Keep secrets out of evidence: never print or copy secret files under `run/`. Account files, cookie jars, service launch scripts and the browser secret map hold run credentials; `down` removes them. The harness's `state.json` output is safe metadata. The driver's secret map redacts literal account/app passwords in text output, snapshots and logs; it does not sanitize encoded values, other tokens or binary artifacts. Never reveal a password for a screenshot, and inspect evidence before retaining or sharing it.
 - Never kill processes by name; `down` stops only the services or process ids `up` recorded.
 - Cleanup never deletes evidence. Evidence never leaves the machine.

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useBrowserLocation, useHistoryState } from 'wouter/use-browser-location';
 
-import { isSettingsPath } from '@/lib/paths';
+import { isAccountMenuPath } from '@/lib/paths';
 
 export type AppNavigationState = {
     settingsReturn?: { href: string; scrollY: number };
@@ -14,10 +14,10 @@ export function useAppLocation(options?: { ssrPath?: string }) {
     const navigateWithScrollReset: typeof navigate = (to, navOptions) => {
         const previous: AppNavigationState | null = window.history.state;
         let state: AppNavigationState = navOptions?.state ?? {};
-        if (isSettingsPath(new URL(to, window.location.href).pathname)) {
+        if (isAccountMenuPath(new URL(to, window.location.href).pathname)) {
             state = {
                 ...state,
-                settingsReturn: isSettingsPath(location)
+                settingsReturn: isAccountMenuPath(location)
                     ? previous?.settingsReturn
                     : { href: window.location.pathname + window.location.search, scrollY: window.scrollY },
             };

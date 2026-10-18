@@ -13,6 +13,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/cache/profiles"
+	"morgenblau/internal/middleware/auth"
 )
 
 type fakeProfileSource struct {
@@ -53,7 +54,7 @@ func TestMeProfile_HappyPath(t *testing.T) {
 	src := &fakeProfileSource{profiles: map[syntax.DID]profiles.Profile{
 		did: {DID: "did:plc:alice", Handle: "user.example.com", DisplayName: sptr("Alice")},
 	}}
-	h := MeProfileHandler(src, nil, nil)
+	h := MeProfileHandler(src, nil, nil, nil)
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -81,7 +82,7 @@ func TestMeProfile_TriggersBackgroundSyncForExistingSession(t *testing.T) {
 	source := &fakeProfileSource{profiles: map[syntax.DID]profiles.Profile{did: {DID: did.String()}}}
 	starter := &recordingProfileSync{}
 	rr := httptest.NewRecorder()
-	MeProfileHandler(source, starter, nil).ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), did.String(), "sid-1"))
+	MeProfileHandler(source, starter, nil, nil).ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), did.String(), "sid-1"))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
@@ -96,7 +97,7 @@ func TestMeProfile_SyncDispatchFailureDoesNotFailEntry(t *testing.T) {
 	source := &fakeProfileSource{profiles: map[syntax.DID]profiles.Profile{did: {DID: did.String()}}}
 	starter := &recordingProfileSync{err: fmt.Errorf("dispatch failed")}
 	rr := httptest.NewRecorder()
-	MeProfileHandler(source, starter, nil).ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), did.String(), "sid-1"))
+	MeProfileHandler(source, starter, nil, nil).ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), did.String(), "sid-1"))
 	if rr.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", rr.Code)
 	}
@@ -108,7 +109,7 @@ func TestMeProfile_StandardSubscriptionScopeNeedsNoReauth(t *testing.T) {
 		did: {DID: did.String(), Handle: "user.example.com"},
 	}}
 	rr := httptest.NewRecorder()
-	MeProfileHandler(src, nil, nil).ServeHTTP(rr, withStandardWriteSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), did.String(), "sid-1"))
+	MeProfileHandler(src, nil, nil, nil).ServeHTTP(rr, withStandardWriteSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), did.String(), "sid-1"))
 
 	var got meResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
@@ -125,7 +126,7 @@ func TestMeProfile_UsesCache(t *testing.T) {
 		did: {DID: did.String(), Handle: "user.example.com"},
 	}}
 	rr := httptest.NewRecorder()
-	MeProfileHandler(src, nil, nil).ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), did.String(), "sid-1"))
+	MeProfileHandler(src, nil, nil, nil).ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), did.String(), "sid-1"))
 	if got := src.getCalls.Load(); got != 1 {
 		t.Errorf("Get calls = %d, want 1", got)
 	}
@@ -133,7 +134,7 @@ func TestMeProfile_UsesCache(t *testing.T) {
 
 func TestMeProfile_NoSession_500(t *testing.T) {
 	rr := httptest.NewRecorder()
-	MeProfileHandler(&fakeProfileSource{}, nil, nil).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil))
+	MeProfileHandler(&fakeProfileSource{}, nil, nil, nil).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil))
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rr.Code)
 	}
@@ -156,7 +157,7 @@ func TestMeProfile_ProvisionsNewsletterAddressOnAuthenticatedEntry(t *testing.T)
 	source := &fakeProfileSource{profiles: map[syntax.DID]profiles.Profile{did: {DID: did.String()}}}
 	address := &recordingProfileAddress{}
 	starter := &recordingProfileSync{}
-	h := MeProfileHandler(source, starter, address)
+	h := MeProfileHandler(source, starter, address, nil)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), did.String(), "sid-1"))
 	if rr.Code != http.StatusOK || address.calls != 1 || address.did != did.String() || starter.calls != 1 {
@@ -172,7 +173,7 @@ func TestMeProfile_NewsletterProvisioningFailureDoesNotBlockEntry(t *testing.T) 
 	source := &fakeProfileSource{profiles: map[syntax.DID]profiles.Profile{did: {DID: did.String()}}}
 	address := &recordingProfileAddress{err: fmt.Errorf("newsletter storage unavailable")}
 	rr := httptest.NewRecorder()
-	MeProfileHandler(source, nil, address).ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), did.String(), "sid-1"))
+	MeProfileHandler(source, nil, address, nil).ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), did.String(), "sid-1"))
 	if rr.Code != http.StatusOK || address.calls != 1 {
 		t.Fatalf("status=%d address calls=%d", rr.Code, address.calls)
 	}
@@ -181,8 +182,26 @@ func TestMeProfile_NewsletterProvisioningFailureDoesNotBlockEntry(t *testing.T) 
 func TestMeProfile_NoSessionDoesNotProvisionAddress(t *testing.T) {
 	address := &recordingProfileAddress{}
 	rr := httptest.NewRecorder()
-	MeProfileHandler(&fakeProfileSource{}, nil, address).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil))
+	MeProfileHandler(&fakeProfileSource{}, nil, address, nil).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil))
 	if address.calls != 0 {
 		t.Fatalf("address calls=%d for missing session", address.calls)
+	}
+}
+
+func TestMeProfile_FlagsOnlyListedAdmins(t *testing.T) {
+	src := &fakeProfileSource{profiles: map[syntax.DID]profiles.Profile{
+		"did:plc:admin":  {DID: "did:plc:admin", Handle: "admin.example"},
+		"did:plc:reader": {DID: "did:plc:reader", Handle: "reader.example"},
+	}}
+	for did, want := range map[string]bool{"did:plc:admin": true, "did:plc:reader": false} {
+		rr := httptest.NewRecorder()
+		MeProfileHandler(src, nil, nil, auth.Admins{"did:plc:admin": {}}).ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), did, "sid-1"))
+		var got meResponse
+		if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.IsAdmin != want {
+			t.Errorf("%s isAdmin = %v, want %v", did, got.IsAdmin, want)
+		}
 	}
 }

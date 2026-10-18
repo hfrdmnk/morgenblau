@@ -175,3 +175,17 @@ WHERE us.did = ?;
 
 -- name: DeleteUserSubscription :exec
 DELETE FROM user_subscriptions WHERE did = ? AND rkey = ?;
+
+-- name: CountSubscriptionsByReader :many
+-- Admin usage only: counts per reader, never which feeds; own generated feeds are web_feed_prefix || id or legacy_web_feed_prefix || id.
+SELECT
+    did,
+    COUNT(*) AS total_count,
+    CAST(COALESCE(SUM(
+        (CAST(sqlc.arg(web_feed_prefix) AS TEXT) <> ''
+            AND substr(feed_url, 1, length(sqlc.arg(web_feed_prefix))) = sqlc.arg(web_feed_prefix))
+        OR (CAST(sqlc.arg(legacy_web_feed_prefix) AS TEXT) <> ''
+            AND substr(feed_url, 1, length(sqlc.arg(legacy_web_feed_prefix))) = sqlc.arg(legacy_web_feed_prefix))
+    ), 0) AS INTEGER) AS generated_count
+FROM user_subscriptions
+GROUP BY did;

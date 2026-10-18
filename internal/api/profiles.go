@@ -9,6 +9,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/cache/profiles"
+	"morgenblau/internal/middleware/auth"
 	"morgenblau/internal/newsletter"
 	"morgenblau/internal/oauth/scopes"
 )
@@ -31,10 +32,12 @@ type meResponse struct {
 	profiles.Profile
 	// NeedsReauth is true when the session predates the standardfeed scopes; standard-record writes will 403 until the user re-logs-in.
 	NeedsReauth bool `json:"needsReauth"`
+	// IsAdmin only decides whether the shell links to /admin; the auth gate alone grants access.
+	IsAdmin bool `json:"isAdmin"`
 }
 
 // MeProfileHandler returns the session user's profile plus needsReauth; cache-first, because every hard page load blocks on this call and a PDS round-trip would stall the shell.
-func MeProfileHandler(src ProfileSource, starter ProfileSyncStarter, addresses ProfileAddressInitializer) http.Handler {
+func MeProfileHandler(src ProfileSource, starter ProfileSyncStarter, addresses ProfileAddressInitializer, admins auth.Admins) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -60,6 +63,6 @@ func MeProfileHandler(src ProfileSource, starter ProfileSyncStarter, addresses P
 			writeError(w, http.StatusInternalServerError, codeInternalError, "could not resolve identity")
 			return
 		}
-		writeJSON(w, meResponse{Profile: p, NeedsReauth: !scopes.HasStandardSubscriptionWrite(sess)})
+		writeJSON(w, meResponse{Profile: p, NeedsReauth: !scopes.HasStandardSubscriptionWrite(sess), IsAdmin: admins.Includes(sess.Data.AccountDID)})
 	})
 }

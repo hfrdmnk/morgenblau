@@ -10,6 +10,7 @@ export const PATHS = {
     import: '/settings/import',
     export: '/settings/export',
     entry: '/entry',
+    admin: '/admin',
     oauthLogin: '/oauth/login',
     oauthLogout: '/oauth/logout',
 } as const;
@@ -28,6 +29,15 @@ export function appMode(path: string) {
 
 export function isSettingsPath(path: string): boolean {
     return path === PATHS.settings || path.startsWith(`${PATHS.settings}/`);
+}
+
+export function isAdminPath(path: string): boolean {
+    return path === PATHS.admin || path.startsWith(`${PATHS.admin}/`);
+}
+
+// Pages opened from the account menu, which offer a way back to the mode they were opened from.
+export function isAccountMenuPath(path: string): boolean {
+    return isSettingsPath(path) || isAdminPath(path);
 }
 
 export function sourceHref(rkey: string): string {

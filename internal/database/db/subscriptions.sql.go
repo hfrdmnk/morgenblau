@@ -9,6 +9,55 @@ import (
 	"context"
 )
 
+const countSubscriptionsByReader = `-- name: CountSubscriptionsByReader :many
+SELECT
+    did,
+    COUNT(*) AS total_count,
+    CAST(COALESCE(SUM(
+        (CAST(?1 AS TEXT) <> ''
+            AND substr(feed_url, 1, length(?1)) = ?1)
+        OR (CAST(?2 AS TEXT) <> ''
+            AND substr(feed_url, 1, length(?2)) = ?2)
+    ), 0) AS INTEGER) AS generated_count
+FROM user_subscriptions
+GROUP BY did
+`
+
+type CountSubscriptionsByReaderParams struct {
+	WebFeedPrefix       string `json:"web_feed_prefix"`
+	LegacyWebFeedPrefix string `json:"legacy_web_feed_prefix"`
+}
+
+type CountSubscriptionsByReaderRow struct {
+	Did            string `json:"did"`
+	TotalCount     int64  `json:"total_count"`
+	GeneratedCount int64  `json:"generated_count"`
+}
+
+// Admin usage only: counts per reader, never which feeds; own generated feeds are web_feed_prefix || id or legacy_web_feed_prefix || id.
+func (q *Queries) CountSubscriptionsByReader(ctx context.Context, arg CountSubscriptionsByReaderParams) ([]CountSubscriptionsByReaderRow, error) {
+	rows, err := q.db.QueryContext(ctx, countSubscriptionsByReader, arg.WebFeedPrefix, arg.LegacyWebFeedPrefix)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountSubscriptionsByReaderRow
+	for rows.Next() {
+		var i CountSubscriptionsByReaderRow
+		if err := rows.Scan(&i.Did, &i.TotalCount, &i.GeneratedCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteUserSubscription = `-- name: DeleteUserSubscription :exec
 DELETE FROM user_subscriptions WHERE did = ? AND rkey = ?
 `

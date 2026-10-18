@@ -8,9 +8,11 @@ umask 077
 USAGE='usage: verify <command> [args]
 
   doctor                          check this machine can verify; exit 0 ok, 3 no local PDS (anonymous only), 1 fail
-  up <slug> [--fetch-minutes N]   start an isolated instance (own ports, fresh DB, own Vite, own PDS and account,
+  up <slug> [--fetch-minutes N] [--admin]
+                                  start an isolated instance (own ports, fresh DB, own Vite, own PDS and account,
                                   own fixture feed server); prints its state
                                   --fetch-minutes turns on the global feed refresher (default off)
+                                  --admin lists the run account in ADMIN_DIDS so it can open /admin
   login <slug>                    sign the run cookie jar in as the run account (dev login) and wait for the login sync
   oauth <slug>                    sign the run cookie jar in through real OAuth on the run PDS, then wait like login
   api <slug> <METHOD> <path> [--data JSON] [--out NAME] [--anon]
@@ -350,7 +352,7 @@ abort_up() {
 }
 
 up() {
-    local slug="$1" fetch="${2:-0}" dir run http smtp vite plc="" pds="" fixtures="" decoy="" claimed dev=false pds_url="" plc_url="" fixtures_url="" handle="" password="" scope i
+    local slug="$1" fetch="${2:-0}" admin="${3:-false}" admins="" dir run http smtp vite plc="" pds="" fixtures="" decoy="" claimed dev=false pds_url="" plc_url="" fixtures_url="" handle="" password="" scope i
     [[ "$fetch" =~ ^[0-9]+$ ]] || die "--fetch-minutes takes a whole number of minutes"
     [[ "$slug" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "slug '$slug' must be lowercase letters, digits and dashes."
     dir="$VERIFY_ROOT/$(date +%F)-$slug"
@@ -407,11 +409,14 @@ up() {
         create_account "$dir" "$pds_url" "$(run_handle "$slug")" || die "could not create the run's account on $pds_url"
         handle="$(jq -r .handle "$run/account.json")"
         password="$(jq -r .app_password "$run/account.json")"
+        [ "$admin" = true ] && admins="$(jq -r .did "$run/account.json")"
+    elif [ "$admin" = true ]; then
+        die "--admin needs the run's own account, which needs the local PDS"
     fi
 
     # The run dir as working directory keeps godotenv from loading the checkout's .env into the instance.
     start_process "$dir" server "$run" PORT="$http" DB_PATH="$run/morgenblau.db" APP_ENV=local FETCH_INTERVAL_MINUTES="$fetch" \
-        VITE_URL="http://127.0.0.1:$vite" DEV_LOGIN_ENABLED="$dev" \
+        VITE_URL="http://127.0.0.1:$vite" DEV_LOGIN_ENABLED="$dev" ADMIN_DIDS="$admins" \
         ATPROTO_HANDLE="$handle" ATPROTO_PASSWORD="$password" ATPROTO_PDS="$pds_url" PLC_URL="$plc_url" FEED_FIXTURE_ORIGIN="$fixtures_url" \
         SESSION_COOKIE_KEY="$(openssl rand -base64 32)" SESSION_STORE_KEYS="$(openssl rand -base64 32)" \
         BLUESKY_OAUTH_PRIVATE_KEY="$(oauth_private_key)" BLUESKY_OAUTH_SCOPE="$scope" \
@@ -809,7 +814,18 @@ cmd="${1-help}"
 [ $# -gt 0 ] && shift
 case "$cmd" in
     doctor) doctor ;;
-    up) { [ $# -eq 1 ] || { [ $# -eq 3 ] && [ "$2" = --fetch-minutes ]; }; } || die "usage: verify up <slug> [--fetch-minutes N]"; up "$1" "${3-}" ;;
+    up)
+        up_slug="${1-}" up_fetch=0 up_admin=false
+        [ $# -ge 1 ] || die "usage: verify up <slug> [--fetch-minutes N] [--admin]"
+        shift
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --fetch-minutes) [ $# -ge 2 ] || die "--fetch-minutes takes a whole number of minutes"; up_fetch="$2"; shift 2 ;;
+                --admin) up_admin=true; shift ;;
+                *) die "usage: verify up <slug> [--fetch-minutes N] [--admin]" ;;
+            esac
+        done
+        up "$up_slug" "$up_fetch" "$up_admin" ;;
     login) [ $# -eq 1 ] || die "usage: verify login <slug>"; login "$(run_dir "$1")" ;;
     oauth) [ $# -eq 1 ] || die "usage: verify oauth <slug>"; oauth "$(run_dir "$1")" ;;
     api) [ $# -ge 3 ] || die "usage: verify api <slug> <METHOD> <path> [--data JSON] [--out NAME] [--anon]"; d="$(run_dir "$1")"; shift; api "$d" "$@" ;;

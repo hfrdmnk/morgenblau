@@ -25,6 +25,41 @@ func (q *Queries) AllowNewsletterRemoteImages(ctx context.Context, arg AllowNews
 	return err
 }
 
+const countActiveNewsletterSourcesByOwner = `-- name: CountActiveNewsletterSourcesByOwner :many
+SELECT did, COUNT(*) AS active
+FROM newsletter_sources
+WHERE status = 'active'
+GROUP BY did
+`
+
+type CountActiveNewsletterSourcesByOwnerRow struct {
+	Did    string `json:"did"`
+	Active int64  `json:"active"`
+}
+
+func (q *Queries) CountActiveNewsletterSourcesByOwner(ctx context.Context) ([]CountActiveNewsletterSourcesByOwnerRow, error) {
+	rows, err := q.db.QueryContext(ctx, countActiveNewsletterSourcesByOwner)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountActiveNewsletterSourcesByOwnerRow
+	for rows.Next() {
+		var i CountActiveNewsletterSourcesByOwnerRow
+		if err := rows.Scan(&i.Did, &i.Active); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createManualNewsletterSource = `-- name: CreateManualNewsletterSource :exec
 INSERT INTO newsletter_sources (
     id, did, source_key, identity_kind, title, status, created_at, updated_at

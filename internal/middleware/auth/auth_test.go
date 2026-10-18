@@ -167,7 +167,7 @@ func TestMiddleware_Table(t *testing.T) {
 			sealer := newSealer(t)
 			resumer := &fakeResumer{sessions: map[string]*session.Session{}}
 			next := &passthroughNext{}
-			m := New(resumer, noopLocker{}, sealer, nil)
+			m := New(resumer, noopLocker{}, sealer, nil, nil)
 
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			if tc.authed {
@@ -206,7 +206,7 @@ func (b *bodyReader) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // The frontend reads every /api/ failure as JSON {code, message}; a plain-text 401 loses the code it keys off.
 func TestMiddleware_UnauthedAPIAnswersTheJSONErrorEnvelope(t *testing.T) {
-	m := New(&fakeResumer{sessions: map[string]*session.Session{}}, noopLocker{}, newSealer(t), nil)
+	m := New(&fakeResumer{sessions: map[string]*session.Session{}}, noopLocker{}, newSealer(t), nil, nil)
 	rr := httptest.NewRecorder()
 	m(&passthroughNext{}).ServeHTTP(rr, httptest.NewRequest("GET", "/api/digest", nil))
 
@@ -232,7 +232,7 @@ func TestMiddleware_CapsAPIBodySize(t *testing.T) {
 	sealer := newSealer(t)
 	resumer := &fakeResumer{sessions: map[string]*session.Session{}}
 	cookie := setSession(t, sealer, resumer, "did:plc:alice", "sid-1")
-	m := New(resumer, noopLocker{}, sealer, nil)
+	m := New(resumer, noopLocker{}, sealer, nil, nil)
 
 	oversized := &bodyReader{}
 	bigReq := httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(strings.Repeat("a", (1<<20)+1)))
@@ -265,7 +265,7 @@ func TestMiddleware_InjectsSessionIntoContext(t *testing.T) {
 	cookie := setSession(t, sealer, resumer, "did:plc:alice", "sid-1")
 
 	next := &passthroughNext{}
-	m := New(resumer, noopLocker{}, sealer, nil)
+	m := New(resumer, noopLocker{}, sealer, nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/digest", nil)
 	req.AddCookie(cookie)
 	rr := httptest.NewRecorder()
@@ -287,7 +287,7 @@ func TestMiddleware_InvalidCookie_TreatedAsUnauthed(t *testing.T) {
 	sealer := newSealer(t)
 	resumer := &fakeResumer{sessions: map[string]*session.Session{}}
 	next := &passthroughNext{}
-	m := New(resumer, noopLocker{}, sealer, nil)
+	m := New(resumer, noopLocker{}, sealer, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/digest", nil)
 	req.AddCookie(&http.Cookie{Name: "mb_session", Value: "garbage"})
@@ -310,7 +310,7 @@ func TestMiddleware_ResumeFailure_RedirectsAndClearsCookie(t *testing.T) {
 	cookies := setRR.Result().Cookies()
 
 	next := &passthroughNext{}
-	m := New(resumer, noopLocker{}, sealer, nil)
+	m := New(resumer, noopLocker{}, sealer, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/digest", nil)
 	for _, c := range cookies {
@@ -365,7 +365,7 @@ func TestMiddleware_MutatingRequestsDoNotOverlapInNext(t *testing.T) {
 	sealer := newSealer(t)
 	resumer := &fakeResumer{sessions: map[string]*session.Session{}}
 	cookie := setSession(t, sealer, resumer, "did:plc:alice", "sid-1")
-	m := New(resumer, newMemoryLocker(), sealer, nil)
+	m := New(resumer, newMemoryLocker(), sealer, nil, nil)
 
 	var inNext atomic.Int32
 	var overlapped atomic.Bool
@@ -401,7 +401,7 @@ func TestMiddleware_GETNotBlockedBySlowMutating(t *testing.T) {
 	sealer := newSealer(t)
 	resumer := &fakeResumer{sessions: map[string]*session.Session{}}
 	cookie := setSession(t, sealer, resumer, "did:plc:alice", "sid-1")
-	m := New(resumer, newMemoryLocker(), sealer, nil)
+	m := New(resumer, newMemoryLocker(), sealer, nil, nil)
 
 	postEntered := make(chan struct{})
 	releasePost := make(chan struct{})
@@ -447,7 +447,7 @@ func TestMiddleware_LockSerializesMutatingResume(t *testing.T) {
 		session: &session.Session{Data: &session.Data{AccountDID: did, SessionID: "sid-1"}},
 	}
 	locker := newMemoryLocker()
-	m := New(resumer, locker, sealer, nil)
+	m := New(resumer, locker, sealer, nil, nil)
 
 	setRR := httptest.NewRecorder()
 	sealer.Set(setRR, "did:plc:alice", "sid-1")
@@ -501,7 +501,7 @@ func TestMiddleware_TransientErrorKeepsCookie(t *testing.T) {
 	cookies := setRR.Result().Cookies()
 
 	next := &passthroughNext{}
-	m := New(resumer, noopLocker{}, sealer, nil)
+	m := New(resumer, noopLocker{}, sealer, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/digest", nil)
 	for _, c := range cookies {

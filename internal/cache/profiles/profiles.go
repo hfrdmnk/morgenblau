@@ -100,6 +100,41 @@ func (c *Cache) Refresh(ctx context.Context, did syntax.DID) (Profile, error) {
 	return c.load(ctx, did, false)
 }
 
+// Lookup is Get for a caller that may give up: it stops at ctx's deadline or cancellation and skips in-flight sharing, so giving up costs no other caller its answer.
+func (c *Cache) Lookup(ctx context.Context, did syntax.DID) (Profile, error) {
+	key := did.String()
+	if e, ok := c.lru.Get(key); ok && (e.expires.IsZero() || c.now().Before(e.expires)) {
+		return e.profile, nil
+	}
+	// Identity resolution ignores cancellation, so a caller past its deadline must not start one.
+	if err := gaveUp(ctx); err != nil {
+		return Profile{}, err
+	}
+	fetchCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
+	defer cancel()
+	e, err := c.resolve(fetchCtx, did)
+	// resolve degrades a failed record fetch to a nameless profile, which a caller that gave up must not cache for everyone.
+	if err == nil && !e.expires.IsZero() {
+		err = gaveUp(ctx)
+	}
+	if err != nil {
+		return Profile{}, err
+	}
+	c.lru.Add(key, e)
+	return e.profile, nil
+}
+
+// gaveUp also reads the deadline itself: a socket deadline copied from ctx can fire, failing the fetch, before ctx reports done.
+func gaveUp(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if d, ok := ctx.Deadline(); ok && !time.Now().Before(d) {
+		return context.DeadlineExceeded
+	}
+	return nil
+}
+
 func (c *Cache) load(ctx context.Context, did syntax.DID, useInflight bool) (Profile, error) {
 	key := did.String()
 
@@ -151,6 +186,10 @@ func (c *Cache) fetch(ctx context.Context, did syntax.DID) (entry, error) {
 	// The result is cached and shared with in-flight waiters, so it must not depend on whether this caller stayed.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fetchTimeout)
 	defer cancel()
+	return c.resolve(ctx, did)
+}
+
+func (c *Cache) resolve(ctx context.Context, did syntax.DID) (entry, error) {
 	ident, err := c.resolver.LookupDID(ctx, did)
 	if err != nil {
 		return entry{}, fmt.Errorf("resolve did: %w", err)

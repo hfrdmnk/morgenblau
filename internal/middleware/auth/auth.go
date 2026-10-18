@@ -30,8 +30,8 @@ type Middleware func(http.Handler) http.Handler
 // maxAPIBodyBytes caps JSON bodies at 1 MB, clearing the largest legitimate payload (batch subscription create) with headroom.
 const maxAPIBodyBytes = 1 << 20
 
-// New builds the gating middleware; every path is authed by default except the named public/infra routes.
-func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, allowed Allowlist) Middleware {
+// New builds the gating middleware; every path is authed by default except the named public/infra routes, and admin paths admit only admins.
+func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, allowed Allowlist, admins Admins) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
@@ -68,6 +68,12 @@ func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, allowed A
 				}
 			}
 
+			// Before the public and infra exemptions, so no exemption can ever open an admin path.
+			if IsAdminPath(path) {
+				serveAdmin(next, w, r, sess, admins)
+				return
+			}
+
 			if redirect, isPublic := publicRoutes[path]; isPublic {
 				if sess != nil && redirect != "" {
 					http.Redirect(w, r, redirect, http.StatusFound)
@@ -86,13 +92,34 @@ func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, allowed A
 				serve(next, w, r, sess)
 				return
 			}
-
-			if strings.HasPrefix(path, "/api/") {
-				writeUnauthenticated(w)
-				return
-			}
-			http.Redirect(w, r, "/login", http.StatusFound)
+			refuseUnauthenticated(w, r)
 		})
+	}
+}
+
+func refuseUnauthenticated(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		writeUnauthenticated(w)
+		return
+	}
+	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
+// serveAdmin hides admin paths from signed-in non-admins: they look exactly like a route that does not exist.
+func serveAdmin(next http.Handler, w http.ResponseWriter, r *http.Request, sess *session.Session, admins Admins) {
+	switch {
+	case sess == nil:
+		refuseUnauthenticated(w, r)
+	case !admins.Includes(sess.Data.AccountDID):
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"code":"not_found","message":"not found"}`+"\n")
+	default:
+		next.ServeHTTP(w, r.WithContext(WithAdmin(WithSession(r.Context(), sess))))
 	}
 }
 

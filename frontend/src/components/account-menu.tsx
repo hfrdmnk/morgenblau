@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'wouter';
 
-import { DownloadIcon, SettingsIcon, UploadIcon } from '@/components/icons';
+import { DownloadIcon, SettingsIcon, ShieldIcon, UploadIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import {
     Popover,
@@ -92,6 +92,16 @@ export function AccountMenu({ profile }: { profile: AppProfile }) {
                         <DownloadIcon className="size-4" />
                         Export
                     </Link>
+                    {profile.isAdmin ? (
+                        <Link
+                            href={PATHS.admin}
+                            className="flex min-h-10 items-center gap-3 rounded-md px-2 text-sm hover:bg-secondary/50"
+                            onClick={() => setOpen(false)}
+                        >
+                            <ShieldIcon className="size-4" />
+                            Admin
+                        </Link>
+                    ) : null}
                 </nav>
                 <form method="POST" action={PATHS.oauthLogout}>
                     <Button
