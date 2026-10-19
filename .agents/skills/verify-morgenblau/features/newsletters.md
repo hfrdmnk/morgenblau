@@ -9,7 +9,7 @@ Help article: none
 - `address` `GET /api/newsletters/address` returns `{}` until an address exists; `POST` creates and returns `{address}`; a second `POST` returns the same address. `GET /api/profiles/me`, which the app shell calls on every page load, creates the address too.
 - `smtp-receive` mail to the address is accepted; mail to an unknown local part is refused with `550 5.1.1`.
 - `sources` `GET /api/newsletters` returns `{active, stopped}` sources; `GET /api/newsletters/{id}` one source; `GET /api/newsletters/{id}/entries` its messages.
-- `source-edit` `PATCH /api/newsletters/{id}` with `{title, primary, tags}`.
+- `source-edit` `PATCH /api/newsletters/{id}` with any of `title`, `primary`, `tags`; fields it omits keep their values. A blank title or a tag over 64 characters answers `400`.
 - `stop-enable` `POST /api/newsletters/{id}/stop` moves a source to `stopped` and deletes its unsaved messages; `/enable` moves it back and accepts only mail that arrives afterwards.
 - `remote-images` a message with remote images starts blocked; `POST /api/newsletters/messages/{id}/images` allows them for that message.
 - `move` `POST /api/newsletters/messages/{id}/move` with exactly one of `sourceId` or `newSourceTitle`.
@@ -33,7 +33,7 @@ Preconditions:
 - **Receive.** `$V mail $S -to <address>`: exits 0. Wait about 5 seconds (the processor ticks every 5s), then `$V inspect $S --out inspect-received`: one `newsletter_messages` row for the run account's DID with `has_blocked_remote_images` 1 and `remote_images_allowed` 0, and no `newsletter_receipts` with a `last_error`.
 - **Refused recipient.** `$V mail $S -to nobody@newsletter.localhost`: fails with `550 "5.1.1 recipient not found"`.
 - **Sources.** `$V api $S GET /api/newsletters --out sources`: one `active` source titled `sample@sender.example` with `issueCount` 1. `GET /api/newsletters/<id>/entries --out source-entries`: the message.
-- **Edit.** `PATCH /api/newsletters/<id> --data '{"title":"Example Letters","primary":true,"tags":["example"]}' --out patch`: the new title, `primary` and tags.
+- **Edit.** `PATCH /api/newsletters/<id> --data '{"title":"Example Letters","primary":true,"tags":["example"]}' --out patch`: the new title, `primary` and tags. Then `PATCH` with only `{"tags":[]}` `--out patch-tags`: the title and `primary` are unchanged.
 - **Remote images.** `POST /api/newsletters/messages/<messageId>/images --out images`: `remoteImagesAllowed` true; `inspect` shows `remote_images_allowed` 1.
 - **Move.** `POST /api/newsletters/messages/<messageId>/move --data '{"newSourceTitle":"Example Moved"}' --out move`: a new source `Example Moved` with `issueCount` 1 holds the message. `--data '{}'` answers `400`.
 - **Save.** `POST /api/newsletter-saves --data '{"messageId":"<messageId>"}' --out save`: `201`. `GET /api/saves` lists it with `kind` `newsletter`; `inspect` shows a `newsletter_saves` row and no `user_saves` row (the save never reaches the PDS).

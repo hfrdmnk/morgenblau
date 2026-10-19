@@ -87,10 +87,13 @@ SELECT s.*,
 FROM newsletter_sources s
 WHERE s.did = ?1 AND s.id = ?2;
 
--- name: PatchNewsletterSource :exec
+-- name: PatchNewsletterSource :execrows
 UPDATE newsletter_sources
-SET title = ?3, is_primary = ?4, tags = ?5, updated_at = ?6
-WHERE did = ?1 AND id = ?2;
+SET title = COALESCE(sqlc.narg(title), title),
+    is_primary = COALESCE(sqlc.narg(is_primary), is_primary),
+    tags = COALESCE(sqlc.narg(tags), tags),
+    updated_at = sqlc.arg(updated_at)
+WHERE did = sqlc.arg(did) AND id = sqlc.arg(id);
 
 -- name: SetNewsletterSourceStatus :exec
 UPDATE newsletter_sources SET status = ?3, updated_at = ?4

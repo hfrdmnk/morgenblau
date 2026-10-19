@@ -3,8 +3,10 @@ import { Link } from 'wouter';
 
 import { FeedHealth, GeneratedNote } from '@/components/feed-health';
 import { ItemList, ListError, ListItem, ListSkeleton } from '@/components/item-list';
+import { SourceMenu } from '@/components/source-menu';
 import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-sources';
 import { newsletterSourceHref, PATHS, sourceHref } from '@/lib/paths';
+import { feedEditable, newsletterEditable } from '@/lib/source-edit';
 import { displayURL, groupByInitial } from '@/lib/source-display';
 
 export function Sources() {
@@ -28,7 +30,9 @@ function FeedList() {
                             <SourceRow key={source.rkey} href={sourceHref(source.rkey)} title={source.title}
                                 identity={source.siteUrl || source.feedUrl} favicon={source.faviconUrl}
                                 primary={source.primary} health={<FeedHealth source={source} />}
-                                note={<GeneratedNote source={source} />} />
+                                note={<GeneratedNote source={source} />}
+                                menu={<SourceMenu onChanged={state.refresh}
+                                    source={feedEditable(source, sourceLabel(source.title, source.siteUrl || source.feedUrl))} />} />
                         )} />
                 ) : <p className="text-sm text-muted-foreground">No feeds yet. <Link href={PATHS.import} className="underline underline-offset-4">Import feeds</Link> to get started.</p>
             ) : <ListStatus label="feeds" state={state} />}
@@ -44,12 +48,12 @@ function NewsletterList() {
     return (
         <>
             <SourceSection title="Newsletters">
-                {state.data.active.length ? <NewsletterRows sources={state.data.active} /> :
+                {state.data.active.length ? <NewsletterRows onChanged={state.refresh} sources={state.data.active} /> :
                     <p className="text-sm text-muted-foreground">Newsletters appear here when mail arrives at your private address.</p>}
             </SourceSection>
             {state.data.stopped.length > 0 ? (
                 <SourceSection title="Stopped newsletters">
-                    <NewsletterRows sources={state.data.stopped} stopped />
+                    <NewsletterRows onChanged={state.refresh} sources={state.data.stopped} stopped />
                 </SourceSection>
             ) : null}
         </>
@@ -65,12 +69,15 @@ function SourceSection({ title, children }: { title: string; children: ReactNode
     );
 }
 
-function NewsletterRows({ sources, stopped = false }: { sources: NewsletterSource[]; stopped?: boolean }) {
+function NewsletterRows({ sources, stopped = false, onChanged }: {
+    sources: NewsletterSource[]; stopped?: boolean; onChanged: () => void;
+}) {
     return (
         <LetterGroups sources={sources} label={(source) => sourceLabel(source.title, source.senderAddress)}
             row={(source) => (
                 <SourceRow key={source.id} href={newsletterSourceHref(source.id)} title={source.title}
-                    identity={source.senderAddress} primary={!stopped && source.primary} />
+                    identity={source.senderAddress} primary={!stopped && source.primary}
+                    menu={<SourceMenu onChanged={onChanged} source={newsletterEditable(source, stopped)} />} />
             )} />
     );
 }
@@ -92,13 +99,13 @@ function sourceLabel(title: string | undefined, identity: string): string {
     return title || displayURL(identity);
 }
 
-function SourceRow({ href, title, identity, favicon, primary, health, note }: {
-    href: string; title?: string; identity: string; favicon?: string; primary: boolean; health?: ReactNode; note?: ReactNode;
+function SourceRow({ href, title, identity, favicon, primary, health, note, menu }: {
+    href: string; title?: string; identity: string; favicon?: string; primary: boolean; health?: ReactNode; note?: ReactNode; menu: ReactNode;
 }) {
     return (
         <ListItem href={href} title={sourceLabel(title, identity)} icon={favicon}
             aside={primary ? 'Primary' : undefined} note={note}
-            meta={displayURL(identity)} status={health} />
+            meta={displayURL(identity)} status={health} actions={menu} />
     );
 }
 

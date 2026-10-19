@@ -1,10 +1,12 @@
-import { useParams } from 'wouter';
+import { useLocation, useParams } from 'wouter';
 
 import { SourceHealth } from '@/components/feed-health';
 import { SourceDetailPage, SourceEntries, SourceHeader, SourceUnavailable } from '@/components/source-detail';
+import { SourceMenu } from '@/components/source-menu';
 import { useSources, type FeedSourceDetail, type SourceEntry } from '@/hooks/use-sources';
 import { httpURL } from '@/lib/reader';
-import { sourceHref } from '@/lib/paths';
+import { PATHS, sourceHref } from '@/lib/paths';
+import { feedEditable } from '@/lib/source-edit';
 import { displayURL, feedFacts } from '@/lib/source-display';
 
 export function Source() {
@@ -12,12 +14,13 @@ export function Source() {
     const path = `/api/subscriptions/${encodeURIComponent(rkey)}`;
     const source = useSources<FeedSourceDetail>(path, 15_000);
     const entries = useSources<SourceEntry[]>(`${path}/entries`);
+    const [, navigate] = useLocation();
 
     return (
         <SourceDetailPage>
             {source.status === 'loaded' ? (
                 <>
-                    <FeedSourceHeader source={source.data} />
+                    <FeedSourceHeader onChanged={source.refresh} onRemoved={() => navigate(PATHS.sources)} source={source.data} />
                     <SourceEntries empty="No posts have arrived from this source yet." from={sourceHref(rkey)} state={entries} title="Posts" />
                 </>
             ) : <SourceUnavailable label="this source" state={source} />}
@@ -25,16 +28,18 @@ export function Source() {
     );
 }
 
-function FeedSourceHeader({ source }: { source: FeedSourceDetail }) {
+function FeedSourceHeader({ source, onChanged, onRemoved }: { source: FeedSourceDetail; onChanged: () => void; onRemoved: () => void }) {
     const site = httpURL(source.siteUrl) || httpURL(source.feedUrl) || source.feedUrl;
+    const title = source.title || displayURL(site);
     return (
         <SourceHeader
             facts={feedFacts(source)}
             health={<SourceHealth source={source} />}
             icon={source.faviconUrl}
             identity={<SiteLink url={site} />}
+            menu={<SourceMenu onChanged={onChanged} onRemoved={onRemoved} source={feedEditable(source, title)} />}
             tags={source.tags}
-            title={source.title || displayURL(site)}
+            title={title}
         />
     );
 }

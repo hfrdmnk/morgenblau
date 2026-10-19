@@ -19,19 +19,21 @@ export function SourceDetailPage({ children }: { children: ReactNode }) {
     );
 }
 
-export function SourceHeader({ title, icon, identity, facts, tags = [], health }: {
+export function SourceHeader({ title, icon, identity, facts, tags = [], health, menu }: {
     title: string;
     icon?: string | null;
     identity?: ReactNode;
     facts: string[];
     tags?: string[];
     health?: ReactNode;
+    menu: ReactNode;
 }) {
     return (
         <header className="mb-14">
             <div className="flex min-w-0 items-center gap-3">
                 <SourceIcon className="size-6" src={icon} />
-                <h1 className="min-w-0 text-3xl font-medium text-balance break-words">{title}</h1>
+                <h1 className="min-w-0 flex-1 text-3xl font-medium text-balance break-words">{title}</h1>
+                {menu}
             </div>
             {identity ? <div className="mt-3 min-w-0 text-sm text-muted-foreground">{identity}</div> : null}
             <p className="mt-1 text-sm text-subtle-foreground">{facts.join(' · ')}</p>

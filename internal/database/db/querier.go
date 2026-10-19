@@ -142,7 +142,7 @@ type Querier interface {
 	// must never delete it between the lookup and the stamp.
 	// A key a source moved away from finds it through its alias; a source's own key wins over another source's alias.
 	OfferWebSourceByListingKey(ctx context.Context, arg OfferWebSourceByListingKeyParams) (WebSource, error)
-	PatchNewsletterSource(ctx context.Context, arg PatchNewsletterSourceParams) error
+	PatchNewsletterSource(ctx context.Context, arg PatchNewsletterSourceParams) (int64, error)
 	PruneModelSpend(ctx context.Context, before string) error
 	PruneWebSourcePolls(ctx context.Context, arg PruneWebSourcePollsParams) error
 	PruneWebSourceRepairs(ctx context.Context, arg PruneWebSourceRepairsParams) error

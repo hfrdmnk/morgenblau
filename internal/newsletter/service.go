@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/oklog/ulid/v2"
 
@@ -158,22 +159,33 @@ func (s *Service) GetSource(ctx context.Context, did, id string) (Source, error)
 }
 
 func (s *Service) PatchSource(ctx context.Context, did, id string, patch SourcePatch) (Source, error) {
-	patch.Title = strings.TrimSpace(patch.Title)
-	if patch.Title == "" {
-		return Source{}, ErrInvalid
+	params := db.PatchNewsletterSourceParams{Did: did, ID: id, UpdatedAt: formatTime(s.now())}
+	if patch.Title != nil {
+		title := strings.TrimSpace(*patch.Title)
+		if title == "" {
+			return Source{}, ErrInvalid
+		}
+		params.Title = &title
 	}
-	if _, err := s.GetSource(ctx, did, id); err != nil {
-		return Source{}, err
+	if patch.Primary != nil {
+		primary := boolInt(*patch.Primary)
+		params.IsPrimary = &primary
 	}
-	tags, err := cleanTags(patch.Tags)
-	if err != nil {
-		return Source{}, err
+	if patch.Tags != nil {
+		tags, err := cleanTags(*patch.Tags)
+		if err != nil {
+			return Source{}, err
+		}
+		encoded, _ := json.Marshal(tags)
+		tagsJSON := string(encoded)
+		params.Tags = &tagsJSON
 	}
-	encoded, _ := json.Marshal(tags)
-	err = database.WithTx(ctx, s.writer, func(q *db.Queries) error {
-		return q.PatchNewsletterSource(ctx, db.PatchNewsletterSourceParams{
-			Did: did, ID: id, Title: patch.Title, IsPrimary: boolInt(patch.Primary), Tags: string(encoded), UpdatedAt: formatTime(s.now()),
-		})
+	err := database.WithTx(ctx, s.writer, func(q *db.Queries) error {
+		rows, err := q.PatchNewsletterSource(ctx, params)
+		if err == nil && rows == 0 {
+			return ErrNotFound
+		}
+		return err
 	})
 	if err != nil {
 		return Source{}, err
@@ -373,12 +385,15 @@ func (s *Service) GetInlineAsset(ctx context.Context, did, token string) (Inline
 	return InlineAsset{MediaType: row.MediaType, Data: row.Data, ETag: row.ContentHash}, nil
 }
 
+// maxTagLength matches the per-tag limit of feed subscription records, so both kinds of source take the same tags.
+const maxTagLength = 64
+
 func cleanTags(tags []string) ([]string, error) {
 	seen := make(map[string]struct{}, len(tags))
 	cleaned := make([]string, 0, len(tags))
 	for _, tag := range tags {
 		tag = strings.TrimSpace(tag)
-		if tag == "" || len(tag) > 80 {
+		if tag == "" || utf8.RuneCountInString(tag) > maxTagLength {
 			return nil, ErrInvalid
 		}
 		key := strings.ToLower(tag)

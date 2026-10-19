@@ -48,10 +48,11 @@ type SourceGroups struct {
 	Stopped []Source
 }
 
+// SourcePatch changes only the fields it sets, as a feed subscription PATCH does.
 type SourcePatch struct {
-	Title   string
-	Primary bool
-	Tags    []string
+	Title   *string   `json:"title"`
+	Primary *bool     `json:"primary"`
+	Tags    *[]string `json:"tags"`
 }
 
 type Message struct {

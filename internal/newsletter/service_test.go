@@ -191,6 +191,70 @@ func TestStopRetainsSavedIssueAndUnsaveDeletesIt(t *testing.T) {
 	}
 }
 
+func TestPatchSourceChangesOnlyTheFieldsItNames(t *testing.T) {
+	service, _, writer := newTestService(t)
+	ctx := context.Background()
+	sourceID := seedSource(t, writer, "did:plc:alice", "source-a", SourceActive)
+	if _, err := writer.Exec(`UPDATE newsletter_sources SET is_primary = 1, tags = '["weekly"]' WHERE id = ?`, sourceID); err != nil {
+		t.Fatal(err)
+	}
+	title := "  Example Letter  "
+	renamed, err := service.PatchSource(ctx, "did:plc:alice", sourceID, SourcePatch{Title: &title})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renamed.Title != "Example Letter" || !renamed.Primary || strings.Join(renamed.Tags, ",") != "weekly" {
+		t.Fatalf("after rename = title %q, primary %v, tags %v", renamed.Title, renamed.Primary, renamed.Tags)
+	}
+	// 64 two-byte characters: within the feed tag limit, over the old 80-byte one.
+	accented := strings.Repeat("é", 64)
+	tags := []string{"design", accented}
+	retagged, err := service.PatchSource(ctx, "did:plc:alice", sourceID, SourcePatch{Tags: &tags})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retagged.Title != "Example Letter" || !retagged.Primary || strings.Join(retagged.Tags, ",") != "design,"+accented {
+		t.Fatalf("after retag = title %q, primary %v, tags %v", retagged.Title, retagged.Primary, retagged.Tags)
+	}
+	notPrimary := false
+	unmarked, err := service.PatchSource(ctx, "did:plc:alice", sourceID, SourcePatch{Primary: &notPrimary})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unmarked.Title != "Example Letter" || unmarked.Primary || len(unmarked.Tags) != 2 {
+		t.Fatalf("after unmark = title %q, primary %v, tags %v", unmarked.Title, unmarked.Primary, unmarked.Tags)
+	}
+}
+
+func TestPatchSourceRejectsInvalidFieldsWithoutChangingAnything(t *testing.T) {
+	service, _, writer := newTestService(t)
+	ctx := context.Background()
+	sourceID := seedSource(t, writer, "did:plc:alice", "source-a", SourceActive)
+	blank := "   "
+	tooLong := []string{strings.Repeat("a", 65)}
+	empty := []string{" "}
+	for name, patch := range map[string]SourcePatch{
+		"blank title": {Title: &blank},
+		"long tag":    {Tags: &tooLong},
+		"empty tag":   {Tags: &empty},
+	} {
+		if _, err := service.PatchSource(ctx, "did:plc:alice", sourceID, patch); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: error = %v, want ErrInvalid", name, err)
+		}
+	}
+	title := "Example Letter"
+	if _, err := service.PatchSource(ctx, "did:plc:bob", sourceID, SourcePatch{Title: &title}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("other owner: error = %v, want ErrNotFound", err)
+	}
+	source, err := service.GetSource(ctx, "did:plc:alice", sourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source.Title != "source-a" || len(source.Tags) != 0 {
+		t.Fatalf("source changed = title %q, tags %v", source.Title, source.Tags)
+	}
+}
+
 func TestOwnerCannotReadOrMutateAnotherOwnersNewsletter(t *testing.T) {
 	service, _, writer := newTestService(t)
 	ctx := context.Background()

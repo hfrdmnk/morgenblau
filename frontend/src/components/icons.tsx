@@ -315,6 +315,111 @@ function DownloadIcon(props: IconProps) {
     );
 }
 
+function MoreIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M7 12C7 12.5523 6.55228 13 6 13C5.44772 13 5 12.5523 5 12C5 11.4477 5.44772 11 6 11C6.55228 11 7 11.4477 7 12Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+            <path
+                d="M13 12C13 12.5523 12.5523 13 12 13C11.4477 13 11 12.5523 11 12C11 11.4477 11.4477 11 12 11C12.5523 11 13 11.4477 13 12Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+            <path
+                d="M19 12C19 12.5523 18.5523 13 18 13C17.4477 13 17 12.5523 17 12C17 11.4477 17.4477 11 18 11C18.5523 11 19 11.4477 19 12Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
+function PauseIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M6 5C6 4.44772 6.44772 4 7 4H9C9.55228 4 10 4.44772 10 5V19C10 19.5523 9.55228 20 9 20H7C6.44772 20 6 19.5523 6 19V5Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+            <path
+                d="M14 5C14 4.44772 14.4477 4 15 4H17C17.5523 4 18 4.44772 18 5V19C18 19.5523 17.5523 20 17 20H15C14.4477 20 14 19.5523 14 19V5Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
+function PenIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M3.9933 17.0268L17.4029 3.61716C18.2258 2.79428 19.56 2.79428 20.3828 3.61716C21.2057 4.44004 21.2057 5.7742 20.3828 6.59708L6.97322 20.0067L3 21L3.9933 17.0268Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
+function PlayIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M5 19.1684V4.83171C5 4.04055 5.87525 3.56271 6.54076 3.99054L17.6915 11.1589C18.3038 11.5525 18.3038 12.4476 17.6915 12.8412L6.54076 20.0096C5.87525 20.4374 5 19.9595 5 19.1684Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
+function TagIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M7.01611 7.01611L7 7M3 3L3 12.393L11.0512 20.4442C11.7922 21.1853 12.9938 21.1853 13.7349 20.4442L20.4442 13.7349C21.1853 12.9938 21.1853 11.7922 20.4442 11.0512L12.393 3L3 3Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
+function TrashIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M9 3H15M3 6H21M10 16V11M14 16V11M5 6H19L18.1245 19.133C18.0544 20.1836 17.1818 21 16.1289 21L7.8461 21C6.79171 21 5.91842 20.1814 5.85028 19.1292L5 6Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
 export {
     AlertIcon,
     ArrowRightIcon,
@@ -329,9 +434,15 @@ export {
     InfoIcon,
     LibraryIcon,
     LoadingIcon,
+    MoreIcon,
+    PauseIcon,
+    PenIcon,
+    PlayIcon,
     PlusIcon,
     SettingsIcon,
     ShieldIcon,
     SourcesIcon,
+    TagIcon,
+    TrashIcon,
     UploadIcon,
 };

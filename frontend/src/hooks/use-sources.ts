@@ -10,6 +10,7 @@ export type FeedSource = {
     siteUrl?: string;
     faviconUrl?: string;
     primary: boolean;
+    tags?: string[];
     muted?: boolean;
     fetchStatus: 'waiting' | 'ready' | 'unavailable';
     lastFetchedAt?: string;
@@ -20,7 +21,6 @@ export type FeedSource = {
 export type FeedSourceDetail = FeedSource & {
     frequency?: string;
     lastPublishedAt?: string;
-    tags?: string[];
     totalEntries: number;
 };
 
@@ -29,6 +29,7 @@ export type NewsletterSource = {
     title: string;
     senderAddress: string;
     primary: boolean;
+    tags: string[];
 };
 
 export type NewsletterSourceDetail = NewsletterSource & {
@@ -36,7 +37,6 @@ export type NewsletterSourceDetail = NewsletterSource & {
     status: 'active' | 'stopped';
     lastReceivedAt: string | null;
     frequency: string;
-    tags: string[];
     issueCount: number;
 };
 
@@ -93,9 +93,13 @@ export function useSources<T>(path: string, pollInterval = 0) {
 
     function retry() {
         setState({ status: 'loading', path });
+        refresh();
+    }
+
+    function refresh() {
         setAttempt((value) => value + 1);
     }
 
     const current: State<T> = state.path === path ? state : { status: 'loading' };
-    return { ...current, retry };
+    return { ...current, retry, refresh };
 }

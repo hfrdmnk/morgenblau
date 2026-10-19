@@ -1209,31 +1209,37 @@ func (q *Queries) MoveNewsletterMessage(ctx context.Context, arg MoveNewsletterM
 	return err
 }
 
-const patchNewsletterSource = `-- name: PatchNewsletterSource :exec
+const patchNewsletterSource = `-- name: PatchNewsletterSource :execrows
 UPDATE newsletter_sources
-SET title = ?3, is_primary = ?4, tags = ?5, updated_at = ?6
-WHERE did = ?1 AND id = ?2
+SET title = COALESCE(?1, title),
+    is_primary = COALESCE(?2, is_primary),
+    tags = COALESCE(?3, tags),
+    updated_at = ?4
+WHERE did = ?5 AND id = ?6
 `
 
 type PatchNewsletterSourceParams struct {
-	Did       string `json:"did"`
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	IsPrimary int64  `json:"is_primary"`
-	Tags      string `json:"tags"`
-	UpdatedAt string `json:"updated_at"`
+	Title     *string `json:"title"`
+	IsPrimary *int64  `json:"is_primary"`
+	Tags      *string `json:"tags"`
+	UpdatedAt string  `json:"updated_at"`
+	Did       string  `json:"did"`
+	ID        string  `json:"id"`
 }
 
-func (q *Queries) PatchNewsletterSource(ctx context.Context, arg PatchNewsletterSourceParams) error {
-	_, err := q.db.ExecContext(ctx, patchNewsletterSource,
-		arg.Did,
-		arg.ID,
+func (q *Queries) PatchNewsletterSource(ctx context.Context, arg PatchNewsletterSourceParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, patchNewsletterSource,
 		arg.Title,
 		arg.IsPrimary,
 		arg.Tags,
 		arg.UpdatedAt,
+		arg.Did,
+		arg.ID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const setNewsletterSourceStatus = `-- name: SetNewsletterSourceStatus :exec

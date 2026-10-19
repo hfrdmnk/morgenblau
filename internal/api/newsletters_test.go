@@ -31,6 +31,7 @@ type fakeNewsletterService struct {
 	savedMessageID string
 	digestStart    time.Time
 	digestEnd      time.Time
+	patch          newsletter.SourcePatch
 }
 
 func (f *fakeNewsletterService) Address(context.Context, string) (string, error) {
@@ -49,7 +50,8 @@ func (f *fakeNewsletterService) GetSource(context.Context, string, string) (news
 	return f.source, f.err
 }
 
-func (f *fakeNewsletterService) PatchSource(context.Context, string, string, newsletter.SourcePatch) (newsletter.Source, error) {
+func (f *fakeNewsletterService) PatchSource(_ context.Context, _ string, _ string, patch newsletter.SourcePatch) (newsletter.Source, error) {
+	f.patch = patch
 	return f.source, f.err
 }
 
@@ -217,6 +219,22 @@ func TestNewsletterGet_CollapsesOwnershipFailureTo404(t *testing.T) {
 
 	if rr.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rr.Code)
+	}
+}
+
+func TestNewsletterPatch_LeavesUnnamedFieldsUnset(t *testing.T) {
+	service := &fakeNewsletterService{source: newsletterSourceFixture()}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/newsletters/{id}", NewsletterPatchHandler(service))
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/newsletters/source-1", strings.NewReader(`{"tags":["design"]}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rr.Code, rr.Body.String())
+	}
+	if service.patch.Title != nil || service.patch.Primary != nil || service.patch.Tags == nil || strings.Join(*service.patch.Tags, ",") != "design" {
+		t.Fatalf("patch = %+v", service.patch)
 	}
 }
 

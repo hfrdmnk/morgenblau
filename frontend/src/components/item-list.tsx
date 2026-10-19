@@ -13,7 +13,7 @@ export function ItemList({ children, label, ordered = false }: {
     return <List aria-label={label} className="space-y-8">{children}</List>;
 }
 
-export function ListItem({ title, href, aside, icon, meta, status, note }: {
+export function ListItem({ title, href, aside, icon, meta, status, note, actions }: {
     title: string;
     href: string;
     aside?: ReactNode;
@@ -21,27 +21,31 @@ export function ListItem({ title, href, aside, icon, meta, status, note }: {
     meta?: ReactNode;
     status?: ReactNode;
     note?: ReactNode;
+    actions?: ReactNode;
 }) {
     return (
-        <li className="min-w-0">
-            <div className="flex min-w-0 items-baseline gap-3">
-                <Link
-                    className="block min-w-0 truncate rounded-sm text-lg font-medium text-foreground hover:text-foreground/75"
-                    href={href}
-                    title={title}
-                >
-                    {title}
-                </Link>
-                {aside ? <span className="shrink-0 text-xs text-muted-foreground">{aside}</span> : null}
-            </div>
-            {icon || meta ? (
-                <div className="mt-2 flex min-w-0 items-center gap-2.5 text-sm text-subtle-foreground">
-                    <SourceIcon src={icon} />
-                    <span className="min-w-0 truncate">{meta}</span>
-                    {status}
+        <li className="flex min-w-0 items-center gap-3">
+            <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-baseline gap-3">
+                    <Link
+                        className="block min-w-0 truncate rounded-sm text-lg font-medium text-foreground hover:text-foreground/75"
+                        href={href}
+                        title={title}
+                    >
+                        {title}
+                    </Link>
+                    {aside ? <span className="shrink-0 text-xs text-muted-foreground">{aside}</span> : null}
                 </div>
-            ) : null}
-            {note}
+                {icon || meta ? (
+                    <div className="mt-2 flex min-w-0 items-center gap-2.5 text-sm text-subtle-foreground">
+                        <SourceIcon src={icon} />
+                        <span className="min-w-0 truncate">{meta}</span>
+                        {status}
+                    </div>
+                ) : null}
+                {note}
+            </div>
+            {actions}
         </li>
     );
 }
