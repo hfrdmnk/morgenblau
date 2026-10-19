@@ -97,9 +97,15 @@ func create(t *testing.T, env *testEnv, did, listing string) Preview {
 	return p
 }
 
+// follow subscribes a reader to the source under a record key of its own, so a test can follow several sources.
 func follow(t *testing.T, env *testEnv, id string) {
 	t.Helper()
-	if _, err := env.writer.Exec(`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES (?, 't', 't')`, env.service.FeedURL(id)); err != nil {
+	feedURL, rkey := env.service.FeedURL(id), "3"+id
+	if _, err := env.writer.Exec(`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES (?, 't', 't')`, feedURL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.writer.Exec(`INSERT INTO user_subscriptions (did, rkey, at_uri, feed_url, created_at, updated_at) VALUES (?, ?, ?, ?, 't', 't')`,
+		testDID, rkey, "at://"+testDID+"/blue.morgen.feed.subscription/"+rkey, feedURL); err != nil {
 		t.Fatal(err)
 	}
 }
