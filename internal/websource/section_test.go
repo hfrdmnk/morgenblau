@@ -409,23 +409,52 @@ func TestRegenerateMovesASectionSourceBackToItsHomepage(t *testing.T) {
 	}
 }
 
-func TestCreateRebuildsAnAnchoredHomepagePasteOnTheSectionTheSourceMovedTo(t *testing.T) {
-	env := newTestEnv(t)
+// movedUnsureSource is a source whose setup moved from the homepage to its section and needs attention, so it takes anchors.
+func movedUnsureSource(t *testing.T, env *testEnv) string {
+	t.Helper()
 	moved := movedGenerated()
 	moved.Health = HealthNeedsAttention
 	env.gen.generated = moved
 	id := create(t, env, testDID, homeURL).Source.ID
-	env.gen.generated = exampleGenerated()
+	env.gen.generated = Generated{}
+	return id
+}
+
+func TestCreateRebuildsAnAnchoredHomepagePasteOnTheSectionTheSourceMovedTo(t *testing.T) {
+	env := newTestEnv(t)
+	id := movedUnsureSource(t, env)
+	onSection := sectionGenerated()
+	onSection.AnchorOnPage = true
+	env.gen.generatedFor = map[string]Generated{sectionURL: onSection, homeURL: exampleGenerated()}
 
 	got, err := env.service.Create(context.Background(), "did:plc:other", homeURL, "https://news.example.com/posts/third")
 	if err != nil || got.Source.ID != id {
 		t.Fatalf("anchored paste made %q, err = %v; want %q rebuilt", got.Source.ID, err, id)
 	}
-	if setups := setupsOf(env); setups[len(setups)-1] != sectionURL {
-		t.Errorf("setups = %v, want the anchored rebuild run on the section", setups)
+	if setups := setupsOf(env); !slices.Equal(setups[1:], []string{sectionURL}) {
+		t.Errorf("setups = %v, want one anchored rebuild of the section", setups)
 	}
-	if row := readKeyed(t, env, id); row.listingKey != "news.example.com/blog" || row.listingURL != sectionURL {
-		t.Errorf("row = %+v, want the source kept on its section", row)
+	if row := readKeyed(t, env, id); row.listingKey != "news.example.com/blog" || row.listingURL != sectionURL || row.setupSeq != 1 {
+		t.Errorf("row = %+v, want the source rebuilt on its section", row)
+	}
+}
+
+func TestCreateRebuildsAnAnchoredHomepagePasteOnTheHomepageWhenTheSectionLacksThePost(t *testing.T) {
+	env := newTestEnv(t)
+	id := movedUnsureSource(t, env)
+	home := exampleGenerated()
+	home.AnchorOnPage = true
+	env.gen.generatedFor = map[string]Generated{sectionURL: sectionGenerated(), homeURL: home}
+
+	got, err := env.service.Create(context.Background(), "did:plc:other", homeURL, "https://news.example.com/posts/third")
+	if err != nil || got.Source.ID != id {
+		t.Fatalf("anchored paste made %q, err = %v; want %q rebuilt", got.Source.ID, err, id)
+	}
+	if setups := setupsOf(env); !slices.Equal(setups[1:], []string{sectionURL, homeURL}) {
+		t.Errorf("setups = %v, want the section tried, then the pasted homepage", setups)
+	}
+	if row := readKeyed(t, env, id); row.listingKey != "news.example.com" || row.listingURL != homeURL {
+		t.Errorf("row = %+v, want the source recovered on the homepage the reader pasted", row)
 	}
 }
 

@@ -170,14 +170,6 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 			anchorURL = ""
 		}
 		if anchorURL != "" {
-			// An anchored setup never looks for a section page, so a paste that reached a moved source through its alias
-			// rebuilds the listing the source moved to, not the page that teases it.
-			if existing.ListingKey != key {
-				if listing, err = parseHTTPURL(existing.ListingUrl); err != nil {
-					return Preview{}, err
-				}
-				key = existing.ListingKey
-			}
 			return s.generate(ctx, did, key, listing, anchorURL, existing, true)
 		}
 		if !s.staleUnsure(existing) {
@@ -220,7 +212,12 @@ func (s *Service) generate(ctx context.Context, did, key string, listing *url.UR
 	// One deadline covers the setup and its model check, so the answer still reaches the reader's open request.
 	setupCtx, cancel := context.WithTimeout(ctx, s.setupTimeout)
 	defer cancel()
-	gen, err := s.runSetup(setupCtx, listing.String(), anchorURL, true)
+	var gen Generated
+	if regenerate && anchorURL != "" {
+		gen, key, listing, err = s.anchoredSetup(setupCtx, existing, key, listing, anchorURL)
+	} else {
+		gen, err = s.runSetup(setupCtx, listing.String(), anchorURL, true)
+	}
 	if err != nil {
 		if regenerate {
 			// The deadline may be what failed the setup, and the next visitor should not pay for it again at once.
@@ -266,6 +263,19 @@ func (s *Service) generate(ctx context.Context, did, key string, listing *url.UR
 		p.AnchorRejected = AnchorNoBetter
 	}
 	return p, err
+}
+
+// anchoredSetup rebuilds existing around the reader's post. An anchored setup never looks for a section page, so a paste
+// that reached a moved source through its alias tries the listing the source moved to first; the pasted page still
+// recovers a source whose listing died or lacks the post.
+func (s *Service) anchoredSetup(ctx context.Context, existing db.WebSource, key string, listing *url.URL, anchorURL string) (Generated, string, *url.URL, error) {
+	if own, err := parseHTTPURL(existing.ListingUrl); err == nil && existing.ListingKey != key {
+		if gen, err := s.runSetup(ctx, own.String(), anchorURL, true); err == nil && gen.AnchorOnPage {
+			return gen, existing.ListingKey, own, nil
+		}
+	}
+	gen, err := s.runSetup(ctx, listing.String(), anchorURL, true)
+	return gen, key, listing, err
 }
 
 // setupRow is a finished setup as the source row stores it. key and listingURL name the listing the setup ended on;
