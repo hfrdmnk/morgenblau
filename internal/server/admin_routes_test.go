@@ -141,7 +141,7 @@ func TestEveryAdminRouteRefusesRequestsTheGateDidNotAdmit(t *testing.T) {
 		rr := httptest.NewRecorder()
 		mux.ServeHTTP(rr, req.WithContext(auth.WithSession(req.Context(), admin)))
 		if rr.Code != http.StatusNotFound {
-			t.Errorf("%s without the gate's admin mark: status = %d, want 404; every admin handler must refuse on its own when mounted outside the gate", pattern, rr.Code)
+			t.Errorf("%s without the gate's admin mark: status = %d, want 404; every admin handler must refuse on its own when mounted outside the gate, or a mis-wired route serves operator usage data to anyone", pattern, rr.Code)
 		}
 	}
 }

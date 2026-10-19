@@ -90,7 +90,7 @@ func TestGateAdmitsOnlyAdminsToAdminPaths(t *testing.T) {
 				t.Fatalf("status = %d, want %d; body = %s", rr.Code, tc.wantStatus, rr.Body.String())
 			}
 			if next.hit != (tc.wantStatus == 200) {
-				t.Fatalf("handler reached = %v; an admin path must never reach a handler for anyone but a listed admin", next.hit)
+				t.Fatalf("handler reached = %v; an admin path must never reach a handler for anyone but a listed admin, or a gate leak exposes per-reader usage and reveals that admin routes exist", next.hit)
 			}
 			if next.hit && IsAdmin(next.ctx) != tc.wantAdmin {
 				t.Fatalf("IsAdmin = %v, want %v", IsAdmin(next.ctx), tc.wantAdmin)
@@ -150,7 +150,7 @@ func TestOnlyTheGateMarksAdmins(t *testing.T) {
 				return true
 			}
 			if path != gate {
-				t.Errorf("%s calls WithAdmin; only the auth gate may mark a request admin, after checking ADMIN_DIDS on an admin path", path)
+				t.Errorf("%s calls WithAdmin; only the auth gate may mark a request admin, after checking ADMIN_DIDS on an admin path; any other WithAdmin call site bypasses the ADMIN_DIDS allowlist", path)
 			}
 			found = true
 			return true
