@@ -170,6 +170,14 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 			anchorURL = ""
 		}
 		if anchorURL != "" {
+			// An anchored setup never looks for a section page, so a paste that reached a moved source through its alias
+			// rebuilds the listing the source moved to, not the page that teases it.
+			if existing.ListingKey != key {
+				if listing, err = parseHTTPURL(existing.ListingUrl); err != nil {
+					return Preview{}, err
+				}
+				key = existing.ListingKey
+			}
 			return s.generate(ctx, did, key, listing, anchorURL, existing, true)
 		}
 		if !s.staleUnsure(existing) {

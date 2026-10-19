@@ -207,6 +207,7 @@ func TestSectionCandidate(t *testing.T) {
 		{"www. is the same site", "https://www.example.com/", `<nav><a href="https://example.com/blog">Blog</a></nav>`, nil, true, "https://example.com/blog"},
 		{"teaser items without www.", "https://www.example.com/", `<nav><a href="https://example.com/blog">Blog</a></nav>`, []Item{{URL: "https://example.com/blog/one"}, {URL: "https://example.com/blog/two"}}, false, "https://example.com/blog"},
 		{"another port is another site", "https://example.com/", `<nav><a href="https://example.com:8443/blog">Blog</a></nav>`, nil, true, ""},
+		{"a date archive is no section", "https://www.example.com/", `<nav><a href="/2026/">2026</a></nav>`, items("/2026/10/one", "/2026/09/two"), false, ""},
 		{"teaser wins over weak", "https://www.example.com/", `<nav><a href="/blog">Blog</a><a href="/updates">Updates</a></nav>`, items("/updates/one", "/updates/two"), true, "https://www.example.com/updates"},
 	}
 	for _, tc := range cases {

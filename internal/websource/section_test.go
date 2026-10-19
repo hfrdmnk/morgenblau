@@ -409,6 +409,26 @@ func TestRegenerateMovesASectionSourceBackToItsHomepage(t *testing.T) {
 	}
 }
 
+func TestCreateRebuildsAnAnchoredHomepagePasteOnTheSectionTheSourceMovedTo(t *testing.T) {
+	env := newTestEnv(t)
+	moved := movedGenerated()
+	moved.Health = HealthNeedsAttention
+	env.gen.generated = moved
+	id := create(t, env, testDID, homeURL).Source.ID
+	env.gen.generated = exampleGenerated()
+
+	got, err := env.service.Create(context.Background(), "did:plc:other", homeURL, "https://news.example.com/posts/third")
+	if err != nil || got.Source.ID != id {
+		t.Fatalf("anchored paste made %q, err = %v; want %q rebuilt", got.Source.ID, err, id)
+	}
+	if setups := setupsOf(env); setups[len(setups)-1] != sectionURL {
+		t.Errorf("setups = %v, want the anchored rebuild run on the section", setups)
+	}
+	if row := readKeyed(t, env, id); row.listingKey != "news.example.com/blog" || row.listingURL != sectionURL {
+		t.Errorf("row = %+v, want the source kept on its section", row)
+	}
+}
+
 func TestPollDueNeverSectionChecksAnchoredOrSitemapSources(t *testing.T) {
 	for _, tc := range []struct{ name, recipe, anchor string }{
 		{"anchor in recipe", `{"version":1,"mode":"css","setup":{"anchor":"https://news.example.com/posts/third"}}`, ""},

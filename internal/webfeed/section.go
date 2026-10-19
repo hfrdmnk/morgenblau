@@ -104,7 +104,8 @@ func teaserSection(listing *url.URL, items []Item) string {
 			continue
 		}
 		first, rest, _ := strings.Cut(strings.Trim(u.Path, "/"), "/")
-		if rest == "" || (section != "" && first != section) {
+		// A year archive holds only that year's posts, so a source moved there would stop at the next new year.
+		if rest == "" || strings.Trim(first, "0123456789") == "" || (section != "" && first != section) {
 			return ""
 		}
 		section = first
