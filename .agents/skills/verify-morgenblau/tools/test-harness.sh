@@ -116,6 +116,22 @@ test_doctor_rejects_unusable_browser() {
     [[ "$result" == *"Chrome missing or unusable"* ]]
 }
 
+# frontend/embed.go embeds dist, so a checkout without a build passes every other check yet fails up's go build.
+test_doctor_requires_frontend_build() {
+    local result
+    tools_installed() { return 0; }
+    browser_ready() { return 0; }
+    mkdir -p "$tmp/checkout/frontend"
+    printf '{}\n' >"$tmp/checkout/frontend/package.json"
+    cd "$tmp/checkout"
+    result="$(doctor 2>&1)" && return 1
+    [[ "$result" == *"frontend build missing; run: bun run --cwd ./frontend build"* ]]
+    mkdir -p frontend/dist
+    printf '<!doctype html>\n' >frontend/dist/index.html
+    result="$(doctor 2>&1)" || true
+    [[ "$result" == *"ok    frontend build present"* ]]
+}
+
 test_orb_services_keep_secrets_out_of_command() {
     local dir="$VERIFY_ROOT/2026-10-02-sign-in-20261002t190000-suffix" service script
     mkdir -p "$dir/run"
@@ -329,7 +345,7 @@ test_feed_fixtures_serve_each_case() {
 if [[ $# -gt 0 ]]; then "$1"; exit; fi
 
 failed=0
-for test in test_same_slug_is_checked_under_lock test_abandoned_startup_is_stale test_live_startup_is_not_stale test_restarted_service_is_live test_restarted_pds_breaks_the_run test_restarted_service_keeps_its_crash_output test_unavailable_supervisor_blocks_cleanup test_stopped_service_is_stale test_doctor_rejects_unusable_browser test_orb_services_keep_secrets_out_of_command test_service_secret_assertion_rejects_a_leak test_browser_uses_owned_secret_config test_cleanup_continues_after_service_stop_failure test_browser_guard_rejects_escapes \
+for test in test_same_slug_is_checked_under_lock test_abandoned_startup_is_stale test_live_startup_is_not_stale test_restarted_service_is_live test_restarted_pds_breaks_the_run test_restarted_service_keeps_its_crash_output test_unavailable_supervisor_blocks_cleanup test_stopped_service_is_stale test_doctor_rejects_unusable_browser test_doctor_requires_frontend_build test_orb_services_keep_secrets_out_of_command test_service_secret_assertion_rejects_a_leak test_browser_uses_owned_secret_config test_cleanup_continues_after_service_stop_failure test_browser_guard_rejects_escapes \
     test_up_gives_only_the_server_the_fixture_origin test_anonymous_up_has_no_fixture_origin \
     test_feed_fixtures_serve_each_case; do
     if bash "$test_file" "$test" >"$tmp/result" 2>&1; then

@@ -15,7 +15,7 @@ Help article: none
 
 ## How to reach it
 
-- Browser: `/`, `/?date=<day>`, the links in the header's `Digest date` (accessible names are full dates in the browser's en-US locale, such as `Tuesday, September 29, 2026`; `LC_ALL=en_US.UTF-8 date -v-1d '+%A, %B %-d, %Y'` prints yesterday's).
+- Browser: `/`, `/?date=<day>`, the links in the header's `Digest date` (accessible names are full dates in the browser's en-US locale, such as `Tuesday, September 29, 2026`; `LC_ALL=en_US.UTF-8 date -d yesterday '+%A, %B %-d, %Y'` prints yesterday's with GNU date, `date -v-1d` with BSD date).
 - API: `GET /api/digest`, `GET /api/entries/{slug}`.
 
 ## Drive and prove
@@ -23,6 +23,7 @@ Help article: none
 Preconditions:
 
 - Doctor exit `0`, `$V login $S`, browser signed in (see [sign-in](./sign-in.md)).
+- The browser's zone: `eval "() => Intl.DateTimeFormat().resolvedOptions().timeZone"`. The API calls below show `Europe/Zurich`; pass that zone instead.
 - Digest content: a newsletter delivered today is the local, PDS-free way to get an entry. Create the address and deliver as in [newsletters](./newsletters.md) (`POST /api/newsletters/address`, `$V mail`), wait about 5 seconds for the processor.
 
 - **Empty day.** Before any delivery, `$V api $S GET "/api/digest?timezone=Europe/Zurich" --out digest-empty`: `entries` is empty, since the run's account starts with no subscriptions.

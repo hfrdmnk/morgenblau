@@ -6,7 +6,7 @@ Help article: none
 
 ## Sub-features
 
-- `import-page` `/settings/import` (`frontend/src/pages/import-sources.tsx`): preparing opens a confirmation dialog; successful imports keep a `Subscriptions saved` receipt open with counts. Subscription failures show `Import paused` with `Retry remaining sources`; feed availability is separate. `ImportCollection` polls health for confirmed sources and lists only unavailable feeds in a `Posts not fetching for <n> sources` accordion. `View sources` is a ghost button that closes the receipt and navigates to Sources.
+- `import-page` `/settings/import` (`frontend/src/pages/import-sources.tsx`), including a `From YouTube` section for a Takeout CSV (`provider` `youtube`, not driven here): preparing opens a confirmation dialog; successful imports keep a `Subscriptions saved` receipt open with counts. Subscription failures show `Import paused` with `Retry remaining sources`; feed availability is separate. `ImportCollection` polls health for confirmed sources and lists only unavailable feeds in a `Posts not fetching for <n> sources` accordion. `View sources` is a ghost button that closes the receipt and navigates to Sources.
 - `prepare` `POST /api/subscriptions/import/prepare` with `{provider:"opml", opml}` parses the file; `skyreader` and `glean` list that app's records on the reader's PDS. Returns `{sources, warnings}`.
 - `import` `POST /api/subscriptions/import` with `{sources}` (1 to 5 per call; the page batches by 5, `frontend/src/lib/source-import.ts`) returns `{added, updated, unchanged, failures}`.
 - `export-page` `/settings/export`: `Download OPML` saves `morgenblau.opml` and toasts `Your OPML download is ready.`

@@ -243,6 +243,7 @@ doctor() {
     missing="$(jq -r '(.dependencies + .devDependencies) | keys[]' frontend/package.json \
         | while read -r dep; do [ -f "frontend/node_modules/$dep/package.json" ] || printf '%s ' "$dep"; done)"
     if [ -z "$missing" ]; then ok "frontend dependencies installed"; else bad "frontend dependencies missing (${missing% }); run: bun install --cwd ./frontend --frozen-lockfile"; fi
+    if [ -f frontend/dist/index.html ]; then ok "frontend build present"; else bad "frontend build missing; run: bun run --cwd ./frontend build"; fi
     if tools_installed; then ok "verify tools installed ($TOOLS)"; else bad "verify tools missing or outdated; run: bun install --cwd $TOOLS --frozen-lockfile"; fi
     if browser_ready >/dev/null 2>&1; then ok "Chrome launches for the browser driver"; else bad "Chrome missing or unusable; run: $TOOLS/node_modules/.bin/playwright-core install chrome --with-deps"; fi
     if git check-ignore -q .scratch/verify; then ok ".scratch/verify is gitignored"; else bad ".scratch/verify is not gitignored"; fi

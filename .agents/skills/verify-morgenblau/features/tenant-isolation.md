@@ -37,7 +37,7 @@ Preconditions:
   - `DELETE /api/newsletter-saves/01EXAMPLEFOREIGNSAVE000000`
   Collect the statuses in `probes.txt`.
 - **Not listed.** `GET /api/newsletters` and `GET /api/digest` do not mention the second reader's source or message.
-- **Unchanged.** `$V inspect $S --out inspect-after`: the second reader's message still has `remote_images_allowed` 0 and the same `source_id`, its source keeps its title and `active` status, and its arranged save is the only `newsletter_saves` row.
+- **Unchanged.** `$V inspect $S --out inspect-after`: the second reader's message still has `remote_images_allowed` 0 and the same `source_id`, its source keeps its title and `active` status. `inspect` only counts saves, so `sqlite3 -readonly $E/run/morgenblau.db "select * from newsletter_saves" > $E/saves-after.txt`: the arranged save is the only row.
 
 ## Evidence
 

@@ -39,7 +39,6 @@ Isolation:
 ## Unmapped
 
 - Library page: `frontend/src/pages/library.tsx` (placeholder).
-- Source detail pages `/sources/:rkey` and `/sources/newsletters/:id`: `frontend/src/pages/source.tsx`, `frontend/src/pages/newsletter-source.tsx` (placeholders; nothing links to them yet).
 - OAuth with the production confidential client: only the loopback public client runs on an instance (see [sign-in](./sign-in.md) gotchas).
 - Favicon proxy: `GET /api/favicon` in `internal/api/favicon.go`.
 - Dev styleguide: `/__dev/styleguide` from `frontend/src/dev/` (development-only).
