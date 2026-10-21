@@ -83,6 +83,11 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		changed := false
 		newTitle := row.Title
 		if body.Title != nil {
+			// "" is the explicit reset to the feed's own title; whitespace-only is a blank name, rejected like newsletter rename.
+			if *body.Title != "" && strings.TrimSpace(*body.Title) == "" {
+				writeError(w, http.StatusBadRequest, codeInvalidRequest, "title cannot be blank")
+				return
+			}
 			if changedString(row.Title, *body.Title) {
 				newTitle = nilIfEmpty(*body.Title)
 				changed = true

@@ -106,6 +106,37 @@ func TestSubscriptionsPatch_OtherUserRkey_404(t *testing.T) {
 	}
 }
 
+func TestSubscriptionsPatch_BlankTitle_400_NoPDSWrite(t *testing.T) {
+	idx := newRkeyIndex()
+	idx.seedRow(db.UserSubscription{
+		Did:       "did:plc:alice",
+		Rkey:      "3la",
+		AtUri:     "at://did:plc:alice/blue.morgen.feed.subscription/3la",
+		FeedUrl:   "https://example.test/feed.xml",
+		Title:     ptrString("Old Title"),
+		CreatedAt: "2026-05-15T10:00:00Z",
+		UpdatedAt: "2026-05-15T10:00:00Z",
+	})
+	pds := &fakePDS{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
+		strings.NewReader(`{"title":" \t "}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.creates != 0 || pds.puts != 0 || pds.applyCalls != 0 {
+		t.Errorf("PDS written for a blank title: creates=%d puts=%d applies=%d", pds.creates, pds.puts, pds.applyCalls)
+	}
+	if got := idx.byRkey["did:plc:alice"]["3la"].Title; got == nil || *got != "Old Title" {
+		t.Errorf("index title = %v, want Old Title", got)
+	}
+}
+
 func TestSubscriptionsPatch_Title_Applied(t *testing.T) {
 	idx := newRkeyIndex()
 	idx.seedRow(db.UserSubscription{
