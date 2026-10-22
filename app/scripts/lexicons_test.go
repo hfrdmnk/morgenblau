@@ -13,7 +13,7 @@ func TestLexiconFreeze(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, change := range []string{"none", "prose", "owned", "interop", "added", "deleted", "renamed", "missing base"} {
+	for _, change := range []string{"none", "prose", "owned", "interop", "added", "deleted", "renamed", "moved", "moved and changed", "missing base"} {
 		t.Run(change, func(t *testing.T) {
 			dir := t.TempDir()
 			git := func(args ...string) string {
@@ -60,6 +60,12 @@ func TestLexiconFreeze(t *testing.T) {
 				git("rm", owned)
 			case "renamed":
 				git("mv", owned, "lexicons/blue/morgen/feed/renamed.json")
+			case "moved", "moved and changed":
+				write("app/.keep", "")
+				git("mv", "lexicons", "app/lexicons")
+				if change == "moved and changed" {
+					write("app/lexicons/blue/morgen/feed/save.json", `{"revision":2}`)
+				}
 			case "missing base":
 				base = strings.Repeat("0", 40)
 			}
@@ -67,8 +73,11 @@ func TestLexiconFreeze(t *testing.T) {
 			git("commit", "--allow-empty", "-qm", "change")
 			cmd := exec.Command("bash", script, base)
 			cmd.Dir = dir
+			if strings.HasPrefix(change, "moved") {
+				cmd.Dir = filepath.Join(dir, "app")
+			}
 			output, err := cmd.CombinedOutput()
-			wantError := change != "none" && change != "prose"
+			wantError := change != "none" && change != "prose" && change != "moved"
 			if (err != nil) != wantError {
 				t.Fatalf("check error = %v, want error %v\n%s", err, wantError, output)
 			}

@@ -7,7 +7,11 @@ if ! git rev-parse --verify "${base}^{commit}" >/dev/null 2>&1; then
     exit 1
 fi
 
-changed="$(git diff --name-status "$base" HEAD -- ':(glob)lexicons/**/*.json')"
+head_tree="HEAD:$(git rev-parse --show-prefix)lexicons"
+base_tree="$base:$(git rev-parse --show-prefix)lexicons"
+# Bases from before the app moved into app/ keep lexicons at the repo root.
+git cat-file -e "$base_tree" 2>/dev/null || base_tree="$base:lexicons"
+changed="$(git diff --name-status "$base_tree" "$head_tree" -- ':(top,glob)**/*.json')"
 if [[ -n "$changed" ]]; then
     printf '%s\n' "$changed" >&2
     printf 'Keep lexicon schemas unchanged: SPEC.md freezes external compatibility during the v1 simplification, including additions, removals and revision bumps.\n' >&2
