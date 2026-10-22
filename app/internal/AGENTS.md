@@ -1,6 +1,6 @@
 ---
 paths:
-  - "**/*.go"
+  - "app/**/*.go"
 ---
 
 # Go conventions

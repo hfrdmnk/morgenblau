@@ -36,7 +36,6 @@ FETCH_INTERVAL_MINUTES=0 unless asked, newsletter SMTP on 127.0.0.1 for newslett
 It never touches ./data/morgenblau.db, .env or a server the user already runs.'
 
 NEWSLETTER_DOMAIN="newsletter.localhost"
-TOOLS=".agents/skills/verify-morgenblau/tools"
 NODE_MAJOR_MIN=22
 STALE_HOURS=3
 
@@ -55,9 +54,11 @@ BROWSER_BOOLEAN_OPTIONS=" headed mobile persistent submit boxes clear full-page 
     with-deps dry-run list force only-shell no-shell cursor annotate kill hide all g help json raw version "
 
 ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
-cd "$ROOT"
+APP="$ROOT/app"
+TOOLS="$ROOT/.agents/skills/verify-morgenblau/tools"
+cd "$APP"
 VERIFY_ROOT="$ROOT/.scratch/verify"
-PLAYWRIGHT_CLI="$ROOT/$TOOLS/node_modules/.bin/playwright-cli"
+PLAYWRIGHT_CLI="$TOOLS/node_modules/.bin/playwright-cli"
 
 die() { printf 'verify: %s\n' "$1" >&2; exit "${2:-1}"; }
 say() { printf '%s\n' "$1" >&2; }
@@ -65,7 +66,7 @@ say() { printf '%s\n' "$1" >&2; }
 # The scope is product config, not a secret, so runs take it from the process env or the committed example.
 oauth_scope() {
     if [ -n "${BLUESKY_OAUTH_SCOPE-}" ]; then printf '%s' "$BLUESKY_OAUTH_SCOPE"; return; fi
-    sed -n 's/^BLUESKY_OAUTH_SCOPE=//p' "$ROOT/.env.example" | tail -1 | sed -e 's/^"\(.*\)"$/\1/'
+    sed -n 's/^BLUESKY_OAUTH_SCOPE=//p' "$APP/.env.example" | tail -1 | sed -e 's/^"\(.*\)"$/\1/'
 }
 
 node_major() { node -p 'process.versions.node.split(".")[0]' 2>/dev/null || printf 0; }
@@ -229,7 +230,7 @@ set_state() {
 browser_ready() {
     node -e 'const { chromium } = require(process.argv[1]);
         (async () => { const browser = await chromium.launch({ channel: "chrome" }); await browser.close(); })()
-        .catch(() => { process.exitCode = 1; });' "$ROOT/$TOOLS/node_modules/playwright-core"
+        .catch(() => { process.exitCode = 1; });' "$TOOLS/node_modules/playwright-core"
 }
 
 doctor() {
@@ -295,13 +296,13 @@ start_process() {
 start_pds() {
     local dir="$1" plc="$2" pds="$3"
     mkdir -p "$dir/run/pds"
-    start_process "$dir" pds "$ROOT/$TOOLS" PDS_DATA_DIR="$dir/run/pds" PDS_PORT="$pds" PLC_PORT="$plc" \
+    start_process "$dir" pds "$TOOLS" PDS_DATA_DIR="$dir/run/pds" PDS_PORT="$pds" PLC_PORT="$plc" \
         PDS_ADMIN_PASSWORD="$(openssl rand -hex 32)" PDS_JWT_SECRET="$(openssl rand -hex 32)" -- node boot.mjs
 }
 
 # The fixture server and its decoy are the run's only feed sources on loopback; the instance is told only the fixture origin.
 start_fixtures() {
-    start_process "$1" fixtures "$ROOT/$TOOLS" FIXTURE_PORT="$2" DECOY_PORT="$3" -- node feed-fixtures.mjs
+    start_process "$1" fixtures "$TOOLS" FIXTURE_PORT="$2" DECOY_PORT="$3" -- node feed-fixtures.mjs
 }
 
 wait_for_fixtures() {
@@ -399,7 +400,7 @@ up() {
         start_pds "$dir" "$plc" "$pds"
         start_fixtures "$dir" "$fixtures" "$decoy"
     fi
-    start_process "$dir" vite "$ROOT/frontend" -- ./node_modules/.bin/vite --port "$vite" --strictPort
+    start_process "$dir" vite "$APP/frontend" -- ./node_modules/.bin/vite --port "$vite" --strictPort
 
     goose -dir internal/database/migrations sqlite3 "$run/morgenblau.db" up >"$run/migrate.log" 2>&1 \
         || die "migrations failed; see $run/migrate.log"

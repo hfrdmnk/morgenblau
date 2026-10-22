@@ -1,11 +1,12 @@
 services:
   vite:
     command: bun run dev --port "$PORT"
-    cwd: frontend
+    cwd: app/frontend
     port: 5173
     health: /
   app:
     command: go run ./cmd/api
+    cwd: app
     port: 8000
     env:
       APP_ENV: local

@@ -18,6 +18,9 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app
 
     steps:
       - name: Check out repository
@@ -33,8 +36,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
-          cache: true
+          go-version-file: app/go.mod
+          cache-dependency-path: app/go.sum
 
       - name: Check Go formatting
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
@@ -60,7 +63,7 @@ jobs:
 
       - name: Check Bun is the only package manager
         run: |
-          stray="$(git ls-files '*package-lock.json' '*pnpm-lock.yaml' '*yarn.lock')"
+          stray="$(git ls-files ':(top)*package-lock.json' ':(top)*pnpm-lock.yaml' ':(top)*yarn.lock')"
           test -z "$stray" || { echo "Remove $stray: Bun owns every install (bun.lock), so installs stay reproducible."; exit 1; }
 
       - name: Check generated component paths
@@ -73,10 +76,10 @@ jobs:
 
       - name: Check verification harness
         run: |
-          for script in .agents/setup .agents/resume .agents/skills/verify-morgenblau/bin/verify .agents/skills/verify-morgenblau/tools/test-harness.sh; do
+          for script in ../.agents/setup ../.agents/resume ../.agents/skills/verify-morgenblau/bin/verify ../.agents/skills/verify-morgenblau/tools/test-harness.sh; do
             bash -n "$script"
           done
-          bash .agents/skills/verify-morgenblau/tools/test-harness.sh
+          bash ../.agents/skills/verify-morgenblau/tools/test-harness.sh
 
       - name: Run frontend tests
         run: bun run --cwd ./frontend test
@@ -91,6 +94,7 @@ jobs:
       - name: Lint Go
         uses: golangci/golangci-lint-action@v9
         with:
+          working-directory: app
           version: v2.14.0
 
       - name: Run Go race tests

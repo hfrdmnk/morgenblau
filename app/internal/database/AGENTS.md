@@ -1,7 +1,7 @@
 ---
 paths:
-  - "internal/database/**"
-  - "sqlc.yaml"
+  - "app/internal/database/**"
+  - "app/sqlc.yaml"
 ---
 
 # Database conventions

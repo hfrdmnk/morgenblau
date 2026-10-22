@@ -19,7 +19,7 @@ Future outgoing product mail can use `notify.morgen.blue` for transactional mess
 
 ## 1. Create the app and persistent storage
 
-Install [flyctl](https://fly.io/docs/flyctl/install/), sign in, and run these commands from this repository. These commands create billable resources; choose your Fly organization when prompted.
+Install [flyctl](https://fly.io/docs/flyctl/install/), sign in, and run these commands from this `app/` directory. These commands create billable resources; choose your Fly organization when prompted.
 
 ```sh
 fly auth login
@@ -144,6 +144,8 @@ fly logs --app "$FLY_APP"
 ```
 
 `--ha=false` prevents Fly's default redundant Machine creation on the initial deploy. Subsequent deploys should still leave exactly one Machine. Its volume persists; pending goose migrations run on that volume before HTTP/SMTP starts. There are no automatic schema downs on rollback.
+
+After the first deploy, Fly's GitHub integration deploys every push to `main`. In the app's GitHub settings on Fly, set Current Working Directory to `app` and leave Config path empty so it uses `app/fly.toml`.
 
 The app and Litestream run unprivileged. SIGTERM stops the app first and then attempts a final backup sync; `fly.toml` allows time for both. Hard kills, storage outages, and host failures can still lose changes not yet replicated. Litestream is asynchronous backup, not synchronous replication or automatic failover.
 

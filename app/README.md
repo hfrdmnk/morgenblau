@@ -1,0 +1,131 @@
+# Morgenblau
+
+A personal daily newspaper powered by RSS and ATProto. See [SPEC.md](../SPEC.md) for the v1 boundary and [AGENTS.md](./AGENTS.md) for stack conventions. Run every command below from this `app/` directory.
+
+> Stack: Go API (`cmd/api`) + React/Vite/Tailwind v4 frontend (`frontend/`), SQLite with goose migrations and sqlc-generated queries.
+
+This branch simplifies the existing reader by removing social features and discovery. It does not yet implement every v1 requirement; the boundary between retained behavior and future work lives in `SPEC.md`.
+
+## Prerequisites
+
+- Go (matching `go.mod`)
+- [bun](https://bun.sh) ≥ 1.3
+- [air](https://github.com/air-verse/air) — Go live-reload
+- [mprocs](https://github.com/pvolok/mprocs) — runs the dev processes side-by-side
+- [goose](https://github.com/pressly/goose) and [sqlc](https://sqlc.dev)
+
+Install the Go CLIs once:
+
+```sh
+go install github.com/air-verse/air@latest
+go install github.com/pressly/goose/v3/cmd/goose@latest
+go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+```
+
+## Setup
+
+```sh
+cp .env.example .env           # fill in signing and session keys documented there
+bun install --cwd ./frontend
+make migrate-up
+```
+
+Generate an OAuth signing key:
+
+```sh
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl base64 -A
+```
+
+## Run
+
+```sh
+make dev
+```
+
+Starts processes via `mprocs.yaml`:
+
+- **Server** — `air` rebuilds and runs `cmd/api` on `$PORT` (default `:8000`). *Autostart.*
+- **Vite** — `bun run --cwd ./frontend dev` on `:5173`. *Autostart.*
+- **Tests** — `go test ./...`. *Manual-start.*
+
+In `APP_ENV=local`, the Go server reverse-proxies `/` to the Vite dev server (HMR works). In any other env it serves `frontend/dist` from the embedded FS (`frontend/embed.go`). Open **`http://127.0.0.1:8000`** — same origin keeps `/api/*` cookies and CSRF sane, and the loopback origin doubles as your OAuth `client_id`.
+
+Development-only routes live under `/__dev/`, such as the style guide at `/__dev/styleguide`. `RegisterRoutes` in `internal/server/routes.go` serves them only with `APP_ENV=local`; the prefix is a naming convention, not the gate.
+
+`make run` starts Go + Vite without `mprocs` if you'd rather use your own terminal layout.
+
+### Inbound newsletters
+
+Inbound email stays disabled when `NEWSLETTER_DOMAIN` and `SMTP_LISTEN_ADDR` are empty. To exercise it locally, set a private test domain and an unprivileged listen address such as `:2525`. The HTTP server and SMTP receiver run in the same process and use the same SQLite database.
+
+STARTTLS is configured with either `SMTP_TLS_CERT_FILE` plus `SMTP_TLS_KEY_FILE`, or the base64 PEM environment variables documented in `.env.example`. `SMTP_HOSTNAME` is the SMTP banner and MX target hostname; it defaults to `NEWSLETTER_DOMAIN`. Production startup verifies the certificate's validity period and SAN against that hostname.
+
+For a local plaintext receiver, add these values to `.env`, start the normal app, sign in, and copy your private address from the Newsletters screen:
+
+```sh
+NEWSLETTER_DOMAIN=newsletter.localhost
+SMTP_LISTEN_ADDR=127.0.0.1:2525
+```
+
+Send the built-in MIME fixture to that copied address. It includes HTML, one embedded CID image, and one remote image placeholder for checking the consent flow:
+
+```sh
+go run ./cmd/send-newsletter -to '<your-copied-address>'
+```
+
+To exercise forwarded or unusual mail, pass an existing message with `-eml ./message.eml`. The sender defaults to `127.0.0.1:2525` and never contacts an external SMTP server unless `-smtp` is explicitly changed.
+
+## OAuth
+
+Local dev uses a **loopback client**: `client_id` is `http://localhost`, callback is `http://127.0.0.1:<PORT>/oauth/callback` (`8000` by default), and the AS skips the client-metadata fetch entirely. Leave `BLUESKY_CLIENT_ID` and `BLUESKY_REDIRECT` empty in `.env` and sign in straight from `http://127.0.0.1:8000` — no tunnel, no public hostname.
+
+For prod, set both env vars to your public URLs and serve `oauth-client-metadata.json` + `oauth-jwks.json` from that origin.
+
+### Independent development login
+
+For a private orb, use a dedicated development account instead of the loopback callback. Set `DEV_LOGIN_ENABLED=true` with `APP_ENV=local` and provide `ATPROTO_HANDLE`, `ATPROTO_PASSWORD` (prefer an app password), and the HTTPS `ATPROTO_PDS` origin through server-side secrets or your ignored `.env`. The login page then shows **Log me in**. This account has real PDS read/write access; keep the portal private to trusted collaborators.
+
+In Amp, `amp orb services ensure` starts the services declared in `.amp/services.yaml`, which opts into this shortcut. The account credentials must already be configured in the orb environment. Open the returned Morgenblau portal link.
+
+Agents can `POST /__dev/login` on the Go server and retain the returned cookie in their own cookie jar. Success is `204`; `GET /__dev/login` reports availability. Both return `404` when disabled. An HTTP client's cookie does not sign in your browser: use the button there. `internal/session/` owns token refresh and logout. Password tokens stay in memory, so sign in again after restarting the server.
+
+### Scopes
+
+The retained OAuth scopes are configured in `.env.example` and checked in `internal/oauth/scopes/`. Standardfeed subscription writes require their own grant. Sessions without it still work for RSS, but a Standardfeed write prompts a fresh sign-in. The existing Morgenblau permission set stays unchanged for lexicon compatibility; sharing and following have no runtime feature in v1.
+
+## Database
+
+SQLite via the pure-Go `modernc.org/sqlite` driver — the DB file lives at `$DB_PATH` (default `./data/morgenblau.db`) and is created on first open. WAL mode, foreign keys on, and a 5s busy timeout are set via DSN pragmas. Plain SQL, no ORM. Migrations live in `internal/database/migrations/`, handwritten queries in `internal/database/queries/`, generated code in `internal/database/db/`.
+
+The simplified migration baseline requires a fresh local database. Before starting this branch against an older checkout's data, stop the server and point `DB_PATH` at a new file, then run `make migrate-up`. Sign in again to reconcile retained subscriptions and saves from the PDS; feed content is fetched again. Existing external share and follow records remain untouched.
+
+```sh
+make migrate-up                       # apply pending migrations
+make migrate-down                     # roll back one
+make migrate-status                   # show applied/pending
+make migrate-create NAME=add_users    # scaffold a new SQL migration
+make sqlc                             # regenerate queries after edits
+```
+
+## Build & test
+
+```sh
+make build                          # build frontend + Go binary for the host OS → ./main
+make build-linux                    # cross-compile a static Linux binary for deploy → ./main-linux-amd64
+make build-linux GOARCH=arm64       # same, for ARM VPSes (Hetzner CAX, AWS Graviton, …)
+make test                           # go test ./... -v
+```
+
+`build` and `build-linux` both run the frontend build first (`bun run build` in `frontend/`) and embed the resulting `frontend/dist/` into the binary via `//go:embed`. The deploy binary is fully self-contained — `scp main-linux-amd64` to the VPS, set env vars, and run.
+
+## Container deployment
+
+The `Dockerfile` builds a self-contained app, restores a missing SQLite database from Litestream when configured, and runs pending goose migrations before startup. Persist `/data` and set `DB_PATH=/data/morgenblau.db`.
+
+```sh
+docker build -t morgenblau .
+```
+
+For production, follow [DEPLOY.md](DEPLOY.md): the single-Machine Fly setup, DID-based alpha access, Tigris backups, domains, SMTP certificates, and recovery. Public configuration lives in `fly.toml`; secrets are imported from a private environment file. A production container requires a Litestream replica.
+
+Pushes to `main` deploy through Fly's GitHub integration, with its working directory set to `app`.

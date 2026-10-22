@@ -55,12 +55,13 @@ pnpm-lock.yaml
 *.sln
 *.sw?
 
-# SQLite data dir (DB file + WAL/SHM sidecars)
+# SQLite data dir (DB file + WAL/SHM sidecars); /data/ is where clones from before the app/ move keep it
 /data/
+/app/data/
 
 # Scratch
 .scratch/
 
 # Amp runtime
-.amp/portals/*
+**/.amp/portals/*
 .amp/in/

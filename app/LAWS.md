@@ -1,12 +1,12 @@
 # Laws
 
-These are repo-wide invariants for changes to Morgenblau. [SPEC.md](SPEC.md) owns the product rules. The files linked below own the implementation detail. The full Go race suite in [CI](.github/workflows/ci.yml) checks these laws on every change, including code outside a changed-file diff. Frontend tests, lint, and build run there too. Fallow's PR audit separately gates newly introduced findings.
+These are repo-wide invariants for changes to Morgenblau. [SPEC.md](../SPEC.md) owns the product rules. The files linked below own the implementation detail. The full Go race suite in [CI](../.github/workflows/ci.yml) checks these laws on every change, including code outside a changed-file diff. Frontend tests, lint, and build run there too. Fallow's PR audit separately gates newly introduced findings.
 
 ## 1. The reader's PDS owns public reading records
 
 Feed subscriptions and URL saves commit to the reader's PDS before their SQLite indexes change. Each mutation request makes at most one PDS commit, either one record or several records in one `applyWrites` transaction, so a reported failure always means nothing committed. A failed SQLite mirror cannot turn a committed PDS write into a reported failure; reconciliation catches up on the next authenticated app entry. OPML import is the bulk exception: it commits per source and reports each source's outcome.
 
-The write paths live in [`internal/api/`](internal/api/) and [`internal/atprepo/`](internal/atprepo/). [`commitThenMirror`](internal/api/mirror.go) owns the commit-then-mirror order and the failed-mirror handoff; [`CommitGate`](internal/api/commit_gate.go) owns the one-commit budget that [`routes.go`](internal/server/routes.go) wires into every mutation route. See the ownership rules in [SPEC.md](SPEC.md#data-ownership).
+The write paths live in [`internal/api/`](internal/api/) and [`internal/atprepo/`](internal/atprepo/). [`commitThenMirror`](internal/api/mirror.go) owns the commit-then-mirror order and the failed-mirror handoff; [`CommitGate`](internal/api/commit_gate.go) owns the one-commit budget that [`routes.go`](internal/server/routes.go) wires into every mutation route. See the ownership rules in [SPEC.md](../SPEC.md#data-ownership).
 
 **Enforced by:**
 
@@ -21,7 +21,7 @@ The write paths live in [`internal/api/`](internal/api/) and [`internal/atprepo/
 
 `sync_user` reaches `done` only after subscriptions and saves have both reconciled and committed locally. A PDS listing taken before a local mirror write cannot erase that newer write. Sidecar cleanup can retry; individual feed fetch failures do not invalidate a successful record reconciliation.
 
-The sync engine and reconciliation guards live in [`internal/sync/`](internal/sync/); job status lives in [`internal/jobs/`](internal/jobs/). See [SPEC.md](SPEC.md#data-ownership) for the authority boundary.
+The sync engine and reconciliation guards live in [`internal/sync/`](internal/sync/); job status lives in [`internal/jobs/`](internal/jobs/). See [SPEC.md](../SPEC.md#data-ownership) for the authority boundary.
 
 **Enforced by:**
 
@@ -34,7 +34,7 @@ The sync engine and reconciliation guards live in [`internal/sync/`](internal/sy
 
 Newsletter addresses, messages, and saves are server-owned and scoped by DID in both service operations and relational constraints. They never enter the PDS or shared feed cache. A newsletter save stays private even when the message has a public web URL. Remote newsletter images remain blocked until the reader enables them for that message.
 
-The schema and owner-scoped queries live in [`internal/database/`](internal/database/); private behavior lives in [`internal/newsletter/`](internal/newsletter/) and the newsletter API. See [SPEC.md](SPEC.md#private-newsletter-data).
+The schema and owner-scoped queries live in [`internal/database/`](internal/database/); private behavior lives in [`internal/newsletter/`](internal/newsletter/) and the newsletter API. See [SPEC.md](../SPEC.md#private-newsletter-data).
 
 **Enforced by:**
 
@@ -44,4 +44,4 @@ The schema and owner-scoped queries live in [`internal/database/`](internal/data
 - Private saves: `TestNewsletterSaveStaysPrivateWhenMessageHasPublicWebURL` in [`newsletter_integration_test.go`](internal/api/newsletter_integration_test.go) and `TestNewsletterSaveRouteWritesOnlyPrivateStorage` in [`newsletter_routes_test.go`](internal/server/newsletter_routes_test.go).
 - Remote images: `TestBlockedNewsletterBodyFetchesNothingRemote` in [`mime_test.go`](internal/newsletter/mime_test.go), `TestNewsletterSMTPToAuthenticatedEntryFlow`, `TestRemoteImagePermissionIsRememberedPerMessage`, and [`newsletter-images.test.tsx`](frontend/src/components/newsletter-images.test.tsx).
 
-An intentional change to a law updates [SPEC.md](SPEC.md), this file, and the checks that enforce it together. There is no changed-file exception for the law checks.
+An intentional change to a law updates [SPEC.md](../SPEC.md), this file, and the checks that enforce it together. There is no changed-file exception for the law checks.

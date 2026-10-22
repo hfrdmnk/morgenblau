@@ -18,7 +18,7 @@ Compare verification coverage with the current app, drive the recipes, and repai
 
 ## 1. Fresh-run preflight
 
-1. Read the repository guidance, `SPEC.md` and `LAWS.md`. Load `verify-morgenblau` and use its current protocol, safety rules, proof standards and change-type checks throughout; do not substitute a copied command table. Load `building-skills` before editing any skill documentation, and follow the [repo's skill conventions](../README.md).
+1. Read the repository guidance, `SPEC.md` and `app/LAWS.md`. Load `verify-morgenblau` and use its current protocol, safety rules, proof standards and change-type checks throughout; do not substitute a copied command table. Load `building-skills` before editing any skill documentation, and follow the [repo's skill conventions](../README.md).
 2. Confirm this is a fresh orb or environment and the checkout is clean, including untracked files. If not, stop as `blocked`; never reset, stash or overwrite someone else's work.
 3. Fetch `origin`, switch to `main`, fast-forward only to `origin/main`, and verify a clean tree and identical HEAD. Record the baseline SHA. Fetch failure, divergence or inability to establish latest main is `blocked`; do not drive an old revision as current. Unshallow before any history investigation if needed.
 4. Inspect the current verification harness help, dependency manifests and setup instructions. Install only the documented prerequisites using pinned versions; do not use personal credentials or copy a user's `.env`. Run the verification doctor before drives and again after surprises. Preserve its exit-code distinctions, including signed-in coverage blocked by unsupported Node.

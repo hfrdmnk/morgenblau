@@ -2,18 +2,19 @@
 
 A calm content platform powered by RSS and ATProto — daily digests instead of infinite feeds.
 
-> Stack: Go backend and React frontend. The v1 boundary is defined in `SPEC.md`.
+## Layout
+
+This is a monorepo. Each project builds and deploys on its own; nothing is shared between them yet.
+
+- [`app/`](app/AGENTS.md): the product, a Go backend and React frontend. Deploys to Fly.
+- `site/`: the Astro landing page for `morgen.blue`. Deploys to Fly.
+- `brand/`: Abstract Studio, the Vite/React tool that generates brand artwork. Deploys to Vercel.
+
+Bun owns every JavaScript install; each project keeps its own `bun.lock`.
 
 ## Spec Compliance
 
-[SPEC.md](./SPEC.md) is the source of truth for product vision, content model, and guardrails. All code must follow the spec.
-
-[LAWS.md](./LAWS.md) states the repo-wide invariants. Check it before changing their owning paths.
-
-## Workflow
-
-Write all Go code with Red-Green-TDD. Leverage Go's phenomenal testing suite.
-Prove behavior on the running app yourself with the `verify-morgenblau` skill. I do the final visual check and give you feedback.
+[SPEC.md](./SPEC.md) is the source of truth for product vision, content model, and guardrails. All code must follow the spec. [BRAND.md](./BRAND.md) owns the brand direction.
 
 ## Comments
 
@@ -21,32 +22,14 @@ Comment the why, never the what. A comment earns its place only when it records 
 
 ## Docs
 
-Docs point, they don't mirror. In durable project docs (this file, `SPEC.md`, `.claude/rules/*`, memory), write pointers and invariants, not a copy of what the code already owns. Name the file or function that holds the detail and state the rule; don't enumerate a list the code will grow past (an error-code set, a route table).
+Docs point, they don't mirror. In durable project docs (the AGENTS.md files, `SPEC.md`, `.claude/rules/*`, memory), write pointers and invariants, not a copy of what the code already owns. Name the file or function that holds the detail and state the rule; don't enumerate a list the code will grow past (an error-code set, a route table).
 
 ## Testing
 
 Review identity fixtures: use `example.com` subdomains for ordinary hosts, `*.example` handles, names like "Example Publication", and placeholder DIDs. Real protocol/provider hostnames are allowed only when the hostname itself is required to test behavior; accounts, publications and other identity data remain invented. Real-world observations belong in research notes or `SPEC.md`.
 
-## Lexicons
-
-Schemas and their rules: [lexicons/AGENTS.md](lexicons/AGENTS.md). `SPEC.md` defines the compatibility boundary.
-
-## Database
-
-SQLite through the pure-Go `modernc.org/sqlite`, so `make build-linux` builds with `CGO_ENABLED=0`; goose for migrations, sqlc for queries, no ORM. The rules live in [internal/database/AGENTS.md](internal/database/AGENTS.md). `Open` in `internal/database/conn.go` owns the DB path (`DB_PATH`) and the pragmas; the `Makefile` owns the targets.
-
-Install goose, sqlc and golangci-lint once, at the versions `.github/workflows/ci.yml` pins; a different sqlc version rewrites the generated code's header and fails CI's `sqlc diff`.
-
 ## Git & PRs
 
 - **GitHub is the source of truth, Tangled is a read-only mirror.** Ship to GitHub's `main`; `.github/workflows/sync-tangled.yml` force-syncs accepted pushes to Tangled.
-- `scripts/sync-tangled.sh` is the manual recovery path when the mirror workflow needs to be retried outside GitHub.
+- `app/scripts/sync-tangled.sh` is the manual recovery path when the mirror workflow needs to be retried outside GitHub.
 - Never bypass repository Git hooks with `--no-verify` unless the user explicitly approves it for that invocation. Investigate and resolve hook failures instead.
-
-## ATProto
-
-Protocol work starts from the project's own sources: `SPEC.md` for the data model and ownership, [lexicons/AGENTS.md](lexicons/AGENTS.md) for schemas, and the SSRF and PDS-mutation rules in [internal/AGENTS.md](internal/AGENTS.md). For protocol details they don't cover, read the documentation at [atproto.com/docs](https://atproto.com/docs).
-
-## atproto.md
-
-For read-only lookups of public ATProto data, use [atproto.md](https://atproto.md). Its endpoint index is [atproto.md/llms.txt](https://atproto.md/llms.txt).

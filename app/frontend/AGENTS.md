@@ -1,6 +1,6 @@
 ---
 paths:
-  - "frontend/**"
+  - "app/frontend/**"
 ---
 
 # Frontend conventions
@@ -10,7 +10,7 @@ paths:
 - Bun only: `bun run <script>`, `bunx` for one-offs, never npm/npx/pnpm. CI rejects any other lockfile.
 - Shadcn uses Base UI primitives from `@base-ui/react`; `components.json` holds the style.
 - Basicons is the only icon source. Review icons for local SVG markup; runtime embed scripts are forbidden. `eslint.config.js` owns the import restriction. `components.json` names `lucide` only so shadcn installs resolve.
-- Brand direction lives in `BRAND.md`; visual tokens live in `src/index.css`.
+- Brand direction lives in the root `BRAND.md`; visual tokens live in `src/index.css`.
 
 ## Motion
 

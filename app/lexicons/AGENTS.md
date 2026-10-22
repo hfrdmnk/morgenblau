@@ -1,6 +1,6 @@
 ---
 paths:
-  - "lexicons/**"
+  - "app/lexicons/**"
 ---
 
 # Lexicon conventions

@@ -1,1 +1,1 @@
-../../internal/AGENTS.md
+../../app/internal/AGENTS.md

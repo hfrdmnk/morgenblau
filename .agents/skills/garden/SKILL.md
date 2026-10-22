@@ -43,6 +43,8 @@ Every repository-scoped `gh` call targets `--repo hfrdmnk/morgenblau` and runs a
 
 ## 1. Preflight
 
+The sweep covers the app: run every command from `app/`, and read paths in this skill relative to it.
+
 ```bash
 git fetch origin
 git switch main && git merge --ff-only origin/main

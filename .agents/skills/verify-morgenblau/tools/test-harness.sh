@@ -314,7 +314,7 @@ test_feed_fixtures_serve_each_case() {
     fixtures="$(free_port 29800 "$claimed")"
     decoy="$(free_port $((fixtures + 1)) "$claimed")"
     origin="http://127.0.0.1:$fixtures"
-    FIXTURE_PORT="$fixtures" DECOY_PORT="$decoy" node "$ROOT/$TOOLS/feed-fixtures.mjs" >"$tmp/fixtures.log" 2>&1 &
+    FIXTURE_PORT="$fixtures" DECOY_PORT="$decoy" node "$TOOLS/feed-fixtures.mjs" >"$tmp/fixtures.log" 2>&1 &
     pid=$!
     trap "kill $pid 2>/dev/null; rm -rf $(printf %q "$tmp")" EXIT
     for i in $(seq 1 40); do [[ -s "$tmp/fixtures.log" ]] && break; sleep 0.25; done

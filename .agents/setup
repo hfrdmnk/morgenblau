@@ -9,7 +9,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 
 mkdir -p "$bin_dir" "$tool_dir"
 export PATH="$bin_dir:$PATH"
-cd "$repo_root"
+cd "$repo_root/app"
 
 run_step() {
 	local label="$1"
@@ -79,7 +79,7 @@ install_dev_tools() {
 	local sqlc_version=v1.31.1
 	local mprocs_version=v0.9.6
 	local lint_version archive_dir
-	lint_version="$(sed -n 's/^[[:space:]]*version: \(v[0-9.]*\)$/\1/p' .github/workflows/ci.yml)"
+	lint_version="$(sed -n 's/^[[:space:]]*version: \(v[0-9.]*\)$/\1/p' "$repo_root/.github/workflows/ci.yml")"
 	local archive air_arch goose_arch sqlc_arch mprocs_arch
 	case "$(uname -m)" in
 		x86_64)
@@ -133,12 +133,12 @@ install_dev_tools() {
 install_dependencies() {
 	go mod download
 	bun install --cwd ./frontend --frozen-lockfile
-	bun install --cwd ./.agents/skills/verify-morgenblau/tools --frozen-lockfile
+	bun install --cwd "$repo_root/.agents/skills/verify-morgenblau/tools" --frozen-lockfile
 	bun run --cwd ./frontend build
 	if ! bash -c 'source "$1"; browser_ready' _ "$repo_root/.agents/skills/verify-morgenblau/bin/verify" >/dev/null 2>&1; then
-		.agents/skills/verify-morgenblau/tools/node_modules/.bin/playwright-core install chrome --with-deps
+		"$repo_root/.agents/skills/verify-morgenblau/tools/node_modules/.bin/playwright-core" install chrome --with-deps
 	fi
-	.agents/skills/verify-morgenblau/bin/verify doctor
+	"$repo_root/.agents/skills/verify-morgenblau/bin/verify" doctor
 }
 
 prepare_local_state() {

@@ -1,1 +1,1 @@
-../../lexicons/AGENTS.md
+../../app/lexicons/AGENTS.md

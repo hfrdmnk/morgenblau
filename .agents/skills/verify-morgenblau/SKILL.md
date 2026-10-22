@@ -9,6 +9,8 @@ Prove behavior on a running instance, not only in tests. Pick the feature file i
 
 Every lever is a subcommand of `.agents/skills/verify-morgenblau/bin/verify` (`V` below). `$V help` lists them with their flags.
 
+Run `$V` from the repo root; it works in `app/`. Source paths in this skill and its feature files, and the static-check commands, are relative to `app/`.
+
 ## Doctor
 
 ```sh
