@@ -75,7 +75,7 @@ Run the same protocol with the report's steps in place of the feature file's use
 - **Frontend:** the relevant test files while working; finish with the Bun `test`, `lint` and `build` scripts (the build runs the TypeScript check). `frontend/AGENTS.md` owns the per-branch `doctor` rule.
 - **Embedded app or deploy build:** `make build-linux` (it already builds the frontend; do not build twice).
 - **Schema or queries:** `make sqlc`, read the regenerated diff, run the affected storage tests against real temporary SQLite. Migrations are tried on a disposable DB (`$V up` gives you one), never on `./data`.
-- **Verification harness:** `bash .agents/skills/verify-morgenblau/tools/test-harness.sh` (it starts the fixture server on spare loopback ports, so it needs `node`), plus a disposable live drive through the changed lever. Browser redaction changes also run that script with `test_live_browser_redacts_password`; it starts and cleans up its own instance and retains safe proof under `.scratch/verify/`. CI runs only the shell regression suite without starting servers.
+- **Verification harness:** `bash ../.agents/skills/verify-morgenblau/tools/test-harness.sh` (it starts the fixture server on spare loopback ports, so it needs `node`), plus a disposable live drive through the changed lever. Browser redaction changes also run that script with `test_live_browser_redacts_password`; it starts and cleans up its own instance and retains safe proof under `.scratch/verify/`. CI runs only the shell regression suite without starting servers.
 - **Always:** `git diff --check` and a read of the final diff, new files included. Docs-only changes need content, link and format checks instead of app test runs.
 
 ## Proof standards
