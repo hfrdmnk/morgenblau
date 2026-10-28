@@ -90,7 +90,7 @@ export function AddSourceDialog() {
                 <PlusIcon className="size-5" />
             </Dialog.Trigger>
             <Dialog.Portal>
-                <Dialog.Backdrop className="fixed inset-0 z-40 bg-foreground/20" />
+                <Dialog.Backdrop className="fixed inset-0 z-40 bg-background/40 backdrop-blur-xs" />
                 <LayoutGroup>
                     <Dialog.Popup
                         render={

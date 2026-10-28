@@ -220,7 +220,7 @@ function ImportDialog({
             }}
         >
             <Dialog.Portal>
-                <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/20" />
+                <Dialog.Backdrop className="fixed inset-0 z-40 bg-background/40 backdrop-blur-xs" />
                 <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 max-h-[85dvh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl bg-popover p-6 text-popover-foreground shadow-popover">
                     <ImportDialogContent
                         state={state}
