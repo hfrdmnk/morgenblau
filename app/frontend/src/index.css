@@ -250,6 +250,23 @@ html:has(.app-header) {
     pointer-events: none;
 }
 
+@property --digest-date-edge {
+    syntax: '<color>';
+    inherits: false;
+    initial-value: transparent;
+}
+
+/* The selected day always sits in the centre column, so a mask symmetric about the centre fades days equally by distance, even when the later slots are empty. */
+.digest-date-nav {
+    mask-image: linear-gradient(to right, var(--digest-date-edge), #000 40%, #000 60%, var(--digest-date-edge));
+    transition: --digest-date-edge var(--motion-duration-overlay) var(--ease-out);
+}
+
+.digest-date-nav:hover,
+.digest-date-nav:focus-within {
+    --digest-date-edge: #000;
+}
+
 /* Nothing paints into a reserved scrollbar gutter, so admin pages give it up to let the banner reach the edge. */
 html:has(.admin-banner) {
     scrollbar-gutter: auto;
