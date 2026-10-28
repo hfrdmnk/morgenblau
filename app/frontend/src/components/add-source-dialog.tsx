@@ -24,8 +24,10 @@ import {
     PlusIcon,
 } from '@/components/icons';
 import { GenerateFeed } from '@/components/generate-feed';
+import { IconCrossfade } from '@/components/icon-crossfade';
 import { NewsletterAddress } from '@/components/newsletter-address';
 import { Button } from '@/components/ui/button';
+import { DialogBackdrop, DialogPopup } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Link } from '@/components/ui/link';
 import {
@@ -45,23 +47,14 @@ import { cn } from '@/lib/utils';
 /* Discovery storyboard: the input stays anchored while attention changes below it.
  *   0ms  request starts; newsletter exits over 140ms
  * 140ms  loading/results enter over 200ms; network readiness owns the next stage
- * toggle  plus ↔ green check, 160ms blur crossfade; Save owns the write
+ * toggle  plus ↔ green check, IconCrossfade's blur swap; Save owns the write
  */
-const TIMING = { exit: 0.14, enter: 0.2, icon: 0.16 };
+const TIMING = { exit: 0.14, enter: 0.2 };
 const PANEL = {
     offset: 'translateY(4px)',
     rest: 'translateY(0px)',
     ease: [0.16, 1, 0.3, 1] as const,
     resize: { type: 'spring', duration: 0.24, bounce: 0 } as const,
-};
-const ICON = {
-    hidden: (instant: boolean) => ({
-        opacity: 0,
-        filter: instant ? 'blur(0px)' : 'blur(3px)',
-        transform: instant ? 'scale(1)' : 'scale(0.9)',
-        transition: { duration: instant ? 0 : TIMING.icon, ease: PANEL.ease },
-    }),
-    visible: { opacity: 1, filter: 'blur(0px)', transform: 'scale(1)' },
 };
 
 export function AddSourceDialog() {
@@ -90,19 +83,19 @@ export function AddSourceDialog() {
                 <PlusIcon className="size-5" />
             </Dialog.Trigger>
             <Dialog.Portal>
-                <Dialog.Backdrop className="fixed inset-0 z-40 bg-background/40 backdrop-blur-xs" />
+                <DialogBackdrop />
                 <LayoutGroup>
-                    <Dialog.Popup
+                    <DialogPopup
                         render={
                             <motion.div
-                                layout={reduced ? false : 'size'}
+                                layout={!reduced}
                                 transition={{ layout: PANEL.resize }}
                             />
                         }
                         initialFocus={(interaction) =>
                             interaction === 'touch' ? true : inputRef.current
                         }
-                        className="fixed top-[clamp(1rem,8vh,6rem)] left-1/2 z-50 max-h-[calc(92dvh-1rem)] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-y-auto rounded-xl bg-popover p-6 text-popover-foreground shadow-popover sm:p-8"
+                        className="max-w-xl sm:p-8"
                     >
                         <motion.div
                             className="relative"
@@ -134,7 +127,7 @@ export function AddSourceDialog() {
                                 onClose={() => setOpen(false)}
                             />
                         </motion.div>
-                    </Dialog.Popup>
+                    </DialogPopup>
                 </LayoutGroup>
             </Dialog.Portal>
         </Dialog.Root>
@@ -758,37 +751,11 @@ function FeedSelection({
             size="icon-lg"
             variant="ghost"
         >
-            <SelectionIcon checked={checked} instant={instant} />
+            <IconCrossfade
+                name={checked ? 'check' : 'plus'}
+                icon={checked ? CheckIcon : PlusIcon}
+                instant={instant}
+            />
         </Button>
-    );
-}
-
-function SelectionIcon({
-    checked,
-    instant,
-}: {
-    checked: boolean;
-    instant: boolean;
-}) {
-    const state = checked ? 'check' : 'plus';
-    const Icon = { check: CheckIcon, plus: PlusIcon }[state];
-    return (
-        <AnimatePresence initial={false} custom={instant}>
-            <motion.span
-                key={state}
-                className="absolute flex size-5 items-center justify-center"
-                custom={instant}
-                variants={ICON}
-                initial={instant ? false : 'hidden'}
-                animate="visible"
-                exit="hidden"
-                transition={{
-                    duration: instant ? 0 : TIMING.icon,
-                    ease: PANEL.ease,
-                }}
-            >
-                <Icon className="size-5" />
-            </motion.span>
-        </AnimatePresence>
     );
 }

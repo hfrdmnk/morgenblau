@@ -5,6 +5,9 @@ import { api } from '@/lib/api';
 import { digestApiPath } from '@/lib/paths';
 
 type Source = {
+    kind?: string;
+    id?: string;
+    rkey?: string;
     title: string | null;
     feedUrl?: string;
     siteUrl: string | null;

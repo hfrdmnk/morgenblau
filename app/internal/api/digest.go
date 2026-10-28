@@ -49,7 +49,7 @@ type SourceMeta struct {
 	Title      *string `json:"title"`
 	SiteURL    *string `json:"siteUrl"`
 	FaviconURL *string `json:"faviconUrl"`
-	// Rkey is only set on the reader path (entryRowToWire); digest/source-list leave it empty so it drops from JSON.
+	// Rkey links an entry to its source page; the source-list path leaves it empty, as the client is already there.
 	Rkey string `json:"rkey,omitempty"`
 }
 
@@ -182,7 +182,7 @@ func entryListRowToWire(f entryListFields) EntryWire {
 }
 
 func digestRowToWire(row db.ListDigestForUserRow) EntryWire {
-	return entryListRowToWire(entryListFields{
+	wire := entryListRowToWire(entryListFields{
 		ID:           row.ID,
 		EntrySlug:    row.EntrySlug,
 		Title:        row.Title,
@@ -197,6 +197,8 @@ func digestRowToWire(row db.ListDigestForUserRow) EntryWire {
 		ContentHtml:  row.ContentHtml,
 		Metadata:     row.Metadata,
 	})
+	wire.Source.Rkey = row.SubscriptionRkey
+	return wire
 }
 
 // displayTitle prefers the user's per-subscription title over the catalog title (publication name for standardfeed, NULL for rss).

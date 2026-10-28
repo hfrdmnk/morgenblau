@@ -212,7 +212,7 @@ function DigestDateNav() {
                     </Link>
                 )}
             </nav>
-            <nav aria-label="Digest date" className="hidden grid-cols-7 items-start gap-3.5 md:grid md:mt-2.25">
+            <nav aria-label="Digest date" className="hidden grid-cols-7 items-start gap-3.5 font-book md:grid md:mt-2.25">
                 {dates.map((date) => (
                     <DateOption date={date} key={toDateKey(date)} selectedKey={selectedKey} todayKey={todayKey} />
                 ))}
@@ -238,11 +238,12 @@ function DateOption({ date, selectedKey, todayKey }: {
         <Link
             aria-current={selected ? 'date' : undefined}
             aria-label={fullDate.format(date)}
-            className={cn('w-5 text-center text-sm hover:text-foreground', selected ? 'text-primary' : 'text-muted-foreground')}
+            className={cn('flex w-5 flex-col items-center text-sm hover:text-foreground', selected ? 'text-primary' : 'text-muted-foreground')}
             href={digestHref(key === todayKey ? undefined : key)}
         >
-            <span className="block">{dayNumber.format(date)}</span>
-            <span className={cn('block text-sm', { invisible: !selected })}>{monthName.format(date)}</span>
+            <span className="tabular-nums">{dayNumber.format(date)}</span>
+            {/* A flex column centres the month even where it is wider than the w-5 day column. */}
+            <span className={cn('whitespace-nowrap', { invisible: !selected })}>{monthName.format(date)}</span>
         </Link>
     );
 }

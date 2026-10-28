@@ -1,11 +1,11 @@
-import { useLocation } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
 import { ItemList, ListItem, ListSkeleton } from '@/components/item-list';
 import { useDigest, type DigestEntry } from '@/hooks/use-digest';
 import { useShortcuts } from '@/hooks/use-shortcuts';
 import { addCalendarDays, selectedDigestDate, startOfToday, toDateKey } from '@/lib/digest-dates';
-import { digestHref, entryHref } from '@/lib/paths';
+import { digestHref, entryHref, readerSourceHref } from '@/lib/paths';
 import { showShortcutNotice } from '@/lib/shortcuts';
 
 const dayName = new Intl.DateTimeFormat(undefined, { weekday: 'long' });
@@ -19,7 +19,7 @@ export function Digest() {
 
     return (
         <main className="mx-auto w-full max-w-3xl px-5 pb-20 pt-20 sm:px-8 md:pt-24">
-            <h1 className="mb-8 text-base font-medium text-muted-foreground">
+            <h1 className="mb-8 text-base font-book text-muted-foreground">
                 {dayName.format(selectedDate)}
             </h1>
             <DigestContent date={selectedKey} state={digest} />
@@ -86,11 +86,13 @@ function LoadedDigest({
 function DigestItem({ date, entry }: { date: string; entry: DigestEntry }) {
     const sourceTitle = entry.source.title || hostLabel(firstDefined(entry.source.siteUrl, entry.source.feedUrl));
     const postHost = hostLabel(firstDefined(entry.url, entry.source.siteUrl, entry.source.feedUrl));
+    const meta = [sourceTitle, postHost].filter(Boolean).join(' · ');
+    const sourceHref = readerSourceHref(entry.source);
     return (
         <ListItem
             href={entryHref(entry.entrySlug, date)}
             icon={entry.source.faviconUrl}
-            meta={[sourceTitle, postHost].filter(Boolean).join(' · ')}
+            meta={sourceHref ? <Link className="rounded-sm hover:text-foreground" href={sourceHref}>{meta}</Link> : meta}
             title={entry.title || 'Untitled'}
         />
     );

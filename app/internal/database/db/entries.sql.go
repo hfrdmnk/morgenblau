@@ -53,6 +53,7 @@ const listDigestForUser = `-- name: ListDigestForUser :many
 SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
     e.published_at, e.fetched_at, e.metadata, e.extracted_body,
+    us.rkey AS subscription_rkey,
     us.title AS feed_title,
     f.title AS catalog_title,
     f.site_url AS feed_site_url,
@@ -73,22 +74,23 @@ type ListDigestForUserParams struct {
 }
 
 type ListDigestForUserRow struct {
-	ID            int64   `json:"id"`
-	FeedUrl       string  `json:"feed_url"`
-	Guid          string  `json:"guid"`
-	EntrySlug     string  `json:"entry_slug"`
-	Url           string  `json:"url"`
-	Title         *string `json:"title"`
-	ContentHtml   *string `json:"content_html"`
-	ContentType   string  `json:"content_type"`
-	PublishedAt   string  `json:"published_at"`
-	FetchedAt     string  `json:"fetched_at"`
-	Metadata      *string `json:"metadata"`
-	ExtractedBody *string `json:"extracted_body"`
-	FeedTitle     *string `json:"feed_title"`
-	CatalogTitle  *string `json:"catalog_title"`
-	FeedSiteUrl   *string `json:"feed_site_url"`
-	FeedIconUrl   *string `json:"feed_icon_url"`
+	ID               int64   `json:"id"`
+	FeedUrl          string  `json:"feed_url"`
+	Guid             string  `json:"guid"`
+	EntrySlug        string  `json:"entry_slug"`
+	Url              string  `json:"url"`
+	Title            *string `json:"title"`
+	ContentHtml      *string `json:"content_html"`
+	ContentType      string  `json:"content_type"`
+	PublishedAt      string  `json:"published_at"`
+	FetchedAt        string  `json:"fetched_at"`
+	Metadata         *string `json:"metadata"`
+	ExtractedBody    *string `json:"extracted_body"`
+	SubscriptionRkey string  `json:"subscription_rkey"`
+	FeedTitle        *string `json:"feed_title"`
+	CatalogTitle     *string `json:"catalog_title"`
+	FeedSiteUrl      *string `json:"feed_site_url"`
+	FeedIconUrl      *string `json:"feed_icon_url"`
 }
 
 func (q *Queries) ListDigestForUser(ctx context.Context, arg ListDigestForUserParams) ([]ListDigestForUserRow, error) {
@@ -113,6 +115,7 @@ func (q *Queries) ListDigestForUser(ctx context.Context, arg ListDigestForUserPa
 			&i.FetchedAt,
 			&i.Metadata,
 			&i.ExtractedBody,
+			&i.SubscriptionRkey,
 			&i.FeedTitle,
 			&i.CatalogTitle,
 			&i.FeedSiteUrl,

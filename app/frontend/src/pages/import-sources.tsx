@@ -10,6 +10,7 @@ import {
     AccordionTrigger,
 } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
+import { DialogBackdrop, DialogPopup } from '@/components/ui/dialog';
 import { useSourceImport, type ImportState } from '@/hooks/use-source-import';
 import { useSources, type FeedSource } from '@/hooks/use-sources';
 import { DataSettings } from '@/layouts/data-settings';
@@ -220,14 +221,14 @@ function ImportDialog({
             }}
         >
             <Dialog.Portal>
-                <Dialog.Backdrop className="fixed inset-0 z-40 bg-background/40 backdrop-blur-xs" />
-                <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 max-h-[85dvh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl bg-popover p-6 text-popover-foreground shadow-popover">
+                <DialogBackdrop />
+                <DialogPopup className="max-h-[85dvh] max-w-md">
                     <ImportDialogContent
                         state={state}
                         onConfirm={onConfirm}
                         onRetry={onRetry}
                     />
-                </Dialog.Popup>
+                </DialogPopup>
             </Dialog.Portal>
         </Dialog.Root>
     );

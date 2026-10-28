@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 
 import { CloseIcon, MoreIcon, PauseIcon, PenIcon, PlayIcon, TagIcon, TrashIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
+import { DialogBackdrop, DialogPopup } from '@/components/ui/dialog';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -370,12 +371,12 @@ function SourceDialog({ title, description, initialFocus, open, pending, onClose
             open={open}
         >
             <Dialog.Portal>
-                <Dialog.Backdrop className="fixed inset-0 z-40 bg-background/40 backdrop-blur-xs transition-opacity duration-(--motion-duration-overlay) ease-out data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
-                <Dialog.Popup initialFocus={initialFocus} className="fixed top-[clamp(1rem,12vh,8rem)] left-1/2 z-50 max-h-[calc(92dvh-1rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 overflow-y-auto rounded-xl bg-popover p-6 text-popover-foreground shadow-popover transition-[opacity,scale] duration-(--motion-duration-overlay) ease-out data-[ending-style]:scale-[0.98] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.98] data-[starting-style]:opacity-0">
+                <DialogBackdrop />
+                <DialogPopup initialFocus={initialFocus} className="max-w-md">
                     <Dialog.Title className="pr-8 text-lg font-medium break-words">{title}</Dialog.Title>
                     {description ? <Dialog.Description className="mt-1 text-sm text-muted-foreground">{description}</Dialog.Description> : null}
                     <div className="mt-6">{children}</div>
-                </Dialog.Popup>
+                </DialogPopup>
             </Dialog.Portal>
         </Dialog.Root>
     );

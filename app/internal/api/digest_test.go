@@ -39,12 +39,13 @@ func TestDigest_NoDate_ReturnsCurrentDayEntries(t *testing.T) {
 	reader := &fakeDigestReader{
 		rows: []db.ListDigestForUserRow{
 			{
-				ID:          42,
-				FeedUrl:     "https://feed.example.com/feed.xml",
-				Url:         "https://feed.example.com/post",
-				Title:       &title,
-				ContentType: "blogpost",
-				PublishedAt: time.Now().UTC().Format(time.RFC3339),
+				ID:               42,
+				FeedUrl:          "https://feed.example.com/feed.xml",
+				Url:              "https://feed.example.com/post",
+				Title:            &title,
+				ContentType:      "blogpost",
+				PublishedAt:      time.Now().UTC().Format(time.RFC3339),
+				SubscriptionRkey: "3kexample2a",
 			},
 		},
 	}
@@ -73,7 +74,10 @@ func TestDigest_NoDate_ReturnsCurrentDayEntries(t *testing.T) {
 		t.Errorf("digest bounds = [%q, %q), want current local day", gotStart, gotEnd)
 	}
 	if len(got.Entries) != 1 || got.Entries[0].ID != float64(42) {
-		t.Errorf("entries = %+v", got.Entries)
+		t.Fatalf("entries = %+v", got.Entries)
+	}
+	if got.Entries[0].Source.Rkey != "3kexample2a" {
+		t.Errorf("source rkey = %q, want the subscription rkey so the digest can link to the source page", got.Entries[0].Source.Rkey)
 	}
 }
 

@@ -53,6 +53,7 @@ UPDATE feed_entries SET extracted_body = ? WHERE id = ?;
 SELECT
     e.id, e.feed_url, e.guid, e.entry_slug, e.url, e.title, e.content_html, e.content_type,
     e.published_at, e.fetched_at, e.metadata, e.extracted_body,
+    us.rkey AS subscription_rkey,
     us.title AS feed_title,
     f.title AS catalog_title,
     f.site_url AS feed_site_url,

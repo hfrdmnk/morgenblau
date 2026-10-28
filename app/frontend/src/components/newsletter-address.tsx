@@ -1,8 +1,10 @@
-import { useEffect, useId, useState } from 'react';
+import { useReducedMotion } from 'motion/react';
+import { useEffect, useId, useState, type MouseEvent } from 'react';
 import { toast } from 'sonner';
 import { Link as RouterLink } from 'wouter';
 
-import { CheckIcon, CopyIcon, LoadingIcon } from '@/components/icons';
+import { IconCrossfade } from '@/components/icon-crossfade';
+import { CheckIcon, CopyIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { useAppProfile } from '@/hooks/use-app-profile';
 import { newsletterAddress } from '@/lib/add-source';
@@ -100,10 +102,11 @@ function NewsletterAddressContent({
     if (status === 'loading')
         return (
             <div
-                className="mt-4 flex min-h-14 items-center justify-center rounded-lg bg-input text-muted-foreground"
+                className="mt-4 flex h-13 items-center gap-2 rounded-lg bg-input pr-1 pl-3"
                 role="status"
             >
-                <LoadingIcon className="size-5 motion-safe:animate-spin" />
+                <span className="h-4 w-3/5 animate-pulse rounded bg-foreground/8 motion-reduce:animate-none" />
+                <span className="ml-auto size-11 shrink-0" />
                 <span className="sr-only">Loading your newsletter address</span>
             </div>
         );
@@ -126,11 +129,11 @@ function NewsletterAddressContent({
         <RouterLink
             href={PATHS.general}
             onClick={onNavigate}
-            className="relative mt-4 block min-h-14 overflow-hidden rounded-lg bg-input text-sm"
+            className="relative mt-4 block h-13 overflow-hidden rounded-lg bg-input text-sm"
         >
             <span
                 aria-hidden="true"
-                className="flex min-h-14 items-center justify-between gap-2 px-3 text-subtle-foreground blur-[3px] select-none"
+                className="flex h-full items-center justify-between gap-2 px-3 text-subtle-foreground blur-[3px] select-none"
             >
                 your-address@news.example.com
                 <CopyIcon className="size-4 shrink-0" />
@@ -144,7 +147,15 @@ function NewsletterAddressContent({
 
 function CopyNewsletterAddress({ address }: { address: string }) {
     const [copied, setCopied] = useState(false);
-    async function copy() {
+    const [keyboard, setKeyboard] = useState(false);
+    const reduced = useReducedMotion();
+    useEffect(() => {
+        if (!copied) return;
+        const timer = window.setTimeout(() => setCopied(false), 1500);
+        return () => window.clearTimeout(timer);
+    }, [copied]);
+    async function copy(event: MouseEvent) {
+        setKeyboard(event.detail === 0);
         try {
             await navigator.clipboard.writeText(address);
             setCopied(true);
@@ -155,7 +166,7 @@ function CopyNewsletterAddress({ address }: { address: string }) {
         }
     }
     return (
-        <div className="mt-4 flex items-center gap-2 rounded-lg bg-input py-1 pr-1 pl-3">
+        <div className="mt-4 flex h-13 items-center gap-2 rounded-lg bg-input pr-1 pl-3">
             <input
                 aria-label="Newsletter email address"
                 className="min-w-0 flex-1 bg-transparent text-sm"
@@ -169,12 +180,17 @@ function CopyNewsletterAddress({ address }: { address: string }) {
                         ? 'Newsletter address copied'
                         : 'Copy newsletter email address'
                 }
-                className={cn({ 'text-success': copied })}
+                className={cn('relative', { 'text-success': copied })}
                 onClick={copy}
                 size="icon-lg"
                 variant="ghost"
             >
-                {copied ? <CheckIcon /> : <CopyIcon />}
+                <IconCrossfade
+                    className="size-4"
+                    icon={copied ? CheckIcon : CopyIcon}
+                    instant={Boolean(reduced) || keyboard}
+                    name={copied ? 'check' : 'copy'}
+                />
             </Button>
             <span aria-live="polite" className="sr-only">
                 {copied ? 'Newsletter address copied.' : ''}
