@@ -11,6 +11,8 @@ services:
     env:
       APP_ENV: local
       DEV_LOGIN_ENABLED: "true"
+      NEWSLETTER_DOMAIN: newsletter.localhost
+      SMTP_LISTEN_ADDR: 127.0.0.1:2525
     health: /api/health
     portal:
       url: /login
