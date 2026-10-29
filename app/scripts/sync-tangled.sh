@@ -13,15 +13,15 @@ if [ "$(git remote get-url tangled)" != "$TANGLED_URL" ]; then
     exit 1
 fi
 
-echo "Fetching main from origin (GitHub)..."
-git fetch origin main
+echo "Fetching every branch from origin (GitHub)..."
+git fetch --prune origin '+refs/heads/*:refs/mirror/*'
 
-echo "Pushing origin/main to Tangled..."
+echo "Mirroring branches to Tangled..."
 if [ -f "$HOME/.ssh/tangled" ]; then
     GIT_SSH_COMMAND="ssh -i $HOME/.ssh/tangled -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
-        git push --force tangled refs/remotes/origin/main:refs/heads/main
+        git push --force --prune tangled 'refs/mirror/*:refs/heads/*'
 else
-    git push --force tangled refs/remotes/origin/main:refs/heads/main
+    git push --force --prune tangled 'refs/mirror/*:refs/heads/*'
 fi
 
-echo "Done. Tangled main matches GitHub main."
+echo "Done. Tangled branches match GitHub."

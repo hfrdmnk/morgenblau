@@ -14,6 +14,6 @@ Each folder is its own project with its own `bun.lock`; run commands from inside
 
 [GitHub](https://github.com/hfrdmnk/morgenblau) is the source of truth; [Tangled](https://tangled.org/dominikhofer.me/morgenblau) is a read-only mirror.
 
-Pushes to GitHub's `main` automatically sync to Tangled through `.github/workflows/sync-tangled.yml`. Run `app/scripts/sync-tangled.sh` to retry the mirror manually.
+Every branch push and deletion on GitHub automatically syncs to Tangled through `.github/workflows/sync-tangled.yml`. Run `app/scripts/sync-tangled.sh` to retry the mirror manually.
 
 Activate the committed Git hooks once per clone with `make -C app hooks`.

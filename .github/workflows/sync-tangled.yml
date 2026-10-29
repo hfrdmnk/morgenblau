@@ -2,28 +2,27 @@ name: Sync Tangled
 
 on:
   push:
-    branches: [main]
+  delete:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: sync-tangled-main
+  group: sync-tangled
   cancel-in-progress: true
 
 jobs:
   sync:
-    name: Sync main
+    name: Mirror branches
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
-      - name: Check out main
+      - name: Check out
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          ref: main
 
       - name: Configure Tangled SSH
         env:
@@ -36,13 +35,17 @@ jobs:
           ssh-keyscan -t ed25519 tangled.org > "$HOME/.ssh/known_hosts" 2>/dev/null
           ssh-keygen -lf "$HOME/.ssh/known_hosts" | awk '{print $2}' | grep -Fxq 'SHA256:fLyp6ivr5HqmGI8yJiPYstTiJa2AXF/RAa9kF/ur1xo'
 
-      - name: Push main to Tangled
+      # A namespace of its own keeps origin/HEAD out of the mirror; push ignores negative refspecs.
+      - name: Fetch every GitHub branch
+        run: git fetch --prune origin '+refs/heads/*:refs/mirror/*'
+
+      - name: Mirror branches to Tangled
         env:
           GIT_SSH_COMMAND: ssh -i ~/.ssh/tangled -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
         # The knot rate-limits per source IP, and hosted runners share IPs with other jobs.
         run: |
           for delay in 15 30 45 0; do
-            git push --force git@tangled.org:dominikhofer.me/morgenblau HEAD:refs/heads/main && exit 0
+            git push --force --prune git@tangled.org:dominikhofer.me/morgenblau 'refs/mirror/*:refs/heads/*' && exit 0
             [ "$delay" -gt 0 ] || exit 1
             sleep "$delay"
           done
