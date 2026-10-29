@@ -12,6 +12,7 @@ import {
     useState,
     type FormEvent,
     type MouseEvent,
+    type ReactElement,
     type ReactNode,
     type RefObject,
 } from 'react';
@@ -57,7 +58,7 @@ const PANEL = {
     resize: { type: 'spring', duration: 0.24, bounce: 0 } as const,
 };
 
-export function AddSourceDialog() {
+export function AddSourceDialog({ trigger }: { trigger?: ReactElement }) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [open, setOpen] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -70,18 +71,20 @@ export function AddSourceDialog() {
                 else setOpen(next);
             }}
         >
-            <Dialog.Trigger
-                render={
-                    <Button
-                        aria-label="Add a source"
-                        className="text-subtle-foreground"
-                        size="icon-sm"
-                        variant="ghost"
-                    />
-                }
-            >
-                <PlusIcon className="size-5" />
-            </Dialog.Trigger>
+            {trigger ? <Dialog.Trigger render={trigger} /> : (
+                <Dialog.Trigger
+                    render={
+                        <Button
+                            aria-label="Add a source"
+                            className="text-subtle-foreground"
+                            size="icon-sm"
+                            variant="ghost"
+                        />
+                    }
+                >
+                    <PlusIcon className="size-5" />
+                </Dialog.Trigger>
+            )}
             <Dialog.Portal>
                 <DialogBackdrop />
                 <LayoutGroup>
@@ -548,12 +551,13 @@ function FeedList({ children }: { children: ReactNode }) {
     useEffect(() => {
         const list = listRef.current;
         if (!list) return;
-        const update = () =>
-            setEdges({
-                top: list.scrollTop > 1,
-                bottom:
-                    list.scrollTop + list.clientHeight < list.scrollHeight - 1,
-            });
+        const update = () => {
+            const top = list.scrollTop > 1;
+            const bottom = list.scrollTop + list.clientHeight < list.scrollHeight - 1;
+            setEdges((current) =>
+                current.top === top && current.bottom === bottom ? current : { top, bottom },
+            );
+        };
         const observer = new ResizeObserver(update);
         observer.observe(list);
         update();

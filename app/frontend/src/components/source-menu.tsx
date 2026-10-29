@@ -34,36 +34,24 @@ import {
 
 type DialogKind = 'rename' | 'tags' | 'remove';
 
-export function SourceMenu({ source, onChanged, onRemoved = onChanged }: {
+export function SourceMenu({ source, onChanged, onRemoved = onChanged, removedFocus }: {
     source: EditableSource;
     onChanged: () => void;
     onRemoved?: () => void;
+    // Where focus lands once the removed source's row, and with it the menu trigger, is gone.
+    removedFocus?: RefObject<HTMLElement | null>;
 }) {
     const [dialog, setDialog] = useState<DialogKind | null>(null);
+    // Only the last opened dialog is mounted, and it stays mounted after closing so its exit transition can play; a long source list then carries no dialogs until one is used.
+    const [mounted, setMounted] = useState<DialogKind | null>(null);
     // A fresh key per opening starts each dialog from the source's current values.
     const [opening, setOpening] = useState(0);
-    const stopped = source.kind === 'newsletter' && source.stopped;
     const open = (kind: DialogKind) => {
         setOpening((count) => count + 1);
+        setMounted(kind);
         setDialog(kind);
     };
     const close = () => setDialog(null);
-
-    async function resume() {
-        if (source.kind !== 'newsletter') return;
-        try {
-            await resumeNewsletter(source);
-            toast.success('Newsletter resumed');
-            onChanged();
-        } catch (error) {
-            if (isGone(error)) {
-                toast.error(GONE);
-                onChanged();
-            } else {
-                toast.error(describeMutationError(error, 'Couldn’t resume this newsletter.'));
-            }
-        }
-    }
 
     return (
         <>
@@ -90,29 +78,66 @@ export function SourceMenu({ source, onChanged, onRemoved = onChanged }: {
                         Edit tags
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    {source.kind === 'feed' ? (
-                        <DropdownMenuItem onClick={() => open('remove')} variant="destructive">
-                            <TrashIcon />
-                            Delete
-                        </DropdownMenuItem>
-                    ) : stopped ? (
-                        <DropdownMenuItem onClick={() => void resume()}>
-                            <PlayIcon />
-                            Resume newsletter
-                        </DropdownMenuItem>
-                    ) : (
-                        <DropdownMenuItem onClick={() => open('remove')} variant="destructive">
-                            <PauseIcon />
-                            Stop newsletter
-                        </DropdownMenuItem>
-                    )}
+                    <RemovalItem onChanged={onChanged} onRemove={() => open('remove')} source={source} />
                 </DropdownMenuContent>
             </DropdownMenu>
-            <RenameDialog key={`rename-${opening}`} onChanged={onChanged} onClose={close} open={dialog === 'rename'} source={source} />
-            <TagsDialog key={`tags-${opening}`} onChanged={onChanged} onClose={close} open={dialog === 'tags'} source={source} />
-            <RemoveDialog key={`remove-${opening}`} onChanged={onChanged} onClose={close} onRemoved={onRemoved} open={dialog === 'remove'} source={source} />
+            {mounted ? (
+                <MountedDialog key={`${mounted}-${opening}`} kind={mounted} onChanged={onChanged} onClose={close}
+                    onRemoved={onRemoved} open={dialog === mounted} removedFocus={removedFocus} source={source} />
+            ) : null}
         </>
     );
+}
+
+function MountedDialog({ kind, onRemoved, removedFocus, ...props }: DialogProps & {
+    kind: DialogKind;
+    onRemoved: () => void;
+    removedFocus?: RefObject<HTMLElement | null>;
+}) {
+    if (kind === 'rename') return <RenameDialog {...props} />;
+    if (kind === 'tags') return <TagsDialog {...props} />;
+    return <RemoveDialog onRemoved={onRemoved} removedFocus={removedFocus} {...props} />;
+}
+
+function RemovalItem({ source, onRemove, onChanged }: { source: EditableSource; onRemove: () => void; onChanged: () => void }) {
+    if (source.kind === 'feed') {
+        return (
+            <DropdownMenuItem onClick={onRemove} variant="destructive">
+                <TrashIcon />
+                Delete
+            </DropdownMenuItem>
+        );
+    }
+    if (source.stopped) {
+        return (
+            <DropdownMenuItem onClick={() => void resume(source, onChanged)}>
+                <PlayIcon />
+                Resume newsletter
+            </DropdownMenuItem>
+        );
+    }
+    return (
+        <DropdownMenuItem onClick={onRemove} variant="destructive">
+            <PauseIcon />
+            Stop newsletter
+        </DropdownMenuItem>
+    );
+}
+
+async function resume(source: EditableSource, onChanged: () => void) {
+    if (source.kind !== 'newsletter') return;
+    try {
+        await resumeNewsletter(source);
+        toast.success('Newsletter resumed');
+        onChanged();
+    } catch (error) {
+        if (isGone(error)) {
+            toast.error(GONE);
+            onChanged();
+        } else {
+            toast.error(describeMutationError(error, 'Couldn’t resume this newsletter.'));
+        }
+    }
 }
 
 // onChanged refreshes the page's copy; a source that vanished closes its dialog so the refresh can drop it.
@@ -216,7 +241,7 @@ function TagsDialog(props: DialogProps) {
             title="Edit tags"
         >
             <form onSubmit={submit}>
-                <TagChips onRemove={(tag) => setTags(tags.filter((other) => other !== tag))} tags={tags} />
+                <TagChips inputRef={inputRef} onRemove={(tag) => setTags(tags.filter((other) => other !== tag))} tags={tags} />
                 <TagInput
                     canAdd={canAddTags(tags, draft)}
                     draft={draft}
@@ -237,7 +262,18 @@ function TagsDialog(props: DialogProps) {
     );
 }
 
-function TagChips({ tags, onRemove }: { tags: string[]; onRemove: (tag: string) => void }) {
+function TagChips({ tags, inputRef, onRemove }: {
+    tags: string[];
+    inputRef: RefObject<HTMLInputElement | null>;
+    onRemove: (tag: string) => void;
+}) {
+    // The removed chip's button unmounts, so focus moves to a neighbour first instead of dropping to the page.
+    function remove(tag: string, button: HTMLButtonElement) {
+        const buttons = [...(button.closest('ul')?.querySelectorAll('button') ?? [])];
+        const index = buttons.indexOf(button);
+        (buttons[index + 1] ?? buttons[index - 1] ?? inputRef.current)?.focus();
+        onRemove(tag);
+    }
     if (!tags.length) return <p className="mb-5 text-sm text-subtle-foreground">No tags yet.</p>;
     return (
         <ul aria-label="Tags" className="mb-5 flex flex-wrap gap-2">
@@ -246,8 +282,8 @@ function TagChips({ tags, onRemove }: { tags: string[]; onRemove: (tag: string) 
                     {tag}
                     <button
                         aria-label={`Remove tag ${tag}`}
-                        className="flex size-5 cursor-pointer items-center justify-center rounded-full hover:bg-secondary hover:text-foreground"
-                        onClick={() => onRemove(tag)}
+                        className="relative flex size-5 cursor-pointer items-center justify-center rounded-full before:absolute before:-inset-1 hover:bg-secondary hover:text-foreground"
+                        onClick={(event) => remove(tag, event.currentTarget)}
                         type="button"
                     >
                         <CloseIcon className="size-3.5" />
@@ -312,7 +348,7 @@ const REMOVAL = {
     feed: {
         title: (name: string) => `Delete “${name}”?`,
         description: 'Its posts leave your digest. Posts you saved stay in your Library.',
-        action: 'Delete',
+        action: 'Delete source',
         done: 'Source deleted',
         failed: 'Couldn’t delete this source.',
     },
@@ -325,10 +361,15 @@ const REMOVAL = {
     },
 };
 
-function RemoveDialog({ onRemoved, ...props }: DialogProps & { onRemoved: () => void }) {
+function RemoveDialog({ onRemoved, removedFocus, ...props }: DialogProps & {
+    onRemoved: () => void;
+    removedFocus?: RefObject<HTMLElement | null>;
+}) {
     const { source, open, onClose } = props;
     const copy = REMOVAL[source.kind];
+    const removed = useRef(false);
     const mutation = useMutation(props, () => {
+        removed.current = true;
         toast.success(copy.done);
         onRemoved();
     }, copy.failed);
@@ -336,6 +377,7 @@ function RemoveDialog({ onRemoved, ...props }: DialogProps & { onRemoved: () => 
     return (
         <SourceDialog
             description={copy.description}
+            finalFocus={removedFocus ? () => (removed.current ? removedFocus.current : true) : undefined}
             onClose={onClose}
             open={open}
             pending={mutation.pending}
@@ -353,10 +395,11 @@ function RemoveDialog({ onRemoved, ...props }: DialogProps & { onRemoved: () => 
     );
 }
 
-function SourceDialog({ title, description, initialFocus, open, pending, onClose, children }: {
+function SourceDialog({ title, description, initialFocus, finalFocus, open, pending, onClose, children }: {
     title: string;
     description?: string;
     initialFocus?: RefObject<HTMLElement | null>;
+    finalFocus?: () => HTMLElement | null | boolean;
     open: boolean;
     pending: boolean;
     onClose: () => void;
@@ -372,7 +415,7 @@ function SourceDialog({ title, description, initialFocus, open, pending, onClose
         >
             <Dialog.Portal>
                 <DialogBackdrop />
-                <DialogPopup initialFocus={initialFocus} className="max-w-md">
+                <DialogPopup finalFocus={finalFocus} initialFocus={initialFocus} className="max-w-md">
                     <Dialog.Title className="pr-8 text-lg font-medium break-words">{title}</Dialog.Title>
                     {description ? <Dialog.Description className="mt-1 text-sm text-muted-foreground">{description}</Dialog.Description> : null}
                     <div className="mt-6">{children}</div>

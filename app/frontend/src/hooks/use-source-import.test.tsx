@@ -23,9 +23,10 @@ const sources = [
 ];
 
 function Probe() {
-    const { state, startImport, cancel } = useSourceImport();
+    const { state, prepare, startImport, cancel } = useSourceImport();
     return <>
         <button onClick={() => void startImport({ sources, warnings: [] })}>Import</button>
+        <button onClick={() => void prepare('skyreader')}>Prepare</button>
         {state.kind === 'done' && <button onClick={() => void startImport({ sources: state.outcome.remaining, warnings: [] }, state.outcome)}>Retry</button>}
         <button onClick={cancel}>Done</button>
         <output>{JSON.stringify(state)}</output>
@@ -54,4 +55,22 @@ test('the saved receipt stays open and a partial retry retains all confirmed sou
     expect(retried.outcome.remaining).toEqual([]);
     await act(async () => Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Done')!.click());
     expect(JSON.parse(container.querySelector('output')!.textContent!).kind).toBe('idle');
+});
+
+test('a failed preparation stays on screen for the provider that failed until the next attempt', async () => {
+    let calls = 0;
+    globalThis.fetch = Object.assign(async () => ++calls === 1
+        ? Response.json({ code: 'unavailable', message: 'Skyreader is unavailable right now.' }, { status: 502 })
+        : Response.json({ sources, warnings: [] }), { preconnect: realFetch.preconnect });
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    cleanup = () => { root.unmount(); container.remove(); };
+    await act(async () => root.render(<Probe />));
+    const prepare = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Prepare')!;
+    await act(async () => prepare.click());
+    expect(JSON.parse(container.querySelector('output')!.textContent!)).toEqual({
+        kind: 'failed', provider: 'skyreader', message: 'Skyreader is unavailable right now.',
+    });
+    await act(async () => prepare.click());
+    expect(JSON.parse(container.querySelector('output')!.textContent!).kind).toBe('confirm');
 });

@@ -6,6 +6,8 @@ export function Toaster() {
     return (
         <Sonner
             position="top-center"
+            offset={{ top: 'calc(1.5rem + env(safe-area-inset-top))' }}
+            mobileOffset={{ top: 'calc(1rem + env(safe-area-inset-top))' }}
             icons={{
                 success: <CheckIcon className="size-4 text-success-icon" />,
                 error: <AlertIcon className="size-4 text-error-icon" />,

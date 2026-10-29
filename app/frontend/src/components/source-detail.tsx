@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import { BackLink } from '@/components/back-link';
 import { ItemList, ListError, ListItem, ListSkeleton, SourceIcon } from '@/components/item-list';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useSources, type SourceEntry } from '@/hooks/use-sources';
 import { entryHref, PATHS } from '@/lib/paths';
 import { formatDate } from '@/lib/source-display';
@@ -10,7 +11,7 @@ type Loadable<T> = ReturnType<typeof useSources<T>>;
 
 export function SourceDetailPage({ children }: { children: ReactNode }) {
     return (
-        <main className="mx-auto w-full max-w-3xl px-5 pb-20 pt-6 sm:px-8 md:pt-10">
+        <main className="mx-auto w-full max-w-3xl px-5 pb-20 pt-6 sm:px-8 md:pt-10" id="main">
             <nav aria-label="Source">
                 <BackLink href={PATHS.sources} label="Sources" />
             </nav>
@@ -28,6 +29,7 @@ export function SourceHeader({ title, icon, identity, facts, tags = [], health, 
     health?: ReactNode;
     menu: ReactNode;
 }) {
+    useDocumentTitle(title);
     return (
         <header className="mb-14">
             <div className="flex min-w-0 items-center gap-3">
@@ -92,6 +94,7 @@ function EntriesBody({ label, from, state, empty }: {
 }
 
 export function SourceUnavailable<T>({ state, label }: { state: Exclude<Loadable<T>, { status: 'loaded' }>; label: string }) {
+    useDocumentTitle('Source');
     if (state.status === 'loading') {
         return (
             <div aria-label={`Loading ${label}`} role="status">

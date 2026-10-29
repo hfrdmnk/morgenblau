@@ -1,10 +1,12 @@
 import { NewsletterAddress } from '@/components/newsletter-address';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useReaderFont } from '@/hooks/use-reader-font';
 import { DataSettings } from '@/layouts/data-settings';
 import { cn } from '@/lib/utils';
 
 export function Settings() {
     const [readerFont, setReaderFont, fontError] = useReaderFont();
+    useDocumentTitle('General settings');
 
     return (
         <DataSettings>

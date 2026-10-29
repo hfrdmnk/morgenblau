@@ -1,25 +1,30 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode, type RefObject } from 'react';
 import { Link } from 'wouter';
 
 import { FeedHealth, GeneratedNote } from '@/components/feed-health';
 import { ItemList, ListError, ListItem, ListSkeleton } from '@/components/item-list';
 import { SourceMenu } from '@/components/source-menu';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-sources';
 import { newsletterSourceHref, PATHS, sourceHref } from '@/lib/paths';
 import { feedEditable, newsletterEditable } from '@/lib/source-edit';
 import { displayURL, groupByInitial } from '@/lib/source-display';
 
+type RemovedFocus = RefObject<HTMLHeadingElement | null>;
+
 export function Sources() {
+    const heading = useRef<HTMLHeadingElement>(null);
+    useDocumentTitle('Sources');
     return (
-        <main aria-label="Sources" className="mx-auto w-full max-w-3xl space-y-14 px-5 pb-20 pt-20 sm:px-8 md:pt-24">
-            <h1 className="sr-only">Sources</h1>
-            <FeedList />
-            <NewsletterList />
+        <main aria-label="Sources" className="mx-auto w-full max-w-3xl space-y-14 px-5 pb-20 pt-20 sm:px-8 md:pt-24" id="main">
+            <h1 className="sr-only" ref={heading} tabIndex={-1}>Sources</h1>
+            <FeedList removedFocus={heading} />
+            <NewsletterList removedFocus={heading} />
         </main>
     );
 }
 
-function FeedList() {
+function FeedList({ removedFocus }: { removedFocus: RemovedFocus }) {
     const state = useSources<FeedSource[]>('/api/subscriptions', 15_000);
     return (
         <SourceSection title="Feeds">
@@ -29,9 +34,9 @@ function FeedList() {
                         row={(source) => (
                             <SourceRow key={source.rkey} href={sourceHref(source.rkey)} title={source.title}
                                 identity={source.siteUrl || source.feedUrl} favicon={source.faviconUrl}
-                                primary={source.primary} health={<FeedHealth source={source} />}
+                                primary={source.primary} health={<FeedHealth labelled source={source} />}
                                 note={<GeneratedNote source={source} />}
-                                menu={<SourceMenu onChanged={state.refresh}
+                                menu={<SourceMenu onChanged={state.refresh} removedFocus={removedFocus}
                                     source={feedEditable(source, sourceLabel(source.title, source.siteUrl || source.feedUrl))} />} />
                         )} />
                 ) : <p className="text-sm text-muted-foreground">No feeds yet. <Link href={PATHS.import} className="underline underline-offset-4">Import feeds</Link> to get started.</p>
@@ -40,7 +45,7 @@ function FeedList() {
     );
 }
 
-function NewsletterList() {
+function NewsletterList({ removedFocus }: { removedFocus: RemovedFocus }) {
     const state = useSources<{ active: NewsletterSource[]; stopped: NewsletterSource[] }>('/api/newsletters');
     if (state.status !== 'loaded') {
         return <SourceSection title="Newsletters"><ListStatus label="newsletters" state={state} /></SourceSection>;
@@ -48,12 +53,12 @@ function NewsletterList() {
     return (
         <>
             <SourceSection title="Newsletters">
-                {state.data.active.length ? <NewsletterRows onChanged={state.refresh} sources={state.data.active} /> :
+                {state.data.active.length ? <NewsletterRows onChanged={state.refresh} removedFocus={removedFocus} sources={state.data.active} /> :
                     <p className="text-sm text-muted-foreground">Newsletters appear here when mail arrives at your private address.</p>}
             </SourceSection>
             {state.data.stopped.length > 0 ? (
                 <SourceSection title="Stopped newsletters">
-                    <NewsletterRows onChanged={state.refresh} sources={state.data.stopped} stopped />
+                    <NewsletterRows onChanged={state.refresh} removedFocus={removedFocus} sources={state.data.stopped} stopped />
                 </SourceSection>
             ) : null}
         </>
@@ -69,15 +74,15 @@ function SourceSection({ title, children }: { title: string; children: ReactNode
     );
 }
 
-function NewsletterRows({ sources, stopped = false, onChanged }: {
-    sources: NewsletterSource[]; stopped?: boolean; onChanged: () => void;
+function NewsletterRows({ sources, stopped = false, onChanged, removedFocus }: {
+    sources: NewsletterSource[]; stopped?: boolean; onChanged: () => void; removedFocus: RemovedFocus;
 }) {
     return (
         <LetterGroups sources={sources} label={(source) => sourceLabel(source.title, source.senderAddress)}
             row={(source) => (
                 <SourceRow key={source.id} href={newsletterSourceHref(source.id)} title={source.title}
                     identity={source.senderAddress} primary={!stopped && source.primary}
-                    menu={<SourceMenu onChanged={onChanged} source={newsletterEditable(source, stopped)} />} />
+                    menu={<SourceMenu onChanged={onChanged} removedFocus={removedFocus} source={newsletterEditable(source, stopped)} />} />
             )} />
     );
 }

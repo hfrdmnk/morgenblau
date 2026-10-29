@@ -14,6 +14,7 @@ import { ImportSources } from '@/pages/import-sources';
 import { Library } from '@/pages/library';
 import { Login } from '@/pages/login';
 import { NewsletterSource } from '@/pages/newsletter-source';
+import { NotFound } from '@/pages/not-found';
 import { Settings } from '@/pages/settings';
 import { Source } from '@/pages/source';
 import { Sources } from '@/pages/sources';
@@ -73,6 +74,9 @@ export default function App() {
                                         </Route>
                                     ))}
                                 </Switch>
+                            </Route>
+                            <Route>
+                                <NotFound />
                             </Route>
                         </Switch>
                     </AppShell>

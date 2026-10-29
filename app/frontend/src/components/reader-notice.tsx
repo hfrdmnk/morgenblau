@@ -1,3 +1,4 @@
 export function ReaderNotice({ notice }: { notice: string }) {
-    return notice ? <p className="mt-5 text-sm text-muted-foreground" role="status">{notice}</p> : null;
+    // The live region must exist before its message arrives, or screen readers skip the announcement.
+    return <p className={notice ? 'mt-5 text-sm text-muted-foreground' : 'sr-only'} role="status">{notice}</p>;
 }

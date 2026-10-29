@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { DialogBackdrop, DialogPopup } from '@/components/ui/dialog';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useSourceImport, type ImportState } from '@/hooks/use-source-import';
 import { useSources, type FeedSource } from '@/hooks/use-sources';
 import { DataSettings } from '@/layouts/data-settings';
@@ -20,9 +21,12 @@ import type { ImportOutcome, ImportPlan, ImportSource } from '@/lib/source-impor
 export function ImportSources() {
     const { state, prepare, startImport, cancel } = useSourceImport();
     const input = useRef<HTMLInputElement>(null);
+    useDocumentTitle('Import sources');
     const busy = state.kind === 'preparing' || state.kind === 'importing';
     const preparingProvider =
         state.kind === 'preparing' ? state.provider : null;
+    const failure = (provider: string) =>
+        state.kind === 'failed' && state.provider === provider ? state.message : null;
 
     return (
         <DataSettings>
@@ -65,10 +69,12 @@ export function ImportSources() {
                             ? 'Loading'
                             : 'Choose OPML file'}
                     </Button>
+                    <ImportError message={failure('opml')} />
                 </section>
 
                 <YouTubeImport
                     busy={busy}
+                    error={failure('youtube')}
                     loading={preparingProvider === 'youtube'}
                     onFile={(file) => void prepare('youtube', file)}
                 />
@@ -109,15 +115,18 @@ export function ImportSources() {
                                         {description}
                                     </p>
                                 </div>
-                                <Button
-                                    variant="secondary"
-                                    disabled={busy}
-                                    onClick={() => void prepare(provider)}
-                                >
-                                    {preparingProvider === provider
-                                        ? 'Loading'
-                                        : `Import from ${name}`}
-                                </Button>
+                                <div className="sm:text-right">
+                                    <Button
+                                        variant="secondary"
+                                        disabled={busy}
+                                        onClick={() => void prepare(provider)}
+                                    >
+                                        {preparingProvider === provider
+                                            ? 'Loading'
+                                            : `Import from ${name}`}
+                                    </Button>
+                                    <ImportError message={failure(provider)} />
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -144,12 +153,23 @@ export function ImportSources() {
     );
 }
 
+function ImportError({ message }: { message: string | null }) {
+    if (!message) return null;
+    return (
+        <p role="alert" className="mt-2 max-w-lg text-sm text-destructive">
+            {message}
+        </p>
+    );
+}
+
 function YouTubeImport({
     busy,
+    error,
     loading,
     onFile,
 }: {
     busy: boolean;
+    error: string | null;
     loading: boolean;
     onFile: (file: File) => void;
 }) {
@@ -181,6 +201,7 @@ function YouTubeImport({
                 <UploadIcon />
                 {loading ? 'Loading' : 'Import YouTube subscriptions'}
             </Button>
+            <ImportError message={error} />
             <p
                 id="youtube-help"
                 className="mt-2 max-w-lg text-sm text-muted-foreground"
@@ -211,7 +232,7 @@ function ImportDialog({
     onConfirm: (plan: ImportPlan) => void;
     onRetry: (outcome: ImportOutcome) => void;
 }) {
-    if (state.kind === 'idle' || state.kind === 'preparing') return null;
+    if (state.kind === 'idle' || state.kind === 'preparing' || state.kind === 'failed') return null;
     return (
         <Dialog.Root
             open
@@ -239,7 +260,7 @@ function ImportDialogContent({
     onConfirm,
     onRetry,
 }: {
-    state: Exclude<ImportState, { kind: 'idle' | 'preparing' }>;
+    state: Exclude<ImportState, { kind: 'idle' | 'preparing' | 'failed' }>;
     onConfirm: (plan: ImportPlan) => void;
     onRetry: (outcome: ImportOutcome) => void;
 }) {

@@ -1,12 +1,12 @@
 import type { FeedSource } from '@/hooks/use-sources';
 
-export function FeedHealth({ source }: { source: FeedSource }) {
+export function FeedHealth({ source, labelled = false }: { source: FeedSource; labelled?: boolean }) {
     if (source.fetchStatus !== 'unavailable') return null;
-    const label = 'Posts not fetching. Retrying automatically.';
-    return (
-        <span role="img" aria-label={label} title={label}
-            className="inline-block size-2 shrink-0 rounded-full bg-destructive" />
-    );
+    const dot = <span aria-hidden="true" className="inline-block size-2 shrink-0 rounded-full bg-destructive" />;
+    if (labelled) {
+        return <span className="flex shrink-0 items-center gap-1.5">{dot}Not fetching</span>;
+    }
+    return <span role="img" aria-label="Posts not fetching. Retrying automatically." className="inline-flex shrink-0">{dot}</span>;
 }
 
 export function GeneratedNote({ source }: { source: FeedSource }) {

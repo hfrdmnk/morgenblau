@@ -3,11 +3,13 @@ import { toast } from 'sonner';
 
 import { DownloadIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { DataSettings } from '@/layouts/data-settings';
 import { api, describeMutationError } from '@/lib/api';
 
 export function ExportSources() {
     const [busy, setBusy] = useState(false);
+    useDocumentTitle('Export sources');
 
     async function download() {
         setBusy(true);

@@ -16,6 +16,19 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       tailwindcss(),
+      {
+        // Without a preload the browser finds Geist only after parsing the CSS, so text paints in the fallback and reflows.
+        name: 'preload-geist',
+        transformIndexHtml: {
+          order: 'post',
+          handler(_html, ctx) {
+            const font = Object.keys(ctx.bundle ?? {}).find((file) => /geist-latin-wght-normal-.*\.woff2$/.test(file))
+            return font
+              ? [{ tag: 'link', attrs: { rel: 'preload', as: 'font', type: 'font/woff2', href: `/${font}`, crossorigin: '' }, injectTo: 'head' }]
+              : []
+          },
+        },
+      },
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'],

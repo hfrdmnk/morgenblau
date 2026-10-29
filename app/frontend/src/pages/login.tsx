@@ -1,10 +1,29 @@
 import { useEffect, useState } from 'react';
+import { useSearch } from 'wouter/use-browser-location';
+
+import { AlertIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { api } from '@/lib/api';
 import { PATHS } from '@/lib/paths';
 
+const LOGIN_ERRORS: Record<string, string> = {
+    handle: 'Couldn’t start sign-in with that handle. Check the spelling and try again.',
+    callback: 'Sign-in didn’t finish. Try again.',
+};
+
 export function Login() {
+    const [pending, setPending] = useState(false);
+    useDocumentTitle('Sign in');
+
+    // A page restored from the back-forward cache keeps its pending state, so Back would leave the button stuck.
+    useEffect(() => {
+        const reset = () => setPending(false);
+        window.addEventListener('pageshow', reset);
+        return () => window.removeEventListener('pageshow', reset);
+    }, []);
+
     return (
         <main className="grid min-h-dvh place-items-center px-6 py-12">
             <div className="w-full max-w-sm space-y-10">
@@ -23,31 +42,49 @@ export function Login() {
                     </div>
                 </header>
 
-                <form method="POST" action={PATHS.oauthLogin} className="space-y-4">
-                    <div className="space-y-2">
-                        <label htmlFor="handle" className="text-sm font-medium">
-                            Handle
-                        </label>
-                        <Input
-                            id="handle"
-                            name="handle"
-                            type="text"
-                            autoComplete="username"
-                            autoCapitalize="none"
-                            autoFocus
-                            inputMode="text"
-                            placeholder="you.example"
-                            required
-                            spellCheck={false}
-                        />
-                    </div>
-                    <Button type="submit" className="w-full">
-                        Continue
+                <form method="POST" action={PATHS.oauthLogin} className="space-y-4" onSubmit={() => setPending(true)}>
+                    <HandleField />
+                    <Button type="submit" className="w-full" disabled={pending}>
+                        {pending ? 'Signing in…' : 'Continue'}
                     </Button>
                 </form>
                 {import.meta.env.DEV && <DevelopmentLogin />}
             </div>
         </main>
+    );
+}
+
+// A failed sign-in returns here with the handle and an error code, so the field comes back filled in and explains what went wrong.
+function HandleField() {
+    const { error: code = '', handle = '' } = Object.fromEntries(new URLSearchParams(useSearch()));
+    const error = LOGIN_ERRORS[code];
+    return (
+        <div className="space-y-2">
+            <label htmlFor="handle" className="text-sm font-medium">
+                Handle
+            </label>
+            <Input
+                id="handle"
+                name="handle"
+                type="text"
+                autoComplete="username"
+                autoCapitalize="none"
+                autoFocus={!window.matchMedia('(pointer: coarse)').matches}
+                aria-describedby={error && 'handle-error'}
+                aria-invalid={Boolean(error)}
+                defaultValue={handle}
+                inputMode="text"
+                placeholder="you.example"
+                required
+                spellCheck={false}
+            />
+            {error ? (
+                <p id="handle-error" role="alert" className="flex items-start gap-2 text-sm text-destructive">
+                    <AlertIcon className="mt-0.5 size-4 shrink-0" />
+                    {error}
+                </p>
+            ) : null}
+        </div>
     );
 }
 

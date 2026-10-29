@@ -100,10 +100,10 @@
     --secondary-foreground: oklch(0.268 0.007 34.298);
     --muted: oklch(0.923 0.003 48.717);
     --muted-foreground: oklch(0.444 0.011 73.639);
-    --subtle-foreground: oklch(0.709 0.01 56.259);
+    --subtle-foreground: oklch(0.53 0.01 56.259);
     --accent: oklch(0.869 0.005 56.366);
     --accent-foreground: oklch(0.268 0.007 34.298);
-    --destructive: oklch(0.577 0.245 27.325);
+    --destructive: oklch(0.5 0.245 27.325);
     --destructive-foreground: oklch(0.985 0.001 106.423);
     --success: oklch(0.527 0.154 150.069);
     --success-foreground: oklch(0.985 0.001 106.423);
@@ -113,7 +113,7 @@
     --neutral: oklch(62.3% 0.214 259.815);
     --border: oklch(0.869 0.005 56.366);
     --input: oklch(0.955 0.002 77);
-    --ring: var(--border);
+    --ring: var(--muted-foreground);
     --chart-1: oklch(0.869 0.005 56.366);
     --chart-2: oklch(0.553 0.013 58.071);
     --chart-3: oklch(0.444 0.011 73.639);
@@ -162,7 +162,7 @@
     --success-foreground: oklch(0.147 0.004 49.25);
     --border: oklch(0.374 0.01 67.558);
     --input: oklch(0.25 0.007 45);
-    --ring: var(--border);
+    --ring: var(--muted-foreground);
     --sidebar: oklch(0.147 0.004 49.25);
     --sidebar-foreground: oklch(0.97 0.001 106.424);
     --sidebar-primary: oklch(0.923 0.003 48.717);
@@ -190,6 +190,7 @@
     /* Reserve the scrollbar's space up front so content doesn't shift sideways once a page grows tall enough to scroll. */
     html {
         scrollbar-gutter: stable;
+        -webkit-tap-highlight-color: transparent;
     }
 
     body {
@@ -198,13 +199,25 @@
     }
 
     :focus-visible {
-        outline: 1px solid var(--ring);
-        outline-offset: 1px;
+        outline: 2px solid var(--ring);
+        outline-offset: 2px;
     }
 
     [data-slot='input']:focus-visible,
     [data-slot='textarea']:focus-visible {
-        outline-offset: -1px;
+        outline-offset: -2px;
+    }
+
+    a,
+    button,
+    input,
+    label,
+    [role='button'] {
+        touch-action: manipulation;
+    }
+
+    a:active {
+        opacity: 0.7;
     }
 }
 

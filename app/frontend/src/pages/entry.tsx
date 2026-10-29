@@ -7,6 +7,7 @@ import { ExternalLinkIcon } from '@/components/icons';
 import { NewsletterImages } from '@/components/newsletter-images';
 import { ReaderNotice } from '@/components/reader-notice';
 import { Button } from '@/components/ui/button';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useEntrySteps } from '@/hooks/use-entry-steps';
 import { useReaderFont } from '@/hooks/use-reader-font';
 import { useModeShortcuts, useShortcuts } from '@/hooks/use-shortcuts';
@@ -65,6 +66,7 @@ async function loadEntry(slug: string, signal: AbortSignal): Promise<Extract<Ent
 function EntryLoader({ slug }: { slug: string }) {
     const [state, setState] = useState<EntryState>({ status: 'loading' });
     const [attempt, setAttempt] = useState(0);
+    useDocumentTitle(readerTitle(state));
 
     useEffect(() => {
         const controller = new AbortController();
@@ -195,6 +197,10 @@ function ReaderBody({ entry }: { entry: ReaderEntry }) {
 function sourceTitle(entry: ReaderEntry): string {
     const url = httpURL(entry.source.siteUrl) || httpURL(entry.source.feedUrl);
     return entry.source.title || (url ? new URL(url).hostname : 'Unknown source');
+}
+
+function readerTitle(state: EntryState): string {
+    return state.status === 'loaded' ? entryTitle(state.entry) : 'Reader';
 }
 
 function entryTitle(entry: ReaderEntry): string {

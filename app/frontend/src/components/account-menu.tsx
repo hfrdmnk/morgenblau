@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'wouter';
 
 import { DownloadIcon, SettingsIcon, ShieldIcon, UploadIcon } from '@/components/icons';
+import { PersonAvatar } from '@/components/person-avatar';
 import { Button } from '@/components/ui/button';
 import {
     Popover,
@@ -13,32 +14,6 @@ import {
 } from '@/components/ui/popover';
 import type { AppProfile } from '@/lib/app-profile-context';
 import { PATHS } from '@/lib/paths';
-
-function profileInitial(profile: AppProfile): string {
-    const source = profile.displayName?.trim() || profile.handle || profile.did;
-    return source.charAt(0).toLocaleUpperCase();
-}
-
-function ProfileAvatar({ profile }: { profile: AppProfile }) {
-    const [failedAvatar, setFailedAvatar] = useState<string | null>(null);
-    const avatar = profile.avatar;
-
-    return (
-        <span className="flex size-8 items-center justify-center overflow-hidden rounded-full bg-secondary text-sm font-medium text-secondary-foreground">
-            {avatar && failedAvatar !== avatar ? (
-                <img
-                    src={avatar}
-                    alt=""
-                    className="size-full object-cover"
-                    onError={() => setFailedAvatar(avatar)}
-                    referrerPolicy="no-referrer"
-                />
-            ) : (
-                profileInitial(profile)
-            )}
-        </span>
-    );
-}
 
 export function AccountMenu({ profile }: { profile: AppProfile }) {
     const accountName = profile.displayName?.trim() || `@${profile.handle}`;
@@ -56,7 +31,7 @@ export function AccountMenu({ profile }: { profile: AppProfile }) {
                     />
                 }
             >
-                <ProfileAvatar profile={profile} />
+                <PersonAvatar did={profile.did} src={profile.avatar} />
             </PopoverTrigger>
             <PopoverContent align="end" className="w-64">
                 <PopoverHeader>

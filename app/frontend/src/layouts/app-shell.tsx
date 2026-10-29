@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 
 import { AppHeader } from '@/components/app-header';
+import { ErrorBoundary } from '@/components/error-boundary';
 import { ErrorState } from '@/components/status-state';
 import { Button } from '@/components/ui/button';
 import { useNavigationScrollRestoration } from '@/hooks/use-app-location';
@@ -83,9 +84,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
         <AppProfileContext.Provider value={state}>
             <div className="app-shell min-h-dvh bg-background">
+                <a
+                    className="sr-only rounded-md bg-popover px-4 py-2 text-sm font-medium shadow-popover focus:not-sr-only focus:fixed focus:top-[calc(1rem+env(safe-area-inset-top))] focus:left-4 focus:z-50"
+                    href="#main"
+                >
+                    Skip to content
+                </a>
                 {isAdminPath(location) ? <AdminBanner /> : null}
                 <AppHeader />
-                {children}
+                <ErrorBoundary key={location}>{children}</ErrorBoundary>
             </div>
         </AppProfileContext.Provider>
     );

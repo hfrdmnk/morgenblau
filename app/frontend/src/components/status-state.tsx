@@ -44,7 +44,7 @@ function StateFrame({
             <div className="max-w-sm space-y-1">
                 <p className="font-medium">{title}</p>
                 {description ? (
-                    <p className="text-sm text-muted-foreground">{description}</p>
+                    <p className="text-sm text-pretty text-muted-foreground">{description}</p>
                 ) : null}
             </div>
             {action ? <div className="pt-1">{action}</div> : null}

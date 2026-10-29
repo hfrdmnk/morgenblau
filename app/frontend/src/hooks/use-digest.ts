@@ -75,5 +75,11 @@ export function useDigest(date: string) {
         };
     }, [date, attempt]);
 
-    return state.date === date ? state : { status: 'loading' as const };
+    function retry() {
+        setState({ status: 'loading', date });
+        setAttempt((value) => value + 1);
+    }
+
+    const current = state.date === date ? state : { status: 'loading' as const };
+    return { ...current, retry };
 }

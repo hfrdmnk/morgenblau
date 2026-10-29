@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 
 import { ListError } from '@/components/item-list';
+import { PersonAvatar } from '@/components/person-avatar';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useSources } from '@/hooks/use-sources';
 import { formatDate } from '@/lib/source-display';
 import { cn } from '@/lib/utils';
@@ -25,8 +27,9 @@ const COUNT_COLUMNS = [
 
 export function Admin() {
     const usage = useSources<Usage>('/api/admin/usage');
+    useDocumentTitle('Usage');
     return (
-        <main aria-label="Admin" className="mx-auto w-full max-w-3xl space-y-14 px-5 pb-20 pt-20 sm:px-8 md:pt-24">
+        <main aria-label="Admin" className="mx-auto w-full max-w-3xl space-y-14 px-5 pb-20 pt-20 sm:px-8 md:pt-24" id="main">
             <h1 className="sr-only">Usage</h1>
             {usage.status === 'loaded' ? (
                 <>
@@ -106,7 +109,7 @@ function PersonRow({ person }: { person: Person }) {
     const name = personName(person);
     return (
         <li className="grid min-w-0 grid-cols-[2rem_1fr] items-center gap-x-3 gap-y-2 sm:grid-cols-[2rem_1fr_repeat(3,5.5rem)] sm:gap-x-4">
-            <Avatar person={person} name={name} />
+            <PersonAvatar did={person.did} lazy src={person.avatar} />
             <div className="min-w-0">
                 <p className={cn('truncate font-medium', !person.handle && 'font-mono text-sm')} title={person.did}>{name}</p>
                 <p className="truncate text-sm text-subtle-foreground">{personMeta(person, name)}</p>
@@ -115,30 +118,12 @@ function PersonRow({ person }: { person: Person }) {
                 {COUNT_COLUMNS.map(({ key, label }) => countLabel(person, key, label)).join(' · ')}
             </p>
             {COUNT_COLUMNS.map(({ key, label }) => (
-                <p aria-label={countLabel(person, key, label)} className={cn('hidden text-right tabular-nums sm:block', person[key] === 0 && 'text-subtle-foreground')} key={key}>
-                    {person[key]}
+                <p className={cn('hidden text-right tabular-nums sm:block', person[key] === 0 && 'text-subtle-foreground')} key={key}>
+                    <span aria-hidden="true">{person[key]}</span>
+                    <span className="sr-only">{countLabel(person, key, label)}</span>
                 </p>
             ))}
         </li>
-    );
-}
-
-function Avatar({ person, name }: { person: Person; name: string }) {
-    return (
-        <span className="flex size-8 items-center justify-center overflow-hidden rounded-full bg-secondary text-sm font-medium text-secondary-foreground">
-            {person.avatar ? (
-                <img
-                    alt=""
-                    className="size-full object-cover"
-                    loading="lazy"
-                    onError={(event) => {
-                        event.currentTarget.hidden = true;
-                    }}
-                    referrerPolicy="no-referrer"
-                    src={person.avatar}
-                />
-            ) : name.replace(/^@/, '').charAt(0).toLocaleUpperCase()}
-        </span>
     );
 }
 

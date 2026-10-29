@@ -92,8 +92,9 @@ export function AppHeader() {
                     ) : (
                         <span
                             aria-label={profile.kind === 'loading' ? 'Loading profile' : 'Profile unavailable'}
+                            role="img"
                             className={cn('size-8 rounded-full bg-muted', {
-                                'animate-pulse': profile.kind === 'loading',
+                                'animate-pulse motion-reduce:animate-none': profile.kind === 'loading',
                             })}
                         />
                     )}

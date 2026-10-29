@@ -11,6 +11,7 @@ import {
 export type ImportState =
     | { kind: 'idle' }
     | { kind: 'preparing'; provider: string }
+    | { kind: 'failed'; provider: string; message: string }
     | { kind: 'confirm'; plan: ImportPlan }
     | { kind: 'importing'; completed: number; total: number }
     | { kind: 'done'; outcome: ImportOutcome };
@@ -62,8 +63,7 @@ export function useSourceImport() {
             setState(confirmPlan(plan));
         } catch (error) {
             if (controller.signal.aborted) return;
-            toast.error(preparationError(error));
-            setState({ kind: 'idle' });
+            setState({ kind: 'failed', provider, message: preparationError(error) });
         } finally {
             request.current = null;
         }
