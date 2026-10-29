@@ -153,7 +153,7 @@ func resolveProfiles(ctx context.Context, src AdminProfileSource, people []admin
 			if err != nil {
 				return
 			}
-			people[i].Handle, people[i].DisplayName, people[i].Avatar = profile.Handle, profile.DisplayName, profile.Avatar
+			people[i].Handle, people[i].DisplayName, people[i].Avatar = profile.Handle, profile.DisplayName, avatarPath(profile)
 		})
 	}
 	wg.Wait()

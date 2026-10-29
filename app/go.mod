@@ -19,6 +19,7 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/oklog/ulid/v2 v2.1.1
+	golang.org/x/image v0.46.0
 	golang.org/x/net v0.59.0
 	golang.org/x/sync v0.23.0
 	modernc.org/sqlite v1.50.1

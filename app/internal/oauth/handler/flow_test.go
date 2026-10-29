@@ -111,17 +111,24 @@ func TestLogin_MissingHandle_400(t *testing.T) {
 	}
 }
 
-func TestLogin_StartAuthFlowError_400(t *testing.T) {
+func TestLogin_StartAuthFlowError_ReturnsToLoginWithHandle(t *testing.T) {
 	app := &fakeApp{startErr: fmt.Errorf("bad handle")}
 	h := LoginHandler(app)
-	form := url.Values{"handle": {"unknown"}}
+	form := url.Values{"handle": {" someone&else.example "}}
 	req := httptest.NewRequest(http.MethodPost, "/oauth/login", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Errorf("status = %d, want 400", rr.Code)
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", rr.Code)
+	}
+	loc, err := url.Parse(rr.Header().Get("Location"))
+	if err != nil || loc.Path != "/login" {
+		t.Fatalf("Location = %q", rr.Header().Get("Location"))
+	}
+	if got := loc.Query(); got.Get("error") != "handle" || got.Get("handle") != "someone&else.example" {
+		t.Errorf("query = %v", got)
 	}
 }
 
@@ -175,7 +182,7 @@ func TestCallback_HappyPath_SetsCookie_RedirectsHome(t *testing.T) {
 	}
 }
 
-func TestCallback_ProcessError_400_NoCookie(t *testing.T) {
+func TestCallback_ProcessError_ReturnsToLogin_NoCookie(t *testing.T) {
 	app := &fakeApp{callbackErr: fmt.Errorf("invalid state")}
 	sealer := newSealer(t)
 	h := CallbackHandler(app, sealer, nil, nil)
@@ -184,8 +191,11 @@ func TestCallback_ProcessError_400_NoCookie(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Errorf("status = %d, want 400", rr.Code)
+	if rr.Code != http.StatusSeeOther {
+		t.Errorf("status = %d, want 303", rr.Code)
+	}
+	if loc := rr.Header().Get("Location"); loc != "/login?error=callback" {
+		t.Errorf("Location = %q", loc)
 	}
 	if len(rr.Result().Cookies()) != 0 {
 		t.Errorf("error path should not set cookie, got %d cookies", len(rr.Result().Cookies()))

@@ -52,7 +52,8 @@ func LoginHandler(app ClientApp) http.Handler {
 		redirectURL, err := app.StartAuthFlow(r.Context(), handle)
 		if err != nil {
 			slog.Warn("StartAuthFlow failed", "err", err)
-			http.Error(w, "could not start sign-in", http.StatusBadRequest)
+			query := url.Values{"error": {"handle"}, "handle": {handle}}
+			http.Redirect(w, r, "/login?"+query.Encode(), http.StatusSeeOther)
 			return
 		}
 		http.Redirect(w, r, redirectURL, http.StatusFound)
@@ -70,7 +71,7 @@ func CallbackHandler(app ClientApp, sealer *cookie.Sealer, starter LoginSyncStar
 			} else {
 				slog.Warn("ProcessCallback failed", "err", err)
 			}
-			http.Error(w, "could not complete sign-in", http.StatusBadRequest)
+			http.Redirect(w, r, "/login?error=callback", http.StatusSeeOther)
 			return
 		}
 		if !allowed.Allows(sess.AccountDID) {

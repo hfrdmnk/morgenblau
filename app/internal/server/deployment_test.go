@@ -61,7 +61,7 @@ func TestHealthReturnsUnavailableWhenDatabaseIsClosed(t *testing.T) {
 	}
 	rr = httptest.NewRecorder()
 	srv.healthHandler(rr, httptest.NewRequest(http.MethodGet, "/api/health", nil))
-	if rr.Code != http.StatusServiceUnavailable || !strings.Contains(rr.Body.String(), `"status":"down"`) {
-		t.Fatalf("unhealthy response: %d %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusServiceUnavailable || strings.TrimSpace(rr.Body.String()) != `{"status":"down"}` {
+		t.Fatalf("unhealthy response must not expose the database error: %d %s", rr.Code, rr.Body.String())
 	}
 }

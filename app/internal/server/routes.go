@@ -73,6 +73,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("DELETE /api/subscriptions/{rkey}", api.OneCommitPerRequest(api.SubscriptionsDeleteHandler(s.qr, s.qw, gated, s.sync)))
 
 	mux.Handle("GET /api/favicon", api.FaviconProxyHandler(s.qr, s.safeClient))
+	mux.Handle("GET /api/avatars/{did}/{cid}", api.AvatarHandler(s.profiles, s.safeClient))
 
 	if s.newsletters != nil {
 		mux.Handle("GET /api/newsletters/address", api.NewsletterAddressHandler(s.newsletters))
@@ -152,8 +153,8 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	status := map[string]string{"status": "up"}
 	if err := s.db.Reader.PingContext(ctx); err != nil {
+		slog.Error("health: database ping failed", "err", err)
 		status["status"] = "down"
-		status["error"] = err.Error()
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
 

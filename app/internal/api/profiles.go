@@ -63,6 +63,7 @@ func MeProfileHandler(src ProfileSource, starter ProfileSyncStarter, addresses P
 			writeError(w, http.StatusInternalServerError, codeInternalError, "could not resolve identity")
 			return
 		}
+		p.Avatar = avatarPath(p)
 		writeJSON(w, meResponse{Profile: p, NeedsReauth: !scopes.HasStandardSubscriptionWrite(sess), IsAdmin: admins.Includes(sess.Data.AccountDID)})
 	})
 }
