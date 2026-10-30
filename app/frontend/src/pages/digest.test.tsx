@@ -2,7 +2,7 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { afterAll, afterEach, expect, test } from 'bun:test';
 
 const nativeEvents = { Event, EventTarget };
-GlobalRegistrator.register();
+GlobalRegistrator.register({ url: 'http://app.example.com/' });
 Object.assign(globalThis, nativeEvents);
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');
@@ -34,6 +34,39 @@ async function emptyDigest({ feeds, newsletters }: Routes) {
     await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
     return container.textContent ?? '';
 }
+
+async function renderDigest(entries: unknown[]) {
+    globalThis.fetch = Object.assign(async () => Response.json({ date: '2026-10-29', entries, hasActiveJob: false }), { preconnect: realFetch.preconnect });
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    cleanup = () => { root.unmount(); container.remove(); };
+    await act(async () => root.render(<Digest />));
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+    return container;
+}
+
+function feedEntry(slug: string, title: string, primary: boolean, extra: Record<string, unknown> = {}) {
+    return {
+        id: slug, entrySlug: slug, title, url: `https://publication.example.com/posts/${slug}`, contentType: 'blogpost', publishedAt: '2026-10-29T08:00:00Z',
+        body: null, source: { title: `${title} source`, siteUrl: 'https://publication.example.com', faviconUrl: null, primary }, ...extra,
+    };
+}
+
+test('primary sources lead the digest with an excerpt, and an image only when the server offers one', async () => {
+    const container = await renderDigest([
+        feedEntry('newer', 'Newer ordinary post', false),
+        feedEntry('pictured', 'Primary post with image', true, {
+            body: '<p>First   paragraph.</p><p>Second <em>paragraph</em>.</p>',
+            image: '/api/entries/pictured/image',
+        }),
+        feedEntry('plain', 'Primary post without image', true),
+    ]);
+    const titles = [...container.querySelectorAll('h2, li a[href*="newer"]')].map((node) => node.textContent);
+    expect(titles).toEqual(['Primary post with image', 'Primary post without image', 'Newer ordinary post']);
+    expect(container.textContent).toContain('First paragraph. Second paragraph.');
+    const images = [...container.querySelectorAll('img')].map((img) => img.getAttribute('src'));
+    expect(images).toEqual(['/api/entries/pictured/image']);
+});
 
 const notFound = () => Response.json({ code: 'not_found', message: 'not found' }, { status: 404 });
 

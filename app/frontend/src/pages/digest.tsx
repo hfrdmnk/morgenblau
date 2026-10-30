@@ -1,8 +1,9 @@
+import { useMemo, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
 import { AddSourceDialog } from '@/components/add-source-dialog';
-import { ItemList, ListError, ListItem, ListSkeleton } from '@/components/item-list';
+import { ItemList, ListError, ListItem, ListSkeleton, SourceIcon } from '@/components/item-list';
 import { EmptyState } from '@/components/status-state';
 import { Button } from '@/components/ui/button';
 import { useDigest, type DigestEntry } from '@/hooks/use-digest';
@@ -11,6 +12,7 @@ import { useShortcuts } from '@/hooks/use-shortcuts';
 import { useSources, type FeedSource } from '@/hooks/use-sources';
 import { addCalendarDays, selectedDigestDate, startOfToday, toDateKey } from '@/lib/digest-dates';
 import { digestHref, entryHref, readerSourceHref } from '@/lib/paths';
+import { entryExcerpt } from '@/lib/reader';
 import { showShortcutNotice } from '@/lib/shortcuts';
 
 const dayName = new Intl.DateTimeFormat(undefined, { weekday: 'long' });
@@ -69,12 +71,25 @@ function LoadedDigest({
         if (digest.hasActiveJob) return <EmptyDay>New entries are still being collected.</EmptyDay>;
         return <EmptyDigest />;
     }
+    const primary = digest.entries.filter((entry) => entry.source.primary);
+    const rest = digest.entries.filter((entry) => !entry.source.primary);
     return (
-        <ItemList ordered>
-            {digest.entries.map((entry) => (
-                <DigestItem date={date} entry={entry} key={`${entry.id}-${entry.entrySlug}`} />
-            ))}
-        </ItemList>
+        <div className="flex flex-col gap-20">
+            {primary.length > 0 ? (
+                <ol aria-label="Primary sources" className="flex flex-col gap-12">
+                    {primary.map((entry) => (
+                        <PrimaryItem date={date} entry={entry} key={`${entry.id}-${entry.entrySlug}`} />
+                    ))}
+                </ol>
+            ) : null}
+            {rest.length > 0 ? (
+                <ItemList ordered>
+                    {rest.map((entry) => (
+                        <DigestItem date={date} entry={entry} key={`${entry.id}-${entry.entrySlug}`} />
+                    ))}
+                </ItemList>
+            ) : null}
+        </div>
     );
 }
 
@@ -110,8 +125,60 @@ function greeting(now: Date): string {
     return 'Good evening';
 }
 
+// Primary posts lead with type and whitespace; the image appears only when the post has one that loads.
+function PrimaryItem({ date, entry }: { date: string; entry: DigestEntry }) {
+    // The digest re-polls every second while a sync runs; memoizing on the body skips reparsing unchanged posts.
+    const excerpt = useMemo(() => entryExcerpt(entry.body), [entry.body]);
+    const [failedImage, setFailedImage] = useState<string | null>(null);
+    const image = entry.image && entry.image !== failedImage ? entry.image : null;
+    const href = entryHref(entry.entrySlug, date);
+    return (
+        <li className={image ? 'flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_auto] sm:grid-rows-[auto_auto_1fr] sm:gap-x-8' : 'flex flex-col gap-3'}>
+            <PrimarySource entry={entry} />
+            <h2 className="text-2xl font-medium tracking-[-0.015em] text-balance break-words sm:col-start-1 sm:row-start-2 sm:text-3xl">
+                <Link className={`rounded-sm hover:text-foreground/75 ${entry.title ? 'text-foreground' : 'text-muted-foreground'}`} href={href}>{entry.title || 'Untitled'}</Link>
+            </h2>
+            {excerpt ? (
+                <p className="line-clamp-2 max-w-[60ch] self-start text-base text-muted-foreground text-pretty sm:col-start-1 sm:row-start-3">{excerpt}</p>
+            ) : null}
+            {image ? <PrimaryImage href={href} onError={() => setFailedImage(image)} src={image} /> : null}
+        </li>
+    );
+}
+
+function PrimarySource({ entry }: { entry: DigestEntry }) {
+    const sourceHref = readerSourceHref(entry.source);
+    const className = 'flex min-w-0 items-center gap-2 self-start rounded-sm text-sm font-medium text-foreground sm:col-start-1 sm:row-start-1';
+    const source = (
+        <>
+            <SourceIcon src={entry.source.faviconUrl} />
+            <span className="truncate">{sourceLabel(entry)}</span>
+        </>
+    );
+    if (!sourceHref) return <div className={className}>{source}</div>;
+    return <Link className={`${className} hover:text-foreground/75`} href={sourceHref}>{source}</Link>;
+}
+
+// The title already carries the link for assistive tech; the image is a second, pointer-only way in.
+function PrimaryImage({ href, onError, src }: { href: string; onError: () => void; src: string }) {
+    return (
+        <Link
+            aria-hidden
+            className="order-first mb-1 block aspect-[2/1] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-foreground/5 sm:order-none sm:col-start-2 sm:row-span-2 sm:row-start-2 sm:mb-0 sm:aspect-[4/3] sm:w-44 sm:self-start"
+            href={href}
+            tabIndex={-1}
+        >
+            <img alt="" className="size-full object-cover" decoding="async" loading="lazy" onError={onError} src={src} />
+        </Link>
+    );
+}
+
+function sourceLabel(entry: DigestEntry): string {
+    return entry.source.title || hostLabel(firstDefined(entry.source.siteUrl, entry.source.feedUrl));
+}
+
 function DigestItem({ date, entry }: { date: string; entry: DigestEntry }) {
-    const sourceTitle = entry.source.title || hostLabel(firstDefined(entry.source.siteUrl, entry.source.feedUrl));
+    const sourceTitle = sourceLabel(entry);
     const postHost = hostLabel(firstDefined(entry.url, entry.source.siteUrl, entry.source.feedUrl));
     const meta = [sourceTitle, postHost].filter(Boolean).join(' · ');
     const sourceHref = readerSourceHref(entry.source);

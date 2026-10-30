@@ -31,6 +31,7 @@ type EntryWire struct {
 	Source      SourceMeta             `json:"source"`
 	Body        *string                `json:"body"`
 	Metadata    *string                `json:"metadata,omitempty"`
+	Image       *string                `json:"image,omitempty"`
 	Newsletter  *NewsletterMessageMeta `json:"newsletter,omitempty"`
 	SavedState  *SavedState            `json:"savedState"`
 }
@@ -50,7 +51,8 @@ type SourceMeta struct {
 	SiteURL    *string `json:"siteUrl"`
 	FaviconURL *string `json:"faviconUrl"`
 	// Rkey links an entry to its source page; the source-list path leaves it empty, as the client is already there.
-	Rkey string `json:"rkey,omitempty"`
+	Rkey    string `json:"rkey,omitempty"`
+	Primary bool   `json:"primary,omitempty"`
 }
 
 // DigestResponse adds in-flight metadata so the frontend can swap empty-state copy without a second round-trip.
@@ -121,6 +123,11 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe, privateReaders 
 				return left.After(right)
 			})
 		}
+
+		// The page and the reader's previous/next both follow this order, so primary sources lead here rather than in the client.
+		sort.SliceStable(entries, func(i, j int) bool {
+			return entries[i].Source.Primary && !entries[j].Source.Primary
+		})
 
 		writeJSON(w, DigestResponse{
 			Date:         responseDate,
@@ -198,6 +205,8 @@ func digestRowToWire(row db.ListDigestForUserRow) EntryWire {
 		Metadata:     row.Metadata,
 	})
 	wire.Source.Rkey = row.SubscriptionRkey
+	wire.Source.Primary = row.IsPrimary != 0
+	wire.Image = entryImagePath(row.EntrySlug, row.Metadata, row.Url)
 	return wire
 }
 

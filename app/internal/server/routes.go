@@ -116,6 +116,8 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /api/digest/refresh", api.DigestRefreshHandler(s.sync))
 	mux.Handle("GET /api/entries/{slug}", entry)
 	mux.Handle("POST /api/entries/{slug}/extract", api.EntryExtractHandler(s.qr, s.qw, s.safeClient))
+	mux.Handle("GET /api/entries/{slug}/image", api.EntryImageHandler(s.qr, s.safeClient))
+	mux.Handle("GET /api/entries/{slug}/images", api.EntryBodyImageHandler(s.qr, s.safeClient))
 
 	if s.webSources != nil {
 		// Server-owned storage only: generating a feed commits nothing to the PDS, so it stays out of CommitGate.

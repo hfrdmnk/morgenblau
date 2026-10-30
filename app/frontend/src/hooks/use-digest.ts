@@ -12,6 +12,7 @@ type Source = {
     feedUrl?: string;
     siteUrl: string | null;
     faviconUrl: string | null;
+    primary?: boolean;
 };
 
 export type DigestEntry = {
@@ -19,6 +20,8 @@ export type DigestEntry = {
     entrySlug: string;
     title: string | null;
     url?: string;
+    body: string | null;
+    image?: string;
     source: Source;
 };
 

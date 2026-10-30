@@ -357,7 +357,7 @@ func newsletterMessageToWire(message newsletter.Message) EntryWire {
 	return EntryWire{
 		ID: message.ID, EntrySlug: message.EntrySlug, Title: &title,
 		ContentType: "newsletter", PublishedAt: message.ReceivedAt.Format(time.RFC3339),
-		Source: SourceMeta{Kind: "newsletter", ID: message.SourceID, Title: &sourceTitle}, Body: &body,
+		Source: SourceMeta{Kind: "newsletter", ID: message.SourceID, Title: &sourceTitle, Primary: message.SourcePrimary}, Body: &body,
 		Newsletter: &NewsletterMessageMeta{
 			MessageID: message.ID, SenderName: message.SenderName, SenderAddress: message.SenderAddress,
 			SentAt: sentAt, HasBlockedRemoteImages: message.HasBlockedRemoteImages, RemoteImagesAllowed: message.RemoteImagesAllowed,

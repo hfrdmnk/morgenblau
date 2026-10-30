@@ -27,7 +27,7 @@ The app is responsive and installable as a PWA. Offline reading and offline muta
 
 Sharing, discovery recommendations, following users, public reader profiles, network Library sections, and article social context are excluded. Jetstream and network-wide ingestion are unnecessary for this scope. Resolving a pasted URL into a subscribable source remains part of adding sources.
 
-**Current simplification pass:** remove excluded features and their supporting code, simplify the specification and local schema, and preserve the retained reading flows. This pass does not complete missing v1 features such as email ingestion, OPML, Library tag editing, primary-source presentation, or PWA installation.
+**Current simplification pass:** remove excluded features and their supporting code, simplify the specification and local schema, and preserve the retained reading flows. This pass does not complete missing v1 features such as email ingestion, OPML, Library tag editing, or PWA installation.
 
 </v1-scope>
 

@@ -30,17 +30,24 @@ export function readerContentURL(value: string, base: string): string {
     }
 }
 
-export function readerBody(entry: Pick<ReaderEntry, 'body' | 'url' | 'contentType' | 'newsletter'>): string {
+// A stored entry's images load through the app so publishers never see the reader's address. The proxy matches the raw src
+// against the stored article, so it gets the attribute unresolved. The add-source preview has no stored entry and loads images directly.
+export function readerBody(entry: Pick<ReaderEntry, 'body' | 'url' | 'contentType' | 'newsletter'> & { entrySlug?: string }): string {
     const body = entry.body || '';
     const base = httpURL(entry.url);
-    if (entry.newsletter || entry.contentType === 'newsletter' || !base) return body;
+    if (entry.newsletter || entry.contentType === 'newsletter' || (!base && !entry.entrySlug)) return body;
 
-    // A template keeps image requests inert until publisher-relative URLs are resolved.
+    // A template keeps image requests inert until their URLs are rewritten.
     const template = document.createElement('template');
     template.innerHTML = body;
     for (const attribute of ['href', 'src', 'cite']) {
         for (const element of template.content.querySelectorAll(`[${attribute}]`)) {
-            element.setAttribute(attribute, readerContentURL(element.getAttribute(attribute)!, base));
+            const value = element.getAttribute(attribute)!;
+            if (entry.entrySlug && attribute === 'src' && element.localName === 'img') {
+                element.setAttribute('src', `/api/entries/${encodeURIComponent(entry.entrySlug)}/images?src=${encodeURIComponent(value)}`);
+            } else if (base) {
+                element.setAttribute(attribute, readerContentURL(value, base));
+            }
         }
     }
     return template.innerHTML;
@@ -69,6 +76,13 @@ export function youtubeID(value?: string | null): string | null {
             : /^\/(?:shorts|embed|live)\/([^/]+)\/?$/.exec(url.pathname)?.[1] ?? null;
     }
     return id && /^[\w-]{11}$/.test(id) ? id : null;
+}
+
+export function entryExcerpt(body: string | null): string {
+    const template = document.createElement('template');
+    template.innerHTML = body || '';
+    for (const block of template.content.querySelectorAll('p, div, li, br, h1, h2, h3, h4, h5, h6, blockquote, figcaption')) block.after(' ');
+    return template.content.textContent.replace(/\s+/g, ' ').trim().slice(0, 300);
 }
 
 export function readerMetadata(raw?: string | null): {

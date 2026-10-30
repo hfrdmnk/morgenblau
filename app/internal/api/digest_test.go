@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -185,6 +186,86 @@ func TestDigest_AggregatesPrivateNewsletterMessagesWithinLocalDay(t *testing.T) 
 	}
 	if len(got.Entries) != 2 || got.Entries[0].ContentType != "blogpost" || got.Entries[1].ContentType != "newsletter" {
 		t.Errorf("entries = %+v", got.Entries)
+	}
+}
+
+func TestDigest_MarksEntriesFromPrimarySources(t *testing.T) {
+	reader := &fakeDigestReader{rows: []db.ListDigestForUserRow{
+		{ID: 1, EntrySlug: "primary-feed", FeedUrl: "https://primary.example.com/feed.xml", ContentType: "blogpost", PublishedAt: "2026-07-10T12:00:00Z", IsPrimary: 1},
+		{ID: 2, EntrySlug: "other-feed", FeedUrl: "https://other.example.com/feed.xml", ContentType: "blogpost", PublishedAt: "2026-07-10T11:00:00Z"},
+	}}
+	primaryMessage := newsletterMessageFixture()
+	primaryMessage.EntrySlug = "primary-newsletter"
+	primaryMessage.SourcePrimary = true
+	otherMessage := newsletterMessageFixture()
+	otherMessage.ID = "message-other"
+	otherMessage.EntrySlug = "other-newsletter"
+	h := DigestHandler(reader, &stubJobsProbe{}, &fakeNewsletterService{messages: []newsletter.Message{primaryMessage, otherMessage}})
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/digest?date=2026-07-10", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	var got struct {
+		Entries []struct {
+			EntrySlug string `json:"entrySlug"`
+			Source    struct {
+				Primary *bool `json:"primary"`
+			} `json:"source"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"primary-feed": true, "other-feed": false, "primary-newsletter": true, "other-newsletter": false}
+	if len(got.Entries) != len(want) {
+		t.Fatalf("entries = %+v", got.Entries)
+	}
+	// The reader steps through this order, so it must match the digest page: primary first, newest first within each group.
+	var order []string
+	for _, entry := range got.Entries {
+		order = append(order, entry.EntrySlug)
+	}
+	if want := []string{"primary-feed", "primary-newsletter", "other-feed", "other-newsletter"}; !slices.Equal(order, want) {
+		t.Errorf("order = %v, want %v", order, want)
+	}
+	for _, entry := range got.Entries {
+		primary := entry.Source.Primary != nil && *entry.Source.Primary
+		if primary != want[entry.EntrySlug] {
+			t.Errorf("%s: source.primary = %v, want %v", entry.EntrySlug, primary, want[entry.EntrySlug])
+		}
+	}
+}
+
+func TestDigest_PointsUsableImagesAtTheImageProxy(t *testing.T) {
+	meta := func(s string) *string { return &s }
+	reader := &fakeDigestReader{rows: []db.ListDigestForUserRow{
+		{ID: 1, EntrySlug: "relative", Url: "https://publication.example.com/posts/a", Metadata: meta(`{"image":"/img/a.jpg"}`), PublishedAt: "2026-07-10T12:00:00Z"},
+		{ID: 2, EntrySlug: "script", Url: "https://publication.example.com/posts/b", Metadata: meta(`{"image":"javascript:alert(1)"}`), PublishedAt: "2026-07-10T11:00:00Z"},
+		{ID: 3, EntrySlug: "none", Url: "https://publication.example.com/posts/c", PublishedAt: "2026-07-10T10:00:00Z"},
+	}}
+	rr := httptest.NewRecorder()
+	DigestHandler(reader, &stubJobsProbe{}).ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/digest?date=2026-07-10", nil), "did:plc:alice", "sid-1"))
+	var got struct {
+		Entries []struct {
+			EntrySlug string  `json:"entrySlug"`
+			Image     *string `json:"image"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"relative": "/api/entries/relative/image", "script": "", "none": ""}
+	for _, entry := range got.Entries {
+		image := ""
+		if entry.Image != nil {
+			image = *entry.Image
+		}
+		if image != want[entry.EntrySlug] {
+			t.Errorf("%s: image = %q, want %q", entry.EntrySlug, image, want[entry.EntrySlug])
+		}
 	}
 }
 

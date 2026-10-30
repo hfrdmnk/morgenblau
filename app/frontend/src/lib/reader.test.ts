@@ -1,6 +1,21 @@
-import { describe, expect, test } from 'bun:test';
+import { GlobalRegistrator } from '@happy-dom/global-registrator';
+import { afterAll, describe, expect, test } from 'bun:test';
 
 import { hasNewReaderContent, httpURL, readerBody, readerContentURL, readerMetadata, youtubeID } from './reader';
+
+GlobalRegistrator.register({ url: 'http://app.example.com/' });
+afterAll(() => GlobalRegistrator.unregister());
+
+test('a stored entry loads its images through the proxy with the raw src, and still resolves links', () => {
+    const body = '<p><a href="/about">About</a><img src="../img/chart.png?a=1&amp;b=2" alt="Chart"></p>';
+    const template = document.createElement('template');
+    template.innerHTML = readerBody({ entrySlug: 'abc123', url: 'https://publication.example.com/posts/a', contentType: 'blogpost', body });
+    expect(template.content.querySelector('img')?.getAttribute('src')).toBe('/api/entries/abc123/images?src=..%2Fimg%2Fchart.png%3Fa%3D1%26b%3D2');
+    expect(template.content.querySelector('a')?.getAttribute('href')).toBe('https://publication.example.com/about');
+
+    template.innerHTML = readerBody({ url: 'https://publication.example.com/posts/a', contentType: 'blogpost', body });
+    expect(template.content.querySelector('img')?.getAttribute('src')).toBe('https://publication.example.com/img/chart.png?a=1&b=2');
+});
 
 test('newsletter body keeps private app asset URLs and blocked images unchanged', () => {
     const body = '<img src="/api/newsletter-assets/example-id"><img alt="Blocked image">';
