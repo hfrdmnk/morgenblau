@@ -116,7 +116,7 @@ func TestImportConcurrentMetadataChangeIsMerged(t *testing.T) {
 		pds.listed[subscriptionCollection][0].CID = "newer-cid"
 	}
 	idx := newFakeIndex()
-	w := importRequest(t, SubscriptionsImportHandler(idx, pds, &fakeDispatcher{}), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed", Tags: []string{"Imported"}}}})
+	w := importRequest(t, SubscriptionsImportHandler(idx, pds, &fakeDispatcher{}, nil), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed", Tags: []string{"Imported"}}}})
 	if w.Code != 200 || pds.lastPut["title"] != "Newer title" || pds.lastPut["primary"] != true || !reflect.DeepEqual(recordTags(pds.lastPut), []string{"Concurrent", "Imported"}) {
 		t.Fatalf("concurrent metadata overwritten: %s record=%+v", w.Body.String(), pds.lastPut)
 	}
@@ -128,7 +128,7 @@ func TestImportCompetingCreateDoesNotDuplicate(t *testing.T) {
 		pds.creates++
 		pds.storeListed("did:plc:alice", subscriptionCollection, "other-session", importRecord(importSource{FeedURL: "https://example.com/feed", Title: "Other session", Tags: []string{"Concurrent"}}, "2026-01-01T00:00:00Z"))
 	}
-	w := importRequest(t, SubscriptionsImportHandler(newFakeIndex(), pds, &fakeDispatcher{}), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed", Tags: []string{"Imported"}}}})
+	w := importRequest(t, SubscriptionsImportHandler(newFakeIndex(), pds, &fakeDispatcher{}, nil), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed", Tags: []string{"Imported"}}}})
 	if w.Code != 200 || pds.creates != 1 || pds.lastPut["title"] != "Other session" || !reflect.DeepEqual(recordTags(pds.lastPut), []string{"Concurrent", "Imported"}) {
 		t.Fatalf("concurrent create duplicated or metadata lost: %s creates=%d put=%+v", w.Body.String(), pds.creates, pds.lastPut)
 	}
@@ -137,7 +137,7 @@ func TestImportCompetingCreateDoesNotDuplicate(t *testing.T) {
 func TestImportCommitThenLostResponseRecoversWithoutDuplicate(t *testing.T) {
 	pds := &racingImportPDS{loseResponse: true}
 	idx, disp := newFakeIndex(), &fakeDispatcher{}
-	h := SubscriptionsImportHandler(idx, pds, disp)
+	h := SubscriptionsImportHandler(idx, pds, disp, nil)
 	body := map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed"}}}
 	w := importRequest(t, h, body)
 	var first importResult
@@ -187,7 +187,7 @@ func (p *simultaneousImportPDS) ListRecords(ctx context.Context, _ *session.Sess
 
 func TestImportTwoSessionsCreateOneRecord(t *testing.T) {
 	pds := &simultaneousImportPDS{bothListed: make(chan struct{})}
-	h := SubscriptionsImportHandler(newFakeIndex(), pds, &fakeDispatcher{})
+	h := SubscriptionsImportHandler(newFakeIndex(), pds, &fakeDispatcher{}, nil)
 	results := make(chan *httptest.ResponseRecorder, 2)
 	for _, tag := range []string{"First", "Second"} {
 		go func() {
@@ -241,7 +241,7 @@ func TestImportDelayedCreateCannotDuplicateRetry(t *testing.T) {
 		t.Run(fmt.Sprintf("oldWins=%v", oldWins), func(t *testing.T) {
 			pds := &delayedImportPDS{beforeRetry: oldWins}
 			disp := &fakeDispatcher{}
-			h := SubscriptionsImportHandler(newFakeIndex(), pds, disp)
+			h := SubscriptionsImportHandler(newFakeIndex(), pds, disp, nil)
 			body := map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed"}}}
 			first := importRequest(t, h, body)
 			var result importResult
@@ -272,7 +272,7 @@ func TestImportConflictRetriesAreBounded(t *testing.T) {
 	record := importRecord(importSource{FeedURL: "https://example.com/feed"}, "2026-01-01T00:00:00Z")
 	pds := &fakePDS{putErr: &atclient.APIError{StatusCode: 400, Name: "InvalidSwap"}, listed: map[string][]atprepo.ListedRecord{subscriptionCollection: {{URI: "at://did:plc:alice/" + subscriptionCollection + "/old", CID: "old-cid", Value: record}}}}
 	idx := newFakeIndex()
-	w := importRequest(t, SubscriptionsImportHandler(idx, pds, &fakeDispatcher{}), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed", Tags: []string{"New"}}}})
+	w := importRequest(t, SubscriptionsImportHandler(idx, pds, &fakeDispatcher{}, nil), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed", Tags: []string{"New"}}}})
 	var result importResult
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
@@ -304,7 +304,7 @@ func TestImportDoesNotOverwriteNewerLocalMirror(t *testing.T) {
 	row.Tags = &second
 	pds := &fakePDS{listed: map[string][]atprepo.ListedRecord{subscriptionCollection: {{URI: row.AtUri, CID: "cid", Value: importRecord(importSource{FeedURL: row.FeedUrl, Tags: []string{"First"}}, row.CreatedAt)}}}}
 	disp := &fakeDispatcher{}
-	w := importRequest(t, SubscriptionsImportHandler(supersededImportIndex{index, row}, pds, disp), map[string]any{"sources": []importSource{{FeedURL: row.FeedUrl}}})
+	w := importRequest(t, SubscriptionsImportHandler(supersededImportIndex{index, row}, pds, disp, nil), map[string]any{"sources": []importSource{{FeedURL: row.FeedUrl}}})
 	got, err := index.GetUserSubscriptionByFeedURL(context.Background(), db.GetUserSubscriptionByFeedURLParams{Did: row.Did, FeedUrl: row.FeedUrl})
 	if err != nil {
 		t.Fatal(err)

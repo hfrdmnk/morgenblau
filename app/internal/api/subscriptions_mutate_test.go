@@ -683,6 +683,30 @@ func TestSubscriptionsPatch_FeedURLChange_RepointsAndDispatches(t *testing.T) {
 	}
 }
 
+func TestSubscriptionsPatch_ShortsToggleKeepsTheChannelHandle(t *testing.T) {
+	const channel = "https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv"
+	const longForm = "https://www.youtube.com/feeds/videos.xml?playlist_id=UULFabcdefghijklmnopqrstuv"
+	const handle = "https://www.youtube.com/@example"
+	idx := newRkeyIndex()
+	idx.seed("did:plc:alice", "3la", channel)
+	idx.siteURLs[channel] = ptrString(handle)
+	pds := &fakePDS{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/subscriptions/{rkey}", SubscriptionsPatchHandler(idx, idx.fakeIndex, pds, &fakeDispatcher{}))
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodPatch, "/api/subscriptions/3la",
+		strings.NewReader(`{"feedUrl":"`+longForm+`"}`)), "did:plc:alice", "sid-1"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if source, _ := pds.lastPut["source"].(map[string]any); source["siteUrl"] != handle {
+		t.Errorf("record source = %v, want siteUrl %s", pds.lastPut["source"], handle)
+	}
+	if len(idx.feedParams) != 1 || idx.feedParams[0].SiteUrl == nil || *idx.feedParams[0].SiteUrl != handle {
+		t.Errorf("UpsertFeed = %+v, want the long-form feed with site %s", idx.feedParams, handle)
+	}
+}
+
 func TestSubscriptionsPatch_FeedURLChange_Invalid_400(t *testing.T) {
 	const feed = "https://example.test/feed.xml"
 	cases := map[string]string{

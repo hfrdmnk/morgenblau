@@ -2,6 +2,7 @@ package feedfinder
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -188,6 +189,72 @@ func TestResolve_YouTube_ChannelDirect(t *testing.T) {
 	}
 	if feedHits != 1 {
 		t.Errorf("feed fetches = %d, want 1", feedHits)
+	}
+}
+
+func TestSameYouTubeFeedURLs_NameTheChannelFeedAndItsLongFormFeed(t *testing.T) {
+	const all = "https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv"
+	const longForm = "https://www.youtube.com/feeds/videos.xml?playlist_id=UULFabcdefghijklmnopqrstuv"
+	both := fmt.Sprint([]string{all, longForm})
+	for raw, want := range map[string]string{
+		all:      both,
+		longForm: both,
+		"https://youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv": both,
+		// Shorts-only and live-only uploads playlists are different feeds.
+		"https://www.youtube.com/feeds/videos.xml?playlist_id=UUSHabcdefghijklmnopqrstuv": "[]",
+		"https://www.youtube.com/feeds/videos.xml?playlist_id=PLabcdefghijklmnopqrstuv":   "[]",
+		"https://www.youtube.com/feeds/videos.xml?channel_id=UCshort":                     "[]",
+		"https://blog.example.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv":   "[]",
+		"https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv":                        "[]",
+	} {
+		if got := fmt.Sprint(SameYouTubeFeedURLs(raw)); got != want {
+			t.Errorf("SameYouTubeFeedURLs(%q) = %s, want %s", raw, got, want)
+		}
+	}
+}
+
+func TestYouTubeChannelURL_NamesTheChannelBehindEitherFeed(t *testing.T) {
+	const channel = "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv"
+	for raw, want := range map[string]string{
+		"https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv":    channel,
+		"https://www.youtube.com/feeds/videos.xml?playlist_id=UULFabcdefghijklmnopqrstuv": channel,
+		"https://www.youtube.com/feeds/videos.xml?playlist_id=PLabcdefghijklmnopqrstuv":   "",
+		"https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv":                        channel,
+		"https://www.youtube.com/@example":                                                "",
+		"https://blog.example.com/feed.xml":                                               "",
+	} {
+		if got := YouTubeChannelURL(raw); got != want {
+			t.Errorf("YouTubeChannelURL(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+func TestYouTubeHandleURL_ReadsTheChannelsOwnHandle(t *testing.T) {
+	// Featured channels appear on the page too, as canonicalBaseUrl, before the channel's own metadata.
+	const page = `<script>{"canonicalBaseUrl":"/@featured"}{"channelMetadataRenderer":{"vanityChannelUrl":"http://www.youtube.com/@example","ownerUrls":["http://www.youtube.com/@example"]}}</script>`
+	for name, tc := range map[string]struct {
+		status int
+		body   string
+		want   string
+	}{
+		"handle":     {200, page, "https://www.youtube.com/@example"},
+		"no handle":  {200, `{"canonicalBaseUrl":"/@featured"}`, ""},
+		"error page": {404, page, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := &http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
+				if r.URL.String() != "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv" {
+					t.Fatalf("unexpected request: %s", r.URL)
+				}
+				res := resp(tc.body, "text/html")
+				res.StatusCode = tc.status
+				return res
+			})}
+			got, err := YouTubeHandleURL(context.Background(), client, "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")
+			if err != nil || got != tc.want {
+				t.Errorf("YouTubeHandleURL = %q, %v, want %q", got, err, tc.want)
+			}
+		})
 	}
 }
 

@@ -388,8 +388,104 @@ func (f *Finder) fetchYTFeedTitle(ctx context.Context, feedURL string) string {
 
 func ytFeedCandidate(channelID string, u *url.URL) *Candidate {
 	return &Candidate{
-		FeedURL:     "https://www.youtube.com/feeds/videos.xml?channel_id=" + channelID,
+		FeedURL:     ytChannelFeed + channelID,
 		ContentType: "application/atom+xml",
 		SiteURL:     u.String(),
 	}
+}
+
+const (
+	ytChannelFeed  = "https://www.youtube.com/feeds/videos.xml?channel_id="
+	ytPlaylistFeed = "https://www.youtube.com/feeds/videos.xml?playlist_id="
+	// A channel's uploads playlist is its ID with UC swapped for UU; the UULF variant leaves out Shorts and live streams.
+	ytLongFormPlaylist = "UULF"
+)
+
+var (
+	ytChannelID          = regexp.MustCompile(`^UC([A-Za-z0-9_-]{22})$`)
+	ytLongFormPlaylistID = regexp.MustCompile(`^` + ytLongFormPlaylist + `([A-Za-z0-9_-]{22})$`)
+)
+
+// SameYouTubeFeedURLs names a channel's full feed and its long-form feed when raw is either, so following one counts as following the channel.
+func SameYouTubeFeedURLs(raw string) []string {
+	id := ytFeedChannel(raw)
+	if id == "" {
+		return nil
+	}
+	return []string{ytChannelFeed + "UC" + id, ytPlaylistFeed + ytLongFormPlaylist + id}
+}
+
+// YouTubeChannelURL is the channel page behind a channel's full or long-form feed, or the page itself; "" for any other URL. The long-form feed names no page of its own.
+func YouTubeChannelURL(raw string) string {
+	id := ytFeedChannel(raw)
+	if u, err := url.Parse(raw); id == "" && err == nil && isYouTubeHost(u.Host) {
+		if m := ytChannelPath.FindStringSubmatch(u.Path); m != nil {
+			if m := ytChannelID.FindStringSubmatch(m[1]); m != nil {
+				id = m[1]
+			}
+		}
+	}
+	if id == "" {
+		return ""
+	}
+	return "https://www.youtube.com/channel/UC" + id
+}
+
+// ytVanityURL is the channel's own handle in its page metadata; featured channels on the page appear only as canonicalBaseUrl.
+var ytVanityURL = regexp.MustCompile(`"vanityChannelUrl":"https?://(?:www\.)?youtube\.com/(@[^"/?]+)"`)
+
+// YouTubeHandleURL reads a channel page for the channel's @handle page; "" when it has none or the page is an error.
+func YouTubeHandleURL(ctx context.Context, client HTTPDoer, channelURL string) (string, error) {
+	req, err := newGET(ctx, channelURL)
+	if err != nil {
+		return "", err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return "", nil
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedSniffBytes))
+	if err != nil {
+		return "", err
+	}
+	if m := ytVanityURL.FindSubmatch(body); m != nil {
+		return "https://www.youtube.com/" + string(m[1]), nil
+	}
+	return "", nil
+}
+
+// IsYouTubeHandleURL reports a channel's @handle page, the address readers know it by; neither of its feeds names it.
+func IsYouTubeHandleURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && isYouTubeHost(u.Host) && strings.HasPrefix(u.Path, "/@")
+}
+
+func isYouTubeHost(host string) bool {
+	host = strings.ToLower(host)
+	return host == "youtube.com" || host == "www.youtube.com"
+}
+
+// ytFeedChannel is the channel ID after its UC prefix, taken from a channel feed or its long-form playlist feed.
+func ytFeedChannel(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Path != "/feeds/videos.xml" {
+		return ""
+	}
+	if !isYouTubeHost(u.Host) {
+		return ""
+	}
+	q := u.Query()
+	m := ytChannelID.FindStringSubmatch(q.Get("channel_id"))
+	if m == nil {
+		m = ytLongFormPlaylistID.FindStringSubmatch(q.Get("playlist_id"))
+	}
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }

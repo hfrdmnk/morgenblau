@@ -18,6 +18,7 @@ import (
 	"morgenblau/internal/database"
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/favicon"
+	"morgenblau/internal/feedfinder"
 	"morgenblau/internal/fetcher"
 	"morgenblau/internal/safehttp"
 )
@@ -50,7 +51,9 @@ type FeedPipeline struct {
 	sanitizer *bluemonday.Policy
 	now       func() time.Time
 	favicon   FaviconDiscoverer
-	runTx     func(ctx context.Context, fn func(pipelineQueries) error) error
+	// youtubeHandle reads a YouTube channel page for its @handle page.
+	youtubeHandle func(ctx context.Context, channelURL string) (string, error)
+	runTx         func(ctx context.Context, fn func(pipelineQueries) error) error
 	// undatedHistory reports feeds whose undated items are history rather than news, so they keep no date.
 	undatedHistory func(feedURL string) bool
 }
@@ -71,6 +74,10 @@ func NewFeedPipeline(f *fetcher.Fetcher, q pipelineQueries) *FeedPipeline {
 		sanitizer: bluemonday.UGCPolicy(),
 		now:       time.Now,
 		favicon:   defaultFaviconDiscoverer(),
+	}
+	handleClient := safehttp.NewClient(10*time.Second, 5)
+	p.youtubeHandle = func(ctx context.Context, channelURL string) (string, error) {
+		return feedfinder.YouTubeHandleURL(ctx, handleClient, channelURL)
 	}
 	// No transaction by default so fake-based tests work; production installs a real runner via WithTxRunner.
 	p.runTx = func(ctx context.Context, fn func(pipelineQueries) error) error {
@@ -149,9 +156,29 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 	// Tier-1: the subscription title is user-owned and a refresh must not clobber it.
 	feedSite := strings.TrimSpace(res.Feed.Link)
 	if feedSite == "" {
+		feedSite = feedfinder.YouTubeChannelURL(feedURL)
+	}
+	if feedSite == "" {
 		// Falls back to the feed URL's origin so favicon discovery has somewhere to look when the feed XML lacks a <link>.
 		if u, err := url.Parse(feedURL); err == nil && u.Scheme != "" && u.Host != "" {
 			feedSite = u.Scheme + "://" + u.Host
+		}
+	}
+
+	// A channel's feeds link its /channel/ page at best, so its @handle page comes from that page; a stored one stays, since an empty site leaves it in place.
+	storedSite := feedSite
+	channel := feedfinder.YouTubeChannelURL(feedURL)
+	if channel == "" {
+		channel = feedfinder.YouTubeChannelURL(feedSite)
+	}
+	if channel != "" {
+		storedSite = channel
+		if existing.SiteUrl != nil && feedfinder.IsYouTubeHandleURL(*existing.SiteUrl) {
+			storedSite = ""
+		} else if handle, err := p.youtubeHandle(ctx, channel); err != nil {
+			slog.Warn("feedpipeline: YouTube handle lookup failed", "channel", channel, "err", err)
+		} else if handle != "" {
+			storedSite = handle
 		}
 	}
 
@@ -173,7 +200,7 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 		}
 		if err := q.UpsertFeed(ctx, db.UpsertFeedParams{
 			FeedUrl:   feedURL,
-			SiteUrl:   nilIfEmpty(feedSite),
+			SiteUrl:   nilIfEmpty(storedSite),
 			CreatedAt: nowStr,
 			UpdatedAt: nowStr,
 		}); err != nil {

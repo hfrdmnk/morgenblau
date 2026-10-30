@@ -121,7 +121,7 @@ type importSnapshot struct {
 	local  *db.UserSubscription
 }
 
-func SubscriptionsImportHandler(writer ImportIndex, pds ImportRepo, disp FetchDispatcher) http.Handler {
+func SubscriptionsImportHandler(writer ImportIndex, pds ImportRepo, disp FetchDispatcher, aliases FeedAliases) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
 		if !ok {
@@ -147,7 +147,7 @@ func SubscriptionsImportHandler(writer ImportIndex, pds ImportRepo, disp FetchDi
 		defer cancel()
 		result := importResult{Failures: []importFailure{}}
 		for _, source := range plan.Sources {
-			status, err := importSubscription(ctx, sess, source, writer, pds, disp)
+			status, err := importSubscription(ctx, sess, source, writer, pds, disp, aliases)
 			if err != nil {
 				result.Failures = append(result.Failures, importFailure{FeedURL: source.FeedURL, Message: err.Error()})
 				continue
@@ -165,8 +165,9 @@ func SubscriptionsImportHandler(writer ImportIndex, pds ImportRepo, disp FetchDi
 	})
 }
 
-func importSubscription(ctx context.Context, sess *session.Session, incoming importSource, writer ImportIndex, pds ImportRepo, disp FetchDispatcher) (string, error) {
-	for range 3 {
+func importSubscription(ctx context.Context, sess *session.Session, incoming importSource, writer ImportIndex, pds ImportRepo, disp FetchDispatcher, aliases FeedAliases) (string, error) {
+	rekeyed := false
+	for attempt := 0; attempt < 3; attempt++ {
 		baseline, err := writer.SnapshotImportedSubscription(ctx, sess.Data.AccountDID.String(), incoming.FeedURL)
 		if err != nil {
 			return "", fmt.Errorf("Could not read the local subscription index. Please retry.")
@@ -180,9 +181,15 @@ func importSubscription(ctx context.Context, sess *session.Session, incoming imp
 		if err != nil {
 			return "", fmt.Errorf("Could not read existing subscriptions from your PDS. Please retry.")
 		}
-		old, found, err := existingImportSubscription(records, incoming.FeedURL)
+		old, found, err := existingImportSubscription(records, sameFeedURLs(incoming.FeedURL, aliases))
 		if err != nil {
 			return "", err
+		}
+		// A source followed at an alias URL merges into that subscription, whose local row is keyed by its own URL; re-read it in order.
+		if followed, _ := rssImportSource(old.Value); found && followed.FeedURL != incoming.FeedURL && !rekeyed {
+			incoming.FeedURL, rekeyed = followed.FeedURL, true
+			attempt--
+			continue
 		}
 		status, err := writeImportSubscription(ctx, sess, incoming, importSnapshot{head: head, record: old, found: found, local: baseline}, writer, pds, disp)
 		if !isImportConflict(err) {
@@ -197,12 +204,19 @@ func isImportConflict(err error) bool {
 	return errors.As(err, &apiErr) && apiErr.Name == "InvalidSwap"
 }
 
-func existingImportSubscription(records []atprepo.ListedRecord, feedURL string) (atprepo.ListedRecord, bool, error) {
+func sameFeedURLs(feedURL string, aliases FeedAliases) []string {
+	if aliases == nil {
+		return []string{feedURL}
+	}
+	return append([]string{feedURL}, aliases(feedURL)...)
+}
+
+func existingImportSubscription(records []atprepo.ListedRecord, feedURLs []string) (atprepo.ListedRecord, bool, error) {
 	var chosen atprepo.ListedRecord
 	found, invalid := false, false
 	for _, record := range records {
 		s, ok := rssImportSource(record.Value)
-		if !ok || s.FeedURL != feedURL {
+		if !ok || !slices.Contains(feedURLs, s.FeedURL) {
 			continue
 		}
 		if err := lexicon.ValidateRecordLenient(subscriptionCollection, record.Value); err != nil {

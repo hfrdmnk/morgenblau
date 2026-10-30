@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"morgenblau/internal/api"
+	"morgenblau/internal/feedfinder"
 	"morgenblau/internal/middleware/auth"
 	"morgenblau/internal/middleware/ratelimit"
 	"morgenblau/internal/oauth/handler"
@@ -56,10 +57,12 @@ func (s *Server) routes() *http.ServeMux {
 	// POST/PATCH/DELETE routes below reach the PDS (auth.holdsSessionLock must match); mutations commit once through gated, OPML import once per source.
 	gated := api.CommitGate{Repo: s.pds}
 	var webFeeds websource.FeedPrefixes
-	var feedAliases api.FeedAliases
+	feedAliases := api.FeedAliases(feedfinder.SameYouTubeFeedURLs)
 	if s.webSources != nil {
 		webFeeds = s.webSources.FeedURLPrefixes()
-		feedAliases = s.webSources.SameFeedURLs
+		feedAliases = func(feedURL string) []string {
+			return append(s.webSources.SameFeedURLs(feedURL), feedfinder.SameYouTubeFeedURLs(feedURL)...)
+		}
 	}
 	mux.Handle("GET /api/subscriptions", api.SubscriptionsListHandler(s.qr, webFeeds))
 	mux.Handle("POST /api/subscriptions/resolve", api.SubscriptionsResolveHandler(s.qr, s.feedfinder, feedAliases))
@@ -70,7 +73,7 @@ func (s *Server) routes() *http.ServeMux {
 	}, feedAliases))
 	mux.Handle("POST /api/subscriptions", api.OneCommitPerRequest(api.SubscriptionsCreateHandler(s.qr, s.qw, gated, s.sync, feedAliases)))
 	mux.Handle("POST /api/subscriptions/import/prepare", api.SubscriptionsImportPrepareHandler(s.pds))
-	mux.Handle("POST /api/subscriptions/import", api.SubscriptionsImportHandler(s.db, s.pds, s.sync))
+	mux.Handle("POST /api/subscriptions/import", api.SubscriptionsImportHandler(s.db, s.pds, s.sync, feedAliases))
 	mux.Handle("POST /api/subscriptions/export", api.SubscriptionsExportHandler(s.pds))
 	mux.Handle("GET /api/subscriptions/tags", api.SubscriptionsTagsHandler(s.qr))
 	mux.Handle("GET /api/subscriptions/{rkey}", api.SubscriptionGetHandler(s.qr, webFeeds))

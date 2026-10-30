@@ -142,3 +142,33 @@ func TestSourceListMarksOwnGeneratedFeeds(t *testing.T) {
 		t.Errorf("GET /api/subscriptions = %d %s, want %s on both the /feed/ and the legacy /web/ subscription", rr.Code, rr.Body, want)
 	}
 }
+
+func TestAddingAYouTubeChannelFindsItsLongFormSubscription(t *testing.T) {
+	for name, webSources := range map[string]*websource.Service{
+		"without generated feeds": nil,
+		"with generated feeds":    websource.NewService(nil, nil, nil, websource.Config{PublicBaseURL: "https://app.example.com"}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			dbs := openMigratedRouteDB(t)
+			for _, stmt := range []string{
+				`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES ('https://www.youtube.com/feeds/videos.xml?playlist_id=UULFabcdefghijklmnopqrstuv', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z')`,
+				`INSERT INTO user_subscriptions (did, rkey, at_uri, feed_url, created_at, updated_at)
+				VALUES ('did:plc:reader', '3long', 'at://did:plc:reader/blue.morgen.feed.subscription/3long', 'https://www.youtube.com/feeds/videos.xml?playlist_id=UULFabcdefghijklmnopqrstuv', '2026-10-10T09:00:00Z', '2026-10-10T09:00:00Z')`,
+			} {
+				if _, err := dbs.Writer.Exec(stmt); err != nil {
+					t.Fatal(err)
+				}
+			}
+			srv := &Server{db: dbs, qr: dbqueries.New(dbs.Reader), webSources: webSources}
+
+			did, _ := syntax.ParseDID("did:plc:reader")
+			req := httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(`{"feedUrl":"https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv"}`))
+			req = req.WithContext(auth.WithSession(req.Context(), &session.Session{Data: &session.Data{AccountDID: did, SessionID: "sid-1"}}))
+			rr := httptest.NewRecorder()
+			srv.routes().ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"rkey":"3long"`) {
+				t.Errorf("POST /api/subscriptions = %d %s, want the existing long-form subscription 3long", rr.Code, rr.Body)
+			}
+		})
+	}
+}

@@ -14,6 +14,7 @@ import (
 
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/feedfinder"
 	"morgenblau/internal/lexicon"
 	"morgenblau/internal/tags"
 )
@@ -224,6 +225,12 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		if feed, err := reader.GetFeed(r.Context(), newFeedURL); err == nil {
 			siteURL = derefStr(feed.SiteUrl)
 		}
+		// The Shorts toggle moves between two feeds of one channel, so the new feed keeps the channel page (its @handle) the old one had.
+		if channel := feedfinder.YouTubeChannelURL(newFeedURL); feedChanged && siteURL == "" && channel != "" && channel == feedfinder.YouTubeChannelURL(row.FeedUrl) {
+			if feed, err := reader.GetFeed(r.Context(), row.FeedUrl); err == nil {
+				siteURL = derefStr(feed.SiteUrl)
+			}
+		}
 		record := map[string]any{
 			"source":    sourceUnion(row.Kind, newFeedURL, siteURL),
 			"createdAt": row.CreatedAt,
@@ -258,6 +265,7 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			if feedChanged {
 				if err := writer.UpsertFeed(r.Context(), db.UpsertFeedParams{
 					FeedUrl:   newFeedURL,
+					SiteUrl:   nilIfEmpty(siteURL),
 					CreatedAt: now,
 					UpdatedAt: now,
 				}); err != nil {

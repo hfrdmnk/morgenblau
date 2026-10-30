@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"morgenblau/internal/atprepo"
+	"morgenblau/internal/database/db"
 	"morgenblau/internal/tags"
 )
 
@@ -78,7 +80,7 @@ func TestImportMergesPDSMetadataAndRetryIsIdempotent(t *testing.T) {
 	}}}}
 	idx := newFakeIndex()
 	disp := &fakeDispatcher{}
-	h := SubscriptionsImportHandler(idx, pds, disp)
+	h := SubscriptionsImportHandler(idx, pds, disp, nil)
 	body := map[string]any{"sources": []importSource{
 		{FeedURL: "https://example.com/feed", Title: "Imported title", Tags: []string{"existing", "New"}},
 		{FeedURL: "https://other.example.com/feed", Title: "Other", Tags: []string{"Fresh"}},
@@ -111,7 +113,7 @@ func TestImportPDSFailureDoesNotMirrorAndMirrorFailureDoesNotFailImport(t *testi
 	body := map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed"}}}
 	idx := newFakeIndex()
 	pds := &fakePDS{createErr: map[string]error{subscriptionCollection: errors.New("offline")}}
-	w := importRequest(t, SubscriptionsImportHandler(idx, pds, &fakeDispatcher{}), body)
+	w := importRequest(t, SubscriptionsImportHandler(idx, pds, &fakeDispatcher{}, nil), body)
 	var result importResult
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
@@ -121,7 +123,7 @@ func TestImportPDSFailureDoesNotMirrorAndMirrorFailureDoesNotFailImport(t *testi
 	}
 	pds = &fakePDS{}
 	disp := &fakeDispatcher{}
-	h := SubscriptionsImportHandler(upsertErrIndex{idx}, pds, disp)
+	h := SubscriptionsImportHandler(upsertErrIndex{idx}, pds, disp, nil)
 	w = importRequest(t, h, body)
 	if w.Code != 200 {
 		t.Fatal(w.Body.String())
@@ -165,7 +167,7 @@ func TestImportExportExcludesNonRSSAndPreservesTags(t *testing.T) {
 
 func TestImportNewRecordHasCollectionType(t *testing.T) {
 	pds := &fakePDS{}
-	w := importRequest(t, SubscriptionsImportHandler(newFakeIndex(), pds, &fakeDispatcher{}), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed"}}})
+	w := importRequest(t, SubscriptionsImportHandler(newFakeIndex(), pds, &fakeDispatcher{}, nil), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed"}}})
 	if w.Code != 200 || pds.lastRec["$type"] != subscriptionCollection {
 		t.Fatalf("status %d, record type %v", w.Code, pds.lastRec["$type"])
 	}
@@ -182,7 +184,7 @@ func TestImportRejectsInvalidExistingRecord(t *testing.T) {
 			}
 			pds := &fakePDS{listed: map[string][]atprepo.ListedRecord{subscriptionCollection: {{URI: "at://did:plc:alice/" + subscriptionCollection + "/old", Value: record}}}}
 			idx := newFakeIndex()
-			w := importRequest(t, SubscriptionsImportHandler(idx, pds, &fakeDispatcher{}), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed"}}})
+			w := importRequest(t, SubscriptionsImportHandler(idx, pds, &fakeDispatcher{}, nil), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed"}}})
 			var result importResult
 			if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 				t.Fatal(err)
@@ -202,7 +204,7 @@ func TestImportChoosesValidDuplicateBeforeInvalidEarlierRecord(t *testing.T) {
 		{URI: "at://did:plc:alice/" + subscriptionCollection + "/b", Value: valid},
 	}}}
 	idx := newFakeIndex()
-	w := importRequest(t, SubscriptionsImportHandler(idx, pds, &fakeDispatcher{}), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed"}}})
+	w := importRequest(t, SubscriptionsImportHandler(idx, pds, &fakeDispatcher{}, nil), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed"}}})
 	row := idx.rows["did:plc:alice"]["https://example.com/feed"]
 	if w.Code != 200 || row.Title == nil || *row.Title != "Valid title" || row.Rkey != "b" {
 		t.Fatalf("wrong duplicate: %s row=%+v", w.Body.String(), row)
@@ -214,8 +216,43 @@ func TestImportRecoveredRecordDispatchesFetch(t *testing.T) {
 	record := importRecord(importSource{FeedURL: "https://example.com/feed"}, "2026-01-01T00:00:00Z")
 	pds := &fakePDS{listed: map[string][]atprepo.ListedRecord{subscriptionCollection: {{URI: "at://did:plc:alice/" + subscriptionCollection + "/old", Value: record}}}}
 	disp := &fakeDispatcher{}
-	w := importRequest(t, SubscriptionsImportHandler(newFakeIndex(), pds, disp), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed"}}})
+	w := importRequest(t, SubscriptionsImportHandler(newFakeIndex(), pds, disp, nil), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed"}}})
 	if w.Code != 200 || len(disp.dispatched) != 1 || pds.creates != 0 {
 		t.Fatalf("recovery did not fetch: %s, dispatched=%v creates=%d", w.Body.String(), disp.dispatched, pds.creates)
+	}
+}
+
+func TestImportMergesIntoASubscriptionFollowedAtAnAliasURL(t *testing.T) {
+	const all, longForm = "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc", "https://www.youtube.com/feeds/videos.xml?playlist_id=UULFabc"
+	aliases := func(feedURL string) []string {
+		if feedURL == all || feedURL == longForm {
+			return []string{all, longForm}
+		}
+		return nil
+	}
+	existing := map[string]any{"source": sourceUnion("rss", longForm, ""), "title": "Example Channel", "tags": []any{"Video"}, "createdAt": "2026-01-01T00:00:00Z"}
+	pds := &fakePDS{listed: map[string][]atprepo.ListedRecord{subscriptionCollection: {{URI: "at://did:plc:alice/" + subscriptionCollection + "/long", CID: "long-cid", Value: existing}}}}
+	idx := newFakeIndex()
+	video := `["Video"]`
+	if err := idx.UpsertUserSubscription(context.Background(), db.UpsertUserSubscriptionParams{
+		Did: "did:plc:alice", Rkey: "long", AtUri: "at://did:plc:alice/" + subscriptionCollection + "/long", FeedUrl: longForm,
+		Title: ptrString("Example Channel"), Tags: &video, CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	disp := &fakeDispatcher{}
+	w := importRequest(t, SubscriptionsImportHandler(idx, pds, disp, aliases), map[string]any{"sources": []importSource{{FeedURL: all, Title: "Example Channel", Tags: []string{"Tech"}}}})
+	var result importResult
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Added != 0 || result.Updated != 1 || len(result.Failures) != 0 || pds.creates != 0 || pds.lastPutRkey != "long" {
+		t.Fatalf("%d %#v, creates=%d put=%q: want the tag merged into the followed long-form record", w.Code, result, pds.creates, pds.lastPutRkey)
+	}
+	if _, ok := idx.rows["did:plc:alice"][all]; ok {
+		t.Fatal("mirrored a second subscription under the channel feed")
+	}
+	if got := tags.Unmarshal(idx.rows["did:plc:alice"][longForm].Tags); !reflect.DeepEqual(got, []string{"Video", "Tech"}) || disp.manualSync != 0 {
+		t.Fatalf("mirror tags %v, repairs %d", got, disp.manualSync)
 	}
 }

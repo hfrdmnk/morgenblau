@@ -464,3 +464,63 @@ func rssWithLink(link string, items string) string {
 ` + items + `
 </channel></rss>`
 }
+
+func TestFeedPipeline_FetchAndStore_StoresTheYouTubeChannelsHandle(t *testing.T) {
+	const channel = "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv"
+	feedURL, closeServer := serveFeed(t, rssWithLink(channel, ""))
+	defer closeServer()
+	for name, tc := range map[string]struct {
+		stored, handle string
+		lookups        int
+		want           string
+	}{
+		// An empty site URL leaves the stored one in place (UpsertFeed's COALESCE).
+		"handle already stored": {"https://www.youtube.com/@example", "https://www.youtube.com/@other", 0, ""},
+		"channel page stored":   {channel, "https://www.youtube.com/@example", 1, "https://www.youtube.com/@example"},
+		"bare origin stored":    {"https://www.youtube.com", "https://www.youtube.com/@example", 1, "https://www.youtube.com/@example"},
+		"channel has no handle": {"https://www.youtube.com", "", 1, channel},
+	} {
+		t.Run(name, func(t *testing.T) {
+			q := &fakePipelineQueries{existing: db.Feed{FeedUrl: feedURL, SiteUrl: &tc.stored}}
+			p := newTestPipeline(q, &fakeFaviconDiscoverer{}, time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC))
+			var looked []string
+			p.youtubeHandle = func(_ context.Context, page string) (string, error) {
+				looked = append(looked, page)
+				return tc.handle, nil
+			}
+			if err := p.FetchAndStore(context.Background(), feedURL); err != nil {
+				t.Fatalf("FetchAndStore: %v", err)
+			}
+			if got := derefTestString(q.feeds[0].SiteUrl); got != tc.want {
+				t.Errorf("SiteUrl = %q, want %q", got, tc.want)
+			}
+			if len(looked) != tc.lookups || (tc.lookups > 0 && looked[0] != channel) {
+				t.Errorf("handle lookups = %v, want %d of %s", looked, tc.lookups, channel)
+			}
+		})
+	}
+}
+
+func TestFeedPipeline_FetchAndStore_LooksUpNoHandleForOtherFeeds(t *testing.T) {
+	feedURL, closeServer := serveFeed(t, rssWithLink("https://blog.example.com/", ""))
+	defer closeServer()
+	q := &fakePipelineQueries{getErr: sql.ErrNoRows}
+	p := newTestPipeline(q, &fakeFaviconDiscoverer{}, time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC))
+	p.youtubeHandle = func(context.Context, string) (string, error) {
+		t.Fatal("looked up a YouTube handle for a blog feed")
+		return "", nil
+	}
+	if err := p.FetchAndStore(context.Background(), feedURL); err != nil {
+		t.Fatalf("FetchAndStore: %v", err)
+	}
+	if got := derefTestString(q.feeds[0].SiteUrl); got != "https://blog.example.com/" {
+		t.Errorf("SiteUrl = %q", got)
+	}
+}
+
+func derefTestString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
