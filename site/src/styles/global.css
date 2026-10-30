@@ -1,0 +1,59 @@
+/* Tokens mirror app/frontend/src/index.css so the site and the app read as one product. */
+:root {
+	--sans: 'Geist Variable', system-ui, sans-serif;
+	--serif: 'Newsreader Variable', Georgia, serif;
+	--background: oklch(0.97 0.001 106.424);
+	--foreground: oklch(0.216 0.006 56.043);
+	--popover: oklch(1 0 0);
+	--primary: oklch(0.268 0.007 34.298);
+	--primary-foreground: oklch(0.985 0.001 106.423);
+	--secondary: oklch(0.923 0.003 48.717);
+	--muted-foreground: oklch(0.444 0.011 73.639);
+	--subtle-foreground: oklch(0.53 0.01 56.259);
+	--input: oklch(0.955 0.002 77);
+	--line: oklch(0.216 0.006 56.043 / 0.1);
+	--atmosphere-blue: oklch(57.2% 0.251 256.1);
+	--sunrise-orange: oklch(64% 0.22 38);
+	--aurora-violet: oklch(60% 0.22 300);
+	--radius: 0.45rem;
+	--radius-md: calc(var(--radius) * 0.8);
+	--radius-xl: calc(var(--radius) * 1.4);
+	--ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+	--motion-fast: 120ms;
+	--motion-overlay: 240ms;
+	--popover-shadow: 0 8px 24px -8px oklch(0.216 0.006 56.043 / 0.16), 0 2px 6px -2px oklch(0.216 0.006 56.043 / 0.08);
+	--panel-gap: clamp(12px, 2.4vw, 36px);
+	--panel-radius: clamp(16px, 2vw, 28px);
+	--scrim: oklch(0.18 0.03 255);
+	color-scheme: light;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root { --motion-fast: 0ms; --motion-overlay: 0ms; }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; font-family: var(--sans); background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+img { display: block; max-width: 100%; height: auto; }
+a { color: inherit; }
+::selection { background: oklch(from var(--atmosphere-blue) l c h / 0.18); }
+
+.button {
+	display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+	height: 40px; padding: 0 14px; border: 0; border-radius: var(--radius-md);
+	font: 500 0.8889rem/1 var(--sans); white-space: nowrap; text-decoration: none; cursor: pointer;
+	color: var(--primary-foreground); background: var(--primary);
+	transition: background-color var(--motion-fast) ease-out, color var(--motion-fast) ease-out, transform var(--motion-fast) ease-out;
+}
+.button:active { transform: scale(0.98); }
+@media (hover: hover) and (pointer: fine) { .button:hover { background: oklch(from var(--primary) l c h / 0.9); } }
+.button.on-color { color: var(--foreground); background: oklch(0.99 0.001 100); }
+@media (hover: hover) and (pointer: fine) { .button.on-color:hover { background: oklch(0.94 0.003 80); } }
+.button.lg { height: 44px; padding: 0 16px; }
+.button:disabled { cursor: default; opacity: 0.45; }
+
+:focus-visible { outline: 2px solid var(--foreground); outline-offset: 2px; }
+.on-art :focus-visible { outline-color: oklch(1 0 0 / 0.9); }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

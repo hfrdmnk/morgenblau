@@ -1,0 +1,61 @@
+---
+interface Props {
+	id: string;
+	tone?: 'light' | 'glass';
+	stacked?: boolean;
+}
+const { id, tone = 'light', stacked = false } = Astro.props;
+---
+<form
+	class:list={['signup-form', tone, { stacked }]}
+	action="https://buttondown.com/api/emails/embed-subscribe/dominikhofer"
+	method="post"
+	data-signup
+>
+	<div class="fields">
+		<label class="sr-only" for={`${id}-name`}>First name</label>
+		<input id={`${id}-name`} name="metadata__first_name" autocomplete="given-name" enterkeyhint="next" placeholder="First name" required />
+		<label class="sr-only" for={`${id}-email`}>Email</label>
+		<input id={`${id}-email`} type="email" name="email" autocomplete="email" enterkeyhint="send" placeholder="you@example.com" required />
+		<input type="hidden" name="tag" value="Morgenblau" />
+		<input type="hidden" name="embed" value="1" />
+		<button class:list={['button', 'lg', { 'on-color': tone === 'glass' }]} type="submit">Subscribe</button>
+	</div>
+	<p class="done" role="status" hidden>Thanks. Check your inbox to confirm your subscription.</p>
+</form>
+
+<style>
+	.fields { display: flex; flex-wrap: wrap; gap: 8px; }
+	.stacked .fields { flex-direction: column; }
+	input {
+		flex: 1 1 160px; min-width: 0; height: 44px; padding: 0 12px; border: 0; border-radius: var(--radius-md);
+		font: 400 16px var(--sans); color: var(--foreground); background: var(--input);
+		box-shadow: inset 0 0 0 1px var(--line);
+	}
+	.stacked input { flex: none; }
+	input::placeholder { color: var(--subtle-foreground); }
+	.glass input { color: oklch(0.99 0 0); background: oklch(1 0 0 / 0.12); box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.2); }
+	.glass input::placeholder { color: oklch(1 0 0 / 0.6); }
+	.done { margin: 0; padding: 12px 0; font: 500 16px/1.5 var(--sans); }
+	.signup-form[data-state='done'] .fields { display: none; }
+</style>
+
+<script>
+	// Buttondown's embed endpoint sends no CORS headers, so the response is opaque and only a network failure is detectable.
+	document.querySelectorAll<HTMLFormElement>('form[data-signup]').forEach((form) => {
+		form.addEventListener('submit', async (event) => {
+			event.preventDefault();
+			const button = form.querySelector('button')!;
+			button.disabled = true;
+			button.textContent = 'Subscribing…';
+			try {
+				await fetch(form.action, { method: 'POST', body: new FormData(form), mode: 'no-cors' });
+				form.dataset.state = 'done';
+				form.querySelector<HTMLElement>('.done')!.hidden = false;
+			} catch {
+				button.disabled = false;
+				button.textContent = 'Try again';
+			}
+		});
+	});
+</script>

@@ -1,16 +1,299 @@
 ---
----
+import '@fontsource-variable/geist';
+import '@fontsource-variable/newsreader/standard.css';
+import '@fontsource-variable/newsreader/standard-italic.css';
+import '../styles/global.css';
+import Logo from '../components/Logo.astro';
+import SignupForm from '../components/SignupForm.astro';
 
+const title = 'Morgenblau: a calm daily newspaper of the web you choose';
+const description =
+	'Morgenblau gathers the blogs, newsletters and YouTube channels you follow into one calm newspaper a day. No algorithm, no unread counts. When you reach the end, you’re done.';
+
+const steps = [
+	{ title: 'Choose your sources', body: 'Add blogs, newsletters, YouTube channels and websites. Only what you add ever shows up.' },
+	{ title: 'Read today’s newspaper', body: 'Everything your sources published today, in one calm list. No ranking, no recommendations, no counts.' },
+	{ title: 'Close it', body: 'At the end of the list, you’re done. Yesterday is still there if you want it. It never turns into a pile.' },
+];
+
+const useCases = [
+	{ label: 'Newsletters', title: 'Newsletters, out of your inbox', body: 'You get a private address. Give it to the newsletters you love, and they arrive in your newspaper instead of between work mail and receipts. Tracking images stay blocked until you choose to load them.', art: '/images/bg-card-newsletters.webp' },
+	{ label: 'YouTube', title: 'Channels without the recommendations', body: 'New videos from the channels you follow, next to everything else. No Shorts, no autoplay, no sidebar. Bring your subscriptions over from a Google Takeout export.', art: '/images/bg-card-youtube.webp' },
+	{ label: 'Reading', title: 'A quiet place to read', body: 'Articles open in a clean reader, in the typeface you prefer. The original page is always one click away.', art: '/images/bg-card-reading.webp' },
+	{ label: 'Library', title: 'Keep what’s worth keeping', body: 'Save articles and newsletters to your Library and come back to them when you have time.', art: '/images/bg-card-library.webp' },
+	{ label: 'Any website', title: 'Follow sites that never had a feed', body: 'Morgenblau finds the feeds sites forget to mention. When there is none, it builds one from the site’s list of posts. Sites that ask not to be read by bots are left alone.', art: '/images/bg-card-web.webp' },
+];
+
+const faq = [
+	{ q: 'What is Morgenblau?', a: 'A reader for the web you choose. You follow blogs, newsletters, YouTube channels and websites, and Morgenblau gathers what they publish into one newspaper per day.' },
+	{ q: 'Can I use it today?', a: 'Morgenblau is in an invite-only alpha while I finish the essentials. Subscribe to the newsletter and you’ll hear when it opens up.' },
+	{ q: 'Do I need to know what RSS is?', a: 'No. Paste the address of a website or a YouTube channel and Morgenblau works out the rest. For newsletters, you sign up with your Morgenblau address.' },
+	{ q: 'What happens to the days I skip?', a: 'Nothing. They don’t pile up and nothing counts against you. Every past day stays available if you want to go back.' },
+	{ q: 'Which sources does it support?', a: 'Blogs and news sites with RSS or Atom feeds, email newsletters, YouTube channels, Standard.site publications on ATProto, and many sites that have no feed at all.' },
+	{ q: 'Is there an app?', a: 'Morgenblau runs in the browser on your phone and computer, and you can install it to your home screen like an app.' },
+	{ q: 'Can I take my subscriptions with me?', a: 'Yes. Import and export your feeds as OPML, the format every feed reader understands. Your feed subscriptions also live in your own ATProto account.' },
+	{ q: 'Is Morgenblau open source?', a: 'Yes. The code is on GitHub.' },
+];
+
+const faqSchema = {
+	'@context': 'https://schema.org',
+	'@type': 'FAQPage',
+	mainEntity: faq.map(({ q, a }) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })),
+};
+---
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{title}</title>
+		<meta name="description" content={description} />
+		<link rel="canonical" href="https://morgen.blue/" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Morgenblau</title>
+		<meta name="theme-color" content="#f5f5f4" />
+		<meta property="og:type" content="website" />
+		<meta property="og:site_name" content="Morgenblau" />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:url" content="https://morgen.blue/" />
+		<link rel="preload" as="image" href="/images/bg-hero.webp" type="image/webp" />
+		<script defer data-domain="morgen.blue" src="https://analytics.linea.studio/js/script.js"></script>
+		<script type="application/ld+json" set:html={JSON.stringify(faqSchema)} />
 	</head>
 	<body>
-		<h1>Morgenblau</h1>
+		<main>
+			<section class="panel hero on-art" style="--art: url(/images/bg-hero.webp)" aria-labelledby="hero-title">
+				<header class="hero-top"><a href="/" aria-label="Morgenblau home"><Logo size={36} /></a></header>
+				<div class="hero-copy">
+					<h1 id="hero-title">The web you chose, one day at a time.</h1>
+					<p>Morgenblau gathers the blogs, newsletters and channels you follow into one calm newspaper a day. When you reach the end, you’re done.</p>
+					<button type="button" class="button lg on-color" data-open-signup>Follow along</button>
+				</div>
+				<div class="app-shot">
+					<picture>
+						<source media="(max-width: 640px)" srcset="/images/app-digest-mobile.webp" width="1170" height="2532" />
+						<img src="/images/app-digest.webp" width="2560" height="1600" alt="Today’s newspaper in Morgenblau: a list of posts from blogs the reader follows, each with its source." fetchpriority="high" />
+					</picture>
+				</div>
+			</section>
+
+			<section class="statement" aria-label="The problem">
+				<p>You followed people because they were worth reading. Somewhere along the way their writing got buried: under a feed that decides for you and never ends, an inbox that mixes letters with receipts, and apps that count every post you haven’t opened. Reading turned into something to keep up with.</p>
+			</section>
+
+			<section class="wrap" aria-labelledby="usual-title">
+				<h2 id="usual-title">The tools we read with were built to keep us busy.</h2>
+				<div class="three">
+					<div><h3>Social feeds</h3><p>An algorithm picks what you see, and there is always more. The people you followed are in there somewhere, between the outrage and the ads.</p></div>
+					<div><h3>Newsletters</h3><p>Some of the best writing arrives by email, where it competes with work, bills and password resets for the same attention.</p></div>
+					<div><h3>Feed readers</h3><p>RSS readers gave you back the choice. Many kept the unread count, so every day you skip becomes a backlog.</p></div>
+				</div>
+			</section>
+
+			<section class="panel how on-art" style="--art: url(/images/bg-how.webp)" aria-labelledby="how-title">
+				<div class="wrap">
+					<h2 id="how-title">Every day ends.</h2>
+					<ol class="three steps">
+						{steps.map((s, i) => <li class="glass"><span class="num">{i + 1}</span><h3>{s.title}</h3><p>{s.body}</p></li>)}
+					</ol>
+				</div>
+			</section>
+
+			<section class="wrap" aria-labelledby="uses-title">
+				<h2 id="uses-title">Everything you follow, in one place.</h2>
+				<ul class="rail">
+					{useCases.map((u) => (
+						<li class="card on-art" style={`--art: url(${u.art})`}>
+							<div class="card-copy"><span class="label">{u.label}</span><h3>{u.title}</h3><p>{u.body}</p></div>
+						</li>
+					))}
+				</ul>
+			</section>
+
+			<section class="wrap two" aria-label="For RSS and ATProto people">
+				<div>
+					<h2>For people who miss Google Reader.</h2>
+					<p>At heart, Morgenblau is a feed reader. Import your subscriptions from any RSS app with OPML, export them whenever you like, and follow anything that has a feed. What’s different is the shape: a day instead of an unread count.</p>
+				</div>
+				<div>
+					<h2>Your subscriptions belong to you.</h2>
+					<p>You sign in with your internet handle, the same one you might use on Bluesky. Your feed subscriptions and saves live in your own ATProto account as public records, not locked inside Morgenblau. Newsletters are the exception, on purpose: they stay private and never become public records.</p>
+				</div>
+			</section>
+
+			<section class="wrap two faq" aria-labelledby="faq-title">
+				<h2 id="faq-title">Questions</h2>
+				<div>
+					{faq.map((f) => <details><summary>{f.q}</summary><p>{f.a}</p></details>)}
+				</div>
+			</section>
+
+			<section class="wrap why" aria-labelledby="why-title">
+				<div class="polaroids">
+					<figure class="polaroid me"><img src="/images/dominik.webp" width="720" height="960" alt="Dominik outdoors, wearing sunglasses" loading="lazy" /><figcaption>That’s me</figcaption></figure>
+					<figure class="polaroid dog"><img src="/images/naida.webp" width="720" height="960" alt="Naida, Dominik’s dog, lying in the sun" loading="lazy" /><figcaption>Naida, head of quality control</figcaption></figure>
+				</div>
+				<div class="note">
+					<h2 id="why-title">Why I’m building this.</h2>
+					<p>Hoi, I’m Dominik. I live in Bern, and most of my days include some writing, some running and a lot of reading.</p>
+					<p>For years I read the web through feed readers, and I loved them, until the unread count started to feel like homework. I’d open the app, see a number, and close it again. The people I wanted to read were still writing. I just couldn’t face the pile.</p>
+					<p>Morgenblau is the reader I wanted: the writers I chose, one day at a time, and then done. I’m building it slowly and in the open, and I’d like you to come along.</p>
+					<img class="signature" src="/signature.svg" width="98" height="93" alt="Dominik’s signature" loading="lazy" />
+				</div>
+			</section>
+
+			<section class="panel cta on-art" style="--art: url(/images/bg-footer.webp)" aria-labelledby="cta-title">
+				<div class="cta-copy">
+					<h2 id="cta-title">Follow along.</h2>
+					<p>I write a short weekly newsletter about what I’m building, what’s on my mind and good links from the week. Morgenblau news lands there first, including when it opens up.</p>
+					<SignupForm id="footer" tone="glass" />
+					<p class="hint">Casual, no spam. Unsubscribe whenever you like.</p>
+				</div>
+				<footer class="foot">
+					<span class="brand"><Logo size={16} /> Morgenblau</span>
+					<nav aria-label="Footer">
+						<a href="https://app.morgen.blue">Sign in</a>
+						<a href="https://github.com/hfrdmnk/morgenblau">Source on GitHub</a>
+						<a href="https://dominikhofer.me">Made by Dominik Hofer</a>
+					</nav>
+				</footer>
+			</section>
+		</main>
+
+		<dialog class="signup" aria-labelledby="signup-title">
+			<div class="sheet">
+				<button type="button" class="close" aria-label="Close" data-close-signup>
+					<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
+				</button>
+				<h2 id="signup-title">Follow along</h2>
+				<p>Morgenblau is in an invite-only alpha. Get my weekly newsletter and you’ll hear first when it opens up.</p>
+				<SignupForm id="modal" stacked />
+				<p class="hint">You’ll join my <a href="https://buttondown.com/dominikhofer">personal newsletter</a>. Casual, no spam.</p>
+			</div>
+		</dialog>
 	</body>
 </html>
+
+<script>
+	const dialog = document.querySelector<HTMLDialogElement>('dialog.signup')!;
+	document.querySelectorAll('[data-open-signup]').forEach((b) =>
+		b.addEventListener('click', () => {
+			dialog.showModal();
+			dialog.querySelector('input')?.focus();
+		}),
+	);
+	dialog.querySelector('[data-close-signup]')!.addEventListener('click', () => dialog.close());
+	// The sheet fills the dialog, so a click whose target is the dialog itself landed on the backdrop.
+	dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+</script>
+
+<style>
+	.panel { position: relative; display: flex; flex-direction: column; margin: var(--panel-gap); border-radius: var(--panel-radius); overflow: hidden; isolation: isolate; color: oklch(0.99 0 0); background: var(--art) center / cover, var(--scrim); }
+	.panel::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+
+	h1, h2, h3 { text-wrap: balance; }
+	h2 { margin: 0 0 32px; font: 500 clamp(28px, 3.6vw, 44px)/1.1 var(--sans); letter-spacing: -0.03em; }
+	h3 { margin: 0 0 8px; font: 600 17px/1.3 var(--sans); }
+	p { margin: 0 0 1.5em; font: 400 17px/1.6 var(--sans); color: var(--muted-foreground); text-wrap: pretty; }
+	.on-art p { color: oklch(1 0 0 / 0.82); }
+
+	/* Hero: centred mark, headline and button; the app rises out of the panel's bottom edge. */
+	.hero { align-items: center; min-height: calc(100svh - 2 * var(--panel-gap)); text-align: center; }
+	.hero::before { background: linear-gradient(to bottom, oklch(0.2 0.06 250 / 0.5), oklch(0.2 0.06 250 / 0.36) 35%, oklch(0.2 0.06 250 / 0.08) 62%, oklch(0.2 0.06 250 / 0)); }
+	.hero-top { padding-top: clamp(28px, 5vh, 48px); }
+	.hero-top a { display: grid; place-items: center; width: 44px; height: 44px; color: oklch(0.99 0 0); }
+	.hero-copy { display: flex; flex-direction: column; align-items: center; max-width: 760px; padding: clamp(32px, 7vh, 80px) 24px clamp(36px, 6vh, 64px); }
+	h1 { margin: 0 0 20px; font: 500 clamp(40px, 6.4vw, 80px)/1 var(--sans); letter-spacing: -0.04em; }
+	.hero-copy p { max-width: 46ch; margin-bottom: 32px; font-size: clamp(17px, 1.6vw, 20px); color: oklch(1 0 0 / 0.9); }
+	.app-shot { width: min(1080px, 90%); height: clamp(260px, 44vh, 520px); margin-top: auto; overflow: hidden; border-radius: 12px 12px 0 0; background: var(--background);
+		box-shadow: 0 0 0 1px oklch(1 0 0 / 0.25), 0 2px 6px oklch(0.2 0.06 250 / 0.12), 0 24px 64px oklch(0.2 0.06 250 / 0.35); }
+	.app-shot img { width: 100%; }
+
+	.statement { max-width: 900px; margin: 0 auto; padding: 140px clamp(20px, 5vw, 64px) 0; }
+	.statement p { margin: 0; font: 400 clamp(24px, 3vw, 36px)/1.35 var(--serif); letter-spacing: -0.01em; color: var(--foreground); }
+
+	.wrap { max-width: 1160px; margin: 0 auto; padding: 140px clamp(20px, 5vw, 64px) 0; }
+	.three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin: 0; padding: 0; list-style: none; }
+	.three p { margin: 0; }
+
+	.how { justify-content: center; min-height: calc(100svh - 2 * var(--panel-gap)); margin-top: 140px; }
+	.how::before { background: oklch(0.18 0.04 30 / 0.34); }
+	.how .wrap { width: 100%; padding-block: 80px; }
+	.glass { padding: 28px; border-radius: var(--radius-xl); background: oklch(0.18 0.03 30 / 0.22); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%); box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.18); }
+	.num { display: block; margin-bottom: 24px; font: 500 15px var(--sans); font-variant-numeric: tabular-nums; color: oklch(1 0 0 / 0.7); }
+	.glass p { font-size: 15px; }
+
+	.rail { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin: 0; padding: 0; list-style: none; }
+	.card { display: flex; grid-column: span 2; align-items: flex-end; min-height: 440px; border-radius: var(--radius-xl); overflow: hidden; background: var(--art) center / cover; }
+	.card:nth-child(-n + 2) { grid-column: span 3; }
+	.card-copy { width: 100%; padding: 72px 24px 24px; color: oklch(0.99 0 0); background: linear-gradient(to top, oklch(0.15 0.02 260 / 0.62), oklch(0.15 0.02 260 / 0.5) 45%, oklch(0.15 0.02 260 / 0)); }
+	.label { display: block; margin-bottom: 8px; font: 500 12px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: oklch(1 0 0 / 0.75); }
+	.card-copy p { max-width: 46ch; margin: 0; font-size: 15px; line-height: 1.55; }
+
+	.two { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; }
+	.two h2 { font-size: clamp(24px, 2.6vw, 32px); margin-bottom: 20px; }
+	.faq details { padding: 18px 0; box-shadow: 0 1px 0 var(--line); }
+	.faq details:first-child { padding-top: 0; }
+	.faq summary { display: flex; justify-content: space-between; gap: 16px; cursor: pointer; list-style: none; font: 500 17px/1.4 var(--sans); }
+	.faq summary::-webkit-details-marker { display: none; }
+	.faq summary::after { content: '+'; color: var(--subtle-foreground); }
+	.faq details[open] summary::after { content: '−'; }
+	.faq details p { margin: 10px 0 0; }
+
+	/* Why: two overlapping polaroids; the one under the pointer comes to the front. */
+	.why { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 72px; align-items: center; padding-bottom: 140px; }
+	.polaroids { position: relative; aspect-ratio: 1 / 1; }
+	.polaroid { position: absolute; width: 56%; margin: 0; padding: 12px 12px 0; background: oklch(0.995 0.002 90); border-radius: 3px;
+		box-shadow: 0 0 0 1px var(--line), 0 2px 4px oklch(0.216 0.006 56 / 0.08), 0 16px 40px oklch(0.216 0.006 56 / 0.16);
+		transition: transform var(--motion-overlay) var(--ease-out); }
+	.polaroid img { aspect-ratio: 3 / 4; object-fit: cover; width: 100%; }
+	.polaroid figcaption { padding: 12px 4px 16px; font: italic 400 18px/1.2 var(--serif); color: var(--muted-foreground); text-align: center; }
+	.me { top: 0; left: 0; z-index: 1; transform: rotate(-5deg); }
+	.dog { top: 18%; right: 0; z-index: 2; transform: rotate(4deg); }
+	@media (hover: hover) and (pointer: fine) {
+		.me:hover { z-index: 3; transform: rotate(-3deg) translateY(-6px); }
+		.dog:hover { transform: rotate(2deg) translateY(-6px); }
+	}
+	.note p { color: var(--foreground); font: 400 19px/1.65 var(--serif); }
+	.signature { width: 88px; height: auto; }
+
+	.cta { min-height: calc(100svh - 2 * var(--panel-gap)); padding: 0 clamp(20px, 5vw, 64px); }
+	.cta::before { background: linear-gradient(to top, oklch(0.15 0.03 290 / 0.5), oklch(0.15 0.03 290 / 0.2) 50%, oklch(0.15 0.03 290 / 0)); }
+	.cta-copy { max-width: 620px; margin-top: auto; padding-bottom: 64px; }
+	.cta h2 { font-size: clamp(40px, 6vw, 72px); line-height: 1; letter-spacing: -0.04em; }
+	.hint { margin: 14px 0 0; font-size: 13px; }
+	.on-art .hint { color: oklch(1 0 0 / 0.7); }
+	.foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; padding: 24px 0 32px; box-shadow: 0 -1px 0 oklch(1 0 0 / 0.16); font: 400 13px var(--sans); color: oklch(1 0 0 / 0.75); }
+	.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; color: oklch(0.99 0 0); }
+	.foot nav { display: flex; flex-wrap: wrap; gap: 20px; }
+	.foot a { text-decoration: none; }
+	@media (hover: hover) and (pointer: fine) { .foot a:hover { color: oklch(0.99 0 0); } }
+
+	/* Matches DialogPopup and DialogBackdrop in the app. */
+	.signup { width: min(420px, calc(100% - 2rem)); padding: 0; border: 0; border-radius: var(--radius-xl); color: var(--foreground); background: var(--popover); box-shadow: var(--popover-shadow); }
+	.signup::backdrop { background: oklch(from var(--background) l c h / 0.4); -webkit-backdrop-filter: blur(4px) saturate(180%); backdrop-filter: blur(4px) saturate(180%); }
+	.signup[open] { animation: popup-in var(--motion-overlay) var(--ease-out); }
+	.signup[open]::backdrop { animation: fade-in var(--motion-overlay) ease-out; }
+	@keyframes popup-in { from { opacity: 0; scale: 0.96; } }
+	@keyframes fade-in { from { opacity: 0; } }
+	.sheet { position: relative; padding: 24px; }
+	.sheet h2 { margin: 0 0 8px; font: 600 1.2656rem/1.4 var(--sans); letter-spacing: -0.01em; }
+	.sheet > p { font-size: 0.8889rem; line-height: 1.5; margin-bottom: 20px; }
+	.sheet .hint { font-size: 0.7901rem; }
+	.close { position: absolute; top: 12px; right: 12px; display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: calc(var(--radius) * 0.6); color: var(--muted-foreground); background: transparent; cursor: pointer; transition: background-color var(--motion-fast) ease-out; }
+	.close::before { content: ''; position: absolute; inset: -6px; }
+	@media (hover: hover) and (pointer: fine) { .close:hover { background: var(--secondary); } }
+
+	@media (max-width: 860px) {
+		.three, .two, .why { grid-template-columns: 1fr; gap: 28px; }
+		.how { min-height: auto; }
+		.how .wrap { padding-block: 64px; }
+		.wrap, .statement { padding-top: 96px; }
+		.polaroids { max-width: 440px; }
+		.rail { grid-template-columns: 1fr; }
+		.card, .card:nth-child(-n + 2) { grid-column: auto; min-height: 380px; }
+	}
+	@media (max-width: 640px) {
+		.app-shot { width: min(300px, 78%); height: clamp(280px, 42vh, 420px); border-radius: 24px 24px 0 0; }
+	}
+</style>
