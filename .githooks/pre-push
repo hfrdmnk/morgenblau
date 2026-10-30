@@ -1,0 +1,46 @@
+#!/bin/sh
+# Pushes to GitHub's main deploy straight to Fly, so migration and lexicon changes need a deliberate yes
+# before they leave the machine. Confirm on the terminal, or rerun with ALLOW_SCHEMA_PUSH=1 once reviewed.
+case "$2" in
+*github.com*morgenblau*) ;;
+*) exit 0 ;;
+esac
+
+empty_tree="$(git hash-object -t tree /dev/null)"
+changes=""
+while read -r _local_ref local_sha remote_ref remote_sha; do
+  case "$local_sha" in *[!0]*) ;; *) continue ;; esac
+  if case "$remote_sha" in *[!0]*) true ;; *) false ;; esac && git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+    base="$remote_sha"
+  else
+    base="$(git merge-base "refs/remotes/$1/main" "$local_sha" 2>/dev/null)" || base="$empty_tree"
+  fi
+  found="$(git diff --name-status --no-renames "$base" "$local_sha" -- \
+    ':(top)app/internal/database/migrations/' ':(top,glob)app/lexicons/**/*.json')"
+  [ -n "$found" ] && changes="$changes$(printf '%s\n' "$found" | sed "s|^|  ${remote_ref#refs/heads/}  |")
+"
+done
+
+[ -z "$changes" ] && exit 0
+
+{
+  printf '\nThis push changes migrations or lexicons (A added, M modified, D deleted):\n'
+  printf '%s' "$changes" | sort -u
+  printf '\nMigrations run against production on deploy; lexicons are a public compatibility contract.\n'
+} >&2
+
+if [ "${ALLOW_SCHEMA_PUSH:-}" = 1 ]; then
+  printf 'Pushing: confirmed with ALLOW_SCHEMA_PUSH=1.\n' >&2
+  exit 0
+fi
+
+if [ -t 2 ] && (: </dev/tty) 2>/dev/null; then
+  printf 'Push anyway? [y/N] ' >&2
+  read -r answer </dev/tty
+  case "$answer" in y | Y | yes) exit 0 ;; esac
+  exit 1
+fi
+
+printf 'Push stopped: no terminal to confirm on. Review the files above, then rerun the push with ALLOW_SCHEMA_PUSH=1.\n' >&2
+printf 'Agents: show the user these files and wait for their explicit approval before setting ALLOW_SCHEMA_PUSH=1.\n' >&2
+exit 1

@@ -33,6 +33,11 @@ jobs:
           LEXICON_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: bash scripts/check-lexicons.sh "$LEXICON_BASE"
 
+      - name: Check existing migrations are unchanged
+        env:
+          MIGRATION_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: bash scripts/check-migrations.sh "$MIGRATION_BASE"
+
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
