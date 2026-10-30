@@ -1,287 +1,79 @@
 import { DialRoot, useDialKitController } from 'dialkit';
 import 'dialkit/styles.css';
-import {
-    Check,
-    Code,
-    CurveArray,
-    DiceFive,
-    Download,
-    SvgFormat,
-    Xmark,
-} from 'iconoir-react';
-import {
-    type ChangeEvent,
-    useDeferredValue,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
-} from 'react';
-import { createPortal } from 'react-dom';
+import { DiceFive, Download, FloppyDisk } from 'iconoir-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
-    ABSTRACT_GENERATOR_VERSION,
-    ABSTRACT_SCHEMA_VERSION,
-    type AbstractRecipe,
-    type AspectRatio,
-    DEFAULT_RECIPE,
-    type GeneratorSettings,
-    type PaletteAdjustments,
-    assertStandaloneSvg,
-    generateAbstractSvg,
-    parseRecipe,
-    serializeRecipe,
-} from './lib/abstract-generator';
-import { extractPaletteFromImage } from './lib/abstract-palette';
-import {
-    randomHueShift,
-    randomSeedWord,
-} from './lib/random-values';
+    BOUNDS,
+    DEFAULT_CONFIG,
+    MODES,
+    type Mode,
+    SIZE_BOUNDS,
+    SIZE_PRESETS,
+    SMEAR_CONFIG_VERSION,
+    type SmearConfig,
+    normalizeConfig,
+    configForSeed,
+    randomSeed,
+    serializeConfig,
+} from './lib/smear-config';
+import { type SmearRenderer, createSmearRenderer } from './lib/smear-renderer';
 
-const STORAGE_KEY = 'abstract-studio:recipe:v2';
-const DIAL_STORAGE_KEY = 'abstract-studio:dials:v2';
+const STORAGE_KEY = 'abstract-studio:smear:v2';
+const CUSTOM_SIZE = 'Custom';
+const THUMBNAIL_WIDTH = 240;
+const EXPORT_SCALES = [1, 2, 3];
+const DRAFT_WINDOW_MS = 300;
 
-const SLIDER_RESET_VALUES: Record<
-    string,
-    { path: string; value: number }
-> = {
-    Direction: {
-        path: 'flow.direction',
-        value: DEFAULT_RECIPE.settings.direction,
-    },
-    'Flow Scale': {
-        path: 'flow.flowScale',
-        value: DEFAULT_RECIPE.settings.flowScale,
-    },
-    Bend: { path: 'flow.bend', value: DEFAULT_RECIPE.settings.bend },
-    Vortex: {
-        path: 'flow.vortex',
-        value: DEFAULT_RECIPE.settings.vortex,
-    },
-    Density: {
-        path: 'flow.density',
-        value: DEFAULT_RECIPE.settings.density,
-    },
-    'Path Length': {
-        path: 'flow.pathLength',
-        value: DEFAULT_RECIPE.settings.pathLength,
-    },
-    'Stroke Scale': {
-        path: 'flow.strokeScale',
-        value: DEFAULT_RECIPE.settings.strokeScale,
-    },
-    'Crop X': {
-        path: 'flow.cropX',
-        value: DEFAULT_RECIPE.settings.cropX,
-    },
-    'Crop Y': {
-        path: 'flow.cropY',
-        value: DEFAULT_RECIPE.settings.cropY,
-    },
-    Saturation: {
-        path: 'color.saturation',
-        value: DEFAULT_RECIPE.paletteAdjustments.saturation,
-    },
-    'Hue Shift': {
-        path: 'color.hueShift',
-        value: DEFAULT_RECIPE.paletteAdjustments.hueShift,
-    },
-    Lightness: {
-        path: 'color.lightness',
-        value: DEFAULT_RECIPE.paletteAdjustments.lightness,
-    },
-    Contrast: {
-        path: 'color.contrast',
-        value: DEFAULT_RECIPE.paletteAdjustments.contrast,
-    },
-    Temperature: {
-        path: 'color.temperature',
-        value: DEFAULT_RECIPE.paletteAdjustments.temperature,
-    },
-    Mutedness: {
-        path: 'color.mutedness',
-        value: DEFAULT_RECIPE.paletteAdjustments.mutedness,
-    },
-    'Vintage Fade': {
-        path: 'color.vintageFade',
-        value: DEFAULT_RECIPE.paletteAdjustments.vintageFade,
-    },
-    'Shadow Depth': {
-        path: 'color.shadowDepth',
-        value: DEFAULT_RECIPE.paletteAdjustments.shadowDepth,
-    },
-    Softness: {
-        path: 'finish.softness',
-        value: DEFAULT_RECIPE.settings.softness,
-    },
-    'Motion Blur': {
-        path: 'finish.motionBlur',
-        value: DEFAULT_RECIPE.settings.motionBlur,
-    },
-    Grain: {
-        path: 'finish.grain',
-        value: DEFAULT_RECIPE.settings.grain,
-    },
-    'Shadow Intensity': {
-        path: 'finish.shadowIntensity',
-        value: DEFAULT_RECIPE.settings.shadowIntensity,
-    },
-};
+const SAVED_KEY = 'abstract-studio:saved:v2';
 
-const ASPECT_RATIOS: Record<string, AspectRatio> = {
-    '16:9': { preset: '16:9', width: 1600, height: 900 },
-    '3:2': { preset: '3:2', width: 1500, height: 1000 },
-    '4:3': { preset: '4:3', width: 1440, height: 1080 },
-    '1:1': { preset: '1:1', width: 1200, height: 1200 },
-};
+type Saved = { savedAt: string; config: SmearConfig };
 
-const slider = (
-    value: number,
-    min: number,
-    max: number,
-    step?: number,
-): [number, number, number, number?] => [value, min, max, step];
-
-function cloneRecipe(recipe: AbstractRecipe): AbstractRecipe {
-    return structuredClone(recipe);
+function loadSaved(): Saved[] {
+    const stored = localStorage.getItem(SAVED_KEY);
+    if (!stored) return [];
+    return (JSON.parse(stored) as Saved[]).map((saved) => ({
+        savedAt: saved.savedAt,
+        config: normalizeConfig(saved.config),
+    }));
 }
 
-function createFactoryRecipe(): AbstractRecipe {
-    const recipe = cloneRecipe(DEFAULT_RECIPE);
-    recipe.seed = randomSeedWord();
-    return recipe;
+type Knob = [number, number, number, number];
+
+function knobs<T extends Record<string, { min: number; max: number; step: number }>>(
+    group: T,
+    values: { [K in keyof T]: number },
+): { [K in keyof T]: Knob } {
+    return Object.fromEntries(
+        Object.entries(group).map(([key, bound]) => [
+            key,
+            [values[key]!, bound.min, bound.max, bound.step],
+        ]),
+    ) as { [K in keyof T]: Knob };
 }
 
-function loadInitialRecipe(): AbstractRecipe {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        return saved ? parseRecipe(saved) : createFactoryRecipe();
-    } catch {
-        return createFactoryRecipe();
-    }
-}
-
-function createDialConfig(
-    recipe: AbstractRecipe,
-    referenceName: string,
-    isExtracting: boolean,
-) {
-    const { settings, paletteAdjustments } = recipe;
+function createDialConfig(config: SmearConfig) {
     return {
-        seed: {
-            type: 'text' as const,
-            default: recipe.seed,
-            placeholder: 'Seed',
-        },
-        aspectRatio: {
-            type: 'select' as const,
-            options: Object.keys(ASPECT_RATIOS),
-            default: recipe.aspectRatio.preset,
-        },
-        uploadReference: {
-            type: 'action' as const,
-            label: isExtracting
-                ? 'Sampling image…'
-                : referenceName
-                  ? `Replace ${referenceName}`
-                  : 'Upload reference image',
-        },
-        newVariations: {
-            type: 'action' as const,
-            label: 'New variations',
-        },
-        newVariationsAndHueShift: {
-            type: 'action' as const,
-            label: 'New variations & hue shift',
-        },
-        flow: {
-            direction: slider(settings.direction, -180, 180, 1),
-            flowScale: slider(settings.flowScale, 0, 3, 0.01),
-            bend: slider(settings.bend, 0, 2, 0.01),
-            vortex: slider(settings.vortex, 0, 2, 0.01),
-            density: slider(settings.density, 0, 1, 0.01),
-            pathLength: slider(settings.pathLength, 0.2, 1, 0.01),
-            strokeScale: slider(settings.strokeScale, 0, 2, 0.01),
-            cropX: slider(settings.cropX, -1, 1, 0.01),
-            cropY: slider(settings.cropY, -1, 1, 0.01),
-        },
-        color: {
-            saturation: slider(paletteAdjustments.saturation, -1, 1, 0.01),
-            hueShift: slider(paletteAdjustments.hueShift, -180, 180, 1),
-            lightness: slider(paletteAdjustments.lightness, -1, 1, 0.01),
-            contrast: slider(paletteAdjustments.contrast, -1, 1, 0.01),
-            temperature: slider(paletteAdjustments.temperature, -1, 1, 0.01),
-            mutedness: slider(paletteAdjustments.mutedness, 0, 1, 0.01),
-            vintageFade: slider(paletteAdjustments.vintageFade, 0, 1, 0.01),
-            shadowDepth: slider(paletteAdjustments.shadowDepth, 0, 1, 0.01),
-        },
-        finish: {
-            softness: slider(Math.max(50, settings.softness), 50, 100, 1),
-            motionBlur: slider(settings.motionBlur, 0, 100, 1),
-            grain: slider(settings.grain, 0, 2, 0.01),
-            shadowIntensity: slider(
-                settings.shadowIntensity,
-                0,
-                1,
-                0.01,
-            ),
-        },
-        recipe: {
-            _collapsed: true,
-            importRecipe: {
-                type: 'action' as const,
-                label: 'Import recipe',
-            },
-            downloadRecipe: {
-                type: 'action' as const,
-                label: 'Download recipe',
-            },
-            reset: {
-                type: 'action' as const,
-                label: 'Reset parameters',
-            },
-        },
+        flow: knobs(BOUNDS.flow, config.flow),
+        scene: knobs(BOUNDS.scene, config.scene),
+        color: knobs(BOUNDS.color, config.color),
+        backdrop: knobs(BOUNDS.backdrop, config.backdrop),
+        finish: knobs(BOUNDS.finish, config.finish),
     };
 }
 
-function dialValuesForRecipe(recipe: AbstractRecipe) {
-    return {
-        seed: recipe.seed,
-        aspectRatio: recipe.aspectRatio.preset,
-        flow: {
-            direction: recipe.settings.direction,
-            flowScale: recipe.settings.flowScale,
-            bend: recipe.settings.bend,
-            vortex: recipe.settings.vortex,
-            density: recipe.settings.density,
-            pathLength: recipe.settings.pathLength,
-            strokeScale: recipe.settings.strokeScale,
-            cropX: recipe.settings.cropX,
-            cropY: recipe.settings.cropY,
-        },
-        color: recipe.paletteAdjustments,
-        finish: {
-            softness: Math.max(50, recipe.settings.softness),
-            motionBlur: recipe.settings.motionBlur,
-            grain: recipe.settings.grain,
-            shadowIntensity: recipe.settings.shadowIntensity,
-        },
-    };
+function loadInitialConfig(): SmearConfig {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) return normalizeConfig(JSON.parse(saved));
+    return configForSeed(DEFAULT_CONFIG, randomSeed());
 }
 
-function svgDataUrl(svg: string): string {
-    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
-function safeFilenamePart(value: string): string {
-    return (
-        value
-            .trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-|-$/g, '')
-            .slice(0, 48) || 'untitled'
+function sizeLabel(size: SmearConfig['size']): string {
+    const preset = Object.entries(SIZE_PRESETS).find(
+        ([, value]) =>
+            value.width === size.width && value.height === size.height,
     );
+    return preset ? preset[0] : CUSTOM_SIZE;
 }
 
 function downloadBlob(blob: Blob, filename: string): void {
@@ -289,600 +81,392 @@ function downloadBlob(blob: Blob, filename: string): void {
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = filename;
-    document.body.append(anchor);
     anchor.click();
-    anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-function verifySvg(svg: string): void {
-    assertStandaloneSvg(svg);
-    const document = new DOMParser().parseFromString(svg, 'image/svg+xml');
-    if (document.querySelector('parsererror')) {
-        throw new Error('The generated SVG could not be parsed.');
-    }
-}
+let offlineRenderer: SmearRenderer | undefined;
 
-function reactAttributeName(name: string): string {
-    if (name === 'class') return 'className';
-    if (name.startsWith('aria-') || name.startsWith('data-')) return name;
-    return name.replace(/[-:]([a-z])/g, (_, letter: string) =>
-        letter.toUpperCase(),
-    );
-}
-
-function reactStyle(value: string): string {
-    const declarations = value
-        .split(';')
-        .map((declaration) => declaration.trim())
-        .filter(Boolean)
-        .map((declaration) => {
-            const separator = declaration.indexOf(':');
-            const property = reactAttributeName(
-                declaration.slice(0, separator).trim(),
-            );
-            const propertyValue = declaration.slice(separator + 1).trim();
-            return `${JSON.stringify(property)}: ${JSON.stringify(propertyValue)}`;
-        });
-    return `{{ ${declarations.join(', ')} }}`;
-}
-
-function elementToJsx(element: Element, depth: number): string {
-    const indentation = '    '.repeat(depth);
-    const attributes = [...element.attributes]
-        .map((attribute) => {
-            if (attribute.name === 'style') {
-                return `style=${reactStyle(attribute.value)}`;
-            }
-            return `${reactAttributeName(attribute.name)}={${JSON.stringify(
-                attribute.value,
-            )}}`;
-        })
-        .join(' ');
-    const opening = attributes
-        ? `<${element.tagName} ${attributes}`
-        : `<${element.tagName}`;
-    const children = [...element.childNodes].filter(
-        (node) =>
-            node.nodeType === Node.ELEMENT_NODE ||
-            node.textContent?.trim(),
-    );
-
-    if (children.length === 0) return `${indentation}${opening} />`;
-
-    const content = children
-        .map((node) => {
-            if (node instanceof Element) return elementToJsx(node, depth + 1);
-            return `${'    '.repeat(depth + 1)}{${JSON.stringify(node.textContent)}}`;
-        })
-        .join('\n');
-
-    return `${indentation}${opening}>\n${content}\n${indentation}</${element.tagName}>`;
-}
-
-function svgToReactComponent(svg: string): string {
-    verifySvg(svg);
-    const document = new DOMParser().parseFromString(svg, 'image/svg+xml');
-    return `export default function AbstractArtwork() {
-    return (
-${elementToJsx(document.documentElement, 2)}
-    );
-}
-`;
-}
-
-async function writeClipboard(text: string): Promise<void> {
-    if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        return;
-    }
-
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.append(textarea);
-    textarea.select();
-    const copied = document.execCommand('copy');
-    textarea.remove();
-    if (!copied) throw new Error('Clipboard access is unavailable.');
+function renderOffline(
+    config: SmearConfig,
+    width: number,
+    height: number,
+): HTMLCanvasElement {
+    offlineRenderer ??= createSmearRenderer(document.createElement('canvas'));
+    offlineRenderer.render(config, width, height);
+    return offlineRenderer.canvas;
 }
 
 export default function App() {
-    const imageInputRef = useRef<HTMLInputElement>(null);
-    const recipeInputRef = useRef<HTMLInputElement>(null);
-    const dialsRef = useRef<HTMLDivElement>(null);
-    const uploadToken = useRef(0);
-    const copyResetTimers = useRef(new Map<string, number>());
-    const [initialRecipe] = useState(loadInitialRecipe);
-    const [palette, setPalette] = useState(initialRecipe.palette);
-    const [variationOffset, setVariationOffset] = useState(
-        initialRecipe.variationOffset,
+    const [initialConfig] = useState(loadInitialConfig);
+    const [seed, setSeed] = useState(initialConfig.seed);
+    const [mode, setMode] = useState<Mode>(initialConfig.mode);
+    const [size, setSize] = useState(initialConfig.size);
+    const [customSize, setCustomSize] = useState(
+        sizeLabel(initialConfig.size) === CUSTOM_SIZE,
     );
-    const [referenceName, setReferenceName] = useState('');
-    const [isExtracting, setIsExtracting] = useState(false);
-    const [controlsOpen, setControlsOpen] = useState(true);
-    const [seedControl, setSeedControl] = useState<HTMLElement | null>(
-        null,
-    );
+    const [exportScale, setExportScale] = useState(2);
     const [status, setStatus] = useState('');
     const [error, setError] = useState('');
-    const [copiedActions, setCopiedActions] = useState(
-        () => new Set<string>(),
-    );
+    const [saved, setSaved] = useState(loadSaved);
+    const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+    const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+    const stageRef = useRef<HTMLDivElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const rendererRef = useRef<SmearRenderer | null>(null);
+    const lastChangeRef = useRef(0);
+
     const dialConfig = useMemo(
-        () =>
-            createDialConfig(
-                initialRecipe,
-                referenceName,
-                isExtracting,
-            ),
-        [initialRecipe, isExtracting, referenceName],
+        () => createDialConfig(initialConfig),
+        [initialConfig],
     );
-    const dial = useDialKitController(
-        'Abstract',
-        dialConfig,
-        {
-            id: 'abstract-studio-v2',
-            persist: {
-                key: DIAL_STORAGE_KEY,
-                storage: 'localStorage',
-                presets: true,
-            },
-            onAction: handleDialAction,
-        },
-    );
-    const aspectRatio =
-        ASPECT_RATIOS[dial.values.aspectRatio] ??
-        ASPECT_RATIOS['16:9'];
-    const paletteAdjustments: PaletteAdjustments = useMemo(
+    const dial = useDialKitController('Knobs', dialConfig, { id: 'smear' });
+    const values = dial.values;
+
+    const config: SmearConfig = useMemo(
         () => ({
-            saturation: dial.values.color.saturation,
-            hueShift: dial.values.color.hueShift,
-            lightness: dial.values.color.lightness,
-            contrast: dial.values.color.contrast,
-            temperature: dial.values.color.temperature,
-            mutedness: dial.values.color.mutedness,
-            vintageFade: dial.values.color.vintageFade,
-            shadowDepth: dial.values.color.shadowDepth,
-        }),
-        [dial.values.color],
-    );
-    const settings: GeneratorSettings = useMemo(
-        () => ({
-            direction: dial.values.flow.direction,
-            flowScale: dial.values.flow.flowScale,
-            bend: dial.values.flow.bend,
-            vortex: dial.values.flow.vortex,
-            density: dial.values.flow.density,
-            pathLength: dial.values.flow.pathLength,
-            strokeScale: dial.values.flow.strokeScale,
-            cropX: dial.values.flow.cropX,
-            cropY: dial.values.flow.cropY,
-            softness: dial.values.finish.softness,
-            motionBlur: dial.values.finish.motionBlur,
-            grain: dial.values.finish.grain,
-            shadowIntensity: dial.values.finish.shadowIntensity,
-        }),
-        [dial.values.finish, dial.values.flow],
-    );
-    const recipe: AbstractRecipe = useMemo(
-        () => ({
-            schemaVersion: ABSTRACT_SCHEMA_VERSION,
-            generatorVersion: ABSTRACT_GENERATOR_VERSION,
-            seed: dial.values.seed,
-            variationOffset,
-            aspectRatio,
-            palette,
-            paletteAdjustments,
-            settings,
+            version: SMEAR_CONFIG_VERSION,
+            seed,
+            mode,
+            size,
+            flow: values.flow,
+            scene: values.scene,
+            color: values.color,
+            backdrop: values.backdrop,
+            finish: values.finish,
         }),
         [
-            aspectRatio,
-            dial.values.seed,
-            palette,
-            paletteAdjustments,
-            settings,
-            variationOffset,
+            mode,
+            seed,
+            size,
+            values.backdrop,
+            values.color,
+            values.finish,
+            values.flow,
+            values.scene,
         ],
     );
-    const deferredRecipe = useDeferredValue(recipe);
-    const svgs = useMemo(
-        () =>
-            Array.from({ length: 4 }, (_, variation) =>
-                generateAbstractSvg(deferredRecipe, variation),
-            ),
-        [deferredRecipe],
-    );
+
+    const fit = useMemo(() => {
+        const scale = Math.min(
+            stageSize.width / size.width,
+            stageSize.height / size.height,
+        );
+        const width = Math.max(1, Math.floor(size.width * scale));
+        const height = Math.max(1, Math.floor(size.height * scale));
+        const pixelWidth = Math.min(
+            size.width,
+            Math.round(width * window.devicePixelRatio),
+        );
+        return {
+            width,
+            height,
+            pixelWidth,
+            pixelHeight: Math.round((pixelWidth * size.height) / size.width),
+        };
+    }, [size, stageSize]);
 
     useEffect(() => {
-        document.title = 'Abstract Studio';
+        const stage = stageRef.current!;
+        const observer = new ResizeObserver(([entry]) => {
+            const { width, height } = entry!.contentRect;
+            setStageSize({ width, height });
+        });
+        observer.observe(stage);
+        return () => observer.disconnect();
     }, []);
 
     useEffect(() => {
-        if (!controlsOpen) {
-            setSeedControl(null);
+        if (fit.width < 2 || fit.height < 2) return;
+        try {
+            rendererRef.current ??= createSmearRenderer(canvasRef.current!);
+        } catch (caught) {
+            setError(caught instanceof Error ? caught.message : String(caught));
             return;
         }
-        const syncSeedControl = () => {
-            const control =
-                dialsRef.current?.querySelector<HTMLElement>(
-                    '.dialkit-text-control',
-                ) ?? null;
-            setSeedControl((current) =>
-                current === control ? current : control,
+        const renderer = rendererRef.current;
+        const now = performance.now();
+        const dragging = now - lastChangeRef.current < DRAFT_WINDOW_MS;
+        lastChangeRef.current = now;
+        const scale = dragging ? 0.5 : 1;
+        const frame = requestAnimationFrame(() => {
+            renderer.render(
+                config,
+                Math.max(1, Math.round(fit.pixelWidth * scale)),
+                Math.max(1, Math.round(fit.pixelHeight * scale)),
             );
-        };
-        const observer = new MutationObserver(syncSeedControl);
-        const dials = dialsRef.current;
-        const resetSlider = (event: MouseEvent) => {
-            const target = event.target;
-            if (!(target instanceof Element)) return;
-            const slider = target.closest('.dialkit-slider');
-            if (!slider || !dials?.contains(slider)) return;
-            const label = slider.querySelector(
-                '.dialkit-slider-label',
-            )?.textContent;
-            const reset = label
-                ? SLIDER_RESET_VALUES[label]
-                : undefined;
-            if (!reset) return;
-            event.preventDefault();
-            dial.setValue(reset.path, reset.value);
-            setStatus(`${label} reset to ${reset.value}.`);
-        };
-        if (dials) {
-            observer.observe(dials, {
-                childList: true,
-                subtree: true,
-            });
-            dials.addEventListener('dblclick', resetSlider);
-        }
-        syncSeedControl();
+        });
+        const settle = dragging
+            ? window.setTimeout(() => {
+                  renderer.render(config, fit.pixelWidth, fit.pixelHeight);
+              }, DRAFT_WINDOW_MS)
+            : undefined;
         return () => {
-            observer.disconnect();
-            dials?.removeEventListener('dblclick', resetSlider);
+            cancelAnimationFrame(frame);
+            window.clearTimeout(settle);
         };
-    }, [controlsOpen]);
-
-    useEffect(
-        () => () => {
-            for (const timeout of copyResetTimers.current.values()) {
-                window.clearTimeout(timeout);
-            }
-        },
-        [],
-    );
+    }, [config, fit]);
 
     useEffect(() => {
-        const timeout = window.setTimeout(() => {
-            localStorage.setItem(STORAGE_KEY, serializeRecipe(recipe));
-        }, 180);
-        return () => window.clearTimeout(timeout);
-    }, [recipe]);
+        localStorage.setItem(STORAGE_KEY, serializeConfig(config));
+    }, [config]);
 
-    function handleDialAction(action: string) {
-        if (action === 'uploadReference') {
-            imageInputRef.current?.click();
-        } else if (action === 'newVariations') {
-            setVariationOffset((offset) => offset + 4);
-            setStatus('Generated four new variations.');
-        } else if (action === 'newVariationsAndHueShift') {
-            const hueShift = randomHueShift();
-            setVariationOffset((offset) => offset + 4);
-            dial.setValues({ color: { hueShift } });
-            setStatus(
-                `Generated four new variations with hue shift ${hueShift}°.`,
-            );
-        } else if (action === 'recipe.importRecipe') {
-            recipeInputRef.current?.click();
-        } else if (action === 'recipe.downloadRecipe') {
-            downloadBlob(
-                new Blob([serializeRecipe(recipe)], {
-                    type: 'application/json;charset=utf-8',
-                }),
-                `abstract-${safeFilenamePart(recipe.seed)}.json`,
-            );
-            setStatus('Recipe downloaded.');
-        } else if (action === 'recipe.reset') {
-            dial.setValues(dialValuesForRecipe(createFactoryRecipe()));
-            setVariationOffset(0);
-            setStatus('Parameters reset.');
+    useEffect(() => {
+        const missing = saved.filter((item) => !(item.savedAt in thumbnails));
+        if (missing.length === 0) return;
+        const rendered: Record<string, string> = {};
+        for (const item of missing) {
+            const { width, height } = item.config.size;
+            rendered[item.savedAt] = renderOffline(
+                item.config,
+                THUMBNAIL_WIDTH,
+                Math.round((THUMBNAIL_WIDTH * height) / width),
+            ).toDataURL();
+        }
+        setThumbnails((current) => ({ ...current, ...rendered }));
+    }, [saved, thumbnails]);
+
+    function applyConfig(next: SmearConfig) {
+        setSeed(next.seed);
+        setMode(next.mode);
+        setSize(next.size);
+        setCustomSize(sizeLabel(next.size) === CUSTOM_SIZE);
+        dial.setValues({
+            flow: next.flow,
+            scene: next.scene,
+            color: next.color,
+            backdrop: next.backdrop,
+            finish: next.finish,
+        });
+    }
+
+    function newSeed() {
+        applyConfig(configForSeed(config, randomSeed()));
+        setStatus('');
+    }
+
+    async function save() {
+        const next = [
+            { savedAt: new Date().toISOString(), config },
+            ...saved,
+        ];
+        localStorage.setItem(SAVED_KEY, JSON.stringify(next));
+        setSaved(next);
+        try {
+            await navigator.clipboard.writeText(serializeConfig(config));
+            setStatus('Saved to this browser and copied as JSON');
+        } catch {
+            setStatus('Saved to this browser');
         }
     }
 
-    async function handleReferenceFile(file: File | undefined) {
-        if (!file) return;
-        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-            setError('Choose a JPG, PNG, or WebP image.');
-            return;
-        }
+    const maxScale = Math.max(
+        1,
+        Math.floor(SIZE_BOUNDS.max / Math.max(size.width, size.height)),
+    );
+    const scale = Math.min(exportScale, maxScale);
+    const exportWidth = size.width * scale;
+    const exportHeight = size.height * scale;
 
-        const token = uploadToken.current + 1;
-        uploadToken.current = token;
-        setIsExtracting(true);
-        setError('');
-        try {
-            const colors = await extractPaletteFromImage(file, 8);
-            if (uploadToken.current !== token) return;
-            if (colors.length < 5) {
-                throw new Error(
-                    'This image does not contain enough distinct colors.',
-                );
+    function exportPng() {
+        const canvas = renderOffline(config, exportWidth, exportHeight);
+        canvas.toBlob((blob) => {
+            if (!blob) {
+                setError('PNG export failed.');
+                return;
             }
-            setPalette(
-                colors.map((hex, index) => ({
-                    id: `sample-${token}-${index}`,
-                    hex,
-                    locked: false,
-                })),
+            downloadBlob(
+                blob,
+                `smear-${mode}-${seed}-${exportWidth}x${exportHeight}.png`,
             );
-            setReferenceName(file.name);
-            setStatus(`Sampled ${colors.length} colors from ${file.name}.`);
-        } catch (caught) {
-            setError(
-                caught instanceof Error
-                    ? caught.message
-                    : 'Palette extraction failed.',
-            );
-        } finally {
-            if (uploadToken.current === token) setIsExtracting(false);
-        }
+            setStatus(`Exported ${exportWidth}×${exportHeight} PNG`);
+        }, 'image/png');
     }
 
-    async function importRecipe(event: ChangeEvent<HTMLInputElement>) {
-        const file = event.target.files?.[0];
-        event.target.value = '';
-        if (!file) return;
-        try {
-            const imported = parseRecipe(await file.text(), recipe);
-            setPalette(imported.palette);
-            setVariationOffset(imported.variationOffset);
-            dial.setValues(dialValuesForRecipe(imported));
-            setError('');
-            setStatus(`Imported ${file.name}.`);
-        } catch (caught) {
-            setError(
-                caught instanceof Error
-                    ? caught.message
-                    : 'Recipe import failed.',
-            );
-        }
-    }
-
-    async function copyArtwork(
-        svg: string,
-        variation: number,
-        format: 'SVG' | 'React',
-    ) {
-        try {
-            const content =
-                format === 'SVG' ? svg : svgToReactComponent(svg);
-            await writeClipboard(content);
-            const action = `${recipe.variationOffset + variation}:${format}`;
-            const existingTimeout = copyResetTimers.current.get(action);
-            if (existingTimeout) window.clearTimeout(existingTimeout);
-            setCopiedActions((actions) => {
-                const next = new Set(actions);
-                next.add(action);
-                return next;
-            });
-            copyResetTimers.current.set(
-                action,
-                window.setTimeout(() => {
-                    setCopiedActions((actions) => {
-                        const next = new Set(actions);
-                        next.delete(action);
-                        return next;
-                    });
-                    copyResetTimers.current.delete(action);
-                }, 1200),
-            );
-            setError('');
-            setStatus(`Variation ${variation + 1} copied as ${format}.`);
-        } catch (caught) {
-            setError(
-                caught instanceof Error
-                    ? caught.message
-                    : 'Copying failed.',
-            );
-        }
+    function updateCustomSize(axis: 'width' | 'height', value: number) {
+        if (!Number.isFinite(value)) return;
+        setSize((current) => ({
+            ...current,
+            [axis]: Math.round(
+                Math.min(SIZE_BOUNDS.max, Math.max(SIZE_BOUNDS.min, value)),
+            ),
+        }));
     }
 
     return (
-        <main className="abstract-studio">
-            <h1 className="abstract-studio-visually-hidden">
-                Abstract studio
-            </h1>
-            <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="abstract-studio-visually-hidden"
-                aria-label="Upload reference image"
-                onChange={(event) => {
-                    void handleReferenceFile(event.target.files?.[0]);
-                    event.target.value = '';
-                }}
-            />
-            <input
-                ref={recipeInputRef}
-                type="file"
-                accept="application/json,.json"
-                className="abstract-studio-visually-hidden"
-                aria-label="Import recipe"
-                onChange={importRecipe}
-            />
-
-            <section
-                aria-label="Generated variations"
-                className="abstract-studio-grid"
-            >
-                {svgs.map((svg, index) => {
-                    const svgAction = `${variationOffset + index}:SVG`;
-                    const reactAction = `${variationOffset + index}:React`;
-                    const svgCopied = copiedActions.has(svgAction);
-                    const reactCopied = copiedActions.has(reactAction);
-
-                    return (
-                        <div
-                            key={`${variationOffset}-${index}`}
-                            className="abstract-studio-variation"
+        <main className="studio">
+            <header className="studio-toolbar">
+                <div className="studio-tabs" role="tablist" aria-label="Mode">
+                    {MODES.map((option) => (
+                        <button
+                            key={option}
+                            type="button"
+                            role="tab"
+                            aria-selected={mode === option}
+                            className="studio-tab"
+                            onClick={() => setMode(option)}
                         >
-                            <img src={svgDataUrl(svg)} alt="" />
-                            <div className="abstract-studio-actions">
-                                <button
-                                    type="button"
-                                    className="abstract-studio-action"
-                                    aria-label={`Download variation ${index + 1} as SVG`}
-                                    title="Download SVG"
-                                    onClick={() => {
-                                        try {
-                                            downloadBlob(
-                                                new Blob([svg], {
-                                                    type: 'image/svg+xml;charset=utf-8',
-                                                }),
-                                                `abstract-${safeFilenamePart(recipe.seed)}-${variationOffset + index + 1}.svg`,
-                                            );
-                                            setError('');
-                                            setStatus(
-                                                `Variation ${index + 1} downloaded as SVG.`,
-                                            );
-                                        } catch (caught) {
-                                            setError(
-                                                caught instanceof Error
-                                                    ? caught.message
-                                                    : 'SVG download failed.',
+                            {option[0]!.toUpperCase() + option.slice(1)}
+                        </button>
+                    ))}
+                </div>
+                <div className="studio-seed">
+                    <p>
+                        Seed <output>{seed}</output>
+                    </p>
+                    <button
+                        type="button"
+                        className="studio-icon-button"
+                        aria-label="New seed"
+                        title="New seed"
+                        onClick={newSeed}
+                    >
+                        <DiceFive aria-hidden="true" />
+                    </button>
+                    <button
+                        type="button"
+                        className="studio-icon-button"
+                        aria-label="Save config"
+                        title="Save config"
+                        onClick={() => void save()}
+                    >
+                        <FloppyDisk aria-hidden="true" />
+                    </button>
+                </div>
+                <p className="studio-status" aria-live="polite" title={status}>
+                    {status}
+                </p>
+                <label className="studio-size">
+                    <span className="studio-visually-hidden">Export size</span>
+                    <select
+                        value={customSize ? CUSTOM_SIZE : sizeLabel(size)}
+                        onChange={(event) => {
+                            const label = event.target.value;
+                            setCustomSize(label === CUSTOM_SIZE);
+                            if (label !== CUSTOM_SIZE) {
+                                setSize({
+                                    ...SIZE_PRESETS[
+                                        label as keyof typeof SIZE_PRESETS
+                                    ],
+                                });
+                            }
+                        }}
+                    >
+                        {[...Object.keys(SIZE_PRESETS), CUSTOM_SIZE].map(
+                            (label) => (
+                                <option key={label}>{label}</option>
+                            ),
+                        )}
+                    </select>
+                </label>
+                {customSize ? (
+                    <div className="studio-custom-size">
+                        {(['width', 'height'] as const).map((axis) => (
+                            <label key={`${axis}-${size[axis]}`}>
+                                <span className="studio-visually-hidden">
+                                    {axis}
+                                </span>
+                                <input
+                                    type="number"
+                                    min={SIZE_BOUNDS.min}
+                                    max={SIZE_BOUNDS.max}
+                                    defaultValue={size[axis]}
+                                    onBlur={(event) =>
+                                        updateCustomSize(
+                                            axis,
+                                            event.target.valueAsNumber,
+                                        )
+                                    }
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter') {
+                                            updateCustomSize(
+                                                axis,
+                                                event.currentTarget
+                                                    .valueAsNumber,
                                             );
                                         }
                                     }}
-                                >
-                                    <Download aria-hidden="true" />
-                                </button>
-                                <button
-                                    type="button"
-                                    className="abstract-studio-action"
-                                    aria-label={
-                                        svgCopied
-                                            ? 'SVG copied'
-                                            : `Copy variation ${index + 1} as SVG`
-                                    }
-                                    title="Copy as SVG"
-                                    onClick={() => {
-                                        void copyArtwork(svg, index, 'SVG');
-                                    }}
-                                >
-                                    <span
-                                        className="abstract-studio-action-icon"
-                                        data-copied={svgCopied}
-                                        aria-hidden="true"
-                                    >
-                                        <SvgFormat className="abstract-studio-action-default" />
-                                        <Check className="abstract-studio-action-check" />
-                                    </span>
-                                </button>
-                                <button
-                                    type="button"
-                                    className="abstract-studio-action"
-                                    aria-label={
-                                        reactCopied
-                                            ? 'React component copied'
-                                            : `Copy variation ${index + 1} as React`
-                                    }
-                                    title="Copy as React"
-                                    onClick={() => {
-                                        void copyArtwork(
-                                            svg,
-                                            index,
-                                            'React',
-                                        );
-                                    }}
-                                >
-                                    <span
-                                        className="abstract-studio-action-icon"
-                                        data-copied={reactCopied}
-                                        aria-hidden="true"
-                                    >
-                                        <Code className="abstract-studio-action-default" />
-                                        <Check className="abstract-studio-action-check" />
-                                    </span>
-                                </button>
-                            </div>
-                        </div>
-                    );
-                })}
-            </section>
-
-            <aside
-                aria-label="Generator controls"
-                className="abstract-studio-inspector"
-                data-open={controlsOpen}
-            >
-                <button
-                    type="button"
-                    className="abstract-studio-toggle"
-                    aria-expanded={controlsOpen}
-                    aria-controls="abstract-studio-dials"
-                    onClick={() => setControlsOpen((open) => !open)}
-                >
-                    {controlsOpen ? (
-                        <>
-                            <Xmark aria-hidden="true" />
-                            <span className="abstract-studio-visually-hidden">
-                                Hide controls
-                            </span>
-                        </>
-                    ) : (
-                        <>
-                            <CurveArray aria-hidden="true" />
-                            <span className="abstract-studio-visually-hidden">
-                                Show controls
-                            </span>
-                        </>
-                    )}
-                </button>
-                {controlsOpen ? (
-                    <div
-                        ref={dialsRef}
-                        id="abstract-studio-dials"
-                        className="abstract-studio-dials"
-                    >
-                        <DialRoot mode="inline" theme="dark" />
-                        {seedControl
-                            ? createPortal(
-                                  <button
-                                      type="button"
-                                      className="abstract-studio-seed-randomize"
-                                      aria-label="Randomize seed"
-                                      title="Randomize seed"
-                                      onClick={() => {
-                                          const seed = randomSeedWord();
-                                          dial.setValue('seed', seed);
-                                          setStatus(
-                                              `Changed seed to ${seed}.`,
-                                          );
-                                      }}
-                                  >
-                                      <DiceFive aria-hidden="true" />
-                                  </button>,
-                                  seedControl,
-                              )
-                            : null}
+                                />
+                            </label>
+                        ))}
                     </div>
                 ) : null}
+                <label className="studio-size">
+                    <span className="studio-visually-hidden">Export scale</span>
+                    <select
+                        value={scale}
+                        onChange={(event) =>
+                            setExportScale(Number(event.target.value))
+                        }
+                    >
+                        {EXPORT_SCALES.map((option) => (
+                            <option
+                                key={option}
+                                value={option}
+                                disabled={option > maxScale}
+                            >
+                                {option}×
+                            </option>
+                        ))}
+                    </select>
+                </label>
+                <button
+                    type="button"
+                    className="studio-button"
+                    onClick={exportPng}
+                >
+                    <Download aria-hidden="true" />
+                    Export {exportWidth}×{exportHeight}
+                </button>
+            </header>
+
+            <div ref={stageRef} className="studio-stage">
+                <canvas
+                    ref={canvasRef}
+                    className="studio-canvas"
+                    style={{ width: fit.width, height: fit.height }}
+                    aria-label="Generated image. Click for a new seed."
+                    onClick={newSeed}
+                />
+            </div>
+
+            <aside className="studio-knobs" aria-label="Knobs">
+                <DialRoot mode="inline" theme="dark" productionEnabled />
             </aside>
 
+            <nav className="studio-rail" aria-label="Saved configs">
+                {saved.length === 0 ? (
+                    <p className="studio-rail-empty">
+                        Saved configs appear here.
+                    </p>
+                ) : (
+                    saved.map((item) => (
+                        <button
+                            key={item.savedAt}
+                            type="button"
+                            className="studio-rail-item"
+                            title={`Saved ${new Date(item.savedAt).toLocaleString()}`}
+                            onClick={() => {
+                                applyConfig(item.config);
+                                setStatus(`Applied ${item.config.mode} · ${item.config.seed}`);
+                            }}
+                        >
+                            {thumbnails[item.savedAt] ? (
+                                <img src={thumbnails[item.savedAt]} alt="" />
+                            ) : null}
+                            <span>
+                                {item.config.mode} · {item.config.seed}
+                            </span>
+                        </button>
+                    ))
+                )}
+            </nav>
+
             {error ? (
-                <p className="abstract-studio-error" role="alert">
+                <p className="studio-error" role="alert">
                     {error}
                 </p>
             ) : null}
-            <p
-                className="abstract-studio-visually-hidden"
-                aria-live="polite"
-            >
-                {status}
-            </p>
         </main>
     );
 }

@@ -1,6 +1,8 @@
 :root {
     color-scheme: dark;
     font-family: system-ui, sans-serif;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.92);
     background: #111;
 }
 
@@ -11,281 +13,256 @@
 html,
 body,
 #root {
-    min-width: 320px;
-    min-height: 100%;
+    height: 100%;
     margin: 0;
 }
 
 button,
-input {
+input,
+select {
     font: inherit;
+    color: inherit;
 }
 
-.abstract-studio {
-    position: relative;
-    min-height: 100svh;
-    padding: 2rem;
-    background: #111;
-}
-
-.abstract-studio-grid {
+.studio {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 2rem;
-    min-height: calc(100svh - 4rem);
-}
-
-.abstract-studio-variation {
-    position: relative;
-    min-width: 0;
+    height: 100svh;
     min-height: 0;
-    overflow: hidden;
-    background: #1a1a1a;
-    border-radius: 1rem;
+    grid-template:
+        'toolbar knobs' auto
+        'stage knobs' minmax(0, 1fr)
+        'rail knobs' auto
+        / minmax(0, 1fr) 320px;
+    gap: 0.75rem;
+    padding: 0.75rem;
 }
 
-.abstract-studio-variation > img {
-    display: block;
-    width: 100%;
-    height: 100%;
-    min-height: inherit;
-    object-fit: cover;
+.studio-toolbar {
+    display: flex;
+    grid-area: toolbar;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
 }
 
-.abstract-studio-action:focus-visible,
-.abstract-studio-seed-randomize:focus-visible,
-.abstract-studio-toggle:focus-visible {
-    outline: 2px solid #fff;
-    outline-offset: 3px;
+.studio-tabs {
+    display: flex;
+    padding: 0.1875rem;
+    background: #1c1c1c;
+    border-radius: 0.625rem;
 }
 
-.abstract-studio-seed-randomize {
-    display: grid;
-    width: 1.5rem;
-    height: 1.5rem;
-    flex: 0 0 1.5rem;
-    padding: 0;
-    color: var(--dial-text-secondary);
-    place-items: center;
+.studio-tab {
+    padding: 0.375rem 0.875rem;
+    color: rgba(255, 255, 255, 0.6);
     background: transparent;
     border: 0;
-    border-radius: 0.375rem;
+    border-radius: 0.4375rem;
     cursor: pointer;
-    transition:
-        color 120ms ease,
-        transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-.abstract-studio-seed-randomize:hover {
-    color: var(--dial-text-primary);
+.studio-tab:hover {
+    color: rgba(255, 255, 255, 0.92);
 }
 
-.abstract-studio-seed-randomize:active {
+.studio-tab[aria-selected='true'] {
+    color: #fff;
+    background: #333;
+}
+
+.studio-seed {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.studio-seed p {
+    margin: 0 0.375rem 0 0;
+}
+
+.studio-icon-button {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    place-items: center;
+    color: rgba(255, 255, 255, 0.6);
+    background: transparent;
+    border: 0;
+    border-radius: 0.5rem;
+    cursor: pointer;
+}
+
+.studio-icon-button:hover {
+    color: #fff;
+    background: #262626;
+}
+
+.studio-icon-button:active {
     transform: scale(0.95);
 }
 
-.abstract-studio-seed-randomize svg {
-    width: 0.875rem;
-    height: 0.875rem;
+.studio-icon-button svg {
+    width: 1.125rem;
+    height: 1.125rem;
 }
 
-.abstract-studio-actions {
-    position: absolute;
-    right: 1rem;
-    bottom: 1rem;
-    display: flex;
-    gap: 0.5rem;
-}
-
-.abstract-studio-action {
-    display: grid;
-    width: 2.5rem;
-    height: 2.5rem;
-    min-height: 2.5rem;
-    padding: 0;
+.studio-seed output {
     color: rgba(255, 255, 255, 0.92);
-    place-items: center;
-    background: rgba(24, 24, 24, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 999px;
-    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.28);
+    font-variant-numeric: tabular-nums;
+}
+
+.studio-status {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.5);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.studio-size select,
+.studio-custom-size input {
+    height: 2rem;
+    padding: 0 0.5rem;
+    background: #1c1c1c;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.5rem;
+}
+
+.studio-custom-size {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.studio-custom-size input {
+    width: 5rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.studio-button {
+    display: inline-flex;
+    height: 2rem;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0 0.75rem;
+    background: #262626;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.5rem;
     cursor: pointer;
 }
 
-.abstract-studio-action:hover {
-    background: rgba(40, 40, 40, 0.96);
+.studio-button:hover {
+    background: #303030;
 }
 
-.abstract-studio-action:active {
-    transform: scale(0.97);
+.studio-button:active {
+    transform: scale(0.98);
 }
 
-.abstract-studio-action-icon {
+.studio-button svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+.studio-stage {
     display: grid;
-    width: 1.25rem;
-    height: 1.25rem;
-    place-items: center;
-}
-
-.abstract-studio-action-icon svg {
-    grid-area: 1 / 1;
-    width: 1.25rem;
-    height: 1.25rem;
-    transition:
-        opacity 150ms ease-out,
-        transform 150ms ease-out,
-        filter 150ms ease-out;
-    will-change: transform;
-}
-
-.abstract-studio-action-check {
-    color: oklch(79.2% 0.209 151.711);
-    opacity: 0;
-    filter: blur(4px);
-    transform: scale(1.15);
-}
-
-.abstract-studio-action-icon[data-copied='true']
-    .abstract-studio-action-default {
-    opacity: 0;
-    filter: blur(4px);
-    transform: scale(0.85);
-}
-
-.abstract-studio-action-icon[data-copied='true']
-    .abstract-studio-action-check {
-    opacity: 1;
-    filter: blur(0);
-    transform: scale(1);
-}
-
-@media (hover: hover) and (pointer: fine) {
-    .abstract-studio-actions {
-        pointer-events: none;
-        opacity: 0;
-        transform: translateY(0.25rem);
-        transition:
-            opacity 150ms ease,
-            transform 150ms ease;
-    }
-
-    .abstract-studio-variation:hover .abstract-studio-actions,
-    .abstract-studio-variation:focus-within .abstract-studio-actions {
-        pointer-events: auto;
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.abstract-studio-inspector {
-    position: fixed;
-    z-index: 10;
-    top: 1rem;
-    right: 1rem;
-}
-
-.abstract-studio-inspector[data-open='true'] {
-    bottom: 1rem;
-    width: min(320px, calc(100vw - 2rem));
-}
-
-.abstract-studio-toggle {
-    display: grid;
-    width: 2.5rem;
-    height: 2.5rem;
-    padding: 0;
-    color: rgba(255, 255, 255, 0.9);
-    place-items: center;
-    background: #212121;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 50%;
-    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.32);
-    cursor: pointer;
-}
-
-.abstract-studio-toggle:hover {
-    background: #2a2a2a;
-}
-
-.abstract-studio-toggle svg {
-    width: 1.25rem;
-    height: 1.25rem;
-}
-
-.abstract-studio-inspector[data-open='true'] > .abstract-studio-toggle {
-    position: absolute;
-    top: 0;
-    right: calc(100% + 0.75rem);
-}
-
-.abstract-studio-dials,
-.abstract-studio-dials .dialkit-root {
-    height: 100%;
+    grid-area: stage;
+    min-width: 0;
     min-height: 0;
+    place-items: center;
+    overflow: hidden;
 }
 
-.abstract-studio-dials {
+.studio-canvas {
+    display: block;
+    cursor: pointer;
+    background: #1a1a1a;
+}
+
+.studio-knobs {
+    grid-area: knobs;
+    min-height: 0;
     overflow: hidden;
     border-radius: 1rem;
 }
 
-.abstract-studio-dials
-    .dialkit-folder-root
-    > .dialkit-folder-content
-    > .dialkit-folder-inner {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.abstract-studio-dials
-    .dialkit-folder-root
-    > .dialkit-folder-content
-    > .dialkit-folder-inner
-    > * {
-    grid-column: 1 / -1;
-}
-
-.abstract-studio-dials
-    .dialkit-folder-root
-    > .dialkit-folder-content
-    > .dialkit-folder-inner
-    > .dialkit-button:nth-of-type(2) {
-    grid-column: 1;
-}
-
-.abstract-studio-dials
-    .dialkit-folder-root
-    > .dialkit-folder-content
-    > .dialkit-folder-inner
-    > .dialkit-button:nth-of-type(3) {
-    grid-column: 2;
-}
-
-.abstract-studio-dials .dialkit-panel[data-mode='inline'],
-.abstract-studio-dials
-    .dialkit-panel[data-mode='inline']
-    .dialkit-panel-wrapper {
+.studio-knobs .dialkit-root,
+.studio-knobs .dialkit-panel[data-mode='inline'],
+.studio-knobs .dialkit-panel[data-mode='inline'] .dialkit-panel-wrapper {
     height: 100%;
     min-height: 0;
     max-height: 100%;
-    overflow: hidden;
 }
 
-.abstract-studio-dials .dialkit-panel-inline {
+.studio-knobs .dialkit-panel-inline {
     height: 100%;
     max-height: 100%;
-    overflow-x: hidden;
     overflow-y: auto;
     border-radius: 1rem;
-    scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
-    scrollbar-gutter: stable;
     scrollbar-width: thin;
     overscroll-behavior: contain;
 }
 
-.abstract-studio-error {
+.studio-rail {
+    display: flex;
+    grid-area: rail;
+    gap: 0.5rem;
+    min-width: 0;
+    height: 6.5rem;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.studio-rail-empty {
+    align-self: center;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.studio-rail-item {
+    display: grid;
+    flex: none;
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 0.25rem;
+    padding: 0;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.75rem;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+}
+
+.studio-rail-item img {
+    height: 100%;
+    min-height: 0;
+    border-radius: 0.375rem;
+    outline: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.studio-rail-item:hover {
+    color: #fff;
+}
+
+.studio-rail-item:hover img {
+    outline-color: rgba(255, 255, 255, 0.5);
+}
+
+.studio-tab:focus-visible,
+.studio-button:focus-visible,
+.studio-icon-button:focus-visible,
+.studio-rail-item:focus-visible,
+.studio-size select:focus-visible,
+.studio-custom-size input:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
+
+.studio-error {
     position: fixed;
-    z-index: 11;
     bottom: 1rem;
     left: 50%;
     max-width: min(28rem, calc(100vw - 2rem));
@@ -293,55 +270,32 @@ input {
     margin: 0;
     color: #fff;
     font-size: 0.75rem;
-    font-weight: 500;
-    line-height: 1.4;
     background: #b42318;
     border-radius: 0.5rem;
-    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.3);
     transform: translateX(-50%);
 }
 
-.abstract-studio-visually-hidden {
+.studio-visually-hidden {
     position: absolute;
     width: 1px;
     height: 1px;
-    padding: 0;
-    margin: -1px;
     overflow: hidden;
     clip: rect(0 0 0 0);
     white-space: nowrap;
-    border: 0;
 }
 
-@media (max-width: 800px) {
-    .abstract-studio {
-        padding: 2rem;
+@media (max-width: 900px) {
+    .studio {
+        height: auto;
+        grid-template:
+            'toolbar' auto
+            'stage' 60svh
+            'rail' auto
+            'knobs' 70svh
+            / minmax(0, 1fr);
     }
 
-    .abstract-studio-grid {
-        grid-template-columns: 1fr;
-        gap: 2rem;
-        min-height: auto;
-    }
-
-    .abstract-studio-inspector {
-        top: 1rem;
-        right: 1rem;
-    }
-
-    .abstract-studio-inspector[data-open='true'] {
-        bottom: 1rem;
-        width: min(320px, calc(100vw - 2rem));
-    }
-
-    .abstract-studio-variation {
-        min-height: 45svh;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .abstract-studio-actions,
-    .abstract-studio-action-icon svg {
-        transition: none;
+    .studio-toolbar {
+        flex-wrap: wrap;
     }
 }
