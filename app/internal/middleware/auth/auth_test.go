@@ -516,3 +516,20 @@ func TestMiddleware_TransientErrorKeepsCookie(t *testing.T) {
 		}
 	}
 }
+
+// Read-only subscription routes skip the session lock, so a slow upstream fetch never stalls the reader's writes.
+func TestHoldsSessionLock_OnlyPDSWrites(t *testing.T) {
+	for path, want := range map[string]bool{
+		"/api/subscriptions":                 true,
+		"/api/subscriptions/abc":             true,
+		"/api/saves":                         true,
+		"/api/subscriptions/resolve":         false,
+		"/api/subscriptions/preview":         false,
+		"/api/subscriptions/profile":         false,
+		"/api/subscriptions/preview/article": false,
+	} {
+		if got := holdsSessionLock(httptest.NewRequest(http.MethodPost, path, nil)); got != want {
+			t.Errorf("POST %s holds lock = %v, want %v", path, got, want)
+		}
+	}
+}

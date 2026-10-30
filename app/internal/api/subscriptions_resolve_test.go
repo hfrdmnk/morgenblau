@@ -67,7 +67,7 @@ func TestSubscriptionsResolve_FlagsAGeneratedFeedFollowedAtItsOtherURL(t *testin
 	}
 	idx := newFakeIndex()
 	idx.rows["did:plc:alice"] = map[string]db.UserSubscription{
-		legacy: {Did: "did:plc:alice", FeedUrl: legacy, Title: ptrString("Saved")},
+		legacy: {Did: "did:plc:alice", Rkey: "legacy-rkey", FeedUrl: legacy, Title: ptrString("Saved")},
 	}
 	finder := &fakeFinder{candidates: []feedfinder.Candidate{{FeedURL: current, Title: "Example Publication"}}}
 	rr := httptest.NewRecorder()
@@ -79,8 +79,9 @@ func TestSubscriptionsResolve_FlagsAGeneratedFeedFollowedAtItsOtherURL(t *testin
 		t.Fatal(err)
 	}
 	// The picker matches existing subscriptions to candidates by the candidate's own URL.
-	if len(got.ExistingSubscriptions) != 1 || got.ExistingSubscriptions[0].FeedURL != current {
-		t.Errorf("existing = %+v, want the candidate %s flagged", got.ExistingSubscriptions, current)
+	// The rkey is the stored row's, so the sheet can remove the subscription it found under the alias.
+	if len(got.ExistingSubscriptions) != 1 || got.ExistingSubscriptions[0].FeedURL != current || got.ExistingSubscriptions[0].Rkey != "legacy-rkey" {
+		t.Errorf("existing = %+v, want the candidate %s flagged with rkey legacy-rkey", got.ExistingSubscriptions, current)
 	}
 }
 

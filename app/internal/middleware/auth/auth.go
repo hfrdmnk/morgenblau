@@ -130,7 +130,7 @@ func writeUnauthenticated(w http.ResponseWriter) {
 	_, _ = io.WriteString(w, `{"code":"unauthenticated","message":"Your session ended. Sign in again."}`+"\n")
 }
 
-// holdsSessionLock must mirror the PDS-mutating routes in server/routes.go; subscriptions/resolve, digest/refresh, and entries/extract don't write to the PDS.
+// holdsSessionLock must mirror the PDS-mutating routes in server/routes.go; subscriptions/resolve, /preview and /profile, digest/refresh, and entries/extract don't write to the PDS.
 func holdsSessionLock(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodPost, http.MethodPatch, http.MethodDelete:
@@ -138,7 +138,8 @@ func holdsSessionLock(r *http.Request) bool {
 		return false
 	}
 	p := r.URL.Path
-	if p == "/api/subscriptions/resolve" {
+	switch p {
+	case "/api/subscriptions/resolve", "/api/subscriptions/preview", "/api/subscriptions/preview/article", "/api/subscriptions/profile":
 		return false
 	}
 	return strings.HasPrefix(p, "/api/subscriptions") ||

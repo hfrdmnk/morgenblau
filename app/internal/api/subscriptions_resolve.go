@@ -37,6 +37,7 @@ type resolveResponse struct {
 // existingSubMeta flags an already-subscribed candidate; FeedURL carries the catalog key (publication at-uri for standardfeed) so the picker can match against publication ?? feedUrl.
 type existingSubMeta struct {
 	FeedURL string  `json:"feedUrl"`
+	Rkey    string  `json:"rkey"`
 	Title   *string `json:"title"`
 }
 
@@ -106,7 +107,7 @@ func SubscriptionsResolveHandler(reader ResolveReader, finder FeedFinder, aliase
 			row, err := findSubscription(r.Context(), reader, sess.Data.AccountDID.String(), probeKey, aliases)
 			switch {
 			case err == nil:
-				existing = append(existing, existingSubMeta{FeedURL: probeKey, Title: row.Title})
+				existing = append(existing, existingSubMeta{FeedURL: probeKey, Rkey: row.Rkey, Title: row.Title})
 			case !errors.Is(err, sql.ErrNoRows):
 				slog.Warn("/api/subscriptions/resolve: index probe failed", "err", err)
 			}

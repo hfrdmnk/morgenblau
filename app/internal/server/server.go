@@ -76,6 +76,8 @@ type Server struct {
 	sync        syncDispatcher
 	pds         pdsRepo
 	feedfinder  *feedfinder.Finder
+	fetcher     *fetcher.Fetcher
+	standard    *standardfeed.Client
 	safeClient  *http.Client
 	newsletters *newsletter.Service
 	webSources  *websource.Service
@@ -266,6 +268,8 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		sync:        orchestrator,
 		pds:         atprepo.SessionWriter{},
 		feedfinder:  finder,
+		fetcher:     fetcherInst,
+		standard:    stdClient,
 		safeClient:  safeClient,
 		newsletters: newsletterService,
 		webSources:  webSources,
