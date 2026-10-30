@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import {
     useEffect,
     useId,
+    useMemo,
     useRef,
     useState,
     type ComponentProps,
@@ -16,9 +17,10 @@ import { toast } from 'sonner';
 import { useLocation } from 'wouter';
 
 import { GenerateFeed } from '@/components/generate-feed';
-import { CheckIcon, ChevronDownIcon, CloseIcon, EnterIcon, ExternalLinkIcon, LoadingIcon, PlusIcon } from '@/components/icons';
+import { CheckIcon, ChevronDownIcon, CloseIcon, EnterIcon, ExternalLinkIcon, LoadingIcon, MoreIcon, PenIcon, PlusIcon } from '@/components/icons';
 import { NewsletterAddress } from '@/components/newsletter-address';
 import { PersonAvatar } from '@/components/person-avatar';
+import { RemoveDialog } from '@/components/source-menu';
 import { TagChips, TagInput } from '@/components/tag-input';
 import { Button } from '@/components/ui/button';
 import { DrawerBackdrop, DrawerPopup, DrawerViewport } from '@/components/ui/drawer';
@@ -26,9 +28,11 @@ import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/i
 import { Link } from '@/components/ui/link';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useReaderFont } from '@/hooks/use-reader-font';
+import type { FeedSource } from '@/hooks/use-sources';
 import {
     addSource,
     discoveryError,
+    editSource,
     findSite,
     previewArticle,
     previewSource,
@@ -36,7 +40,9 @@ import {
     sourceLocation,
     sourceTitle,
     unsubscribe,
+    youtubeFeeds,
     type PreviewPost,
+    type SourceChange,
     type SourceOptions,
     type SiteProfile,
     type SiteResult,
@@ -47,7 +53,7 @@ import { PATHS } from '@/lib/paths';
 import { hasNewReaderContent, httpURL, readerBody } from '@/lib/reader';
 import { announceSourceAdded } from '@/lib/source-toast';
 import { displayURL } from '@/lib/source-display';
-import { addTags, canAddTags, hasOverlongTag } from '@/lib/source-edit';
+import { addTags, canAddTags, feedEditable, GONE, hasOverlongTag, isGone, MAX_TITLE_LENGTH, titleTooLong } from '@/lib/source-edit';
 import { cn } from '@/lib/utils';
 import '../pages/reader.css';
 
@@ -68,6 +74,7 @@ const SCREEN = {
 // rkey is the subscription a feed screen was opened with; site is absent when it was opened from a profile's follows.
 type Screen =
     | { kind: 'feed'; candidate: SourceCandidate; site?: SiteResult; rkey?: string }
+    | { kind: 'edit'; source: FeedSource; onChanged: () => void; onRemoved: () => void; removedFocus?: RefObject<HTMLElement | null> }
     | { kind: 'post'; candidate: SourceCandidate; post: PreviewPost }
     | { kind: 'profile'; site: SiteResult; profile: SiteProfile };
 
@@ -93,48 +100,80 @@ export function AddSourceDialog({ trigger }: { trigger?: ReactElement }) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [open, setOpen] = useState(false);
     const [saving, setSaving] = useState(false);
+    return (
+        <SheetDrawer
+            initialFocus={(interaction) => (interaction === 'touch' ? true : inputRef.current)}
+            onOpenChange={setOpen}
+            open={open}
+            saving={saving}
+            trigger={trigger ?? (
+                <Button aria-label="Add a source" className="text-subtle-foreground" size="icon-sm" variant="ghost">
+                    <PlusIcon className="size-5" />
+                </Button>
+            )}
+        >
+            <SheetBody inputRef={inputRef} onClose={() => setOpen(false)} onSavingChange={setSaving} saving={saving} />
+        </SheetDrawer>
+    );
+}
+
+// The same sheet as Add a source, opened on one of the reader's feeds to rename, retag or re-point it.
+export function EditSourceSheet({ source, onChanged, onRemoved = onChanged, removedFocus }: {
+    source: FeedSource;
+    onChanged: () => void;
+    onRemoved?: () => void;
+    removedFocus?: RefObject<HTMLElement | null>;
+}) {
+    const [open, setOpen] = useState(false);
+    const [saving, setSaving] = useState(false);
+    return (
+        <SheetDrawer
+            onOpenChange={setOpen}
+            open={open}
+            saving={saving}
+            trigger={(
+                <Button aria-label={`Edit ${feedSourceName(source)}`} className="text-subtle-foreground hover:text-foreground" size="icon-sm" variant="ghost">
+                    <MoreIcon className="size-5" />
+                </Button>
+            )}
+        >
+            <SheetBody
+                onClose={() => setOpen(false)}
+                onSavingChange={setSaving}
+                root={{ kind: 'edit', source, onChanged, onRemoved, removedFocus }}
+                saving={saving}
+            />
+        </SheetDrawer>
+    );
+}
+
+function SheetDrawer({ open, saving, trigger, initialFocus, onOpenChange, children }: {
+    open: boolean;
+    saving: boolean;
+    trigger: ReactElement;
+    initialFocus?: ComponentProps<typeof DrawerPopup>['initialFocus'];
+    onOpenChange: (open: boolean) => void;
+    children: ReactNode;
+}) {
     const side = useMediaQuery('(min-width: 40rem)') ? 'right' : 'bottom';
     return (
         <Drawer.Root
             open={open}
             onOpenChange={(next, details) => {
                 if (saving) details.cancel();
-                else setOpen(next);
+                else onOpenChange(next);
             }}
             swipeDirection={side === 'right' ? 'right' : 'down'}
         >
-            {trigger ? <Drawer.Trigger render={trigger} /> : (
-                <Drawer.Trigger
-                    render={
-                        <Button
-                            aria-label="Add a source"
-                            className="text-subtle-foreground"
-                            size="icon-sm"
-                            variant="ghost"
-                        />
-                    }
-                >
-                    <PlusIcon className="size-5" />
-                </Drawer.Trigger>
-            )}
+            <Drawer.Trigger render={trigger} />
             <Drawer.Portal>
                 <DrawerBackdrop />
                 <DrawerViewport side={side}>
-                    <DrawerPopup
-                        initialFocus={(interaction) =>
-                            interaction === 'touch' ? true : inputRef.current
-                        }
-                        side={side}
-                    >
+                    <DrawerPopup initialFocus={initialFocus} side={side}>
                         {side === 'bottom' && (
                             <div aria-hidden="true" className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-accent" />
                         )}
-                        <SheetBody
-                            inputRef={inputRef}
-                            saving={saving}
-                            onSavingChange={setSaving}
-                            onClose={() => setOpen(false)}
-                        />
+                        {children}
                     </DrawerPopup>
                 </DrawerViewport>
             </Drawer.Portal>
@@ -142,13 +181,20 @@ export function AddSourceDialog({ trigger }: { trigger?: ReactElement }) {
     );
 }
 
+function feedSourceName(source: FeedSource) {
+    return source.title || displayURL(source.siteUrl || source.feedUrl);
+}
+
+// A root screen replaces the search screen (which only the add sheet, with its inputRef, shows), so the sheet opens on it and Back never leaves it.
 function SheetBody({
     inputRef,
+    root,
     saving,
     onSavingChange,
     onClose,
 }: {
-    inputRef: RefObject<HTMLInputElement | null>;
+    inputRef?: RefObject<HTMLInputElement | null>;
+    root?: Screen;
     saving: boolean;
     onSavingChange: (saving: boolean) => void;
     onClose: () => void;
@@ -156,23 +202,23 @@ function SheetBody({
     const [, navigate] = useLocation();
     const [url, setUrl] = useState('');
     const [discovery, setDiscovery] = useState<Discovery>({ stage: 'idle' });
-    // Screens below the top stay mounted, so going back keeps their drafts and loaded posts; ids keep a re-pushed screen from inheriting a popped one's state.
-    const [stack, setStack] = useState<{ id: number; screen: Screen }[]>([]);
-    const nextId = useRef(1);
+    const { stack, canGoBack, push, pop } = useScreenStack(root);
+    const { nameOf, formOf, rename } = useScreenNames();
     const [keyboard, setKeyboard] = useState(false);
     // Sources added (rkey) or removed (null) in this sheet, overriding what earlier lookups reported.
     const [subscriptions, setSubscriptions] = useState<Map<string, string | null>>(new Map());
     const reduced = useReducedMotion();
     const request = useRef<AbortController | null>(null);
     useEffect(() => () => request.current?.abort(), []);
-    const screen = stack.at(-1)?.screen;
+    const top = stack.at(-1);
+    const screen = top?.screen;
 
     const sheet: Sheet = {
         instant: Boolean(reduced) || keyboard,
         saving,
         subscriptions,
-        push: (next) => setStack([...stack, { id: nextId.current++, screen: next }]),
-        pop: () => setStack(stack.slice(0, -1)),
+        push,
+        pop,
         close: onClose,
         onSavingChange,
         record: (key, rkey) => setSubscriptions((previous) => new Map(previous).set(key, rkey)),
@@ -210,23 +256,18 @@ function SheetBody({
             }}
             onPointerDown={() => setKeyboard(false)}
         >
-            <header className="flex h-14 shrink-0 items-center gap-1 px-3">
-                {screen ? (
-                    <Button aria-label="Back" className="text-muted-foreground" disabled={saving} onClick={sheet.pop} size="icon" variant="ghost">
-                        <ChevronDownIcon className="size-4 rotate-90" />
-                    </Button>
-                ) : null}
-                <Drawer.Title className={cn('min-w-0 flex-1 truncate text-base font-medium', !screen && 'pl-3')}>
-                    {screen ? screenTitle(screen) : 'Add a source'}
-                </Drawer.Title>
-                <Drawer.Close
-                    render={<Button aria-label="Close" className="text-muted-foreground" disabled={saving} size="icon" variant="ghost" />}
-                >
-                    <CloseIcon className="size-5" />
-                </Drawer.Close>
-            </header>
+            <SheetHeader
+                canGoBack={canGoBack}
+                formOf={formOf}
+                nameOf={nameOf}
+                onBack={sheet.pop}
+                onName={rename}
+                saving={saving}
+                subscriptions={subscriptions}
+                top={top}
+            />
             <Drawer.Content className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-6">
-                <ScreenTransition active={!screen} focusOnMount={false} instant={sheet.instant}>
+                {inputRef ? <ScreenTransition active={!screen} focusOnMount={false} instant={sheet.instant}>
                     <SearchScreen
                             discovery={discovery}
                             inputRef={inputRef}
@@ -242,10 +283,10 @@ function SheetBody({
                             sheet={sheet}
                             url={url}
                         />
-                </ScreenTransition>
+                </ScreenTransition> : null}
                 {stack.map((entry, index) => (
                     <ScreenTransition active={index === stack.length - 1} focusOnMount instant={sheet.instant} key={entry.id}>
-                        <ScreenView screen={entry.screen} sheet={sheet} />
+                        <ScreenView form={formOf(entry)} name={nameOf(entry)} screen={entry.screen} sheet={sheet} />
                     </ScreenTransition>
                 ))}
             </Drawer.Content>
@@ -253,8 +294,89 @@ function SheetBody({
     );
 }
 
+// The name a nameable screen will save sits in the header; its length error sits just under it.
+function SheetHeader({ top, subscriptions, nameOf, formOf, canGoBack, saving, onBack, onName }: {
+    top?: { id: number; screen: Screen };
+    subscriptions: Map<string, string | null>;
+    nameOf: (entry: { id: number; screen: Screen }) => string;
+    formOf: (entry: { id: number }) => string;
+    canGoBack: boolean;
+    saving: boolean;
+    onBack: () => void;
+    onName: (id: number, name: string) => void;
+}) {
+    const named = top && nameable(top.screen, subscriptions) ? { id: top.id, name: nameOf(top), form: formOf(top), screen: top.screen } : undefined;
+    return (
+        <>
+            <header className="flex h-14 shrink-0 items-center gap-1 px-3">
+                {canGoBack ? (
+                    <Button aria-label="Back" className="text-muted-foreground" disabled={saving} onClick={onBack} size="icon" variant="ghost">
+                        <ChevronDownIcon className="size-4 rotate-90" />
+                    </Button>
+                ) : null}
+                {named ? (
+                    <>
+                        <Drawer.Title className="sr-only">{named.name}</Drawer.Title>
+                        <NameInput
+                            disabled={saving}
+                            form={named.form}
+                            inset={!canGoBack}
+                            invalid={nameTooLong(named.name, named.screen)}
+                            onChange={(name) => onName(named.id, name)}
+                            value={named.name}
+                        />
+                    </>
+                ) : (
+                    <Drawer.Title className={cn('min-w-0 flex-1 truncate text-base font-medium', !canGoBack && 'pl-3')}>
+                        {top ? screenTitle(top.screen) : 'Add a source'}
+                    </Drawer.Title>
+                )}
+                <Drawer.Close
+                    render={<Button aria-label="Close" className="text-muted-foreground" disabled={saving} size="icon" variant="ghost" />}
+                >
+                    <CloseIcon className="size-5" />
+                </Drawer.Close>
+            </header>
+            {named ? <NameLengthHint canGoBack={canGoBack} form={named.form} name={named.name} screen={named.screen} /> : null}
+        </>
+    );
+}
+
+// Screens below the top stay mounted, so going back keeps their drafts and loaded posts; ids keep a re-pushed screen from inheriting a popped one's state. A root screen is never popped.
+function useScreenStack(root?: Screen) {
+    const [stack, setStack] = useState<{ id: number; screen: Screen }[]>(root ? [{ id: 0, screen: root }] : []);
+    const nextId = useRef(1);
+    return {
+        stack,
+        canGoBack: stack.length > (root ? 1 : 0),
+        push: (next: Screen) => setStack([...stack, { id: nextId.current++, screen: next }]),
+        pop: () => setStack(stack.slice(0, -1)),
+    };
+}
+
+// Names typed into the header, per screen, until that screen saves them; each screen's form id ties the header field to its save.
+function useScreenNames() {
+    const [names, setNames] = useState<Map<number, string>>(new Map());
+    const formPrefix = useId();
+    return {
+        nameOf: (entry: { id: number; screen: Screen }) => names.get(entry.id) ?? screenTitle(entry.screen),
+        formOf: (entry: { id: number }) => `${formPrefix}-${entry.id}`,
+        rename: (id: number, name: string) => setNames((previous) => new Map(previous).set(id, name)),
+    };
+}
+
+function NameLengthHint({ name, screen, form, canGoBack }: { name: string; screen: Screen; form: string; canGoBack: boolean }) {
+    if (!nameTooLong(name, screen)) return null;
+    return (
+        <p className={cn('-mt-2 pr-6 pb-2 text-sm text-destructive', canGoBack ? 'pl-16' : 'pl-6')} id={nameHintId(form)}>
+            Names can be up to {MAX_TITLE_LENGTH} characters.
+        </p>
+    );
+}
+
 function screenTitle(screen: Screen) {
     if (screen.kind === 'feed') return sourceTitle(screen.candidate);
+    if (screen.kind === 'edit') return feedSourceName(screen.source);
     if (screen.kind === 'post') return screen.post.title || 'Untitled';
     return 'Profile';
 }
@@ -287,8 +409,66 @@ function ScreenTransition({ active, instant, focusOnMount, children }: {
     );
 }
 
-function ScreenView({ screen, sheet }: { screen: Screen; sheet: Sheet }) {
-    if (screen.kind === 'feed') return <FeedScreen candidate={screen.candidate} known={screen.rkey} sheet={sheet} site={screen.site} />;
+// Only a screen that will save a name lets the reader type one.
+function nameable(screen: Screen, subscriptions: Map<string, string | null>) {
+    if (screen.kind === 'edit') return true;
+    if (screen.kind !== 'feed') return false;
+    const status = candidateStatus(screen.candidate, screen.site, subscriptions, screen.rkey);
+    return !status.rkey && !status.note;
+}
+
+// An untouched name is never saved, so a long default (an untitled feed's address) does not block the form.
+function nameTooLong(name: string, screen: Screen) {
+    return name.trim() !== screenTitle(screen) && titleTooLong(name);
+}
+
+// The label spans the name and its pen, so a click anywhere on either edits the name. The name sits in the header, outside its screen's form, so form ties Enter to that form's save.
+function NameInput({ value, form, invalid, inset, disabled, onChange }: {
+    value: string;
+    form: string;
+    invalid: boolean;
+    inset: boolean;
+    disabled: boolean;
+    onChange: (name: string) => void;
+}) {
+    return (
+        <div className={cn('flex min-w-0 flex-1', inset ? 'ml-3' : 'ml-2')}>
+            <label className={cn('group flex h-9 max-w-full min-w-0 cursor-text items-center gap-1.5', disabled && 'pointer-events-none')}>
+                <span className="relative flex min-w-0">
+                    <input
+                        aria-describedby={invalid ? nameHintId(form) : undefined}
+                        aria-invalid={invalid}
+                        aria-label="Name"
+                        form={form}
+                        autoComplete="off"
+                        className="min-w-0 truncate bg-transparent text-base font-medium outline-none field-sizing-content"
+                        disabled={disabled}
+                        onChange={(event) => onChange(event.target.value)}
+                        spellCheck={false}
+                        value={value}
+                    />
+                    <span
+                        aria-hidden="true"
+                        className={cn(
+                            'absolute inset-x-0 bottom-0 h-px origin-left transition-transform duration-(--motion-duration-ui) ease-(--ease-out) group-focus-within:scale-x-100',
+                            invalid ? 'scale-x-100 bg-destructive' : 'scale-x-0 bg-subtle-foreground/50',
+                        )}
+                    />
+                </span>
+                <PenIcon aria-hidden="true" className="size-3.5 shrink-0 text-subtle-foreground" />
+            </label>
+        </div>
+    );
+}
+
+function nameHintId(form: string) {
+    return `${form}-name-hint`;
+}
+
+function ScreenView({ screen, form, name, sheet }: { screen: Screen; form: string; name: string; sheet: Sheet }) {
+    const tooLong = nameTooLong(name, screen);
+    if (screen.kind === 'feed') return <FeedScreen candidate={screen.candidate} form={form} known={screen.rkey} name={name} nameTooLong={tooLong} sheet={sheet} site={screen.site} />;
+    if (screen.kind === 'edit') return <EditScreen form={form} name={name} nameTooLong={tooLong} screen={screen} sheet={sheet} />;
     if (screen.kind === 'post') return <PostScreen post={screen.post} />;
     return <ProfileScreen profile={screen.profile} sheet={sheet} site={screen.site} />;
 }
@@ -491,8 +671,29 @@ function Row({ onClick, label, trailing, children }: {
     );
 }
 
-function FeedScreen({ candidate, site, known, sheet }: { candidate: SourceCandidate; site?: SiteResult; known?: string; sheet: Sheet }) {
-    const status = candidateStatus(candidate, site, sheet.subscriptions, known);
+// Turning Shorts off follows the channel's UULF feed instead; a feed left as it was keeps its URL exactly.
+function useShortsChoice(feedUrl: string | undefined) {
+    const feeds = feedUrl ? youtubeFeeds(feedUrl) : undefined;
+    const initial = feeds?.longForm === feedUrl;
+    const [exclude, setExclude] = useState(initial);
+    const chosen = !feeds || exclude === initial ? feedUrl : exclude ? feeds.longForm : feeds.all;
+    return { offered: Boolean(feeds), exclude, setExclude, feedUrl: chosen };
+}
+
+function ShortsSwitch({ choice, disabled }: { choice: ReturnType<typeof useShortsChoice>; disabled: boolean }) {
+    if (!choice.offered) return null;
+    return (
+        <OptionSwitch
+            checked={choice.exclude}
+            description="Only regular videos from this channel."
+            disabled={disabled}
+            label="Exclude Shorts"
+            onChange={choice.setExclude}
+        />
+    );
+}
+
+function useSheetMutation(sheet: Sheet) {
     const [error, setError] = useState<{ message: string; reauth: boolean } | null>(null);
 
     async function run(action: () => Promise<void>, failed: string) {
@@ -508,9 +709,37 @@ function FeedScreen({ candidate, site, known, sheet }: { candidate: SourceCandid
         }
     }
 
+    const errorLine = error ? (
+        <p className="text-sm text-destructive" role="alert">
+            {error.message} {error.reauth ? <Link href={PATHS.login}>Sign in again</Link> : null}
+        </p>
+    ) : null;
+
+    return { run, errorLine };
+}
+
+function FeedScreen({ candidate, site, known, form, name, nameTooLong, sheet }: {
+    candidate: SourceCandidate;
+    site?: SiteResult;
+    known?: string;
+    form: string;
+    name: string;
+    nameTooLong: boolean;
+    sheet: Sheet;
+}) {
+    const status = candidateStatus(candidate, site, sheet.subscriptions, known);
+    const shorts = useShortsChoice(candidate.feedUrl);
+    // Saves are recorded under the candidate's key, so the channel reads as followed whichever of its feeds was added.
+    const source = useMemo<SourceCandidate>(
+        () => (candidate.kind !== 'standardfeed' && shorts.feedUrl ? { ...candidate, feedUrl: shorts.feedUrl } : candidate),
+        [candidate, shorts.feedUrl],
+    );
+    const { run, errorLine } = useSheetMutation(sheet);
+    const renamed = name.trim() !== sourceTitle(candidate);
+
     function save(options: SourceOptions) {
         void run(async () => {
-            const { rkey } = await addSource(candidate, options);
+            const { rkey } = await addSource(source, { ...options, title: renamed ? name.trim() || undefined : undefined });
             sheet.record(sourceKey(candidate), rkey);
             sheet.announce(rkey);
             sheet.pop();
@@ -525,16 +754,10 @@ function FeedScreen({ candidate, site, known, sheet }: { candidate: SourceCandid
         }, 'The removal couldn’t be confirmed.');
     }
 
-    const errorLine = error ? (
-        <p className="text-sm text-destructive" role="alert">
-            {error.message} {error.reauth ? <Link href={PATHS.login}>Sign in again</Link> : null}
-        </p>
-    ) : null;
-
     return (
         <div className="space-y-8">
-            <p className="truncate text-xs text-subtle-foreground" title={sourceLocation(candidate)}>{feedMeta(candidate)}</p>
-            <PostPreview candidate={candidate} disabled={sheet.saving} onOpen={(post) => sheet.push({ kind: 'post', candidate, post })} />
+            <p className="truncate text-xs text-subtle-foreground" title={sourceLocation(source)}>{feedMeta(source)}</p>
+            <PostPreview candidate={source} disabled={sheet.saving} onOpen={(post) => sheet.push({ kind: 'post', candidate: source, post })} />
             {status.rkey ? (
                 <>
                     <p className="flex items-center gap-2 rounded-lg bg-background p-4 text-sm text-muted-foreground">
@@ -549,21 +772,122 @@ function FeedScreen({ candidate, site, known, sheet }: { candidate: SourceCandid
             ) : status.note ? (
                 <p className="rounded-lg bg-background p-4 text-sm text-muted-foreground">{status.note}</p>
             ) : (
-                <AddSourceForm errorLine={errorLine} onSave={save} saving={sheet.saving} />
+                <SourceForm action="Add to sources" busyLabel="Adding source" errorLine={errorLine} id={form} nameTooLong={nameTooLong} onSave={save} saving={sheet.saving}>
+                    <ShortsSwitch choice={shorts} disabled={sheet.saving} />
+                </SourceForm>
             )}
         </div>
     );
 }
 
-function AddSourceForm({ saving, errorLine, onSave }: { saving: boolean; errorLine: ReactNode; onSave: (options: SourceOptions) => void }) {
+function EditScreen({ screen, form, name, nameTooLong, sheet }: {
+    screen: Extract<Screen, { kind: 'edit' }>;
+    form: string;
+    name: string;
+    nameTooLong: boolean;
+    sheet: Sheet;
+}) {
+    const { source, onChanged, onRemoved, removedFocus } = screen;
+    const standard = source.kind === 'standardfeed';
+    const shorts = useShortsChoice(standard ? undefined : source.feedUrl);
+    const feedUrl = shorts.feedUrl ?? source.feedUrl;
+    const candidate = useMemo<SourceCandidate>(
+        () => (standard
+            ? { kind: 'standardfeed', publication: source.publication ?? source.feedUrl, siteUrl: source.siteUrl }
+            : { feedUrl, siteUrl: source.siteUrl }),
+        [standard, source.publication, source.feedUrl, source.siteUrl, feedUrl],
+    );
+    const { run, errorLine } = useSheetMutation(sheet);
+    const [removing, setRemoving] = useState(false);
+
+    function changeFor({ tags, primary }: SourceOptions) {
+        const change: SourceChange = {};
+        // An emptied name resets the source to its feed's own title.
+        if (name.trim() !== feedSourceName(source)) change.title = name.trim();
+        if (tags.join('\n') !== (source.tags ?? []).join('\n')) change.tags = tags;
+        if (primary !== source.primary) change.primary = primary;
+        if (feedUrl !== source.feedUrl) change.feedUrl = feedUrl;
+        return change;
+    }
+
+    function save(options: SourceOptions) {
+        const change = changeFor(options);
+        void run(async () => {
+            try {
+                await editSource(source.rkey, change);
+            } catch (problem) {
+                if (!isGone(problem)) throw problem;
+                toast.error(GONE);
+                onChanged();
+                sheet.close();
+                return;
+            }
+            toast.success('Source updated');
+            onChanged();
+            sheet.close();
+        }, 'The change couldn’t be confirmed.');
+    }
+
+    return (
+        <div className="space-y-8">
+            <p className="truncate text-xs text-subtle-foreground" title={sourceLocation(candidate)}>{feedMeta(candidate)}</p>
+            <PostPreview candidate={candidate} disabled={sheet.saving} onOpen={(post) => sheet.push({ kind: 'post', candidate, post })} />
+            <SourceForm
+                action="Save changes"
+                busyLabel="Saving source"
+                errorLine={errorLine}
+                initial={{ tags: source.tags ?? [], primary: source.primary }}
+                changed={(options) => Object.keys(changeFor(options)).length > 0}
+                id={form}
+                nameTooLong={nameTooLong}
+                onSave={save}
+                saving={sheet.saving}
+                secondary={(
+                    <Button className="w-full" disabled={sheet.saving} onClick={() => setRemoving(true)} size="lg" type="button" variant="destructive">
+                        Delete source
+                    </Button>
+                )}
+            >
+                <ShortsSwitch choice={shorts} disabled={sheet.saving} />
+            </SourceForm>
+            <RemoveDialog
+                onChanged={onChanged}
+                onClose={() => setRemoving(false)}
+                onRemoved={() => {
+                    sheet.close();
+                    onRemoved();
+                }}
+                open={removing}
+                removedFocus={removedFocus}
+                source={feedEditable(source, feedSourceName(source))}
+            />
+        </div>
+    );
+}
+
+function SourceForm({ id, action, busyLabel, nameTooLong, initial = { tags: [], primary: false }, changed, secondary, saving, errorLine, onSave, children }: {
+    id: string;
+    action: string;
+    secondary?: ReactNode;
+    // Absent when any submit is a change, as an add always is.
+    changed?: (options: SourceOptions) => boolean;
+    busyLabel: string;
+    nameTooLong: boolean;
+    initial?: SourceOptions;
+    saving: boolean;
+    errorLine: ReactNode;
+    onSave: (options: SourceOptions) => void;
+    children?: ReactNode;
+}) {
     const tagInput = useRef<HTMLInputElement>(null);
-    const [tags, setTags] = useState<string[]>([]);
+    const [tags, setTags] = useState<string[]>(initial.tags);
     const [draft, setDraft] = useState('');
-    const [primary, setPrimary] = useState(false);
-    const overlong = hasOverlongTag(draft);
+    const [primary, setPrimary] = useState(initial.primary);
+    const overlong = hasOverlongTag(draft) || nameTooLong;
     return (
         <form
             className="space-y-8"
+            id={id}
             onSubmit={(event) => {
                 event.preventDefault();
                 if (!overlong) onSave({ tags: addTags(tags, draft), primary });
@@ -585,22 +909,37 @@ function AddSourceForm({ saving, errorLine, onSave }: { saving: boolean; errorLi
                 />
                 {tags.length ? <TagChips inputRef={tagInput} onRemove={(tag) => setTags(tags.filter((other) => other !== tag))} tags={tags} /> : null}
             </div>
-            <PrimarySwitch checked={primary} disabled={saving} onChange={setPrimary} />
+            {children}
+            <OptionSwitch
+                checked={primary}
+                description="Shown first in your newspaper."
+                disabled={saving}
+                label="Primary"
+                onChange={setPrimary}
+            />
             {errorLine}
-            <SheetAction busyLabel="Adding source" disabled={overlong} saving={saving} type="submit">
-                Add to sources
+            <SheetAction
+                busyLabel={busyLabel}
+                disabled={overlong || (changed && !changed({ tags: addTags(tags, draft), primary }))}
+                saving={saving}
+                secondary={secondary}
+                type="submit"
+            >
+                {action}
             </SheetAction>
         </form>
     );
 }
 
-function SheetAction({ saving, busyLabel, disabled = false, children, ...props }: Omit<ComponentProps<typeof Button>, 'disabled'> & {
+// secondary rides in the same sticky footer, so it stays beside the main action.
+function SheetAction({ saving, busyLabel, disabled = false, secondary, children, ...props }: Omit<ComponentProps<typeof Button>, 'disabled'> & {
     saving: boolean;
     busyLabel: string;
     disabled?: boolean;
+    secondary?: ReactNode;
 }) {
     return (
-        <div className="sticky bottom-0 -mx-6 bg-popover px-6 pt-2 pb-1">
+        <div className="sticky bottom-0 -mx-6 space-y-2 bg-popover px-6 pt-2 pb-1">
             <Button aria-busy={saving} className="w-full" disabled={saving || disabled} size="lg" {...props}>
                 {saving ? (
                     <>
@@ -609,6 +948,7 @@ function SheetAction({ saving, busyLabel, disabled = false, children, ...props }
                     </>
                 ) : children}
             </Button>
+            {secondary}
         </div>
     );
 }
@@ -651,7 +991,7 @@ function PostPreview({ candidate, disabled, onOpen }: { candidate: SourceCandida
                         ))}
                     </ul>
                 ) : posts === 'failed' ? (
-                    <p className="pt-3 text-sm text-muted-foreground">Recent posts couldn’t be loaded. You can still add this feed.</p>
+                    <p className="pt-3 text-sm text-muted-foreground">Recent posts couldn’t be loaded.</p>
                 ) : posts.length ? (
                     <ol>
                         {posts.map((post, index) => (
@@ -789,13 +1129,19 @@ function ArticleBody({ body, url, original, pending, hasNotice }: {
     );
 }
 
-function PrimarySwitch({ checked, disabled, onChange }: { checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }) {
+function OptionSwitch({ label, description, checked, disabled, onChange }: {
+    label: string;
+    description: string;
+    checked: boolean;
+    disabled: boolean;
+    onChange: (checked: boolean) => void;
+}) {
     const id = useId();
     return (
         <div className="flex items-center justify-between gap-4">
             <label className="cursor-pointer" htmlFor={id}>
-                <span className="block text-sm font-medium">Primary</span>
-                <span className="block text-xs text-muted-foreground">Shown first in your newspaper.</span>
+                <span className="block text-sm font-medium">{label}</span>
+                <span className="block text-xs text-muted-foreground">{description}</span>
             </label>
             <Switch.Root
                 checked={checked}

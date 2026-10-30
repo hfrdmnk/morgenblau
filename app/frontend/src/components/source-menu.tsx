@@ -15,12 +15,14 @@ import {
 import { Input } from '@/components/ui/input';
 import { Link } from '@/components/ui/link';
 import { LimitHint, TagChips, TagInput } from '@/components/tag-input';
-import { ApiError, classifyMutationError, describeMutationError } from '@/lib/api';
+import { classifyMutationError, describeMutationError } from '@/lib/api';
 import { PATHS } from '@/lib/paths';
 import {
     addTags,
     canAddTags,
+    GONE,
     hasOverlongTag,
+    isGone,
     MAX_TITLE_LENGTH,
     removeSource,
     renameSource,
@@ -142,11 +144,6 @@ async function resume(source: EditableSource, onChanged: () => void) {
 type DialogProps = { source: EditableSource; open: boolean; onClose: () => void; onChanged: () => void };
 type MutationError = { message: string; reauth: boolean };
 
-const GONE = 'This source is no longer in your sources.';
-
-function isGone(error: unknown): boolean {
-    return error instanceof ApiError && error.status === 404;
-}
 
 function useMutation({ onClose, onChanged }: DialogProps, onDone: () => void, fallback: string) {
     const [pending, setPending] = useState(false);
@@ -277,7 +274,7 @@ const REMOVAL = {
     },
 };
 
-function RemoveDialog({ onRemoved, removedFocus, ...props }: DialogProps & {
+export function RemoveDialog({ onRemoved, removedFocus, ...props }: DialogProps & {
     onRemoved: () => void;
     removedFocus?: RefObject<HTMLElement | null>;
 }) {

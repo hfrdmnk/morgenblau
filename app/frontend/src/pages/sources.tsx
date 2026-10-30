@@ -1,13 +1,14 @@
 import { useRef, type ReactNode, type RefObject } from 'react';
 import { Link } from 'wouter';
 
+import { EditSourceSheet } from '@/components/add-source-dialog';
 import { FeedHealth, GeneratedNote } from '@/components/feed-health';
 import { ItemList, ListError, ListItem, ListSkeleton } from '@/components/item-list';
 import { SourceMenu } from '@/components/source-menu';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-sources';
 import { newsletterSourceHref, PATHS, sourceHref } from '@/lib/paths';
-import { feedEditable, newsletterEditable } from '@/lib/source-edit';
+import { newsletterEditable } from '@/lib/source-edit';
 import { displayURL, groupByInitial } from '@/lib/source-display';
 
 type RemovedFocus = RefObject<HTMLHeadingElement | null>;
@@ -36,8 +37,7 @@ function FeedList({ removedFocus }: { removedFocus: RemovedFocus }) {
                                 identity={source.siteUrl || source.feedUrl} favicon={source.faviconUrl}
                                 primary={source.primary} health={<FeedHealth labelled source={source} />}
                                 note={<GeneratedNote source={source} />}
-                                menu={<SourceMenu onChanged={state.refresh} removedFocus={removedFocus}
-                                    source={feedEditable(source, sourceLabel(source.title, source.siteUrl || source.feedUrl))} />} />
+                                menu={<EditSourceSheet onChanged={state.refresh} removedFocus={removedFocus} source={source} />} />
                         )} />
                 ) : <p className="text-sm text-muted-foreground">No feeds yet. <Link href={PATHS.import} className="underline underline-offset-4">Import feeds</Link> to get started.</p>
             ) : <ListStatus label="feeds" state={state} />}

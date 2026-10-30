@@ -5,6 +5,8 @@ import { api, ApiError } from '@/lib/api';
 
 export type FeedSource = {
     rkey: string;
+    kind?: 'rss' | 'standardfeed';
+    publication?: string;
     title?: string;
     feedUrl: string;
     siteUrl?: string;
@@ -63,7 +65,8 @@ export function useSources<T>(path: string, pollInterval = 0) {
         const controller = new AbortController();
         let timer: ReturnType<typeof setTimeout>;
         const refresh = () => setAttempt((value) => value + 1);
-        if (path === '/api/subscriptions') {
+        // Every subscription view reads the same records, so a change anywhere refreshes each one.
+        if (path.startsWith('/api/subscriptions')) {
             subscriptionChanges.addEventListener('change', refresh);
         }
         async function load() {

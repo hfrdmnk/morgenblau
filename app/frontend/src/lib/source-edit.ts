@@ -1,6 +1,6 @@
 import type { FeedSource, NewsletterSource } from '@/hooks/use-sources';
 
-import { api } from './api';
+import { api, ApiError } from './api';
 
 export type EditableSource =
     | { kind: 'feed'; rkey: string; title: string; tags: string[] }
@@ -10,6 +10,12 @@ export type EditableSource =
 export const MAX_TAGS = 10;
 export const MAX_TAG_LENGTH = 64;
 export const MAX_TITLE_LENGTH = 128;
+
+export const GONE = 'This source is no longer in your sources.';
+
+export function isGone(error: unknown): boolean {
+    return error instanceof ApiError && error.status === 404;
+}
 
 export function feedEditable(source: FeedSource, title: string): EditableSource {
     return { kind: 'feed', rkey: source.rkey, title, tags: source.tags ?? [] };

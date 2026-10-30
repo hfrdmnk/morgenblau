@@ -7,6 +7,7 @@ import {
     anchorRejection,
     canRetryGeneration,
     discoverSources,
+    editSource,
     generatedCandidate,
     generatedVerdict,
     generateSource,
@@ -381,4 +382,42 @@ test('a post that left the feed as it was says so calmly, by cause', () => {
     expect(anchorRejection('no_better')).toBe(
         'That post didn’t help. The feed stays as it was.',
     );
+});
+
+test('a change that re-points a feed notifies again once its fetch has landed', async () => {
+    const polled: string[] = [];
+    let changes = 0;
+    const count = () => changes++;
+    respond((url) => {
+        if (url === '/api/subscriptions/rkey-1') return Response.json({ rkey: 'rkey-1', jobId: 'job-1' });
+        polled.push(url);
+        return Response.json({ id: 'job-1', status: polled.length === 1 ? 'running' : 'done' });
+    });
+    subscriptionChanges.addEventListener('change', count);
+    try {
+        await editSource('rkey-1', { feedUrl: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv' });
+        expect(changes).toBe(1);
+        for (let tries = 0; tries < 50 && changes < 2; tries++) await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(polled).toEqual(['/api/jobs/job-1', '/api/jobs/job-1']);
+        expect(changes).toBe(2);
+    } finally {
+        subscriptionChanges.removeEventListener('change', count);
+    }
+});
+
+test('a change without a fetch notifies once and polls nothing', async () => {
+    let changes = 0;
+    const count = () => changes++;
+    respond((url) => {
+        if (url === '/api/subscriptions/rkey-1') return Response.json({ rkey: 'rkey-1' });
+        throw new Error(`unexpected ${url}`);
+    });
+    subscriptionChanges.addEventListener('change', count);
+    try {
+        await editSource('rkey-1', { title: 'Example Publication' });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(changes).toBe(1);
+    } finally {
+        subscriptionChanges.removeEventListener('change', count);
+    }
 });

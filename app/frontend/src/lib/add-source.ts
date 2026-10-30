@@ -28,6 +28,24 @@ export function sourceLocation(candidate: SourceCandidate) {
     return candidate.feedUrl || candidate.siteUrl || sourceKey(candidate);
 }
 
+const YOUTUBE_FEED = 'https://www.youtube.com/feeds/videos.xml';
+
+// Mirrors SameYouTubeFeedURLs in internal/feedfinder: a channel's full feed and its UULF uploads playlist, which leaves out Shorts.
+export function youtubeFeeds(feedUrl: string) {
+    let url: URL;
+    try {
+        url = new URL(feedUrl);
+    } catch {
+        return undefined;
+    }
+    if (!['youtube.com', 'www.youtube.com'].includes(url.hostname) || url.pathname !== '/feeds/videos.xml') return undefined;
+    const id =
+        /^UC([\w-]{22})$/.exec(url.searchParams.get('channel_id') ?? '')?.[1] ??
+        /^UULF([\w-]{22})$/.exec(url.searchParams.get('playlist_id') ?? '')?.[1];
+    if (!id) return undefined;
+    return { all: `${YOUTUBE_FEED}?channel_id=UC${id}`, longForm: `${YOUTUBE_FEED}?playlist_id=UULF${id}` };
+}
+
 export function discoveryError(error: unknown) {
     return error instanceof Error && !(error instanceof TypeError)
         ? error.message
@@ -195,17 +213,18 @@ export function generatedCandidate(source: GeneratedSource): SourceCandidate {
     };
 }
 
-export type SourceOptions = { tags: string[]; primary: boolean };
+export type SourceOptions = { tags: string[]; primary: boolean; title?: string };
 
 // Options travel only when set: a native publication with none needs no sidecar record.
 export async function addSource(
     candidate: SourceCandidate,
     options: SourceOptions = { tags: [], primary: false },
 ) {
+    // A publication's own name needs no sidecar, so only a name the reader typed travels with it.
     const identity =
         candidate.kind === 'standardfeed'
-            ? { publication: candidate.publication }
-            : { feedUrl: candidate.feedUrl, title: candidate.title };
+            ? { publication: candidate.publication, title: options.title }
+            : { feedUrl: candidate.feedUrl, title: options.title ?? candidate.title };
     const result = await api<{ rkey: string }>('/api/subscriptions', {
         method: 'POST',
         body: {
@@ -217,6 +236,28 @@ export async function addSource(
     });
     subscriptionChanges.dispatchEvent(new Event('change'));
     return result;
+}
+
+export type SourceChange = { title?: string; tags?: string[]; primary?: boolean; feedUrl?: string };
+
+// The PATCH route rewrites only the fields it is sent, so the change carries only what the reader edited.
+export async function editSource(rkey: string, change: SourceChange) {
+    const { jobId } = await api<{ jobId?: string }>(`/api/subscriptions/${encodeURIComponent(rkey)}`, { method: 'PATCH', body: change });
+    subscriptionChanges.dispatchEvent(new Event('change'));
+    // A re-pointed feed has no posts until its fetch lands, so views read it again once the job settles.
+    if (jobId) void settled(jobId).then(() => subscriptionChanges.dispatchEvent(new Event('change')));
+}
+
+const JOB_POLL_MS = 750;
+const JOB_POLLS = 80;
+
+// Resolves once the job has stopped running; a job that is unreadable or outlives the polls ends the wait the same way.
+async function settled(jobId: string) {
+    for (let poll = 0; poll < JOB_POLLS; poll++) {
+        await new Promise((resolve) => setTimeout(resolve, JOB_POLL_MS));
+        const job = await api<{ status: string }>(`/api/jobs/${encodeURIComponent(jobId)}`).catch(() => null);
+        if (job?.status !== 'running') return;
+    }
 }
 
 export async function unsubscribe(rkey: string) {

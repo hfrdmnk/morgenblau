@@ -1,12 +1,11 @@
 import { useLocation, useParams } from 'wouter';
 
+import { EditSourceSheet } from '@/components/add-source-dialog';
 import { SourceHealth } from '@/components/feed-health';
 import { SourceDetailPage, SourceEntries, SourceHeader, SourceUnavailable } from '@/components/source-detail';
-import { SourceMenu } from '@/components/source-menu';
 import { useSources, type FeedSourceDetail, type SourceEntry } from '@/hooks/use-sources';
 import { httpURL } from '@/lib/reader';
 import { PATHS, sourceHref } from '@/lib/paths';
-import { feedEditable } from '@/lib/source-edit';
 import { displayURL, feedFacts } from '@/lib/source-display';
 
 export function Source() {
@@ -37,7 +36,7 @@ function FeedSourceHeader({ source, onChanged, onRemoved }: { source: FeedSource
             health={<SourceHealth source={source} />}
             icon={source.faviconUrl}
             identity={<SiteLink url={site} />}
-            menu={<SourceMenu onChanged={onChanged} onRemoved={onRemoved} source={feedEditable(source, title)} />}
+            menu={<EditSourceSheet onChanged={onChanged} onRemoved={onRemoved} source={source} />}
             tags={source.tags}
             title={title}
         />
