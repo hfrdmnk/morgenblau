@@ -107,6 +107,64 @@ test('found feeds are announced in one short line', async () => {
     );
     await findFeeds('news.example.com');
     await waitFor('Available feeds');
-    expect(document.querySelector('#available-feeds')!.closest('[aria-live]')).toBeNull();
+    expect(document.querySelector('ul[aria-labelledby]')!.closest('[aria-live]')).toBeNull();
     expect(announced()).toEqual(['2 feeds found.']);
+});
+
+function screen() {
+    return [...document.querySelectorAll<HTMLElement>('.overscroll-contain > [tabindex="-1"]')].find((node) => !node.hidden)!;
+}
+
+async function press(text: string) {
+    await waitFor(text);
+    const button = [...screen().querySelectorAll('button')].find((node) => node.textContent?.includes(text));
+    expect(button).toBeDefined();
+    await act(async () => button!.click());
+    await settle();
+}
+
+async function back() {
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Back"]')!.click());
+    await settle();
+}
+
+test('the publication follows its site’s second RSS feed through removal and re-adding in the sheet', async () => {
+    const atom = 'https://news.example.com/atom.xml';
+    respond((url) => {
+        if (url.endsWith('/resolve'))
+            return Response.json({
+                candidates: [
+                    { feedUrl: 'https://news.example.com/rss.xml', title: 'Example RSS' },
+                    { feedUrl: atom, title: 'Example Atom' },
+                    { kind: 'standardfeed', publication: 'at://did:plc:example/site.standard.publication/self', title: 'Example Standard', subscribedVia: { kind: 'rss' } },
+                ],
+                existingSubscriptions: [{ feedUrl: atom, rkey: 'atom-rkey', title: 'Example Atom' }],
+            });
+        if (url.endsWith('/profile')) return Response.json({ profile: null });
+        if (url.endsWith('/preview')) return Response.json({ items: [] });
+        if (url.endsWith('/tags')) return Response.json({ tags: [] });
+        if (url.endsWith('/atom-rkey')) return new Response(null, { status: 204 });
+        if (url.endsWith('/api/subscriptions')) return Response.json({ rkey: 'atom-again' });
+        throw new Error(`unexpected ${url}`);
+    });
+    const followedNote = 'You follow this site through its RSS feed';
+    await findFeeds('news.example.com');
+
+    await press('Example Standard');
+    await waitFor(followedNote);
+    expect(screen().textContent).toContain(followedNote);
+
+    await back();
+    await press('Example Atom');
+    await press('Remove from sources');
+    await back();
+    await press('Example Standard');
+    expect(screen().textContent).not.toContain(followedNote);
+    expect(screen().textContent).toContain('Add to sources');
+
+    await back();
+    await press('Example Atom');
+    await press('Add to sources');
+    await press('Example Standard');
+    expect(screen().textContent).toContain(followedNote);
 });

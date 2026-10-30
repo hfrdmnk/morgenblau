@@ -5,12 +5,8 @@ import { hasNewReaderContent, httpURL, readerBody, readerContentURL, readerMetad
 test('newsletter body keeps private app asset URLs and blocked images unchanged', () => {
     const body = '<img src="/api/newsletter-assets/example-id"><img alt="Blocked image">';
     expect(readerBody({
-        entrySlug: 'newsletter-example',
-        title: 'Example newsletter',
         url: 'https://publisher.example/newsletter',
         contentType: 'newsletter',
-        publishedAt: '2026-09-30T09:00:00Z',
-        source: { title: 'Example Letters', siteUrl: null },
         body,
     })).toBe(body);
 });

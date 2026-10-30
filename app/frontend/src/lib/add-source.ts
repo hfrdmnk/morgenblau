@@ -13,7 +13,7 @@ export type SourceCandidate = {
 
 export type SourceDiscovery = {
     candidates: SourceCandidate[];
-    existingSubscriptions: { feedUrl: string; title: string | null }[];
+    existingSubscriptions: { feedUrl: string; rkey: string; title: string | null }[];
 };
 
 export function sourceKey(candidate: SourceCandidate) {
@@ -195,27 +195,77 @@ export function generatedCandidate(source: GeneratedSource): SourceCandidate {
     };
 }
 
-export async function addSource(candidate: SourceCandidate) {
+export type SourceOptions = { tags: string[]; primary: boolean };
+
+// Options travel only when set: a native publication with none needs no sidecar record.
+export async function addSource(
+    candidate: SourceCandidate,
+    options: SourceOptions = { tags: [], primary: false },
+) {
     const identity =
         candidate.kind === 'standardfeed'
             ? { publication: candidate.publication }
             : { feedUrl: candidate.feedUrl, title: candidate.title };
-    const result = await api('/api/subscriptions', {
+    const result = await api<{ rkey: string }>('/api/subscriptions', {
         method: 'POST',
-        body: { ...identity, siteUrl: candidate.siteUrl },
+        body: {
+            ...identity,
+            siteUrl: candidate.siteUrl,
+            ...(options.tags.length && { tags: options.tags }),
+            ...(options.primary && { primary: true }),
+        },
     });
     subscriptionChanges.dispatchEvent(new Event('change'));
     return result;
 }
 
-export async function saveSources(
-    candidates: SourceCandidate[],
-    onAdded: (candidate: SourceCandidate) => void,
-) {
-    for (const candidate of candidates) {
-        await addSource(candidate);
-        onAdded(candidate);
-    }
+export async function unsubscribe(rkey: string) {
+    await api(`/api/subscriptions/${encodeURIComponent(rkey)}`, { method: 'DELETE' });
+    subscriptionChanges.dispatchEvent(new Event('change'));
+}
+
+export type PreviewPost = { title: string; publishedAt?: string; url?: string; contentHtml?: string };
+
+export async function previewSource(candidate: SourceCandidate, signal: AbortSignal) {
+    const { items } = await api<{ items: PreviewPost[] }>('/api/subscriptions/preview', {
+        method: 'POST',
+        body: candidate.kind === 'standardfeed' ? { publication: candidate.publication } : { feedUrl: candidate.feedUrl },
+        signal,
+    });
+    return items;
+}
+
+export async function previewArticle(url: string, signal?: AbortSignal) {
+    const { contentHtml } = await api<{ contentHtml: string }>('/api/subscriptions/preview/article', {
+        method: 'POST',
+        body: { url },
+        signal,
+    });
+    return contentHtml;
+}
+
+export type SiteFollow = { title: string; feedUrl: string; siteUrl?: string; rkey?: string };
+
+export type SiteProfile = {
+    name?: string;
+    about?: string[];
+    contact?: { kind: 'email' | 'url'; value: string; preferred?: boolean }[];
+    following?: SiteFollow[];
+};
+
+export type SiteResult = SourceDiscovery & { url: string; profile: SiteProfile | null };
+
+// The profile is optional decoration, so its failure never fails the lookup.
+export async function findSite(input: string, signal: AbortSignal): Promise<SiteResult> {
+    const url = webURL(input);
+    const profile = url
+        ? api<{ profile: SiteProfile | null }>('/api/subscriptions/profile', { method: 'POST', body: { url }, signal }).then(
+              (result) => result.profile ?? null,
+              () => null,
+          )
+        : Promise.resolve(null);
+    const discovery = await discoverSources(input, signal);
+    return { ...discovery, url: input, profile: await profile };
 }
 
 export async function newsletterAddress(

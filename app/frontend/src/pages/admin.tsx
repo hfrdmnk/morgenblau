@@ -109,7 +109,7 @@ function PersonRow({ person }: { person: Person }) {
     const name = personName(person);
     return (
         <li className="grid min-w-0 grid-cols-[2rem_1fr] items-center gap-x-3 gap-y-2 sm:grid-cols-[2rem_1fr_repeat(3,5.5rem)] sm:gap-x-4">
-            <PersonAvatar did={person.did} lazy src={person.avatar} />
+            <PersonAvatar seed={person.did} lazy src={person.avatar} />
             <div className="min-w-0">
                 <p className={cn('truncate font-medium', !person.handle && 'font-mono text-sm')} title={person.did}>{name}</p>
                 <p className="truncate text-sm text-subtle-foreground">{personMeta(person, name)}</p>

@@ -1,10 +1,10 @@
 import { motion } from 'motion/react';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { toast } from 'sonner';
+import { useLocation } from 'wouter';
 
-import { LoadingIcon } from '@/components/icons';
+import { EnterIcon, LoadingIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 import { Link } from '@/components/ui/link';
 import { useGeneration, type GenerationStep } from '@/hooks/use-generation';
 import {
@@ -17,6 +17,7 @@ import {
 } from '@/lib/add-source';
 import { classifyMutationError, describeMutationError } from '@/lib/api';
 import { PATHS } from '@/lib/paths';
+import { announceSourceAdded } from '@/lib/source-toast';
 import { cn } from '@/lib/utils';
 
 // A sample is enough to recognize the site's posts and keeps Add source on screen, with the post field still in view when unsure.
@@ -304,6 +305,7 @@ function AddGeneratedSource({
     onSavingChange,
     onSaved,
 }: SaveProps & { source: GeneratedSource; anchoring: boolean }) {
+    const [, navigate] = useLocation();
     const [failure, setFailure] = useState<{
         source: GeneratedSource;
         message: string;
@@ -314,11 +316,12 @@ function AddGeneratedSource({
     async function save() {
         onSavingChange(true);
         try {
-            await addSource(generatedCandidate(source));
-            toast.success('Source added', {
-                description:
-                    'New posts appear in your newspaper as the site publishes them.',
-            });
+            const { rkey } = await addSource(generatedCandidate(source));
+            announceSourceAdded(
+                rkey,
+                navigate,
+                'New posts appear in your newspaper as the site publishes them.',
+            );
             onSaved();
         } catch (problem) {
             setFailure({
@@ -445,8 +448,8 @@ function AnchorForm({
             >
                 {prompt}
             </label>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                <Input
+            <InputGroup className="mt-3">
+                <InputGroupInput
                     aria-describedby={
                         field.described ? `${inputId}-message` : undefined
                     }
@@ -467,7 +470,7 @@ function AnchorForm({
                     anchoring={anchoring}
                     disabled={disabled || !field.anchor.trim()}
                 />
-            </div>
+            </InputGroup>
             <AnchorMessage
                 anchoring={anchoring}
                 error={field.error}
@@ -486,20 +489,19 @@ function UsePostButton({
     disabled: boolean;
 }) {
     return (
-        <Button
+        <InputGroupButton
             aria-busy={anchoring}
-            className="sm:w-32"
+            aria-label="Use this post"
             disabled={disabled || anchoring}
             focusableWhenDisabled={anchoring}
             type="submit"
-            variant="secondary"
         >
             {anchoring ? (
-                <LoadingIcon className="size-4 motion-safe:animate-spin" />
+                <LoadingIcon className="motion-safe:animate-spin" />
             ) : (
-                'Use this post'
+                <EnterIcon />
             )}
-        </Button>
+        </InputGroupButton>
     );
 }
 

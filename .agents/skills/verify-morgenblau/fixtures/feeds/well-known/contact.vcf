@@ -1,0 +1,6 @@
+BEGIN:VCARD
+VERSION:3.0
+FN:Example Fixture
+item1.EMAIL;TYPE=PREF:hello@fixture.example.com
+URL:https://fixture.example.com
+END:VCARD

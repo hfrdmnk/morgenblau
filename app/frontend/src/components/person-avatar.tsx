@@ -1,14 +1,16 @@
 import BoringAvatar from 'boring-avatars';
 import { useState } from 'react';
 
+import { cn } from '@/lib/utils';
+
 // The brand mode colours and two Stone neutrals from index.css, as hex because boring-avatars derives the face's contrast colour from hex.
 const COLORS = ['#006cff', '#f34600', '#9754ed', '#d6d3d1', '#292524'];
 
-// Seeded by DID so a person keeps the same face when their handle or name changes.
-export function PersonAvatar({ did, src, lazy = false }: { did: string; src: string | null; lazy?: boolean }) {
+// Seed with something stable, like a DID or a site's host, so the face survives a changed handle or name.
+export function PersonAvatar({ seed, src = null, lazy = false, className }: { seed: string; src?: string | null; lazy?: boolean; className?: string }) {
     const [failed, setFailed] = useState<string | null>(null);
     return (
-        <span className="flex size-8 shrink-0 overflow-hidden rounded-full">
+        <span className={cn('flex size-8 shrink-0 overflow-hidden rounded-full', className)}>
             {src && failed !== src ? (
                 <img
                     alt=""
@@ -19,7 +21,7 @@ export function PersonAvatar({ did, src, lazy = false }: { did: string; src: str
                     src={src}
                 />
             ) : (
-                <BoringAvatar aria-hidden="true" className="size-full" colors={COLORS} name={did} size={32} variant="beam" />
+                <BoringAvatar aria-hidden="true" className="size-full" colors={COLORS} name={seed} size={32} variant="beam" />
             )}
         </span>
     );

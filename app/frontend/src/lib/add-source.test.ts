@@ -12,7 +12,6 @@ import {
     generateSource,
     generationError,
     newsletterAddress,
-    saveSources,
     sourceKey,
     sourceLocation,
     sourceTitle,
@@ -56,7 +55,7 @@ test('discovery rejects non-web schemes without sending a request', async () => 
     ).rejects.toThrow('Enter a website or feed URL.');
 });
 
-test('keeps RSS titles but does not customize discovered native publications', async () => {
+test('keeps RSS titles, sends options only when set, and does not otherwise customize native publications', async () => {
     const bodies: unknown[] = [];
     respond((_url, init) => {
         bodies.push(JSON.parse(String(init?.body)));
@@ -69,12 +68,23 @@ test('keeps RSS titles but does not customize discovered native publications', a
         title: 'Native',
         siteUrl: 'https://example.org',
     });
+    await addSource(
+        { kind: 'standardfeed', publication: 'at://did:plc:example/site.standard.publication/tagged' },
+        { tags: ['Friends'], primary: true },
+    );
+    await addSource({ feedUrl: 'https://example.com/plain' }, { tags: [], primary: false });
     expect(bodies).toEqual([
         { feedUrl: 'https://example.com/rss', title: 'Example' },
         {
             publication: 'at://did:plc:example/site.standard.publication/test',
             siteUrl: 'https://example.org',
         },
+        {
+            publication: 'at://did:plc:example/site.standard.publication/tagged',
+            tags: ['Friends'],
+            primary: true,
+        },
+        { feedUrl: 'https://example.com/plain' },
     ]);
 });
 
@@ -117,32 +127,6 @@ test('does not notify when the subscription response cannot be confirmed', async
     } finally {
         subscriptionChanges.removeEventListener('change', listener);
     }
-});
-
-test('save confirms each source sequentially and stops at a partial failure', async () => {
-    const candidates = ['first', 'second', 'third'].map((name) => ({
-        feedUrl: `https://example.com/${name}.xml`,
-    }));
-    const requested: string[] = [];
-    const confirmed: string[] = [];
-    respond((_url, init) => {
-        expect(confirmed).toEqual(requested);
-        const { feedUrl } = JSON.parse(String(init?.body));
-        requested.push(feedUrl);
-        return requested.length === 2
-            ? Response.json({ message: 'Unavailable' }, { status: 502 })
-            : Response.json({ rkey: '3example' });
-    });
-    await expect(
-        saveSources(candidates, (candidate) => {
-            confirmed.push(sourceKey(candidate));
-        }),
-    ).rejects.toThrow('Unavailable');
-    expect(requested).toEqual([
-        'https://example.com/first.xml',
-        'https://example.com/second.xml',
-    ]);
-    expect(confirmed).toEqual(['https://example.com/first.xml']);
 });
 
 test('untitled sources prefer the site for their title but the feed for their location', () => {

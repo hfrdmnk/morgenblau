@@ -45,6 +45,10 @@ const feeds = {
   '/feeds/broken.xml': () => ['application/rss+xml; charset=utf-8', render('broken.xml')],
   '/feeds/undated.xml': () => ['application/rss+xml; charset=utf-8', render('undated.xml')],
   '/feeds/latin1.xml': () => ['application/rss+xml; charset=ISO-8859-1', Buffer.from(render('latin1.xml'), 'latin1')],
+  // The site's SocialSpec profile (socialspec.org), read by the add-source sheet.
+  '/.well-known/about.md': () => ['text/markdown; charset=utf-8', render('well-known/about.md')],
+  '/.well-known/contact.vcf': () => ['text/vcard; charset=utf-8', render('well-known/contact.vcf')],
+  '/.well-known/following.opml': () => ['text/x-opml+xml; charset=utf-8', render('well-known/following.opml')],
 }
 
 const fixtures = http.createServer((req, res) => {

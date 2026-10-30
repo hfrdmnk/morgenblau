@@ -23,6 +23,20 @@ function ArrowRightIcon(props: IconProps) {
     );
 }
 
+function EnterIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M8 11L4 15M4 15L8 19M4 15H17C18.6569 15 20 13.6569 20 12V5"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.5"
+            />
+        </svg>
+    );
+}
+
 function ExternalLinkIcon(props: IconProps) {
     return (
         <svg {...iconProps} {...props}>
@@ -429,6 +443,7 @@ export {
     CopyIcon,
     DigestIcon,
     DownloadIcon,
+    EnterIcon,
     ExternalLinkIcon,
     InboxIcon,
     InfoIcon,

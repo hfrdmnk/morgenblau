@@ -31,7 +31,7 @@ export function AccountMenu({ profile }: { profile: AppProfile }) {
                     />
                 }
             >
-                <PersonAvatar did={profile.did} src={profile.avatar} />
+                <PersonAvatar seed={profile.did} src={profile.avatar} />
             </PopoverTrigger>
             <PopoverContent align="end" className="w-64">
                 <PopoverHeader>

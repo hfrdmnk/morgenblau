@@ -6,6 +6,7 @@ import { Link as RouterLink } from 'wouter';
 import { IconCrossfade } from '@/components/icon-crossfade';
 import { CheckIcon, CopyIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
+import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 import { useAppProfile } from '@/hooks/use-app-profile';
 import { newsletterAddress } from '@/lib/add-source';
 import { ApiError } from '@/lib/api';
@@ -102,11 +103,10 @@ function NewsletterAddressContent({
     if (status === 'loading')
         return (
             <div
-                className="mt-4 flex h-13 items-center gap-2 rounded-lg bg-input pr-1 pl-3"
+                className="mt-4 flex h-10 items-center rounded-md bg-input px-3"
                 role="status"
             >
                 <span className="h-4 w-3/5 animate-pulse rounded bg-foreground/8 motion-reduce:animate-none" />
-                <span className="ml-auto size-11 shrink-0" />
                 <span className="sr-only">Loading your newsletter address</span>
             </div>
         );
@@ -129,7 +129,7 @@ function NewsletterAddressContent({
         <RouterLink
             href={PATHS.general}
             onClick={onNavigate}
-            className="relative mt-4 block h-13 overflow-hidden rounded-lg bg-input text-sm"
+            className="relative mt-4 block h-10 overflow-hidden rounded-md bg-input text-sm"
         >
             <span
                 aria-hidden="true"
@@ -166,24 +166,21 @@ function CopyNewsletterAddress({ address }: { address: string }) {
         }
     }
     return (
-        <div className="mt-4 flex h-13 items-center gap-2 rounded-lg bg-input pr-1 pl-3">
-            <input
+        <InputGroup className="mt-4">
+            <InputGroupInput
                 aria-label="Newsletter email address"
-                className="min-w-0 flex-1 bg-transparent text-base md:text-sm"
                 onFocus={(event) => event.target.select()}
                 readOnly
                 value={address}
             />
-            <Button
+            <InputGroupButton
                 aria-label={
                     copied
                         ? 'Newsletter address copied'
                         : 'Copy newsletter email address'
                 }
-                className={cn('relative', { 'text-success': copied })}
+                className={cn('relative', { 'text-success hover:text-success': copied })}
                 onClick={copy}
-                size="icon-lg"
-                variant="ghost"
             >
                 <IconCrossfade
                     className="size-4"
@@ -191,10 +188,10 @@ function CopyNewsletterAddress({ address }: { address: string }) {
                     instant={Boolean(reduced) || keyboard}
                     name={copied ? 'check' : 'copy'}
                 />
-            </Button>
+            </InputGroupButton>
             <span aria-live="polite" className="sr-only">
                 {copied ? 'Newsletter address copied.' : ''}
             </span>
-        </div>
+        </InputGroup>
     );
 }

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>Example Fixture follows</title></head>
+  <body>
+    <outline text="Example Stale Feed" htmlUrl="{{ORIGIN}}/" xmlUrl="{{ORIGIN}}/feeds/stale.xml"/>
+    <outline text="Example Latin-1 Feed" xmlUrl="{{ORIGIN}}/feeds/latin1.xml"/>
+  </body>
+</opml>

@@ -2,7 +2,7 @@ import { Dialog } from '@base-ui/react/dialog';
 import { useId, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
 import { toast } from 'sonner';
 
-import { CloseIcon, MoreIcon, PauseIcon, PenIcon, PlayIcon, TagIcon, TrashIcon } from '@/components/icons';
+import { MoreIcon, PauseIcon, PenIcon, PlayIcon, TagIcon, TrashIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { DialogBackdrop, DialogPopup } from '@/components/ui/dialog';
 import {
@@ -14,15 +14,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Link } from '@/components/ui/link';
-import { useSources } from '@/hooks/use-sources';
+import { LimitHint, TagChips, TagInput } from '@/components/tag-input';
 import { ApiError, classifyMutationError, describeMutationError } from '@/lib/api';
 import { PATHS } from '@/lib/paths';
 import {
     addTags,
     canAddTags,
     hasOverlongTag,
-    MAX_TAG_LENGTH,
-    MAX_TAGS,
     MAX_TITLE_LENGTH,
     removeSource,
     renameSource,
@@ -241,107 +239,25 @@ function TagsDialog(props: DialogProps) {
             title="Edit tags"
         >
             <form onSubmit={submit}>
-                <TagChips inputRef={inputRef} onRemove={(tag) => setTags(tags.filter((other) => other !== tag))} tags={tags} />
                 <TagInput
                     canAdd={canAddTags(tags, draft)}
                     draft={draft}
                     inputRef={inputRef}
-                    onAdd={() => {
-                        if (!canAddTags(tags, draft)) return;
-                        setTags(addTags(tags, draft));
+                    onAdd={(input) => {
+                        if (!canAddTags(tags, input)) return;
+                        setTags(addTags(tags, input));
                         setDraft('');
                     }}
                     onDraft={setDraft}
                     overlong={overlong}
                     tags={tags}
                 />
+                <TagChips inputRef={inputRef} onRemove={(tag) => setTags(tags.filter((other) => other !== tag))} tags={tags} />
                 <ErrorLine error={mutation.error} />
                 <DialogActions disabled={overlong} label="Save tags" onCancel={onClose} pending={mutation.pending} />
             </form>
         </SourceDialog>
     );
-}
-
-function TagChips({ tags, inputRef, onRemove }: {
-    tags: string[];
-    inputRef: RefObject<HTMLInputElement | null>;
-    onRemove: (tag: string) => void;
-}) {
-    // The removed chip's button unmounts, so focus moves to a neighbour first instead of dropping to the page.
-    function remove(tag: string, button: HTMLButtonElement) {
-        const buttons = [...(button.closest('ul')?.querySelectorAll('button') ?? [])];
-        const index = buttons.indexOf(button);
-        (buttons[index + 1] ?? buttons[index - 1] ?? inputRef.current)?.focus();
-        onRemove(tag);
-    }
-    if (!tags.length) return <p className="mb-5 text-sm text-subtle-foreground">No tags yet.</p>;
-    return (
-        <ul aria-label="Tags" className="mb-5 flex flex-wrap gap-2">
-            {tags.map((tag) => (
-                <li className="flex items-center gap-1 rounded-full bg-muted py-0.5 pr-1 pl-2.5 text-sm text-muted-foreground" key={tag}>
-                    {tag}
-                    <button
-                        aria-label={`Remove tag ${tag}`}
-                        className="relative flex size-5 cursor-pointer items-center justify-center rounded-full before:absolute before:-inset-1 hover:bg-secondary hover:text-foreground"
-                        onClick={(event) => remove(tag, event.currentTarget)}
-                        type="button"
-                    >
-                        <CloseIcon className="size-3.5" />
-                    </button>
-                </li>
-            ))}
-        </ul>
-    );
-}
-
-function TagInput({ tags, draft, canAdd, overlong, inputRef, onDraft, onAdd }: {
-    tags: string[];
-    draft: string;
-    canAdd: boolean;
-    overlong: boolean;
-    inputRef: RefObject<HTMLInputElement | null>;
-    onDraft: (draft: string) => void;
-    onAdd: () => void;
-}) {
-    const inputId = useId();
-    const listId = useId();
-    const hintId = useId();
-    const full = tags.length >= MAX_TAGS;
-    return (
-        <>
-            <label className="text-sm font-medium" htmlFor={inputId}>Add a tag</label>
-            <div className="mt-2 flex gap-2">
-                <Input
-                    aria-describedby={hintId}
-                    aria-invalid={overlong}
-                    autoComplete="off"
-                    className="[&::-webkit-calendar-picker-indicator]:hidden!"
-                    disabled={full}
-                    id={inputId}
-                    list={listId}
-                    onChange={(event) => onDraft(event.target.value)}
-                    ref={inputRef}
-                    onKeyDown={(event) => {
-                        if (event.key !== 'Enter') return;
-                        event.preventDefault();
-                        onAdd();
-                    }}
-                    placeholder={full ? `Up to ${MAX_TAGS} tags` : 'e.g. design'}
-                    value={draft}
-                />
-                <Button disabled={!canAdd} onClick={onAdd} type="button" variant="secondary">Add</Button>
-            </div>
-            <LimitHint id={hintId} shown={overlong}>Tags can be up to {MAX_TAG_LENGTH} characters.</LimitHint>
-            <TagSuggestions exclude={tags} id={listId} />
-        </>
-    );
-}
-
-function TagSuggestions({ id, exclude }: { id: string; exclude: string[] }) {
-    const state = useSources<{ tags: string[] }>('/api/subscriptions/tags');
-    const taken = new Set(exclude.map((tag) => tag.toLowerCase()));
-    const tags = state.status === 'loaded' ? state.data.tags.filter((tag) => !taken.has(tag.toLowerCase())) : [];
-    return <datalist id={id}>{tags.map((tag) => <option key={tag} value={tag} />)}</datalist>;
 }
 
 const REMOVAL = {
@@ -423,11 +339,6 @@ function SourceDialog({ title, description, initialFocus, finalFocus, open, pend
             </Dialog.Portal>
         </Dialog.Root>
     );
-}
-
-function LimitHint({ id, shown, children }: { id: string; shown: boolean; children: ReactNode }) {
-    if (!shown) return null;
-    return <p className="mt-2 text-sm text-destructive" id={id}>{children}</p>;
 }
 
 function ErrorLine({ error }: { error: MutationError | null }) {

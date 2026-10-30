@@ -30,7 +30,7 @@ export function readerContentURL(value: string, base: string): string {
     }
 }
 
-export function readerBody(entry: ReaderEntry): string {
+export function readerBody(entry: Pick<ReaderEntry, 'body' | 'url' | 'contentType' | 'newsletter'>): string {
     const body = entry.body || '';
     const base = httpURL(entry.url);
     if (entry.newsletter || entry.contentType === 'newsletter' || !base) return body;
