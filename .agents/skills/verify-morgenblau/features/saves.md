@@ -9,9 +9,11 @@ Help article: none
 - `save` `POST /api/saves` with `{itemUrl, feedUrl}` answers `201` with the save; repeating it answers `200` with the same `rkey` (that body has no `cid`).
 - `list` `GET /api/saves` lists URL saves (`rkey`, `itemUrl`) and newsletter saves (`kind` `newsletter`, `id`, `entrySlug`, no `rkey`).
 - `unsave` `DELETE /api/saves/{rkey}`.
+- `tag` `PATCH /api/saves/{rkey}` with `{tags}` rewrites the PDS record's tags, keeping its other fields; `PATCH /api/newsletter-saves/{id}` does the same for a private newsletter save, which never reaches the PDS. `GET /api/saves/tags` suggests the tags on both kinds. Saves carry `tags` in `GET /api/saves` and in the reader's `savedState`.
 
 ## How to reach it
 
+- Browser: the reader's bookmark and end-of-article filing block, see [entry-reader](./entry-reader.md).
 - API routes above. The Library page that will list saves is still a placeholder.
 
 ## Drive and prove
@@ -23,6 +25,7 @@ Preconditions:
 - **Save.** `$V api $S POST /api/saves --data '{"itemUrl":"<url>"}' --out save`: `201` with an `rkey`. `inspect`: a `user_saves` row with that rkey and URL.
 - **Idempotent.** Repeat the POST: `200`, same `rkey`, still one row.
 - **List.** `GET /api/saves --out saves`: contains the URL. With a newsletter save from [newsletters](./newsletters.md) in place, it also holds that entry with `kind` `newsletter` and no `rkey`.
+- **Tag.** `PATCH /api/saves/<rkey> --data '{"tags":["read-later"]}'`: `200` with `tags`; `inspect` shows the row's `tags` and `GET /api/saves/tags` lists `read-later`.
 - **Unsave.** `DELETE /api/saves/<rkey>`: `204`; the row is gone.
 - **Negative.** `POST /api/saves --data '{}'`: `400` (`itemUrl is required`). `DELETE /api/saves/unknownrkey`: `404`. `GET /api/saves --anon`: `401`.
 

@@ -6,7 +6,8 @@ Help article: none
 
 ## Sub-features
 
-- `reader` `/entry/<slug>` (`frontend/src/pages/entry.tsx`) shows the title, source line, body and an original link (`Read original` and others, see `sourceActionLabel`).
+- `reader` `/entry/<slug>` (`frontend/src/pages/entry.tsx`) shows the title, source line and body. The reader rail (`frontend/src/components/reader-rail.tsx`) holds the save bookmark, the original link (labelled `Read original` and others, see `sourceActionLabel`) and the reading progress; below `sm` it is a bottom bar.
+- `save` the bookmark saves at once and shows a `Saved to Library` toast whose `Add tags` (or `T`) opens a tag field; a saved article ends with a `Saved to Library` line whose `Add tags` opens the same field and `Remove` unsaves it; an unsaved article ends without it. Tag routes are in [saves](./saves.md).
 - `back` the `Reader` navigation's `Back to digest` returns to `/?date=<from>`; `Escape` follows the same link.
 - `step` `Shift+ArrowDown`/`Shift+ArrowUp` (or `j`/`k`) open the next/previous entry of the list in `from` (a digest day or a source page), keeping `from`; at either end an info toast says there is none (`useEntrySteps` in `frontend/src/hooks/use-entry-steps.ts`).
 - `extract` a blog post with a web URL shows `Load full article`; it calls `POST /api/entries/{slug}/extract`, which fetches the page, stores `feed_entries.extracted_body` and returns the entry. The page also extracts on load when the entry has no body.

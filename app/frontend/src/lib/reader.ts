@@ -15,6 +15,7 @@ export type ReaderEntry = {
         hasBlockedRemoteImages: boolean;
         remoteImagesAllowed: boolean;
     };
+    savedState?: { kind?: string; id?: string; rkey?: string; tags?: string[] } | null;
 };
 
 export function hasNewReaderContent(current: string | null, updated: string | null): boolean {

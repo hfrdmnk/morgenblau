@@ -149,6 +149,20 @@ function InfoIcon(props: IconProps) {
     );
 }
 
+function BookmarkIcon(props: IconProps) {
+    return (
+        <svg {...iconProps} {...props}>
+            <path
+                d="M5 22V3C5 2.44772 5.44772 2 6 2H18C18.5523 2 19 2.44772 19 3V22L12 15.8889L5 22Z"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.5"
+            />
+        </svg>
+    );
+}
+
 function CheckIcon(props: IconProps) {
     return (
         <svg {...iconProps} {...props}>
@@ -437,6 +451,7 @@ function TrashIcon(props: IconProps) {
 export {
     AlertIcon,
     ArrowRightIcon,
+    BookmarkIcon,
     CheckIcon,
     ChevronDownIcon,
     CloseIcon,

@@ -3,11 +3,13 @@ import { Link, useLocation, useParams } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
 import { BackLink } from '@/components/back-link';
-import { ExternalLinkIcon } from '@/components/icons';
 import { NewsletterImages } from '@/components/newsletter-images';
 import { ReaderNotice } from '@/components/reader-notice';
+import { ReaderRail } from '@/components/reader-rail';
+import { SaveFiling } from '@/components/save-filing';
 import { Button } from '@/components/ui/button';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { useEntrySave } from '@/hooks/use-entry-save';
 import { useEntrySteps } from '@/hooks/use-entry-steps';
 import { useReaderFont } from '@/hooks/use-reader-font';
 import { useModeShortcuts, useShortcuts } from '@/hooks/use-shortcuts';
@@ -130,12 +132,15 @@ function Reader({ initialEntry, initiallyExtracted, extractionFailed }: {
     extractionFailed: boolean;
 }) {
     const [entry, setEntry] = useState(initialEntry);
+    const save = useEntrySave(initialEntry);
     return (
         <article aria-labelledby="entry-title">
             <ReaderHeader entry={entry} />
             <ReaderMedia entry={entry} onChange={setEntry} />
             <ReaderBody entry={entry} />
             {canExtractArticle(entry) ? <ArticleExtraction entry={entry} onChange={setEntry} initiallyExtracted={initiallyExtracted} extractionFailed={extractionFailed} /> : null}
+            {save ? <SaveFiling save={save} /> : null}
+            <ReaderRail entry={entry} save={save} />
         </article>
     );
 }
@@ -220,7 +225,6 @@ function ReaderHeader({ entry }: { entry: ReaderEntry }) {
                 {author ? <span>{author}</span> : null}
                 {!Number.isNaN(date.getTime()) ? <time dateTime={entry.publishedAt}>{date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</time> : null}
             </div>
-            <OriginalSource entry={entry} />
         </header>
     );
 }
@@ -229,23 +233,6 @@ function SourceLink({ entry, children }: { entry: ReaderEntry; children: string 
     const href = readerSourceHref(entry.source);
     if (!href) return children;
     return <Link className="rounded-sm hover:text-foreground" href={href}>{children}</Link>;
-}
-
-function sourceActionLabel(entry: ReaderEntry): string {
-    const labels: Record<string, string> = { newsletter: 'Open web version', video: 'Watch at source', microblog: 'View original post' };
-    const isYoutube = entry.contentType === 'video' && youtubeID(entry.url);
-    return isYoutube ? 'Watch on YouTube' : labels[entry.contentType] ?? 'Read original';
-}
-
-function OriginalSource({ entry }: { entry: ReaderEntry }) {
-    const original = httpURL(entry.url);
-    if (!original) return null;
-    return (
-        <a className="mt-5 inline-flex min-h-8 items-center gap-2 rounded-sm text-sm text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground" href={original} target="_blank" rel="noopener noreferrer">
-            {sourceActionLabel(entry)}
-            <ExternalLinkIcon className="size-3.5" />
-        </a>
-    );
 }
 
 function ReaderVideo({ youtube, video, title }: {

@@ -38,7 +38,7 @@ export function TagChips({ tags, inputRef, onRemove }: {
     );
 }
 
-export function TagInput({ tags, draft, canAdd, overlong, inputRef, onDraft, onAdd }: {
+export function TagInput({ tags, draft, canAdd, overlong, inputRef, onDraft, onAdd, suggestionsPath = '/api/subscriptions/tags', hiddenLabel = false }: {
     tags: string[];
     draft: string;
     canAdd: boolean;
@@ -46,17 +46,19 @@ export function TagInput({ tags, draft, canAdd, overlong, inputRef, onDraft, onA
     inputRef: RefObject<HTMLInputElement | null>;
     onDraft: (draft: string) => void;
     onAdd: (input: string) => void;
+    suggestionsPath?: string;
+    hiddenLabel?: boolean;
 }) {
     const inputId = useId();
     const hintId = useId();
     const anchor = useRef<HTMLDivElement>(null);
     // Enter on a highlighted suggestion belongs to the combobox, which runs this input's handler first.
     const highlighted = useRef(false);
-    const suggestions = useTagSuggestions(tags);
+    const suggestions = useTagSuggestions(suggestionsPath, tags);
     const full = tags.length >= MAX_TAGS;
     return (
         <>
-            <label className="text-sm font-medium" htmlFor={inputId}>Add a tag</label>
+            <label className={hiddenLabel ? 'sr-only' : 'text-sm font-medium'} htmlFor={inputId}>Add a tag</label>
             <Combobox
                 inputValue={draft}
                 items={suggestions}
@@ -65,7 +67,7 @@ export function TagInput({ tags, draft, canAdd, overlong, inputRef, onDraft, onA
                 onValueChange={(tag: string | null) => { if (tag) onAdd(tag); }}
                 value={null}
             >
-                <InputGroup className="mt-2" ref={anchor}>
+                <InputGroup className={hiddenLabel ? undefined : 'mt-2'} ref={anchor}>
                     <ComboboxInput
                         aria-describedby={hintId}
                         aria-invalid={overlong}
@@ -76,7 +78,7 @@ export function TagInput({ tags, draft, canAdd, overlong, inputRef, onDraft, onA
                             event.preventDefault();
                             onAdd(draft);
                         }}
-                        placeholder={full ? `Up to ${MAX_TAGS} tags` : 'e.g. design'}
+                        placeholder={full ? `Up to ${MAX_TAGS} tags` : hiddenLabel ? 'Add a tag' : 'e.g. design'}
                         ref={inputRef}
                         render={<InputGroupInput />}
                     />
@@ -95,8 +97,8 @@ export function TagInput({ tags, draft, canAdd, overlong, inputRef, onDraft, onA
     );
 }
 
-function useTagSuggestions(exclude: string[]) {
-    const state = useSources<{ tags: string[] }>('/api/subscriptions/tags');
+function useTagSuggestions(path: string, exclude: string[]) {
+    const state = useSources<{ tags: string[] }>(path);
     const taken = new Set(exclude.map((tag) => tag.toLowerCase()));
     return state.status === 'loaded' ? state.data.tags.filter((tag) => !taken.has(tag.toLowerCase())) : [];
 }
