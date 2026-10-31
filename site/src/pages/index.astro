@@ -6,9 +6,9 @@ import '../styles/global.css';
 import Logo from '../components/Logo.astro';
 import SignupForm from '../components/SignupForm.astro';
 
-const title = 'Morgenblau: a calm daily newspaper of the web you choose';
+const title = 'Morgenblau: the daily web newspaper. Curated by you.';
 const description =
-	'Morgenblau gathers the blogs, newsletters and YouTube channels you follow into one calm newspaper a day. No algorithm, no unread counts. When you reach the end, you’re done.';
+	'Morgenblau gathers your favorite blogs, YouTube channels and newsletters into finite daily digests. So you never miss the content you actually care about. And when you’re done, you’re done.';
 
 const steps = [
 	{ title: 'Choose your sources', body: 'Add blogs, newsletters, YouTube channels and websites. Only what you add ever shows up.' },
@@ -65,8 +65,8 @@ const faqSchema = {
 			<section class="panel hero on-art" style="--art: url(/images/bg-hero.webp)" aria-labelledby="hero-title">
 				<header class="hero-top"><a href="/" aria-label="Morgenblau home"><Logo size={36} /></a></header>
 				<div class="hero-copy">
-					<h1 id="hero-title">The web you chose, one day at a time.</h1>
-					<p>Morgenblau gathers the blogs, newsletters and channels you follow into one calm newspaper a day. When you reach the end, you’re done.</p>
+					<h1 id="hero-title">The daily web newspaper. Curated by you.</h1>
+					<p>{description}</p>
 					<button type="button" class="button lg on-color" data-open-signup>Follow along</button>
 				</div>
 				<div class="app-shot">
@@ -78,11 +78,11 @@ const faqSchema = {
 			</section>
 
 			<section class="statement" aria-label="The problem">
-				<p>You followed people because they were worth reading. Somewhere along the way their writing got buried: under a feed that decides for you and never ends, an inbox that mixes letters with receipts, and apps that count every post you haven’t opened. Reading turned into something to keep up with.</p>
+				<p>It often seems like the authentic web is dead. We get sucked into rabbit holes, algorithms show us content we don’t actually care about and we spend way more time on infinite feeds than we intended to. It doesn’t have to be this way. The content you care about is still out there.</p>
 			</section>
 
 			<section class="wrap" aria-labelledby="usual-title">
-				<h2 id="usual-title">The tools we read with were built to keep us busy.</h2>
+				<h2 id="usual-title">We just have the wrong tools</h2>
 				<div class="three">
 					<div><h3>Social feeds</h3><p>An algorithm picks what you see, and there is always more. The people you followed are in there somewhere, between the outrage and the ads.</p></div>
 					<div><h3>Newsletters</h3><p>Some of the best writing arrives by email, where it competes with work, bills and password resets for the same attention.</p></div>
@@ -92,7 +92,7 @@ const faqSchema = {
 
 			<section class="panel how on-art" style="--art: url(/images/bg-how.webp)" aria-labelledby="how-title">
 				<div class="wrap">
-					<h2 id="how-title">Every day ends.</h2>
+					<h2 id="how-title" aria-label="A finite feed.">A <s>in</s>finite feed.</h2>
 					<ol class="three steps">
 						{steps.map((s, i) => <li class="glass"><span class="num">{i + 1}</span><h3>{s.title}</h3><p>{s.body}</p></li>)}
 					</ol>
