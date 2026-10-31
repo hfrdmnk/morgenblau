@@ -177,7 +177,8 @@ type profileFollow struct {
 
 type profileWire struct {
 	Name      string               `json:"name,omitempty"`
-	About     []string             `json:"about,omitempty"`
+	Summary   string               `json:"summary,omitempty"`
+	AboutHTML string               `json:"aboutHtml,omitempty"`
 	Contact   []socialspec.Contact `json:"contact,omitempty"`
 	Following []profileFollow      `json:"following,omitempty"`
 }
@@ -218,7 +219,7 @@ func SubscriptionsProfileHandler(reader subscriptionByFeedURL, fetch ProfileFetc
 			writeJSON(w, profileResponse{})
 			return
 		}
-		wire := &profileWire{Name: profile.Name, About: profile.About, Contact: profile.Contact}
+		wire := &profileWire{Name: profile.Name, Summary: profile.Summary, AboutHTML: profile.AboutHTML, Contact: profile.Contact}
 		did := sess.Data.AccountDID.String()
 		for _, f := range profile.Following {
 			follow := profileFollow{Follow: f}

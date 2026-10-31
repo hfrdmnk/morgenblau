@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -34,7 +35,7 @@ const opml = `<?xml version="1.0"?>
   <outline text="No feed" htmlUrl="https://nofeed.example.com"/>
 </body></opml>`
 
-const about = "# About Jordan\n\nI take the **long way** home, see [my garden](https://jordan.example.com/garden).\nStill walking.\n\n* Trails\n* `Tea`\n"
+const about = "---\nsummary: \"Eager explorer: takes the long way home.\"\nlayout: profile\n---\n\n### About Jordan\n\nI take the **long way** home, see [my garden](/garden).\n\n![Out on the trail](/img/trail.png)\n\n* [Notes](notes.html)\n* `Tea`\n\n[Mail](mailto:hi@jordan.example.com) or [chat](https://chat.example.com/jordan).\n"
 
 func TestFetch_ReadsAllThreeFiles(t *testing.T) {
 	origin := serve(t, map[string]string{
@@ -67,9 +68,75 @@ func TestFetch_ReadsAllThreeFiles(t *testing.T) {
 	if !reflect.DeepEqual(got.Following, wantFollowing) {
 		t.Errorf("following = %+v, want %+v", got.Following, wantFollowing)
 	}
-	wantAbout := []string{"I take the long way home, see my garden. Still walking.", "Trails", "Tea"}
-	if !reflect.DeepEqual(got.About, wantAbout) {
-		t.Errorf("about = %q, want %q", got.About, wantAbout)
+	if got.Summary != "Eager explorer: takes the long way home." {
+		t.Errorf("summary = %q, want the frontmatter summary", got.Summary)
+	}
+	for _, want := range []string{
+		"<h3>About Jordan</h3>",
+		"<strong>long way</strong>",
+		`href="` + origin + `/garden"`,
+		`src="` + origin + `/img/trail.png" alt="Out on the trail"`,
+		`href="` + origin + `/.well-known/notes.html"`,
+		"<code>Tea</code>",
+		`href="mailto:hi@jordan.example.com"`,
+		`href="https://chat.example.com/jordan"`,
+	} {
+		if !strings.Contains(got.AboutHTML, want) {
+			t.Errorf("about html lacks %s:\n%s", want, got.AboutHTML)
+		}
+	}
+	if strings.Contains(got.AboutHTML, "summary") || strings.Contains(got.AboutHTML, "layout") {
+		t.Errorf("about html shows the frontmatter:\n%s", got.AboutHTML)
+	}
+}
+
+// socialspec.org's own about.md has no frontmatter and is served as text/plain.
+func TestFetch_AboutWithoutFrontmatter(t *testing.T) {
+	md := "# About Example Publication\n\nA _small_ site.\n\n---\n\nsummary: not frontmatter\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/about.md" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte(md))
+	}))
+	t.Cleanup(srv.Close)
+	got, err := Fetch(context.Background(), http.DefaultClient, srv.URL)
+	if err != nil || got == nil {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+	if got.Summary != "" {
+		t.Errorf("summary = %q, want none", got.Summary)
+	}
+	want := "<p>A <em>small</em> site.</p>\n<hr>\n<p>summary: not frontmatter</p>\n"
+	if got.AboutHTML != want {
+		t.Errorf("about html = %q, want %q", got.AboutHTML, want)
+	}
+}
+
+func TestFetch_AboutIsSanitized(t *testing.T) {
+	md := "Hi.\n\n<script>alert(1)</script>\n\n[click](javascript:alert(1)) <img src=x onerror=alert(1)>\n\n![pixel](data:image/png;base64,AAAA)\n"
+	got, err := Fetch(context.Background(), http.DefaultClient, serve(t, map[string]string{"/.well-known/about.md": md}))
+	if err != nil || got == nil {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+	for _, banned := range []string{"<script", "alert", "javascript:", "onerror", "data:"} {
+		if strings.Contains(got.AboutHTML, banned) {
+			t.Errorf("about html keeps %s:\n%s", banned, got.AboutHTML)
+		}
+	}
+}
+
+// A file that is only frontmatter still says something about its author.
+func TestFetch_FrontmatterOnlyAbout(t *testing.T) {
+	md := "\ufeff---\r\nsummary: |\r\n  Walks a lot.\r\n---\r\n"
+	got, err := Fetch(context.Background(), http.DefaultClient, serve(t, map[string]string{"/.well-known/about.md": md}))
+	if err != nil || got == nil {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+	if got.Summary != "Walks a lot." || got.AboutHTML != "" {
+		t.Errorf("summary = %q, about html = %q", got.Summary, got.AboutHTML)
 	}
 }
 

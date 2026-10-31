@@ -11,6 +11,13 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/microcosm-cc/bluemonday"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/extension"
+	goldtext "github.com/yuin/goldmark/text"
+	"go.yaml.in/yaml/v3"
 )
 
 const (
@@ -21,7 +28,8 @@ const (
 // Profile is what a site says about its author; every part is optional.
 type Profile struct {
 	Name      string    `json:"name,omitempty"`
-	About     []string  `json:"about,omitempty"`
+	Summary   string    `json:"summary,omitempty"`
+	AboutHTML string    `json:"aboutHtml,omitempty"`
 	Contact   []Contact `json:"contact,omitempty"`
 	Following []Follow  `json:"following,omitempty"`
 }
@@ -56,9 +64,10 @@ func Fetch(ctx context.Context, client *http.Client, origin string) (*Profile, e
 	if bytes.HasPrefix(bytes.TrimSpace(about), []byte("<")) {
 		about = nil
 	}
-	p := &Profile{About: paragraphs(about), Following: following(follow)}
+	p := &Profile{Following: following(follow)}
+	p.Summary, p.AboutHTML = aboutPage(about, base+"about.md")
 	p.Name, p.Contact = contact(card)
-	if p.Name == "" && len(p.About) == 0 && len(p.Contact) == 0 && len(p.Following) == 0 {
+	if p.Name == "" && p.Summary == "" && p.AboutHTML == "" && len(p.Contact) == 0 && len(p.Following) == 0 {
 		return nil, nil
 	}
 	return p, nil
@@ -171,45 +180,67 @@ func following(doc []byte) []Follow {
 }
 
 var (
-	vcardFold  = regexp.MustCompile(`\r?\n[ \t]`)
-	mdLink     = regexp.MustCompile(`!?\[([^\]]*)\]\([^)]*\)`)
-	mdEmphasis = regexp.MustCompile("\\*\\*|__|`")
-	mdMarker   = regexp.MustCompile(`^(#{2,6}|[*+-]|>|\d+\.)\s+`)
+	vcardFold   = regexp.MustCompile(`\r?\n[ \t]`)
+	frontmatter = regexp.MustCompile(`(?s)\A---[ \t]*\r?\n(?:(.*?)\r?\n)?---[ \t]*(?:\r?\n|\z)`)
+	markdown    = goldmark.New(goldmark.WithExtensions(extension.GFM))
+	// Links open outside the app, which would otherwise navigate away from the reader's sheet.
+	aboutPolicy = bluemonday.UGCPolicy().AddTargetBlankToFullyQualifiedLinks(true)
 )
 
-// paragraphs flattens about.md to plain text, so the client never renders author-supplied markup; the H1 is the file's title, not its content.
-func paragraphs(md []byte) []string {
-	var (
-		out     []string
-		current []string
-	)
-	flush := func() {
-		if len(current) > 0 {
-			out = append(out, strings.Join(current, " "))
-			current = nil
+// aboutPage splits about.md into its optional YAML frontmatter summary and its body rendered to sanitized HTML, without H1s.
+// Relative links and images resolve against the file's own URL, so the spec's root-relative /img/... point at the site.
+func aboutPage(md []byte, fileURL string) (summary, html string) {
+	md = bytes.TrimPrefix(md, []byte("\ufeff"))
+	if m := frontmatter.FindSubmatch(md); m != nil {
+		var meta struct {
+			Summary string `yaml:"summary"`
 		}
+		if yaml.Unmarshal(m[1], &meta) == nil {
+			summary = strings.TrimSpace(meta.Summary)
+		}
+		md = md[len(m[0]):]
 	}
-	for line := range strings.Lines(string(md)) {
-		line = strings.TrimSpace(line)
-		switch {
-		case line == "":
-			flush()
-		case strings.HasPrefix(line, "# "):
-			flush()
-		case mdMarker.MatchString(line):
-			flush()
-			current = []string{clean(mdMarker.ReplaceAllString(line, ""))}
-			if !strings.HasPrefix(line, ">") {
-				flush()
+	base, err := url.Parse(fileURL)
+	if err != nil {
+		return summary, ""
+	}
+	doc := markdown.Parser().Parse(goldtext.NewReader(md))
+	var titles []ast.Node
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		switch n := n.(type) {
+		case *ast.Heading:
+			if n.Level == 1 {
+				titles = append(titles, n)
 			}
-		default:
-			current = append(current, clean(line))
+		case *ast.Link:
+			n.Destination = resolve(base, n.Destination)
+		case *ast.Image:
+			n.Destination = resolve(base, n.Destination)
 		}
+		return ast.WalkContinue, nil
+	})
+	// An H1 titles the page, which the profile header already does with the author's name.
+	for _, n := range titles {
+		n.Parent().RemoveChild(n.Parent(), n)
 	}
-	flush()
-	return out
+	var out bytes.Buffer
+	if err := markdown.Renderer().Render(&out, md, doc); err != nil {
+		return summary, ""
+	}
+	html = aboutPolicy.Sanitize(out.String())
+	if strings.TrimSpace(html) == "" {
+		html = ""
+	}
+	return summary, html
 }
 
-func clean(s string) string {
-	return strings.TrimSpace(mdEmphasis.ReplaceAllString(mdLink.ReplaceAllString(s, "$1"), ""))
+func resolve(base *url.URL, dest []byte) []byte {
+	u, err := base.Parse(string(dest))
+	if err != nil {
+		return dest
+	}
+	return []byte(u.String())
 }

@@ -139,7 +139,7 @@ func TestSubscriptionsProfile_MarksFollowedFeeds(t *testing.T) {
 	var origin string
 	fetch := func(_ context.Context, o string) (*socialspec.Profile, error) {
 		origin = o
-		return &socialspec.Profile{Name: "Jordan Doe", Following: []socialspec.Follow{
+		return &socialspec.Profile{Name: "Jordan Doe", Summary: "Walks a lot.", AboutHTML: "<p>Hi.</p>", Following: []socialspec.Follow{
 			{Title: "Avery", FeedURL: followed},
 			{Title: "Example Publication", FeedURL: "https://publication.example.com/rss"},
 		}}, nil
@@ -157,7 +157,7 @@ func TestSubscriptionsProfile_MarksFollowedFeeds(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Profile == nil || got.Profile.Name != "Jordan Doe" || len(got.Profile.Following) != 2 {
+	if got.Profile == nil || got.Profile.Name != "Jordan Doe" || got.Profile.Summary != "Walks a lot." || got.Profile.AboutHTML != "<p>Hi.</p>" || len(got.Profile.Following) != 2 {
 		t.Fatalf("profile = %+v", got.Profile)
 	}
 	if got.Profile.Following[0].Rkey != "avery-rkey" || got.Profile.Following[1].Rkey != "" {

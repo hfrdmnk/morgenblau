@@ -289,10 +289,19 @@ export type SiteFollow = { title: string; feedUrl: string; siteUrl?: string; rke
 
 export type SiteProfile = {
     name?: string;
-    about?: string[];
+    summary?: string;
+    aboutHtml?: string;
     contact?: { kind: 'email' | 'url'; value: string; preferred?: boolean }[];
     following?: SiteFollow[];
 };
+
+// A site without a frontmatter summary still gets a short bio: its about page's first paragraph.
+export function profileSummary(profile: SiteProfile): string | undefined {
+    if (profile.summary) return profile.summary;
+    const template = document.createElement('template');
+    template.innerHTML = profile.aboutHtml ?? '';
+    return template.content.querySelector('p')?.textContent?.trim() || undefined;
+}
 
 export type SiteResult = SourceDiscovery & { url: string; profile: SiteProfile | null };
 

@@ -72,3 +72,6 @@
 .reader-body :where(th, td) { padding: 0.5em 0.75em; border-bottom: 1px solid var(--border); text-align: left; }
 .reader-body th { font-weight: 500; }
 .reader-body hr { margin-block: 2em; border-color: var(--border); }
+
+.reader-body[data-size='compact'] { font-size: var(--text-base); }
+.reader-body[data-size='compact'] :is(h1, h2, h3, h4, h5, h6) { font-size: var(--text-lg); font-weight: 600; }

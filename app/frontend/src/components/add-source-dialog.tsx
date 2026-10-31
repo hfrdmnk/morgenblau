@@ -36,6 +36,7 @@ import {
     findSite,
     previewArticle,
     previewSource,
+    profileSummary,
     sourceKey,
     sourceLocation,
     sourceTitle,
@@ -573,6 +574,7 @@ function SiteResults({ site, sheet }: { site: SiteResult; sheet: Sheet }) {
             />
         );
     const profile = site.profile;
+    const summary = profile && profileSummary(profile);
     return (
         <div className="space-y-6">
             {profile ? (
@@ -587,8 +589,8 @@ function SiteResults({ site, sheet }: { site: SiteResult; sheet: Sheet }) {
                                 </span>
                             </span>
                         </span>
-                        {profile.about?.[0] ? (
-                            <span className="mt-2 line-clamp-2 block text-sm text-pretty text-muted-foreground">{profile.about[0]}</span>
+                        {summary ? (
+                            <span className="mt-2 line-clamp-2 block text-sm text-pretty text-muted-foreground">{summary}</span>
                         ) : null}
                     </Row>
                 </ul>
@@ -1162,6 +1164,7 @@ function siteHost(url: string) {
 
 function ProfileScreen({ profile, site, sheet }: { profile: SiteProfile; site: SiteResult; sheet: Sheet }) {
     const name = profileName(profile, site);
+    const [font] = useReaderFont();
     return (
         <div className="space-y-8">
             <div className="flex items-center gap-4">
@@ -1171,11 +1174,8 @@ function ProfileScreen({ profile, site, sheet }: { profile: SiteProfile; site: S
                     <p className="truncate text-sm text-subtle-foreground">{displayURL(site.url)}</p>
                 </div>
             </div>
-            {profile.about?.length ? (
-                <div className="space-y-3 text-sm text-pretty">
-                    {profile.about.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
-                </div>
-            ) : null}
+            {profile.summary ? <p className="text-pretty text-muted-foreground">{profile.summary}</p> : null}
+            {profile.aboutHtml ? <div className="reader-body" dangerouslySetInnerHTML={{ __html: profile.aboutHtml }} data-font={font} data-size="compact" /> : null}
             {profile.contact?.length ? (
                 <section aria-labelledby="profile-contact">
                     <h3 className="mb-3 text-xs text-muted-foreground" id="profile-contact">Contact</h3>
