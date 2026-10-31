@@ -195,7 +195,7 @@ function ButtonSpecimens() {
                     <p className="text-xs text-subtle-foreground">Primary states</p>
                     <div className="flex flex-wrap gap-3">
                         <Button size="sm">Rest</Button>
-                        <Button size="sm" className="bg-primary/90">
+                        <Button size="sm" className="from-(--btn-highlight)">
                             Hover
                         </Button>
                         <Button
@@ -215,7 +215,7 @@ function ButtonSpecimens() {
                         <Button size="sm" variant="secondary">
                             Rest
                         </Button>
-                        <Button size="sm" variant="secondary" className="bg-accent">
+                        <Button size="sm" variant="secondary" className="from-(--btn-highlight)">
                             Hover
                         </Button>
                         <Button
