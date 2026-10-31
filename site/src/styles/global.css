@@ -25,6 +25,12 @@
 	--panel-gap: clamp(12px, 2.4vw, 36px);
 	--panel-radius: clamp(16px, 2vw, 28px);
 	--scrim: oklch(0.18 0.03 255);
+	/* Minor third (1.2) up from the 17px body size. */
+	--step-1: 20.4px;
+	--step-2: 24.48px;
+	--step-3: 29.38px;
+	--step-4: 35.25px;
+	--step-6: 50.76px;
 	color-scheme: light;
 }
 

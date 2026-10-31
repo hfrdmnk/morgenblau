@@ -192,7 +192,7 @@ const faqSchema = {
 	.panel::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; }
 
 	h1, h2, h3 { text-wrap: balance; }
-	h2 { margin: 0 0 32px; font: 500 clamp(28px, 3.6vw, 44px)/1.1 var(--sans); letter-spacing: -0.03em; }
+	h2 { margin: 0 0 32px; font: 500 clamp(var(--step-3), 3vw, var(--step-4))/1.15 var(--sans); letter-spacing: -0.03em; }
 	h3 { margin: 0 0 8px; font: 600 17px/1.3 var(--sans); }
 	p { margin: 0 0 1.5em; font: 400 17px/1.6 var(--sans); color: var(--muted-foreground); text-wrap: pretty; }
 	.on-art p { color: oklch(1 0 0 / 0.82); }
@@ -203,14 +203,14 @@ const faqSchema = {
 	.hero-top { padding-top: clamp(28px, 5vh, 48px); }
 	.hero-top a { display: grid; place-items: center; width: 44px; height: 44px; color: oklch(0.99 0 0); }
 	.hero-copy { display: flex; flex-direction: column; align-items: center; max-width: 760px; padding: clamp(32px, 7vh, 80px) 24px clamp(36px, 6vh, 64px); }
-	h1 { margin: 0 0 20px; font: 500 clamp(40px, 6.4vw, 80px)/1 var(--sans); letter-spacing: -0.04em; }
-	.hero-copy p { max-width: 46ch; margin-bottom: 32px; font-size: clamp(17px, 1.6vw, 20px); color: oklch(1 0 0 / 0.9); }
+	h1 { margin: 0 0 20px; font: 500 clamp(var(--step-4), 4.4vw, var(--step-6))/1.05 var(--sans); letter-spacing: -0.04em; }
+	.hero-copy p { max-width: 46ch; margin-bottom: 32px; font-size: clamp(17px, 1.6vw, var(--step-1)); color: oklch(1 0 0 / 0.9); }
 	.app-shot { width: min(1080px, 90%); height: clamp(260px, 44vh, 520px); margin-top: auto; overflow: hidden; border-radius: 12px 12px 0 0; background: var(--background);
 		box-shadow: 0 0 0 1px oklch(1 0 0 / 0.25), 0 2px 6px oklch(0.2 0.06 250 / 0.12), 0 24px 64px oklch(0.2 0.06 250 / 0.35); }
 	.app-shot img { width: 100%; }
 
 	.statement { max-width: 900px; margin: 0 auto; padding: 140px clamp(20px, 5vw, 64px) 0; }
-	.statement p { margin: 0; font: 400 clamp(24px, 3vw, 36px)/1.35 var(--serif); letter-spacing: -0.01em; color: var(--foreground); }
+	.statement p { margin: 0; font: 400 clamp(var(--step-2), 2.6vw, var(--step-3))/1.4 var(--serif); letter-spacing: -0.01em; color: var(--foreground); }
 
 	.wrap { max-width: 1160px; margin: 0 auto; padding: 140px clamp(20px, 5vw, 64px) 0; }
 	.three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin: 0; padding: 0; list-style: none; }
@@ -231,7 +231,7 @@ const faqSchema = {
 	.card-copy p { max-width: 46ch; margin: 0; font-size: 15px; line-height: 1.55; }
 
 	.two { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; }
-	.two h2 { font-size: clamp(24px, 2.6vw, 32px); margin-bottom: 20px; }
+	.two h2 { font-size: clamp(var(--step-2), 2.2vw, var(--step-3)); margin-bottom: 20px; }
 	.faq details { padding: 18px 0; box-shadow: 0 1px 0 var(--line); }
 	.faq details:first-child { padding-top: 0; }
 	.faq summary { display: flex; justify-content: space-between; gap: 16px; cursor: pointer; list-style: none; font: 500 17px/1.4 var(--sans); }
@@ -260,7 +260,7 @@ const faqSchema = {
 	.cta { min-height: calc(100svh - 2 * var(--panel-gap)); padding: 0 clamp(20px, 5vw, 64px); }
 	.cta::before { background: linear-gradient(to top, oklch(0.15 0.03 290 / 0.5), oklch(0.15 0.03 290 / 0.2) 50%, oklch(0.15 0.03 290 / 0)); }
 	.cta-copy { max-width: 620px; margin-top: auto; padding-bottom: 64px; }
-	.cta h2 { font-size: clamp(40px, 6vw, 72px); line-height: 1; letter-spacing: -0.04em; }
+	.cta h2 { font-size: clamp(var(--step-4), 4.4vw, var(--step-6)); line-height: 1.05; letter-spacing: -0.04em; }
 	.hint { margin: 14px 0 0; font-size: 13px; }
 	.on-art .hint { color: oklch(1 0 0 / 0.7); }
 	.foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; padding: 24px 0 32px; box-shadow: 0 -1px 0 oklch(1 0 0 / 0.16); font: 400 13px var(--sans); color: oklch(1 0 0 / 0.75); }
