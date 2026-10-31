@@ -3,8 +3,8 @@ import { useState } from 'react';
 
 import { cn } from '@/lib/utils';
 
-// The brand mode colours and two Stone neutrals from index.css, as hex because boring-avatars derives the face's contrast colour from hex.
-const COLORS = ['#006cff', '#f34600', '#9754ed', '#d6d3d1', '#292524'];
+// Tailwind rose-500, orange-500, amber-400, lime-500, emerald-500, sky-500, violet-500 and fuchsia-500, as hex because boring-avatars derives the face's contrast colour from hex.
+const COLORS = ['#ff2056', '#ff6900', '#ffb900', '#7ccf00', '#00bc7d', '#00a6f4', '#8e51ff', '#e12afb'];
 
 // Seed with something stable, like a DID or a site's host, so the face survives a changed handle or name.
 export function PersonAvatar({ seed, src = null, lazy = false, className }: { seed: string; src?: string | null; lazy?: boolean; className?: string }) {
