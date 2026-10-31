@@ -338,6 +338,42 @@ func (s *Service) DeleteSave(ctx context.Context, did, saveID string) error {
 	})
 }
 
+// SetSaveTags replaces a newsletter save's tags; they never leave Morgenblau's database.
+func (s *Service) SetSaveTags(ctx context.Context, did, saveID string, tags []string) ([]string, error) {
+	cleaned, err := cleanTags(tags)
+	if err != nil {
+		return nil, err
+	}
+	if len(cleaned) > maxSaveTags {
+		return nil, ErrInvalid
+	}
+	encoded, _ := json.Marshal(cleaned)
+	err = database.WithTx(ctx, s.writer, func(q *db.Queries) error {
+		rows, err := q.UpdateNewsletterSaveTags(ctx, db.UpdateNewsletterSaveTagsParams{Did: did, ID: saveID, Tags: string(encoded)})
+		if err == nil && rows == 0 {
+			return ErrNotFound
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return cleaned, nil
+}
+
+// ListSaveTags returns every tag on the owner's newsletter saves, duplicates included.
+func (s *Service) ListSaveTags(ctx context.Context, did string) ([]string, error) {
+	rows, err := s.read.ListNewsletterSaveTags(ctx, did)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, row := range rows {
+		out = append(out, parseTags(row)...)
+	}
+	return out, nil
+}
+
 func (s *Service) ListSaves(ctx context.Context, did string) ([]SaveItem, error) {
 	rows, err := s.read.ListNewsletterSaves(ctx, did)
 	if err != nil {
@@ -353,7 +389,7 @@ func (s *Service) ListSaves(ctx context.Context, did string) ([]SaveItem, error)
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, SaveItem{ID: row.ID, MessageID: row.MessageID, CreatedAt: created, Title: deref(row.Title), EntrySlug: row.EntrySlug, ReceivedAt: received, SourceTitle: row.SourceTitle})
+		items = append(items, SaveItem{ID: row.ID, MessageID: row.MessageID, CreatedAt: created, Title: deref(row.Title), EntrySlug: row.EntrySlug, ReceivedAt: received, SourceTitle: row.SourceTitle, Tags: parseTags(row.Tags)})
 	}
 	return items, nil
 }
@@ -387,6 +423,9 @@ func (s *Service) GetInlineAsset(ctx context.Context, did, token string) (Inline
 
 // maxTagLength matches the per-tag limit of feed subscription records, so both kinds of source take the same tags.
 const maxTagLength = 64
+
+// maxSaveTags matches the save record's tag limit, so a newsletter save holds the same tags a URL save can.
+const maxSaveTags = 10
 
 func cleanTags(tags []string) ([]string, error) {
 	seen := make(map[string]struct{}, len(tags))

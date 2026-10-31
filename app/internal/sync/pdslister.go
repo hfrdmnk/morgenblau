@@ -208,5 +208,6 @@ func toPDSSave(r recordEntry) (PDSSave, bool) {
 		ItemURL:   itemURL,
 		FeedURL:   feedURL,
 		CreatedAt: createdAt,
+		Tags:      stringSlice(r.Value["tags"]),
 	}, true
 }

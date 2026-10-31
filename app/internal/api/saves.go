@@ -16,21 +16,24 @@ import (
 	"morgenblau/internal/database/db"
 	"morgenblau/internal/lexicon"
 	"morgenblau/internal/newsletter"
+	"morgenblau/internal/session"
+	"morgenblau/internal/tags"
 )
 
 const saveCollection = lexicon.Save
 
 // SaveWire is the on-the-wire save shape; GET /api/saves additionally joins entry title/slug/target when cached. Only POST carries a cid, since user_saves has no cid column.
 type SaveWire struct {
-	URI       string `json:"uri,omitempty"`
-	CID       string `json:"cid,omitempty"`
-	Rkey      string `json:"rkey"`
-	ItemURL   string `json:"itemUrl"`
-	FeedURL   string `json:"feedUrl,omitempty"`
-	CreatedAt string `json:"createdAt"`
-	Title     string `json:"title,omitempty"`
-	TargetURL string `json:"targetUrl,omitempty"`
-	EntrySlug string `json:"entrySlug,omitempty"`
+	URI       string   `json:"uri,omitempty"`
+	CID       string   `json:"cid,omitempty"`
+	Rkey      string   `json:"rkey"`
+	ItemURL   string   `json:"itemUrl"`
+	FeedURL   string   `json:"feedUrl,omitempty"`
+	CreatedAt string   `json:"createdAt"`
+	Title     string   `json:"title,omitempty"`
+	TargetURL string   `json:"targetUrl,omitempty"`
+	EntrySlug string   `json:"entrySlug,omitempty"`
+	Tags      []string `json:"tags,omitempty"`
 }
 
 // SavesIndexReader is the slice of db.Queries the saves handlers use for reads.
@@ -51,11 +54,12 @@ type newsletterSaveLister interface {
 }
 
 type newsletterSaveWire struct {
-	Kind      string `json:"kind"`
-	ID        string `json:"id"`
-	CreatedAt string `json:"createdAt"`
-	Title     string `json:"title,omitempty"`
-	EntrySlug string `json:"entrySlug"`
+	Kind      string   `json:"kind"`
+	ID        string   `json:"id"`
+	CreatedAt string   `json:"createdAt"`
+	Title     string   `json:"title,omitempty"`
+	EntrySlug string   `json:"entrySlug"`
+	Tags      []string `json:"tags,omitempty"`
 }
 
 // --- POST /api/saves ---
@@ -186,6 +190,136 @@ func SavesDeleteHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 	})
 }
 
+// --- PATCH /api/saves/{rkey} ---
+
+// saveRecordRepo reads the current record before rewriting it, so fields Morgenblau doesn't edit (comment, facets) survive a tag change;
+// the write is conditional on the CID it read, so another client's edit in between is never overwritten.
+type saveRecordRepo interface {
+	atprepo.RecordGetter
+	PutRecordIfCID(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey string, record map[string]any, cid string) (*atprepo.RecordRef, error)
+}
+
+// SavesPatchHandler replaces a save's tags on its PDS record and mirrors them into the Tier-1 row.
+func SavesPatchHandler(reader SavesIndexReader, writer SavesIndexWriter, pds saveRecordRepo, disp RepairDispatcher) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sess, ok := requireSession(w, r)
+		if !ok {
+			return
+		}
+		var body struct {
+			Tags *[]string `json:"tags"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		if body.Tags == nil {
+			writeError(w, http.StatusBadRequest, codeInvalidRequest, "tags is required")
+			return
+		}
+		didStr := sess.Data.AccountDID.String()
+		rkey := r.PathValue("rkey")
+		row, err := reader.GetUserSave(r.Context(), db.GetUserSaveParams{Did: didStr, Rkey: rkey})
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, codeNotFound, "not found")
+				return
+			}
+			slog.Warn("/api/saves PATCH: load failed", "err", err)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
+			return
+		}
+		current, err := pds.GetRecord(r.Context(), sess, syntax.NSID(saveCollection), syntax.RecordKey(rkey))
+		if err != nil {
+			slog.Warn("/api/saves PATCH: PDS read failed", "err", err)
+			writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+			return
+		}
+		tagList := normalizeTags(*body.Tags)
+		record := make(map[string]any, len(current.Value)+1)
+		for key, value := range current.Value {
+			record[key] = value
+		}
+		delete(record, "tags")
+		if len(tagList) > 0 {
+			record["tags"] = tagList
+		}
+		if err := lexicon.ValidateRecord(saveCollection, record); err != nil {
+			slog.Warn("/api/saves PATCH: record failed lexicon validation", "err", err)
+			writeError(w, http.StatusInternalServerError, codeInvalidRecord, "internal error")
+			return
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		ref, ok := commitThenMirror(r.Context(), disp, sess, "/api/saves PATCH: Tier-1 upsert", func() (*atprepo.RecordRef, bool) {
+			ref, err := pds.PutRecordIfCID(r.Context(), sess, syntax.NSID(saveCollection), rkey, record, current.CID)
+			if isSwapConflict(err) {
+				writeError(w, http.StatusConflict, codeConflict, "This save changed elsewhere. Try again.")
+				return nil, false
+			}
+			if err != nil {
+				slog.Warn("/api/saves PATCH: PDS put failed", "err", err)
+				writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
+				return nil, false
+			}
+			return ref, true
+		}, func(ref *atprepo.RecordRef) error {
+			row.AtUri = ref.URI
+			row.Tags = tags.Marshal(tagList)
+			row.UpdatedAt = now
+			return writer.UpsertUserSave(r.Context(), db.UpsertUserSaveParams{
+				Did: row.Did, Rkey: row.Rkey, AtUri: row.AtUri, ItemUrl: row.ItemUrl, FeedUrl: row.FeedUrl,
+				Tags: row.Tags, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+			})
+		})
+		if !ok {
+			return
+		}
+		wire := saveRowToWire(row)
+		wire.CID = ref.CID
+		writeJSON(w, wire)
+	})
+}
+
+// --- GET /api/saves/tags ---
+
+type saveTagsReader interface {
+	ListUserSaveTags(ctx context.Context, did string) ([]*string, error)
+}
+
+type newsletterSaveTagLister interface {
+	ListSaveTags(context.Context, string) ([]string, error)
+}
+
+// SavesTagsHandler suggests the tags already on the reader's saves, URL and newsletter alike.
+func SavesTagsHandler(reader saveTagsReader, privateListers ...newsletterSaveTagLister) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sess, ok := requireSession(w, r)
+		if !ok {
+			return
+		}
+		did := sess.Data.AccountDID.String()
+		rows, err := reader.ListUserSaveTags(r.Context(), did)
+		if err != nil {
+			slog.Warn("/api/saves/tags: list failed", "err", err)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
+			return
+		}
+		lists := make([][]string, 0, len(rows)+1)
+		for _, row := range rows {
+			lists = append(lists, tags.Unmarshal(row))
+		}
+		if len(privateListers) > 0 && privateListers[0] != nil {
+			privateResponse(w)
+			private, err := privateListers[0].ListSaveTags(r.Context(), did)
+			if err != nil {
+				writeNewsletterError(w, err)
+				return
+			}
+			lists = append(lists, private)
+		}
+		writeJSON(w, tagsResponse{Tags: distinctTags(lists...)})
+	})
+}
+
 // --- GET /api/saves ---
 
 // SavesListHandler returns the user's saves, newest first, joining entry title/slug/target when the entry is still cached.
@@ -220,7 +354,7 @@ func SavesListHandler(reader SavesIndexReader, privateListers ...newsletterSaveL
 			for _, item := range items {
 				out = append(out, datedSave{created: item.CreatedAt, value: newsletterSaveWire{
 					Kind: "newsletter", ID: item.ID, CreatedAt: item.CreatedAt.Format(time.RFC3339),
-					Title: item.Title, EntrySlug: item.EntrySlug,
+					Title: item.Title, EntrySlug: item.EntrySlug, Tags: item.Tags,
 				}})
 			}
 		}
@@ -248,6 +382,7 @@ func saveListRowToWire(row db.ListUserSavesRow) SaveWire {
 		Title:     derefStr(row.EntryTitle),
 		TargetURL: derefStr(row.EntryUrl),
 		EntrySlug: derefStr(row.EntrySlug),
+		Tags:      tags.Unmarshal(row.Tags),
 	}
 }
 
@@ -262,5 +397,6 @@ func saveRowToWire(row db.UserSave) SaveWire {
 		ItemURL:   row.ItemUrl,
 		FeedURL:   feedURL,
 		CreatedAt: row.CreatedAt,
+		Tags:      tags.Unmarshal(row.Tags),
 	}
 }

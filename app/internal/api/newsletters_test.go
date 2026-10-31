@@ -32,6 +32,8 @@ type fakeNewsletterService struct {
 	digestStart    time.Time
 	digestEnd      time.Time
 	patch          newsletter.SourcePatch
+	saveTags       []string
+	taggedSaveID   string
 }
 
 func (f *fakeNewsletterService) Address(context.Context, string) (string, error) {
@@ -89,6 +91,15 @@ func (f *fakeNewsletterService) SaveMessage(_ context.Context, did, messageID st
 func (f *fakeNewsletterService) DeleteSave(_ context.Context, _ string, id string) error {
 	f.deletedSaveID = id
 	return f.err
+}
+
+func (f *fakeNewsletterService) SetSaveTags(_ context.Context, _ string, id string, tags []string) ([]string, error) {
+	f.taggedSaveID = id
+	return tags, f.err
+}
+
+func (f *fakeNewsletterService) ListSaveTags(context.Context, string) ([]string, error) {
+	return f.saveTags, f.err
 }
 
 func (f *fakeNewsletterService) ListSaves(context.Context, string) ([]newsletter.SaveItem, error) {
@@ -341,6 +352,39 @@ func TestNewsletterSave_CreateAndDeleteStayPrivate(t *testing.T) {
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNoContent || svc.deletedSaveID != "save-1" {
 		t.Fatalf("delete status = %d, id = %q", rr.Code, svc.deletedSaveID)
+	}
+}
+
+func TestNewsletterSave_PatchTagsStaysPrivate(t *testing.T) {
+	svc := &fakeNewsletterService{}
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/newsletter-saves/{id}", NewsletterSaveTagsHandler(svc))
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/newsletter-saves/save-1", strings.NewReader(`{"tags":["read-later"]}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK || rr.Body.String() != "{\"tags\":[\"read-later\"]}\n" || rr.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if svc.taggedSaveID != "save-1" {
+		t.Errorf("tagged save = %q", svc.taggedSaveID)
+	}
+	req = withSession(httptest.NewRequest(http.MethodPatch, "/api/newsletter-saves/save-1", strings.NewReader(`{}`)), "did:plc:alice", "sid-1")
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("missing tags: status = %d, want 400", rr.Code)
+	}
+}
+
+func TestSavesTags_UnionsURLAndNewsletterSaveTags(t *testing.T) {
+	public := newFakeSavesIndex()
+	public.tags = []*string{strPtr(`["Read-later","design"]`), strPtr(`["design"]`)}
+	private := &fakeNewsletterService{saveTags: []string{"read-later", "zines"}}
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/saves/tags", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	SavesTagsHandler(public, private).ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK || rr.Body.String() != "{\"tags\":[\"design\",\"Read-later\",\"zines\"]}\n" {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
 }
 

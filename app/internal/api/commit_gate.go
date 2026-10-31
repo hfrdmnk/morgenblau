@@ -18,6 +18,7 @@ type SessionRepo interface {
 	atprepo.AtomicWriter
 	atprepo.Lister
 	atprepo.RecordGetter
+	PutRecordIfCID(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey string, record map[string]any, cid string) (*atprepo.RecordRef, error)
 }
 
 var errCommitAlreadySpent = errors.New("PDS commit refused: a mutation request makes at most one")
@@ -56,6 +57,13 @@ func (g CommitGate) PutRecord(ctx context.Context, sess *session.Session, collec
 		return nil, err
 	}
 	return g.Repo.PutRecord(ctx, sess, collection, rkey, record)
+}
+
+func (g CommitGate) PutRecordIfCID(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey string, record map[string]any, cid string) (*atprepo.RecordRef, error) {
+	if err := spendCommit(ctx); err != nil {
+		return nil, err
+	}
+	return g.Repo.PutRecordIfCID(ctx, sess, collection, rkey, record, cid)
 }
 
 func (g CommitGate) DeleteRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey string) error {

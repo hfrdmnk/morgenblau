@@ -258,7 +258,7 @@ func TestImportDelayedCreateCannotDuplicateRetry(t *testing.T) {
 			if len(result.Failures) != 0 {
 				t.Fatal(retry.Body.String())
 			}
-			if !oldWins && !isImportConflict(pds.delayed()) {
+			if !oldWins && !isSwapConflict(pds.delayed()) {
 				t.Fatal("late commit was not rejected")
 			}
 			if pds.creates != 1 || len(disp.dispatched) != 1 {

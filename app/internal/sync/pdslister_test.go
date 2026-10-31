@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
@@ -202,10 +203,14 @@ func TestToPDSSave_Mapping(t *testing.T) {
 			"itemUrl":   "https://example.com/post",
 			"feedUrl":   "https://example.com/feed",
 			"createdAt": "2026-06-01T00:00:00Z",
+			"tags":      []any{"read-later", "design"},
 		},
 	})
 	if !ok {
 		t.Fatal("expected ok for a valid save record")
+	}
+	if strings.Join(got.Tags, ",") != "read-later,design" {
+		t.Errorf("Tags = %v", got.Tags)
 	}
 	if got.Rkey != "3sk" {
 		t.Errorf("Rkey = %q", got.Rkey)

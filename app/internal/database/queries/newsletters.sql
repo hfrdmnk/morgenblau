@@ -141,7 +141,7 @@ AS INTEGER) AS storage_bytes;
 
 -- name: GetNewsletterMessageBySlug :one
 SELECT m.*, s.title AS source_title, s.status AS source_status, s.is_primary AS source_primary,
-       sv.id AS save_id, sv.created_at AS saved_at
+       sv.id AS save_id, sv.created_at AS saved_at, sv.tags AS save_tags
 FROM newsletter_messages m
 JOIN newsletter_sources s ON s.id = m.source_id AND s.did = m.did
 LEFT JOIN newsletter_saves sv ON sv.message_id = m.id AND sv.did = m.did
@@ -149,7 +149,7 @@ WHERE m.did = ?1 AND m.entry_slug = ?2;
 
 -- name: GetNewsletterMessage :one
 SELECT m.*, s.title AS source_title, s.status AS source_status, s.is_primary AS source_primary,
-       sv.id AS save_id, sv.created_at AS saved_at
+       sv.id AS save_id, sv.created_at AS saved_at, sv.tags AS save_tags
 FROM newsletter_messages m
 JOIN newsletter_sources s ON s.id = m.source_id AND s.did = m.did
 LEFT JOIN newsletter_saves sv ON sv.message_id = m.id AND sv.did = m.did
@@ -157,7 +157,7 @@ WHERE m.did = ?1 AND m.id = ?2;
 
 -- name: ListNewsletterMessagesForSource :many
 SELECT m.*, s.title AS source_title, s.status AS source_status, s.is_primary AS source_primary,
-       sv.id AS save_id, sv.created_at AS saved_at
+       sv.id AS save_id, sv.created_at AS saved_at, sv.tags AS save_tags
 FROM newsletter_messages m
 JOIN newsletter_sources s ON s.id = m.source_id AND s.did = m.did
 LEFT JOIN newsletter_saves sv ON sv.message_id = m.id AND sv.did = m.did
@@ -166,7 +166,7 @@ ORDER BY m.received_at DESC, m.id DESC;
 
 -- name: ListNewsletterMessagesForDigest :many
 SELECT m.*, s.title AS source_title, s.status AS source_status, s.is_primary AS source_primary,
-       sv.id AS save_id, sv.created_at AS saved_at
+       sv.id AS save_id, sv.created_at AS saved_at, sv.tags AS save_tags
 FROM newsletter_messages m
 JOIN newsletter_sources s ON s.id = m.source_id AND s.did = m.did
 LEFT JOIN newsletter_saves sv ON sv.message_id = m.id AND sv.did = m.did
@@ -202,6 +202,12 @@ SELECT * FROM newsletter_saves WHERE did = ?1 AND message_id = ?2;
 -- name: DeleteNewsletterSave :exec
 DELETE FROM newsletter_saves WHERE did = ?1 AND id = ?2;
 
+-- name: UpdateNewsletterSaveTags :execrows
+UPDATE newsletter_saves SET tags = ?3 WHERE did = ?1 AND id = ?2;
+
+-- name: ListNewsletterSaveTags :many
+SELECT tags FROM newsletter_saves WHERE did = ?1 AND tags != '[]';
+
 -- name: GetNewsletterSave :one
 SELECT * FROM newsletter_saves WHERE did = ?1 AND id = ?2;
 
@@ -212,7 +218,7 @@ WHERE m.did = ?1 AND m.id = ?2
   AND EXISTS (SELECT 1 FROM newsletter_sources src WHERE src.did = ?1 AND src.id = m.source_id AND src.status = 'stopped');
 
 -- name: ListNewsletterSaves :many
-SELECT sv.id, sv.did, sv.message_id, sv.created_at,
+SELECT sv.id, sv.did, sv.message_id, sv.created_at, sv.tags,
        m.entry_slug, m.title, m.received_at, src.title AS source_title
 FROM newsletter_saves sv
 JOIN newsletter_messages m ON m.id = sv.message_id AND m.did = sv.did

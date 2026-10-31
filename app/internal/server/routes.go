@@ -98,19 +98,24 @@ func (s *Server) routes() *http.ServeMux {
 		mux.Handle("GET /api/newsletter-assets/{token}", api.NewsletterAssetHandler(s.newsletters))
 		mux.Handle("POST /api/newsletter-saves", api.NewsletterSaveCreateHandler(s.newsletters))
 		mux.Handle("DELETE /api/newsletter-saves/{id}", api.NewsletterSaveDeleteHandler(s.newsletters))
+		mux.Handle("PATCH /api/newsletter-saves/{id}", api.NewsletterSaveTagsHandler(s.newsletters))
 	}
 
 	savesList := api.SavesListHandler(s.qr)
+	saveTags := api.SavesTagsHandler(s.qr)
 	digest := api.DigestHandler(s.qr, s.jobs)
 	entry := api.EntryHandler(s.qr)
 	if s.newsletters != nil {
 		savesList = api.SavesListHandler(s.qr, s.newsletters)
+		saveTags = api.SavesTagsHandler(s.qr, s.newsletters)
 		digest = api.DigestHandler(s.qr, s.jobs, s.newsletters)
 		entry = api.EntryHandler(s.qr, s.newsletters)
 	}
 	mux.Handle("GET /api/saves", savesList)
 	mux.Handle("POST /api/saves", api.OneCommitPerRequest(api.SavesCreateHandler(s.qr, s.qw, gated, s.sync)))
 	mux.Handle("DELETE /api/saves/{rkey}", api.OneCommitPerRequest(api.SavesDeleteHandler(s.qr, s.qw, gated, s.sync)))
+	mux.Handle("PATCH /api/saves/{rkey}", api.OneCommitPerRequest(api.SavesPatchHandler(s.qr, s.qw, gated, s.sync)))
+	mux.Handle("GET /api/saves/tags", saveTags)
 
 	mux.Handle("GET /api/jobs/active", api.JobsActiveHandler(s.jobs))
 	mux.Handle("GET /api/jobs/latest", api.JobsLatestHandler(s.jobs))

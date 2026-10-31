@@ -24,7 +24,7 @@ func (q *Queries) DeleteUserSave(ctx context.Context, arg DeleteUserSaveParams) 
 }
 
 const getUserSave = `-- name: GetUserSave :one
-SELECT did, rkey, at_uri, item_url, feed_url, created_at, updated_at
+SELECT did, rkey, at_uri, item_url, feed_url, created_at, updated_at, tags
 FROM user_saves WHERE did = ? AND rkey = ?
 `
 
@@ -44,12 +44,13 @@ func (q *Queries) GetUserSave(ctx context.Context, arg GetUserSaveParams) (UserS
 		&i.FeedUrl,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Tags,
 	)
 	return i, err
 }
 
 const getUserSaveByItemURL = `-- name: GetUserSaveByItemURL :one
-SELECT did, rkey, at_uri, item_url, feed_url, created_at, updated_at
+SELECT did, rkey, at_uri, item_url, feed_url, created_at, updated_at, tags
 FROM user_saves WHERE did = ? AND item_url = ?
 `
 
@@ -69,13 +70,41 @@ func (q *Queries) GetUserSaveByItemURL(ctx context.Context, arg GetUserSaveByIte
 		&i.FeedUrl,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Tags,
 	)
 	return i, err
 }
 
+const listUserSaveTags = `-- name: ListUserSaveTags :many
+SELECT tags FROM user_saves WHERE did = ? AND tags IS NOT NULL
+`
+
+func (q *Queries) ListUserSaveTags(ctx context.Context, did string) ([]*string, error) {
+	rows, err := q.db.QueryContext(ctx, listUserSaveTags, did)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*string
+	for rows.Next() {
+		var tags *string
+		if err := rows.Scan(&tags); err != nil {
+			return nil, err
+		}
+		items = append(items, tags)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserSaves = `-- name: ListUserSaves :many
 SELECT
-    s.did, s.rkey, s.at_uri, s.item_url, s.feed_url, s.created_at, s.updated_at,
+    s.did, s.rkey, s.at_uri, s.item_url, s.feed_url, s.created_at, s.updated_at, s.tags,
     e.title AS entry_title,
     e.entry_slug AS entry_slug,
     e.url AS entry_url,
@@ -96,6 +125,7 @@ type ListUserSavesRow struct {
 	FeedUrl      *string `json:"feed_url"`
 	CreatedAt    string  `json:"created_at"`
 	UpdatedAt    string  `json:"updated_at"`
+	Tags         *string `json:"tags"`
 	EntryTitle   *string `json:"entry_title"`
 	EntrySlug    *string `json:"entry_slug"`
 	EntryUrl     *string `json:"entry_url"`
@@ -123,6 +153,7 @@ func (q *Queries) ListUserSaves(ctx context.Context, did string) ([]ListUserSave
 			&i.FeedUrl,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Tags,
 			&i.EntryTitle,
 			&i.EntrySlug,
 			&i.EntryUrl,
@@ -142,7 +173,7 @@ func (q *Queries) ListUserSaves(ctx context.Context, did string) ([]ListUserSave
 }
 
 const listUserSavesForSync = `-- name: ListUserSavesForSync :many
-SELECT did, rkey, at_uri, item_url, feed_url, created_at, updated_at FROM user_saves WHERE did = ?
+SELECT did, rkey, at_uri, item_url, feed_url, created_at, updated_at, tags FROM user_saves WHERE did = ?
 `
 
 // Snapshot of a user's local save index, used by sync_user to diff against the
@@ -164,6 +195,7 @@ func (q *Queries) ListUserSavesForSync(ctx context.Context, did string) ([]UserS
 			&i.FeedUrl,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Tags,
 		); err != nil {
 			return nil, err
 		}
@@ -180,12 +212,13 @@ func (q *Queries) ListUserSavesForSync(ctx context.Context, did string) ([]UserS
 
 const upsertUserSave = `-- name: UpsertUserSave :exec
 INSERT INTO user_saves (
-    did, rkey, at_uri, item_url, feed_url, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?)
+    did, rkey, at_uri, item_url, feed_url, tags, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (did, rkey) DO UPDATE SET
     at_uri     = excluded.at_uri,
     item_url   = excluded.item_url,
     feed_url   = excluded.feed_url,
+    tags       = excluded.tags,
     updated_at = excluded.updated_at
 `
 
@@ -195,6 +228,7 @@ type UpsertUserSaveParams struct {
 	AtUri     string  `json:"at_uri"`
 	ItemUrl   string  `json:"item_url"`
 	FeedUrl   *string `json:"feed_url"`
+	Tags      *string `json:"tags"`
 	CreatedAt string  `json:"created_at"`
 	UpdatedAt string  `json:"updated_at"`
 }
@@ -206,6 +240,7 @@ func (q *Queries) UpsertUserSave(ctx context.Context, arg UpsertUserSaveParams) 
 		arg.AtUri,
 		arg.ItemUrl,
 		arg.FeedUrl,
+		arg.Tags,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

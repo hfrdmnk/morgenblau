@@ -102,8 +102,10 @@ type Querier interface {
 	ListFollowedFeedURLs(ctx context.Context) ([]string, error)
 	ListNewsletterMessagesForDigest(ctx context.Context, arg ListNewsletterMessagesForDigestParams) ([]ListNewsletterMessagesForDigestRow, error)
 	ListNewsletterMessagesForSource(ctx context.Context, arg ListNewsletterMessagesForSourceParams) ([]ListNewsletterMessagesForSourceRow, error)
+	ListNewsletterSaveTags(ctx context.Context, did string) ([]string, error)
 	ListNewsletterSaves(ctx context.Context, did string) ([]ListNewsletterSavesRow, error)
 	ListNewsletterSources(ctx context.Context, arg ListNewsletterSourcesParams) ([]ListNewsletterSourcesRow, error)
+	ListUserSaveTags(ctx context.Context, did string) ([]*string, error)
 	// Newest first. The entry join resolves title/slug/target for saves whose entry
 	// is still cached; url is not unique in feed_entries, so the newest matching
 	// entry is picked by id rather than joined on url directly, which would fan one
@@ -159,6 +161,7 @@ type Querier interface {
 	UpdateFeedFetchFailure(ctx context.Context, arg UpdateFeedFetchFailureParams) error
 	// SPEC <feed-sources> failure handling: success resets the backoff counter and clears the skip stamp.
 	UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchStateParams) error
+	UpdateNewsletterSaveTags(ctx context.Context, arg UpdateNewsletterSaveTagsParams) (int64, error)
 	// Matches nothing when a setup replaced the source while the poll ran, so the poll's writes are dropped.
 	UpdateWebSourcePoll(ctx context.Context, arg UpdateWebSourcePollParams) (int64, error)
 	// kind defaults to 'rss' via NULLIF so pre-standardfeed callers passing the

@@ -46,6 +46,7 @@ type PDSSave struct {
 	ItemURL   string
 	FeedURL   string
 	CreatedAt string
+	Tags      []string
 }
 
 // SyncStore is the slice of *db.Queries SyncUser depends on, kept narrow so the orchestrator's full surface stays hideable behind one interface.

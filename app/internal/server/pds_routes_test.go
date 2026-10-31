@@ -125,6 +125,12 @@ var pdsRoutes = []pdsRoute{
 		wantStatus: http.StatusNoContent, maxCommits: 1, mirrors: true, repairs: 1,
 	},
 	{
+		name: "tag save", pattern: "PATCH /api/saves/{rkey}", method: http.MethodPatch, path: "/api/saves/3save",
+		seed:       seedSave,
+		body:       `{"tags":["read-later"]}`,
+		wantStatus: http.StatusOK, maxCommits: 1, mirrors: true, repairs: 1,
+	},
+	{
 		name: "import", pattern: "POST /api/subscriptions/import", method: http.MethodPost, path: "/api/subscriptions/import",
 		body:       `{"sources":[{"feedUrl":"https://feeds.example.com/c.xml","title":"C"},{"feedUrl":"https://feeds.example.com/d.xml","title":"D"}]}`,
 		wantStatus: http.StatusOK, maxCommits: 2, mirrors: true, repairs: 2,

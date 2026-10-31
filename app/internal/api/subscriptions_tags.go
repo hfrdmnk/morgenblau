@@ -75,21 +75,31 @@ func SubscriptionsTagsHandler(reader TagsReader) http.Handler {
 			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
-		seen := map[string]struct{}{}
-		out := []string{}
+		var lists [][]string
 		for _, row := range rows {
-			for _, tag := range tags.Unmarshal(row) {
-				key := strings.ToLower(tag)
-				if _, dup := seen[key]; dup {
-					continue
-				}
-				seen[key] = struct{}{}
-				out = append(out, tag)
-			}
+			lists = append(lists, tags.Unmarshal(row))
 		}
-		sort.Slice(out, func(i, j int) bool {
-			return strings.ToLower(out[i]) < strings.ToLower(out[j])
-		})
+		out := distinctTags(lists...)
 		writeJSON(w, tagsResponse{Tags: out})
 	})
+}
+
+// distinctTags merges tag lists case-insensitively, keeping the first spelling, sorted and never nil.
+func distinctTags(lists ...[]string) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, list := range lists {
+		for _, tag := range list {
+			key := strings.ToLower(tag)
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, tag)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i]) < strings.ToLower(out[j])
+	})
+	return out
 }

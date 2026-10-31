@@ -65,6 +65,7 @@ type messageFields struct {
 	remoteImagesAllowed    int64
 	saveID                 *string
 	savedAt                *string
+	saveTags               *string
 }
 
 func messageFromFields(row messageFields) (Message, error) {
@@ -90,6 +91,7 @@ func messageFromFields(row messageFields) (Message, error) {
 		SentAt: sent, ReceivedAt: received, BodyHTML: body, BodyText: deref(row.bodyText),
 		HasBlockedRemoteImages: row.hasBlockedRemoteImages != 0 && row.remoteImagesAllowed == 0,
 		RemoteImagesAllowed:    row.remoteImagesAllowed != 0, SaveID: row.saveID, SavedAt: saved,
+		SaveTags: parseTags(deref(row.saveTags)),
 	}, nil
 }
 
@@ -102,17 +104,26 @@ func (s *Service) getMessage(ctx context.Context, did, id string) (Message, erro
 }
 
 func messageFromGetRow(row db.GetNewsletterMessageRow) (Message, error) {
-	return messageFromFields(messageFields{id: row.ID, entrySlug: row.EntrySlug, sourceID: row.SourceID, sourceTitle: row.SourceTitle, sourcePrimary: row.SourcePrimary, title: row.Title, senderName: row.SenderName, senderAddress: row.SenderAddress, sentAt: row.SentAt, receivedAt: row.ReceivedAt, bodyHTMLBlocked: row.BodyHtmlBlocked, bodyHTMLRemote: row.BodyHtmlRemote, bodyText: row.BodyText, hasBlockedRemoteImages: row.HasBlockedRemoteImages, remoteImagesAllowed: row.RemoteImagesAllowed, saveID: row.SaveID, savedAt: row.SavedAt})
+	return messageFromFields(messageFields{id: row.ID, entrySlug: row.EntrySlug, sourceID: row.SourceID, sourceTitle: row.SourceTitle, sourcePrimary: row.SourcePrimary, title: row.Title, senderName: row.SenderName, senderAddress: row.SenderAddress, sentAt: row.SentAt, receivedAt: row.ReceivedAt, bodyHTMLBlocked: row.BodyHtmlBlocked, bodyHTMLRemote: row.BodyHtmlRemote, bodyText: row.BodyText, hasBlockedRemoteImages: row.HasBlockedRemoteImages, remoteImagesAllowed: row.RemoteImagesAllowed, saveID: row.SaveID, savedAt: row.SavedAt, saveTags: row.SaveTags})
 }
 
 func messageFromSlugRow(row db.GetNewsletterMessageBySlugRow) (Message, error) {
-	return messageFromFields(messageFields{id: row.ID, entrySlug: row.EntrySlug, sourceID: row.SourceID, sourceTitle: row.SourceTitle, sourcePrimary: row.SourcePrimary, title: row.Title, senderName: row.SenderName, senderAddress: row.SenderAddress, sentAt: row.SentAt, receivedAt: row.ReceivedAt, bodyHTMLBlocked: row.BodyHtmlBlocked, bodyHTMLRemote: row.BodyHtmlRemote, bodyText: row.BodyText, hasBlockedRemoteImages: row.HasBlockedRemoteImages, remoteImagesAllowed: row.RemoteImagesAllowed, saveID: row.SaveID, savedAt: row.SavedAt})
+	return messageFromFields(messageFields{id: row.ID, entrySlug: row.EntrySlug, sourceID: row.SourceID, sourceTitle: row.SourceTitle, sourcePrimary: row.SourcePrimary, title: row.Title, senderName: row.SenderName, senderAddress: row.SenderAddress, sentAt: row.SentAt, receivedAt: row.ReceivedAt, bodyHTMLBlocked: row.BodyHtmlBlocked, bodyHTMLRemote: row.BodyHtmlRemote, bodyText: row.BodyText, hasBlockedRemoteImages: row.HasBlockedRemoteImages, remoteImagesAllowed: row.RemoteImagesAllowed, saveID: row.SaveID, savedAt: row.SavedAt, saveTags: row.SaveTags})
 }
 
 func messageFromSourceRow(row db.ListNewsletterMessagesForSourceRow) (Message, error) {
-	return messageFromFields(messageFields{id: row.ID, entrySlug: row.EntrySlug, sourceID: row.SourceID, sourceTitle: row.SourceTitle, sourcePrimary: row.SourcePrimary, title: row.Title, senderName: row.SenderName, senderAddress: row.SenderAddress, sentAt: row.SentAt, receivedAt: row.ReceivedAt, bodyHTMLBlocked: row.BodyHtmlBlocked, bodyHTMLRemote: row.BodyHtmlRemote, bodyText: row.BodyText, hasBlockedRemoteImages: row.HasBlockedRemoteImages, remoteImagesAllowed: row.RemoteImagesAllowed, saveID: row.SaveID, savedAt: row.SavedAt})
+	return messageFromFields(messageFields{id: row.ID, entrySlug: row.EntrySlug, sourceID: row.SourceID, sourceTitle: row.SourceTitle, sourcePrimary: row.SourcePrimary, title: row.Title, senderName: row.SenderName, senderAddress: row.SenderAddress, sentAt: row.SentAt, receivedAt: row.ReceivedAt, bodyHTMLBlocked: row.BodyHtmlBlocked, bodyHTMLRemote: row.BodyHtmlRemote, bodyText: row.BodyText, hasBlockedRemoteImages: row.HasBlockedRemoteImages, remoteImagesAllowed: row.RemoteImagesAllowed, saveID: row.SaveID, savedAt: row.SavedAt, saveTags: row.SaveTags})
 }
 
 func messageFromDigestRow(row db.ListNewsletterMessagesForDigestRow) (Message, error) {
-	return messageFromFields(messageFields{id: row.ID, entrySlug: row.EntrySlug, sourceID: row.SourceID, sourceTitle: row.SourceTitle, sourcePrimary: row.SourcePrimary, title: row.Title, senderName: row.SenderName, senderAddress: row.SenderAddress, sentAt: row.SentAt, receivedAt: row.ReceivedAt, bodyHTMLBlocked: row.BodyHtmlBlocked, bodyHTMLRemote: row.BodyHtmlRemote, bodyText: row.BodyText, hasBlockedRemoteImages: row.HasBlockedRemoteImages, remoteImagesAllowed: row.RemoteImagesAllowed, saveID: row.SaveID, savedAt: row.SavedAt})
+	return messageFromFields(messageFields{id: row.ID, entrySlug: row.EntrySlug, sourceID: row.SourceID, sourceTitle: row.SourceTitle, sourcePrimary: row.SourcePrimary, title: row.Title, senderName: row.SenderName, senderAddress: row.SenderAddress, sentAt: row.SentAt, receivedAt: row.ReceivedAt, bodyHTMLBlocked: row.BodyHtmlBlocked, bodyHTMLRemote: row.BodyHtmlRemote, bodyText: row.BodyText, hasBlockedRemoteImages: row.HasBlockedRemoteImages, remoteImagesAllowed: row.RemoteImagesAllowed, saveID: row.SaveID, savedAt: row.SavedAt, saveTags: row.SaveTags})
+}
+
+// parseTags reads a stored tags array; a malformed value reads as untagged rather than failing the page.
+func parseTags(value string) []string {
+	var tags []string
+	if value == "" || json.Unmarshal([]byte(value), &tags) != nil {
+		return nil
+	}
+	return tags
 }

@@ -142,6 +142,7 @@ func TestNewsletterRoutesAreRegistered(t *testing.T) {
 		{http.MethodGet, "/api/newsletter-assets/token-1"},
 		{http.MethodPost, "/api/newsletter-saves"},
 		{http.MethodDelete, "/api/newsletter-saves/save-1"},
+		{http.MethodPatch, "/api/newsletter-saves/save-1"},
 	}
 	for _, request := range requests {
 		t.Run(request.method+" "+request.path, func(t *testing.T) {

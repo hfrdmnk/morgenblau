@@ -8,6 +8,7 @@ import (
 	"morgenblau/internal/session"
 
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/tags"
 )
 
 // reconcileSaves has no Tier-2 join and no fetch to trigger; saves are leaf bookmarks.
@@ -35,6 +36,7 @@ func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *sessi
 			AtUri:     r.URI,
 			ItemUrl:   r.ItemURL,
 			FeedUrl:   nilIfEmpty(r.FeedURL),
+			Tags:      tags.Marshal(r.Tags),
 			CreatedAt: orNow(r.CreatedAt, now),
 			UpdatedAt: now,
 		}
@@ -63,5 +65,6 @@ func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *sessi
 
 func saveChangedSinceSnapshot(current, baseline db.UserSave) bool {
 	return current.AtUri != baseline.AtUri || current.ItemUrl != baseline.ItemUrl || current.CreatedAt != baseline.CreatedAt ||
-		current.UpdatedAt != baseline.UpdatedAt || optionalStringChanged(current.FeedUrl, baseline.FeedUrl)
+		current.UpdatedAt != baseline.UpdatedAt || optionalStringChanged(current.FeedUrl, baseline.FeedUrl) ||
+		optionalStringChanged(current.Tags, baseline.Tags)
 }

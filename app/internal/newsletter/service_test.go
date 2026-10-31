@@ -475,3 +475,46 @@ func countRows(t *testing.T, reader *sql.DB, table string) int {
 	}
 	return count
 }
+
+func TestSaveTagsStayWithTheOwnersSaveAndReachTheReader(t *testing.T) {
+	service, _, writer := newTestService(t)
+	ctx := context.Background()
+	sourceID := seedSource(t, writer, "did:plc:alice", "source-a", SourceActive)
+	messageID := seedMessage(t, writer, "did:plc:alice", sourceID, "saved", "dedupe-saved")
+	save, err := service.SaveMessage(ctx, "did:plc:alice", messageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := service.SetSaveTags(ctx, "did:plc:alice", save.ID, []string{" read-later ", "Read-Later", "design"})
+	if err != nil {
+		t.Fatalf("SetSaveTags error = %v", err)
+	}
+	if strings.Join(got, ",") != "read-later,design" {
+		t.Fatalf("tags = %v", got)
+	}
+	message, err := service.getMessage(ctx, "did:plc:alice", messageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(message.SaveTags, ",") != "read-later,design" {
+		t.Errorf("message save tags = %v", message.SaveTags)
+	}
+	items, err := service.ListSaves(ctx, "did:plc:alice")
+	if err != nil || len(items) != 1 || strings.Join(items[0].Tags, ",") != "read-later,design" {
+		t.Errorf("ListSaves = %+v (%v)", items, err)
+	}
+	if all, err := service.ListSaveTags(ctx, "did:plc:alice"); err != nil || strings.Join(all, ",") != "read-later,design" {
+		t.Errorf("ListSaveTags = %v (%v)", all, err)
+	}
+
+	if _, err := service.SetSaveTags(ctx, "did:plc:bob", save.ID, []string{"x"}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("another reader's save: err = %v, want ErrNotFound", err)
+	}
+	if _, err := service.SetSaveTags(ctx, "did:plc:alice", save.ID, []string{strings.Repeat("x", 65)}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("overlong tag: err = %v, want ErrInvalid", err)
+	}
+	if got, err := service.SetSaveTags(ctx, "did:plc:alice", save.ID, nil); err != nil || len(got) != 0 {
+		t.Errorf("clearing tags = %v (%v)", got, err)
+	}
+}

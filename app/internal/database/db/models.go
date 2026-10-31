@@ -97,6 +97,7 @@ type NewsletterSafe struct {
 	Did       string `json:"did"`
 	MessageID string `json:"message_id"`
 	CreatedAt string `json:"created_at"`
+	Tags      string `json:"tags"`
 }
 
 type NewsletterSource struct {
@@ -140,6 +141,7 @@ type UserSave struct {
 	FeedUrl   *string `json:"feed_url"`
 	CreatedAt string  `json:"created_at"`
 	UpdatedAt string  `json:"updated_at"`
+	Tags      *string `json:"tags"`
 }
 
 type UserSubscription struct {

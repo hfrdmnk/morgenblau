@@ -155,6 +155,7 @@ func TestEntry_SavedState_Populated(t *testing.T) {
 			Did:     "did:plc:alice",
 			Rkey:    "3laSAVE",
 			ItemUrl: "https://example.test/post",
+			Tags:    strPtr(`["read-later","design"]`),
 		},
 	}
 	mux := http.NewServeMux()
@@ -175,6 +176,9 @@ func TestEntry_SavedState_Populated(t *testing.T) {
 	}
 	if got.SavedState.Rkey != "3laSAVE" {
 		t.Errorf("savedState.rkey = %q", got.SavedState.Rkey)
+	}
+	if strings.Join(got.SavedState.Tags, ",") != "read-later,design" {
+		t.Errorf("savedState.tags = %v", got.SavedState.Tags)
 	}
 }
 

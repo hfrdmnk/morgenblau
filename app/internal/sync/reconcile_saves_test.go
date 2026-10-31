@@ -16,7 +16,7 @@ func TestSyncUser_ReconcileSaves_InsertsAndDeletes(t *testing.T) {
 	}
 	feed := "https://feed/new"
 	lister := &fakeLister{saves: []PDSSave{
-		{URI: "at://x/s/newB", Rkey: "newB", ItemURL: "https://item/new", FeedURL: feed, CreatedAt: "2026-06-01T00:00:00Z"},
+		{URI: "at://x/s/newB", Rkey: "newB", ItemURL: "https://item/new", FeedURL: feed, CreatedAt: "2026-06-01T00:00:00Z", Tags: []string{"read-later"}},
 	}}
 	eng := NewEngine(jobs.New(), store, lister, &countingFetcher{}, nil, nil)
 
@@ -31,6 +31,8 @@ func TestSyncUser_ReconcileSaves_InsertsAndDeletes(t *testing.T) {
 		t.Error("remote save newB was not inserted locally")
 	} else if got.ItemUrl != "https://item/new" || got.FeedUrl == nil || *got.FeedUrl != feed {
 		t.Errorf("inserted save = %+v, want item/new + feed/new", got)
+	} else if got.Tags == nil || *got.Tags != `["read-later"]` {
+		t.Errorf("inserted save tags = %v, want the record's tags", got.Tags)
 	}
 	if len(store.saveDeletes) != 1 || store.saveDeletes[0] != "goneA" {
 		t.Errorf("saveDeletes = %v, want [goneA]", store.saveDeletes)

@@ -33,6 +33,7 @@ type newsletterMessageService interface {
 type newsletterSaveService interface {
 	SaveMessage(context.Context, string, string) (newsletter.Save, error)
 	DeleteSave(context.Context, string, string) error
+	SetSaveTags(context.Context, string, string, []string) ([]string, error)
 }
 
 type newsletterAssetService interface {
@@ -293,6 +294,36 @@ func NewsletterSaveDeleteHandler(service newsletterSaveService) http.Handler {
 	})
 }
 
+// NewsletterSaveTagsHandler replaces a newsletter save's tags, which stay in Morgenblau's database like the save itself.
+func NewsletterSaveTagsHandler(service newsletterSaveService) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		privateResponse(w)
+		sess, ok := requireSession(w, r)
+		if !ok {
+			return
+		}
+		var body struct {
+			Tags *[]string `json:"tags"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		if body.Tags == nil {
+			writeError(w, http.StatusBadRequest, codeInvalidRequest, "tags is required")
+			return
+		}
+		saved, err := service.SetSaveTags(r.Context(), sess.Data.AccountDID.String(), r.PathValue("id"), *body.Tags)
+		if err != nil {
+			writeNewsletterError(w, err)
+			return
+		}
+		if saved == nil {
+			saved = []string{}
+		}
+		writeJSON(w, map[string][]string{"tags": saved})
+	})
+}
+
 func NewsletterAssetHandler(service newsletterAssetService) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		privateResponse(w)
@@ -352,7 +383,7 @@ func newsletterMessageToWire(message newsletter.Message) EntryWire {
 	}
 	var saved *SavedState
 	if message.SaveID != nil {
-		saved = &SavedState{Kind: "newsletter", ID: *message.SaveID}
+		saved = &SavedState{Kind: "newsletter", ID: *message.SaveID, Tags: message.SaveTags}
 	}
 	return EntryWire{
 		ID: message.ID, EntrySlug: message.EntrySlug, Title: &title,

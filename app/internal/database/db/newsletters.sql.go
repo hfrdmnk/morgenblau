@@ -432,7 +432,7 @@ func (q *Queries) GetNewsletterInlineAsset(ctx context.Context, arg GetNewslette
 
 const getNewsletterMessage = `-- name: GetNewsletterMessage :one
 SELECT m.id, m.did, m.source_id, m.entry_slug, m.dedupe_key, m.message_id, m.title, m.sender_name, m.sender_address, m.sent_at, m.received_at, m.body_html_blocked, m.body_html_remote, m.body_text, m.has_blocked_remote_images, m.remote_images_allowed, m.attachment_summary, m.storage_bytes, m.created_at, m.updated_at, s.title AS source_title, s.status AS source_status, s.is_primary AS source_primary,
-       sv.id AS save_id, sv.created_at AS saved_at
+       sv.id AS save_id, sv.created_at AS saved_at, sv.tags AS save_tags
 FROM newsletter_messages m
 JOIN newsletter_sources s ON s.id = m.source_id AND s.did = m.did
 LEFT JOIN newsletter_saves sv ON sv.message_id = m.id AND sv.did = m.did
@@ -470,6 +470,7 @@ type GetNewsletterMessageRow struct {
 	SourcePrimary          int64   `json:"source_primary"`
 	SaveID                 *string `json:"save_id"`
 	SavedAt                *string `json:"saved_at"`
+	SaveTags               *string `json:"save_tags"`
 }
 
 func (q *Queries) GetNewsletterMessage(ctx context.Context, arg GetNewsletterMessageParams) (GetNewsletterMessageRow, error) {
@@ -501,13 +502,14 @@ func (q *Queries) GetNewsletterMessage(ctx context.Context, arg GetNewsletterMes
 		&i.SourcePrimary,
 		&i.SaveID,
 		&i.SavedAt,
+		&i.SaveTags,
 	)
 	return i, err
 }
 
 const getNewsletterMessageBySlug = `-- name: GetNewsletterMessageBySlug :one
 SELECT m.id, m.did, m.source_id, m.entry_slug, m.dedupe_key, m.message_id, m.title, m.sender_name, m.sender_address, m.sent_at, m.received_at, m.body_html_blocked, m.body_html_remote, m.body_text, m.has_blocked_remote_images, m.remote_images_allowed, m.attachment_summary, m.storage_bytes, m.created_at, m.updated_at, s.title AS source_title, s.status AS source_status, s.is_primary AS source_primary,
-       sv.id AS save_id, sv.created_at AS saved_at
+       sv.id AS save_id, sv.created_at AS saved_at, sv.tags AS save_tags
 FROM newsletter_messages m
 JOIN newsletter_sources s ON s.id = m.source_id AND s.did = m.did
 LEFT JOIN newsletter_saves sv ON sv.message_id = m.id AND sv.did = m.did
@@ -545,6 +547,7 @@ type GetNewsletterMessageBySlugRow struct {
 	SourcePrimary          int64   `json:"source_primary"`
 	SaveID                 *string `json:"save_id"`
 	SavedAt                *string `json:"saved_at"`
+	SaveTags               *string `json:"save_tags"`
 }
 
 func (q *Queries) GetNewsletterMessageBySlug(ctx context.Context, arg GetNewsletterMessageBySlugParams) (GetNewsletterMessageBySlugRow, error) {
@@ -576,6 +579,7 @@ func (q *Queries) GetNewsletterMessageBySlug(ctx context.Context, arg GetNewslet
 		&i.SourcePrimary,
 		&i.SaveID,
 		&i.SavedAt,
+		&i.SaveTags,
 	)
 	return i, err
 }
@@ -595,7 +599,7 @@ func (q *Queries) GetNewsletterOwnerStorageBytes(ctx context.Context, did string
 }
 
 const getNewsletterSave = `-- name: GetNewsletterSave :one
-SELECT id, did, message_id, created_at FROM newsletter_saves WHERE did = ?1 AND id = ?2
+SELECT id, did, message_id, created_at, tags FROM newsletter_saves WHERE did = ?1 AND id = ?2
 `
 
 type GetNewsletterSaveParams struct {
@@ -611,12 +615,13 @@ func (q *Queries) GetNewsletterSave(ctx context.Context, arg GetNewsletterSavePa
 		&i.Did,
 		&i.MessageID,
 		&i.CreatedAt,
+		&i.Tags,
 	)
 	return i, err
 }
 
 const getNewsletterSaveForMessage = `-- name: GetNewsletterSaveForMessage :one
-SELECT id, did, message_id, created_at FROM newsletter_saves WHERE did = ?1 AND message_id = ?2
+SELECT id, did, message_id, created_at, tags FROM newsletter_saves WHERE did = ?1 AND message_id = ?2
 `
 
 type GetNewsletterSaveForMessageParams struct {
@@ -632,6 +637,7 @@ func (q *Queries) GetNewsletterSaveForMessage(ctx context.Context, arg GetNewsle
 		&i.Did,
 		&i.MessageID,
 		&i.CreatedAt,
+		&i.Tags,
 	)
 	return i, err
 }
@@ -832,7 +838,7 @@ func (q *Queries) GetNextNewsletterReceipt(ctx context.Context, nextAttemptAt *s
 
 const listNewsletterMessagesForDigest = `-- name: ListNewsletterMessagesForDigest :many
 SELECT m.id, m.did, m.source_id, m.entry_slug, m.dedupe_key, m.message_id, m.title, m.sender_name, m.sender_address, m.sent_at, m.received_at, m.body_html_blocked, m.body_html_remote, m.body_text, m.has_blocked_remote_images, m.remote_images_allowed, m.attachment_summary, m.storage_bytes, m.created_at, m.updated_at, s.title AS source_title, s.status AS source_status, s.is_primary AS source_primary,
-       sv.id AS save_id, sv.created_at AS saved_at
+       sv.id AS save_id, sv.created_at AS saved_at, sv.tags AS save_tags
 FROM newsletter_messages m
 JOIN newsletter_sources s ON s.id = m.source_id AND s.did = m.did
 LEFT JOIN newsletter_saves sv ON sv.message_id = m.id AND sv.did = m.did
@@ -873,6 +879,7 @@ type ListNewsletterMessagesForDigestRow struct {
 	SourcePrimary          int64   `json:"source_primary"`
 	SaveID                 *string `json:"save_id"`
 	SavedAt                *string `json:"saved_at"`
+	SaveTags               *string `json:"save_tags"`
 }
 
 func (q *Queries) ListNewsletterMessagesForDigest(ctx context.Context, arg ListNewsletterMessagesForDigestParams) ([]ListNewsletterMessagesForDigestRow, error) {
@@ -910,6 +917,7 @@ func (q *Queries) ListNewsletterMessagesForDigest(ctx context.Context, arg ListN
 			&i.SourcePrimary,
 			&i.SaveID,
 			&i.SavedAt,
+			&i.SaveTags,
 		); err != nil {
 			return nil, err
 		}
@@ -926,7 +934,7 @@ func (q *Queries) ListNewsletterMessagesForDigest(ctx context.Context, arg ListN
 
 const listNewsletterMessagesForSource = `-- name: ListNewsletterMessagesForSource :many
 SELECT m.id, m.did, m.source_id, m.entry_slug, m.dedupe_key, m.message_id, m.title, m.sender_name, m.sender_address, m.sent_at, m.received_at, m.body_html_blocked, m.body_html_remote, m.body_text, m.has_blocked_remote_images, m.remote_images_allowed, m.attachment_summary, m.storage_bytes, m.created_at, m.updated_at, s.title AS source_title, s.status AS source_status, s.is_primary AS source_primary,
-       sv.id AS save_id, sv.created_at AS saved_at
+       sv.id AS save_id, sv.created_at AS saved_at, sv.tags AS save_tags
 FROM newsletter_messages m
 JOIN newsletter_sources s ON s.id = m.source_id AND s.did = m.did
 LEFT JOIN newsletter_saves sv ON sv.message_id = m.id AND sv.did = m.did
@@ -965,6 +973,7 @@ type ListNewsletterMessagesForSourceRow struct {
 	SourcePrimary          int64   `json:"source_primary"`
 	SaveID                 *string `json:"save_id"`
 	SavedAt                *string `json:"saved_at"`
+	SaveTags               *string `json:"save_tags"`
 }
 
 func (q *Queries) ListNewsletterMessagesForSource(ctx context.Context, arg ListNewsletterMessagesForSourceParams) ([]ListNewsletterMessagesForSourceRow, error) {
@@ -1002,6 +1011,7 @@ func (q *Queries) ListNewsletterMessagesForSource(ctx context.Context, arg ListN
 			&i.SourcePrimary,
 			&i.SaveID,
 			&i.SavedAt,
+			&i.SaveTags,
 		); err != nil {
 			return nil, err
 		}
@@ -1016,8 +1026,35 @@ func (q *Queries) ListNewsletterMessagesForSource(ctx context.Context, arg ListN
 	return items, nil
 }
 
+const listNewsletterSaveTags = `-- name: ListNewsletterSaveTags :many
+SELECT tags FROM newsletter_saves WHERE did = ?1 AND tags != '[]'
+`
+
+func (q *Queries) ListNewsletterSaveTags(ctx context.Context, did string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listNewsletterSaveTags, did)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var tags string
+		if err := rows.Scan(&tags); err != nil {
+			return nil, err
+		}
+		items = append(items, tags)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNewsletterSaves = `-- name: ListNewsletterSaves :many
-SELECT sv.id, sv.did, sv.message_id, sv.created_at,
+SELECT sv.id, sv.did, sv.message_id, sv.created_at, sv.tags,
        m.entry_slug, m.title, m.received_at, src.title AS source_title
 FROM newsletter_saves sv
 JOIN newsletter_messages m ON m.id = sv.message_id AND m.did = sv.did
@@ -1031,6 +1068,7 @@ type ListNewsletterSavesRow struct {
 	Did         string  `json:"did"`
 	MessageID   string  `json:"message_id"`
 	CreatedAt   string  `json:"created_at"`
+	Tags        string  `json:"tags"`
 	EntrySlug   string  `json:"entry_slug"`
 	Title       *string `json:"title"`
 	ReceivedAt  string  `json:"received_at"`
@@ -1051,6 +1089,7 @@ func (q *Queries) ListNewsletterSaves(ctx context.Context, did string) ([]ListNe
 			&i.Did,
 			&i.MessageID,
 			&i.CreatedAt,
+			&i.Tags,
 			&i.EntrySlug,
 			&i.Title,
 			&i.ReceivedAt,
@@ -1291,4 +1330,22 @@ func (q *Queries) TouchNewsletterSource(ctx context.Context, arg TouchNewsletter
 		arg.ID,
 	)
 	return err
+}
+
+const updateNewsletterSaveTags = `-- name: UpdateNewsletterSaveTags :execrows
+UPDATE newsletter_saves SET tags = ?3 WHERE did = ?1 AND id = ?2
+`
+
+type UpdateNewsletterSaveTagsParams struct {
+	Did  string `json:"did"`
+	ID   string `json:"id"`
+	Tags string `json:"tags"`
+}
+
+func (q *Queries) UpdateNewsletterSaveTags(ctx context.Context, arg UpdateNewsletterSaveTagsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateNewsletterSaveTags, arg.Did, arg.ID, arg.Tags)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

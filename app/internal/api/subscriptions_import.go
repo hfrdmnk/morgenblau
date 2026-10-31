@@ -192,14 +192,14 @@ func importSubscription(ctx context.Context, sess *session.Session, incoming imp
 			continue
 		}
 		status, err := writeImportSubscription(ctx, sess, incoming, importSnapshot{head: head, record: old, found: found, local: baseline}, writer, pds, disp)
-		if !isImportConflict(err) {
+		if !isSwapConflict(err) {
 			return status, err
 		}
 	}
 	return "", fmt.Errorf("Your subscriptions changed during import. Retry to merge with the latest records.")
 }
 
-func isImportConflict(err error) bool {
+func isSwapConflict(err error) bool {
 	var apiErr *atclient.APIError
 	return errors.As(err, &apiErr) && apiErr.Name == "InvalidSwap"
 }
@@ -276,7 +276,7 @@ func writeImportSubscription(ctx context.Context, sess *session.Session, incomin
 				FeedUrl: source.FeedURL, Kind: "rss", Title: nilIfEmpty(source.Title), IsPrimary: boolToInt64(primary), Tags: tags.Marshal(source.Tags), CreatedAt: recordString(record, "createdAt"), UpdatedAt: now,
 			})
 	}); !ok {
-		if isImportConflict(commitErr) {
+		if isSwapConflict(commitErr) {
 			return "", commitErr
 		}
 		slog.Warn("subscription import: PDS write failed", "err", commitErr)

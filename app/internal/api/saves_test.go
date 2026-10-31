@@ -11,8 +11,12 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/bluesky-social/indigo/atproto/syntax"
+
+	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database"
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/session"
 )
 
 // fakeSavesIndex covers both the reader and writer slices for saves handlers.
@@ -21,6 +25,7 @@ type fakeSavesIndex struct {
 	byRkey       map[string]map[string]db.UserSave // did → rkey → row
 	byItemURL    map[string]map[string]db.UserSave // did → itemUrl → row
 	list         []db.ListUserSavesRow
+	tags         []*string
 	deleted      []string
 	upserts      int
 	getItemURLEr error
@@ -77,11 +82,15 @@ func (f *fakeSavesIndex) ListUserSaves(_ context.Context, _ string) ([]db.ListUs
 	return f.list, nil
 }
 
+func (f *fakeSavesIndex) ListUserSaveTags(_ context.Context, _ string) ([]*string, error) {
+	return f.tags, nil
+}
+
 func (f *fakeSavesIndex) UpsertUserSave(_ context.Context, arg db.UpsertUserSaveParams) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.upserts++
-	row := db.UserSave(arg)
+	row := db.UserSave{Did: arg.Did, Rkey: arg.Rkey, AtUri: arg.AtUri, ItemUrl: arg.ItemUrl, FeedUrl: arg.FeedUrl, Tags: arg.Tags, CreatedAt: arg.CreatedAt, UpdatedAt: arg.UpdatedAt}
 	if _, ok := f.byRkey[arg.Did]; !ok {
 		f.byRkey[arg.Did] = map[string]db.UserSave{}
 	}
@@ -278,6 +287,7 @@ CREATE TABLE user_saves (
     feed_url    TEXT,
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL,
+    tags        TEXT,
     PRIMARY KEY (did, rkey)
 );
 CREATE TABLE feed_entries (
@@ -401,5 +411,130 @@ func TestSavesList_NoSaves_EmptyArray(t *testing.T) {
 	}
 	if body := strings.TrimSpace(rr.Body.String()); body != "[]" {
 		t.Errorf("body = %q, want [] rather than null", body)
+	}
+}
+
+// --- PATCH /api/saves/{rkey} ---
+
+func patchSave(t *testing.T, idx *fakeSavesIndex, pds *fakePDS, did, rkey, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/saves/{rkey}", SavesPatchHandler(idx, idx, pds, &recordingRepair{}))
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/saves/"+rkey, strings.NewReader(body)), did, "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	return rr
+}
+
+func TestSavesPatch_TagsRewriteTheRecordAndKeepItsOtherFields(t *testing.T) {
+	idx := newFakeSavesIndex()
+	feed := "https://example.com/feed.xml"
+	idx.seed(db.UserSave{Did: "did:plc:alice", Rkey: "3la", AtUri: "at://did:plc:alice/blue.morgen.feed.save/3la", ItemUrl: "https://example.com/post", FeedUrl: &feed, CreatedAt: "2026-10-01T00:00:00Z"})
+	pds := &fakePDS{}
+	pds.storeListed("did:plc:alice", saveCollection, "3la", map[string]any{
+		"$type": saveCollection, "itemUrl": "https://example.com/post", "feedUrl": feed,
+		"createdAt": "2026-10-01T00:00:00Z", "comment": "Written by another client", "tags": []any{"old"},
+	})
+
+	rr := patchSave(t, idx, pds, "did:plc:alice", "3la", `{"tags":[" read-later ","Read-Later","design"]}`)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.puts != 1 || pds.lastPutRkey != "3la" {
+		t.Fatalf("puts = %d rkey = %q, want one put of 3la", pds.puts, pds.lastPutRkey)
+	}
+	if got := pds.lastPut["comment"]; got != "Written by another client" {
+		t.Errorf("comment = %v, want the existing comment kept", got)
+	}
+	if got := pds.lastPut["itemUrl"]; got != "https://example.com/post" {
+		t.Errorf("itemUrl = %v", got)
+	}
+	if got, _ := json.Marshal(pds.lastPut["tags"]); string(got) != `["read-later","design"]` {
+		t.Errorf("record tags = %s", got)
+	}
+	row, _ := idx.GetUserSave(context.Background(), db.GetUserSaveParams{Did: "did:plc:alice", Rkey: "3la"})
+	if row.Tags == nil || *row.Tags != `["read-later","design"]` {
+		t.Errorf("mirrored tags = %v", row.Tags)
+	}
+	var got SaveWire
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil || strings.Join(got.Tags, ",") != "read-later,design" {
+		t.Errorf("response tags = %v (%v)", got.Tags, err)
+	}
+}
+
+func TestSavesPatch_EmptyTagsDropTheField(t *testing.T) {
+	idx := newFakeSavesIndex()
+	tagged := `["design"]`
+	idx.seed(db.UserSave{Did: "did:plc:alice", Rkey: "3la", ItemUrl: "https://example.com/post", Tags: &tagged, CreatedAt: "2026-10-01T00:00:00Z"})
+	pds := &fakePDS{}
+	pds.storeListed("did:plc:alice", saveCollection, "3la", map[string]any{"itemUrl": "https://example.com/post", "createdAt": "2026-10-01T00:00:00Z", "tags": []any{"design"}})
+
+	if rr := patchSave(t, idx, pds, "did:plc:alice", "3la", `{"tags":[]}`); rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if _, ok := pds.lastPut["tags"]; ok {
+		t.Errorf("record still has tags: %v", pds.lastPut)
+	}
+	row, _ := idx.GetUserSave(context.Background(), db.GetUserSaveParams{Did: "did:plc:alice", Rkey: "3la"})
+	if row.Tags != nil {
+		t.Errorf("mirrored tags = %v, want NULL", *row.Tags)
+	}
+}
+
+func TestSavesPatch_OtherUsersSave_404WithoutAPDSWrite(t *testing.T) {
+	idx := newFakeSavesIndex()
+	idx.seed(db.UserSave{Did: "did:plc:bob", Rkey: "3la", ItemUrl: "https://example.com/post"})
+	pds := &fakePDS{}
+	if rr := patchSave(t, idx, pds, "did:plc:alice", "3la", `{"tags":["design"]}`); rr.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rr.Code)
+	}
+	if pds.puts != 0 || pds.getCalls != 0 {
+		t.Errorf("PDS touched: puts=%d gets=%d", pds.puts, pds.getCalls)
+	}
+}
+
+func TestSavesPatch_WithoutTags_400(t *testing.T) {
+	idx := newFakeSavesIndex()
+	idx.seed(db.UserSave{Did: "did:plc:alice", Rkey: "3la", ItemUrl: "https://example.com/post"})
+	pds := &fakePDS{}
+	if rr := patchSave(t, idx, pds, "did:plc:alice", "3la", `{}`); rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rr.Code)
+	}
+}
+
+// staleReadPDS lets another client rewrite the record right after the handler reads it.
+type staleReadPDS struct{ *fakePDS }
+
+func (p staleReadPDS) GetRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey syntax.RecordKey) (*atprepo.ListedRecord, error) {
+	read, err := p.fakePDS.GetRecord(ctx, sess, collection, rkey)
+	if err == nil {
+		p.mu.Lock()
+		p.listed[collection.String()][0].CID = "written-by-another-client"
+		p.mu.Unlock()
+	}
+	return read, err
+}
+
+func TestSavesPatch_RecordChangedSinceRead_409WithoutOverwriting(t *testing.T) {
+	idx := newFakeSavesIndex()
+	idx.seed(db.UserSave{Did: "did:plc:alice", Rkey: "3la", ItemUrl: "https://example.com/post", CreatedAt: "2026-10-01T00:00:00Z"})
+	pds := &fakePDS{}
+	pds.storeListed("did:plc:alice", saveCollection, "3la", map[string]any{"$type": saveCollection, "itemUrl": "https://example.com/post", "createdAt": "2026-10-01T00:00:00Z"})
+
+	mux := http.NewServeMux()
+	mux.Handle("PATCH /api/saves/{rkey}", SavesPatchHandler(idx, idx, staleReadPDS{pds}, &recordingRepair{}))
+	req := withSession(httptest.NewRequest(http.MethodPatch, "/api/saves/3la", strings.NewReader(`{"tags":["design"]}`)), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body = %s", rr.Code, rr.Body.String())
+	}
+	if pds.puts != 0 {
+		t.Errorf("puts = %d, want the other client's record left alone", pds.puts)
+	}
+	row, _ := idx.GetUserSave(context.Background(), db.GetUserSaveParams{Did: "did:plc:alice", Rkey: "3la"})
+	if row.Tags != nil {
+		t.Errorf("mirrored tags = %v, want unchanged", *row.Tags)
 	}
 }

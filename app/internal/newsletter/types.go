@@ -72,6 +72,7 @@ type Message struct {
 	RemoteImagesAllowed    bool
 	SaveID                 *string
 	SavedAt                *time.Time
+	SaveTags               []string
 }
 
 type MoveTarget struct {
@@ -93,6 +94,7 @@ type SaveItem struct {
 	EntrySlug   string
 	ReceivedAt  time.Time
 	SourceTitle string
+	Tags        []string
 }
 
 type InlineAsset struct {

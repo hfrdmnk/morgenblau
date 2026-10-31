@@ -38,9 +38,10 @@ type EntryWire struct {
 
 // SavedState mirrors the frontend's view; Rkey is what the client DELETEs on un-save.
 type SavedState struct {
-	Kind string `json:"kind,omitempty"`
-	ID   string `json:"id,omitempty"`
-	Rkey string `json:"rkey,omitempty"`
+	Kind string   `json:"kind,omitempty"`
+	ID   string   `json:"id,omitempty"`
+	Rkey string   `json:"rkey,omitempty"`
+	Tags []string `json:"tags,omitempty"`
 }
 
 type SourceMeta struct {
