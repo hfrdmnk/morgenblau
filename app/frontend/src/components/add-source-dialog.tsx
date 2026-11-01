@@ -1162,9 +1162,11 @@ function siteHost(url: string) {
     return displayURL(url).split('/')[0];
 }
 
+const PROFILE_PREVIEW_COUNT = 5;
+
 function ProfileScreen({ profile, site, sheet }: { profile: SiteProfile; site: SiteResult; sheet: Sheet }) {
     const name = profileName(profile, site);
-    const [font] = useReaderFont();
+    const [showAllFollows, setShowAllFollows] = useState(false);
     return (
         <div className="space-y-8">
             <div className="flex items-center gap-4">
@@ -1175,7 +1177,7 @@ function ProfileScreen({ profile, site, sheet }: { profile: SiteProfile; site: S
                 </div>
             </div>
             {profile.summary ? <p className="text-pretty text-muted-foreground">{profile.summary}</p> : null}
-            {profile.aboutHtml ? <div className="reader-body" dangerouslySetInnerHTML={{ __html: profile.aboutHtml }} data-font={font} data-size="compact" /> : null}
+            {profile.aboutHtml ? <ProfileAbout html={profile.aboutHtml} /> : null}
             {profile.contact?.length ? (
                 <section aria-labelledby="profile-contact">
                     <h3 className="mb-3 text-xs text-muted-foreground" id="profile-contact">Contact</h3>
@@ -1205,7 +1207,7 @@ function ProfileScreen({ profile, site, sheet }: { profile: SiteProfile; site: S
                 <section aria-labelledby="profile-following">
                     <h3 className="mb-3 text-xs text-muted-foreground" id="profile-following">Follows {profile.following.length} sites</h3>
                     <ul>
-                        {profile.following.map((follow) => {
+                        {(showAllFollows ? profile.following : profile.following.slice(0, PROFILE_PREVIEW_COUNT)).map((follow) => {
                             const candidate: SourceCandidate = { feedUrl: follow.feedUrl, title: follow.title || undefined, siteUrl: follow.siteUrl };
                             const status = candidateStatus(candidate, undefined, sheet.subscriptions, follow.rkey);
                             const title = sourceTitle(candidate);
@@ -1222,8 +1224,49 @@ function ProfileScreen({ profile, site, sheet }: { profile: SiteProfile; site: S
                             );
                         })}
                     </ul>
+                    {profile.following.length > PROFILE_PREVIEW_COUNT ? (
+                        <ShowMoreButton expanded={showAllFollows} onToggle={() => setShowAllFollows(!showAllFollows)} />
+                    ) : null}
                 </section>
             ) : null}
         </div>
+    );
+}
+
+function ProfileAbout({ html }: { html: string }) {
+    const [font] = useReaderFont();
+    const ref = useRef<HTMLDivElement>(null);
+    const [expanded, setExpanded] = useState(false);
+    const [overflows, setOverflows] = useState(false);
+    // A new object makes React rewrite the HTML on every toggle, which drops focus from a link inside it.
+    const content = useMemo(() => ({ __html: html }), [html]);
+    useEffect(() => {
+        const element = ref.current;
+        if (!element || expanded) return;
+        const observer = new ResizeObserver(() => setOverflows(element.scrollHeight > element.clientHeight));
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, [html, expanded]);
+    return (
+        <div>
+            <div
+                className={cn('reader-body', !expanded && 'line-clamp-5')}
+                dangerouslySetInnerHTML={content}
+                data-font={font}
+                data-size="compact"
+                // A link past the clamp is still tabbable, and focusing it scrolls the clipped box.
+                onFocus={(event) => event.target.matches(':focus-visible') && setExpanded(true)}
+                ref={ref}
+            />
+            {overflows ? <ShowMoreButton expanded={expanded} onToggle={() => setExpanded(!expanded)} /> : null}
+        </div>
+    );
+}
+
+function ShowMoreButton({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+    return (
+        <Button className="mt-2 -ml-2.5 text-muted-foreground" onClick={onToggle} size="sm" variant="ghost">
+            {expanded ? 'Show less' : 'Show more'}
+        </Button>
     );
 }
