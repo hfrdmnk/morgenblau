@@ -40,6 +40,7 @@ type opmlOutline struct {
 	Type     string        `xml:"type,attr,omitempty"`
 	XMLURL   string        `xml:"xmlUrl,attr,omitempty"`
 	HTMLURL  string        `xml:"htmlUrl,attr,omitempty"`
+	URL      string        `xml:"url,attr,omitempty"`
 	Outlines []opmlOutline `xml:"outline"`
 }
 
@@ -188,28 +189,43 @@ func importRecord(s importSource, createdAt string) map[string]any {
 }
 
 func encodeOPML(sources []importSource) (string, error) {
-	doc := opmlDocument{Version: "2.0", Title: "Morgenblau sources", Body: &opmlBody{}}
-	folders := map[string][]opmlOutline{}
+	outlines := make([]taggedOutline, 0, len(sources))
 	for _, s := range sources {
 		title := s.Title
 		if title == "" {
 			title = s.FeedURL
 		}
-		o := opmlOutline{Text: title, Title: title, Type: "rss", XMLURL: s.FeedURL, HTMLURL: s.SiteURL}
-		if len(s.Tags) == 0 {
-			doc.Body.Outlines = append(doc.Body.Outlines, o)
+		outlines = append(outlines, taggedOutline{opmlOutline{Text: title, Title: title, Type: "rss", XMLURL: s.FeedURL, HTMLURL: s.SiteURL}, s.Tags})
+	}
+	return encodeOPMLDocument("Morgenblau sources", outlines, true)
+}
+
+type taggedOutline struct {
+	outline opmlOutline
+	tags    []string
+}
+
+// encodeOPMLDocument puts untagged outlines at the top level; with folders, each tag becomes a folder holding every outline that carries it.
+func encodeOPMLDocument(title string, outlines []taggedOutline, folders bool) (string, error) {
+	doc := opmlDocument{Version: "2.0", Title: title, Body: &opmlBody{}}
+	byTag := map[string][]opmlOutline{}
+	for _, o := range outlines {
+		if !folders || len(o.tags) == 0 {
+			doc.Body.Outlines = append(doc.Body.Outlines, o.outline)
 		}
-		for _, tag := range s.Tags {
-			folders[tag] = append(folders[tag], o)
+		if folders {
+			for _, tag := range o.tags {
+				byTag[tag] = append(byTag[tag], o.outline)
+			}
 		}
 	}
-	names := make([]string, 0, len(folders))
-	for name := range folders {
+	names := make([]string, 0, len(byTag))
+	for name := range byTag {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		doc.Body.Outlines = append(doc.Body.Outlines, opmlOutline{Text: name, Outlines: folders[name]})
+		doc.Body.Outlines = append(doc.Body.Outlines, opmlOutline{Text: name, Outlines: byTag[name]})
 	}
 	encoded, err := xml.MarshalIndent(doc, "", "  ")
 	return xml.Header + string(encoded) + "\n", err

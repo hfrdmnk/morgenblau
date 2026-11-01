@@ -144,6 +144,12 @@ type UserSave struct {
 	Tags      *string `json:"tags"`
 }
 
+type UserSetting struct {
+	Did             string `json:"did"`
+	PublicFollowing int64  `json:"public_following"`
+	UpdatedAt       string `json:"updated_at"`
+}
+
 type UserSubscription struct {
 	Did         string  `json:"did"`
 	Rkey        string  `json:"rkey"`

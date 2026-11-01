@@ -40,7 +40,7 @@ export function describeMutationError(error: unknown, fallback: string): string 
 }
 
 type ApiOptions = {
-    method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     body?: unknown;
     signal?: AbortSignal;
 };

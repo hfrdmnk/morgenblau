@@ -3,7 +3,9 @@ import { toast } from 'sonner';
 
 import { DownloadIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
+import { useAppProfile } from '@/hooks/use-app-profile';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { usePublicFollowing } from '@/hooks/use-public-following';
 import { DataSettings } from '@/layouts/data-settings';
 import { api, describeMutationError } from '@/lib/api';
 
@@ -66,11 +68,68 @@ export function ExportSources() {
                     {busy ? 'Preparing export…' : 'Download OPML'}
                 </Button>
             </section>
-            <p className="mt-12 max-w-lg text-xs text-subtle-foreground">
+            <p className="mt-3 max-w-lg text-xs text-subtle-foreground">
                 Newsletters and native Standardfeed subscriptions are not
                 included. Your Standardfeed subscriptions remain on your PDS.
                 Exporting does not change your sources.
             </p>
+            <PublicFollowing />
         </DataSettings>
+    );
+}
+
+function PublicFollowing() {
+    const { enabled, busy, toggle } = usePublicFollowing();
+    return (
+        <section className="mt-12" aria-labelledby="public-following-title">
+            <h2 id="public-following-title" className="text-lg font-medium">
+                Public list
+            </h2>
+            <p className="mt-2 max-w-lg text-sm text-muted-foreground">
+                Publish the feeds you follow at a public address, for a
+                blogroll on your site. Anyone with the address sees each
+                feed’s title, link and tags. Newsletters are never included.
+            </p>
+            {enabled && <PublishedList />}
+            <Button
+                className="mt-5"
+                variant="secondary"
+                disabled={busy || enabled === undefined}
+                onClick={() => void toggle()}
+            >
+                {enabled ? 'Stop publishing' : 'Publish list'}
+            </Button>
+        </section>
+    );
+}
+
+function PublishedList() {
+    const profile = useAppProfile();
+    if (profile.kind !== 'ready') return null;
+    const base = `${window.location.origin}/user/${profile.profile.did}/following`;
+    return (
+        <>
+            <ul className="mt-5 space-y-2 text-sm">
+                {(['opml', 'json'] as const).map((format) => (
+                    <li key={format}>
+                        <a
+                            className="break-all underline underline-offset-4"
+                            href={`${base}.${format}`}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                        >
+                            {`${base}.${format}`}
+                        </a>
+                    </li>
+                ))}
+            </ul>
+            <p className="mt-3 max-w-lg text-xs text-subtle-foreground">
+                Narrow the list with <code>?tag=</code>,{' '}
+                <code>excludeTag=</code>, <code>kind=</code> or{' '}
+                <code>excludeKind=</code> (rss, youtube, standardfeed),{' '}
+                <code>primary=true</code>, and{' '}
+                <code>folders=none</code> for a flat OPML file.
+            </p>
+        </>
     );
 }

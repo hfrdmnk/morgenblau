@@ -105,6 +105,7 @@ type Querier interface {
 	ListNewsletterSaveTags(ctx context.Context, did string) ([]string, error)
 	ListNewsletterSaves(ctx context.Context, did string) ([]ListNewsletterSavesRow, error)
 	ListNewsletterSources(ctx context.Context, arg ListNewsletterSourcesParams) ([]ListNewsletterSourcesRow, error)
+	ListPublicFollowingSources(ctx context.Context, did string) ([]ListPublicFollowingSourcesRow, error)
 	ListUserSaveTags(ctx context.Context, did string) ([]*string, error)
 	// Newest first. The entry join resolves title/slug/target for saves whose entry
 	// is still cached; url is not unique in feed_entries, so the newest matching
@@ -148,12 +149,14 @@ type Querier interface {
 	PruneModelSpend(ctx context.Context, before string) error
 	PruneWebSourcePolls(ctx context.Context, arg PruneWebSourcePollsParams) error
 	PruneWebSourceRepairs(ctx context.Context, arg PruneWebSourceRepairsParams) error
+	PublicFollowingEnabled(ctx context.Context, did string) (bool, error)
 	PutAuthRequest(ctx context.Context, arg PutAuthRequestParams) error
 	PutSession(ctx context.Context, arg PutSessionParams) error
 	RekeyWebSource(ctx context.Context, arg RekeyWebSourceParams) error
 	ReplaceWebSourceSetup(ctx context.Context, arg ReplaceWebSourceSetupParams) error
 	SetFeedIconURL(ctx context.Context, arg SetFeedIconURLParams) error
 	SetNewsletterSourceStatus(ctx context.Context, arg SetNewsletterSourceStatusParams) error
+	SetPublicFollowing(ctx context.Context, arg SetPublicFollowingParams) error
 	SumModelSpendSince(ctx context.Context, since string) (float64, error)
 	TouchNewsletterSource(ctx context.Context, arg TouchNewsletterSourceParams) error
 	UpdateFeedEntryExtractedBody(ctx context.Context, arg UpdateFeedEntryExtractedBodyParams) error

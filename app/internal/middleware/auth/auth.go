@@ -161,9 +161,11 @@ var publicRoutes = map[string]string{
 
 // publicPrefixes are anonymous on purpose: feed readers fetch generated web source feeds without a session.
 // They match websource.FeedPaths; /web/ is the legacy alias existing subscriptions still name.
+// /user/ serves opted-in public following lists to blogrolls and SocialSpec readers.
 var publicPrefixes = []string{
 	"/feed/",
 	"/web/",
+	"/user/",
 }
 
 func isPublicPrefix(path string) bool {

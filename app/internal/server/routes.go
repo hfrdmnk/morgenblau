@@ -81,6 +81,12 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("PATCH /api/subscriptions/{rkey}", api.OneCommitPerRequest(api.SubscriptionsPatchHandler(s.qr, s.qw, gated, s.sync)))
 	mux.Handle("DELETE /api/subscriptions/{rkey}", api.OneCommitPerRequest(api.SubscriptionsDeleteHandler(s.qr, s.qw, gated, s.sync)))
 
+	mux.Handle("GET /api/public-following", api.PublicFollowingSettingHandler(s.qr))
+	mux.Handle("PUT /api/public-following", api.PublicFollowingSettingUpdateHandler(s.qw))
+	for _, format := range []string{"json", "opml"} {
+		mux.Handle("GET /user/{did}/following."+format, api.PublicFollowingHandler(s.qr, format))
+	}
+
 	mux.Handle("GET /api/favicon", api.FaviconProxyHandler(s.qr, s.safeClient))
 	mux.Handle("GET /api/avatars/{did}/{cid}", api.AvatarHandler(s.profiles, s.safeClient))
 
