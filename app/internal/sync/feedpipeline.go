@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"html"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -233,6 +234,8 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 			if !published.IsZero() {
 				publishedAt = published.UTC().Format(time.RFC3339)
 			}
+			// Ghost and others put entity-escaped text inside CDATA, which gofeed returns verbatim.
+			title := strings.TrimSpace(html.UnescapeString(item.Title))
 			body := chooseBody(item)
 			sanitized := p.sanitizer.Sanitize(body)
 			ct := classifyContentType(feedURL, item)
@@ -251,7 +254,7 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 				Guid:        guid,
 				EntrySlug:   EntrySlug(feedURL, guid),
 				Url:         item.Link,
-				Title:       nilIfEmpty(strings.TrimSpace(item.Title)),
+				Title:       nilIfEmpty(title),
 				ContentHtml: nilIfEmpty(sanitized),
 				ContentType: ct,
 				PublishedAt: publishedAt,

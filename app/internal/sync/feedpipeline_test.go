@@ -119,7 +119,7 @@ func TestFeedPipeline_FetchAndStore_HappyPath(t *testing.T) {
 <enclosure url="https://site.example.com/video.mp4" type="video/mp4" />
 </item>
 <item>
-<title>Post item</title>
+<title><![CDATA[ It&#x27;s a Q&amp;A ]]></title>
 <link>https://site.example.com/post</link>
 <guid>guid-post</guid>
 <description><![CDATA[<p>Plain post</p>]]></description>
@@ -147,6 +147,11 @@ func TestFeedPipeline_FetchAndStore_HappyPath(t *testing.T) {
 	}
 	if q.entries[1].ContentType != "blogpost" {
 		t.Errorf("second content type = %q, want blogpost", q.entries[1].ContentType)
+	}
+	if q.entries[1].Title == nil {
+		t.Errorf("second title = nil, want %q", "It's a Q&A")
+	} else if *q.entries[1].Title != "It's a Q&A" {
+		t.Errorf("second title = %q, want %q", *q.entries[1].Title, "It's a Q&A")
 	}
 	if q.entries[0].ContentHtml == nil || strings.Contains(*q.entries[0].ContentHtml, "<script") {
 		t.Errorf("first body was not sanitized: %v", q.entries[0].ContentHtml)
