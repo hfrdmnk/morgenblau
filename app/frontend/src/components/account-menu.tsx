@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { forgetShapes } from 'skullet';
 import { Link } from 'wouter';
 
 import { DownloadIcon, SettingsIcon, ShieldIcon, UploadIcon } from '@/components/icons';
@@ -78,7 +79,7 @@ export function AccountMenu({ profile }: { profile: AppProfile }) {
                         </Link>
                     ) : null}
                 </nav>
-                <form method="POST" action={PATHS.oauthLogout}>
+                <form method="POST" action={PATHS.oauthLogout} onSubmit={() => forgetShapes()}>
                     <Button
                         type="submit"
                         variant="secondary"

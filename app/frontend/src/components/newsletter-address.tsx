@@ -1,5 +1,6 @@
 import { useReducedMotion } from 'motion/react';
 import { useEffect, useId, useState, type MouseEvent } from 'react';
+import { Skeleton } from 'skullet/react';
 import { toast } from 'sonner';
 import { Link as RouterLink } from 'wouter';
 
@@ -99,16 +100,15 @@ function NewsletterAddressContent({
     settings: boolean;
     onNavigate?: () => void;
 }) {
-    if (status === 'ready') return <CopyNewsletterAddress address={address} />;
-    if (status === 'loading')
+    if (status !== 'failed')
         return (
-            <div
-                className="mt-4 flex h-10 items-center rounded-md bg-input px-3"
-                role="status"
+            <Skeleton
+                data={status === 'ready' ? address : null}
+                label="Loading your newsletter address"
+                sample="your-address@news.example.com"
             >
-                <span className="h-4 w-3/5 animate-pulse rounded bg-foreground/8 motion-reduce:animate-none" />
-                <span className="sr-only">Loading your newsletter address</span>
-            </div>
+                {(value) => <CopyNewsletterAddress address={value} />}
+            </Skeleton>
         );
     if (settings)
         return (

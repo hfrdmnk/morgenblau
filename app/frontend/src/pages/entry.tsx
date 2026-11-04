@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Skeleton } from 'skullet/react';
 import { Link, useLocation, useParams } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
@@ -81,13 +82,34 @@ function EntryLoader({ slug }: { slug: string }) {
         return () => controller.abort();
     }, [slug, attempt]);
 
-    if (state.status === 'loading') return <ReaderSkeleton />;
-    if (state.status === 'error') {
-        const status = state.error instanceof ApiError ? state.error.status : 0;
-        return <EntryError status={status} retry={() => { setState({ status: 'loading' }); setAttempt(attempt + 1); }} />;
-    }
-    return <Reader initialEntry={state.entry} initiallyExtracted={state.extracted} extractionFailed={state.extractionFailed} />;
+    const error = state.status === 'error' ? (
+        <EntryError
+            status={state.error instanceof ApiError ? state.error.status : 0}
+            retry={() => { setState({ status: 'loading' }); setAttempt(attempt + 1); }}
+        />
+    ) : undefined;
+    return (
+        <Skeleton data={state.status === 'loaded' ? state : null} error={error} id="entry" label="Loading entry" sample={SAMPLE_ENTRY}>
+            {(loaded) => <Reader initialEntry={loaded.entry} initiallyExtracted={loaded.extracted} extractionFailed={loaded.extractionFailed} />}
+        </Skeleton>
+    );
 }
+
+const SAMPLE_PARAGRAPH = 'A paragraph of sample text that stands in for the entry while it loads. It runs across several lines, about as long as a paragraph in a typical post, so the skeleton fills the column the way the article will.';
+
+const SAMPLE_ENTRY: Extract<EntryState, { status: 'loaded' }> = {
+    status: 'loaded',
+    extracted: true,
+    extractionFailed: false,
+    entry: {
+        entrySlug: 'sample',
+        title: 'A sample headline about as long as most entries have',
+        contentType: 'blogpost',
+        publishedAt: '2026-01-01T00:00:00Z',
+        body: `<p>${SAMPLE_PARAGRAPH}</p>`.repeat(3),
+        source: { title: 'Example Publication', siteUrl: 'https://example.com' },
+    },
+};
 
 function EntryError({ status, retry }: { status: number; retry: () => void }) {
     const messages: Record<number, [string, string]> = {
@@ -100,28 +122,6 @@ function EntryError({ status, retry }: { status: number; retry: () => void }) {
             <h1 className="text-2xl font-medium">{title}</h1>
             <p className="text-muted-foreground">{description}</p>
             {status === 401 ? <Link href={PATHS.login} className="underline">Sign in</Link> : status !== 404 ? <Button variant="secondary" onClick={retry}>Try again</Button> : null}
-        </div>
-    );
-}
-
-function ReaderSkeleton() {
-    return (
-        <div aria-label="Loading entry" role="status">
-            <div aria-hidden="true">
-                <div className="mb-4 h-5 w-28 rounded bg-muted" />
-                <div className="h-8 w-4/5 rounded bg-muted" />
-                <div className="mt-4 h-5 w-44 rounded bg-muted" />
-                <div className="mt-5 h-8 w-28 rounded bg-muted" />
-                <div className="mt-10 space-y-8">
-                    {[0, 1, 2].map((paragraph) => (
-                        <div className="space-y-3" key={paragraph}>
-                            <div className="h-5 w-full rounded bg-muted" />
-                            <div className="h-5 w-full rounded bg-muted" />
-                            <div className="h-5 w-3/4 rounded bg-muted" />
-                        </div>
-                    ))}
-                </div>
-            </div>
         </div>
     );
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Skeleton } from 'skullet/react';
 
 import { ListError } from '@/components/item-list';
 import { PersonAvatar } from '@/components/person-avatar';
@@ -19,6 +20,14 @@ type Person = SourceCounts & {
 
 type Usage = { totals: SourceCounts & { people: number }; people: Person[] };
 
+const SAMPLE_USAGE: Usage = {
+    totals: { people: 3, regular: 24, generated: 2, newsletter: 5 },
+    people: ['Example Person', 'Another Example', 'Sample Reader'].map((displayName, index) => ({
+        did: `did:plc:sample${index}`, handle: `reader${index}.example`, displayName, avatar: null,
+        lastActiveAt: '2026-01-01T00:00:00Z', regular: 8, generated: 1, newsletter: 2,
+    })),
+};
+
 const COUNT_COLUMNS = [
     { key: 'regular', label: 'Regular' },
     { key: 'generated', label: 'Generated' },
@@ -31,19 +40,27 @@ export function Admin() {
     return (
         <main aria-label="Admin" className="mx-auto w-full max-w-3xl space-y-14 px-5 pb-20 pt-20 sm:px-8 md:pt-24" id="main">
             <h1 className="sr-only">Usage</h1>
-            {usage.status === 'loaded' ? (
-                <>
-                    <Section title="Overview"><Totals totals={usage.data.totals} /></Section>
-                    <Section title="People"><People people={usage.data.people} /></Section>
-                </>
-            ) : usage.status === 'error' ? (
-                usage.notFound ? (
-                    <div className="space-y-3" role="alert">
-                        <h2 className="text-2xl font-medium">Not found</h2>
-                        <p className="text-muted-foreground">This page is only available to admins.</p>
+            <Skeleton
+                data={usage.status === 'loaded' ? usage.data : null}
+                error={usage.status === 'error' ? (
+                    usage.notFound ? (
+                        <div className="space-y-3" role="alert">
+                            <h2 className="text-2xl font-medium">Not found</h2>
+                            <p className="text-muted-foreground">This page is only available to admins.</p>
+                        </div>
+                    ) : <ListError label="usage" retry={usage.retry} />
+                ) : undefined}
+                id="admin-usage"
+                label="Loading usage"
+                sample={SAMPLE_USAGE}
+            >
+                {(data) => (
+                    <div className="space-y-14">
+                        <Section title="Overview"><Totals totals={data.totals} /></Section>
+                        <Section title="People"><People people={data.people} /></Section>
                     </div>
-                ) : <ListError label="usage" retry={usage.retry} />
-            ) : <AdminSkeleton />}
+                )}
+            </Skeleton>
         </main>
     );
 }
@@ -124,28 +141,5 @@ function PersonRow({ person }: { person: Person }) {
                 </p>
             ))}
         </li>
-    );
-}
-
-function AdminSkeleton() {
-    return (
-        <div aria-label="Loading usage" className="space-y-14" role="status">
-            <div className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-4">
-                {[0, 1, 2, 3].map((index) => (
-                    <div key={index}>
-                        <div className="h-5 w-24 animate-pulse rounded bg-muted motion-reduce:animate-none" />
-                        <div className="mt-2 h-9 w-12 animate-pulse rounded bg-muted motion-reduce:animate-none" />
-                    </div>
-                ))}
-            </div>
-            <div className="space-y-6">
-                {[64, 48, 56].map((width) => (
-                    <div className="flex items-center gap-3" key={width}>
-                        <div className="size-8 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
-                        <div className="h-5 animate-pulse rounded bg-muted motion-reduce:animate-none" style={{ width: `${width}%` }} />
-                    </div>
-                ))}
-            </div>
-        </div>
     );
 }

@@ -14,7 +14,7 @@ paths:
 
 ## Motion
 
-- Motion is for feedback and temporary context, in keeping with `BRAND.md`'s calm character: nothing decorative, looping or attention-seeking. The `/__dev/styleguide` Motion section shows the rules in use.
+- Motion is for feedback and temporary context, in keeping with `BRAND.md`'s calm character: nothing decorative, looping or attention-seeking. Loading skeletons are the exception: skullet's shimmer and reveals, themed in `src/main.tsx`. The `/__dev/styleguide` Motion section shows the rules in use.
 - CSS transitions take their durations from the `--motion-duration-*` tokens and easing from `--ease-*` in `src/index.css`, and list the properties they transition instead of `transition-all`.
 - Animate `transform`, `opacity` and `filter`. Size and position changes go through `motion`'s `layout`, or the keyframes the shadcn primitives already ship; never transition width, height or offsets by hand. `eslint.config.js` rejects `transition-all` and size or offset transitions in class strings outside `src/components/ui/`.
 - Reduced motion is part of every animation: the tokens collapse under `prefers-reduced-motion`, CSS animations sit behind `motion-safe:` or `motion-reduce:`, and `motion/react` code reads `useReducedMotion()` and goes instant.
@@ -39,7 +39,10 @@ paths:
 
 ## Loading
 
-- A page shows its own skeleton from the first frame. Import pages eagerly; never put a generic "Loading" screen in front of one. A `Suspense` fallback is `null` or the page's `*Skeleton`; `eslint.config.js` enforces that and rejects `lazy()` page imports.
+- Skeletons come from skullet's `Skeleton` (`skullet/react`): wrap what renders once data arrives, with a `sample` next to the component and an `id` for page-level content. Never hand-draw placeholder bars. skullet holds a skeleton back for 150ms, so a fast load shows none.
+- Content rendered from a `sample` mounts hidden while loading, so effects with visible side effects, like `useDocumentTitle`, belong outside the `Skeleton`.
+- Remembered shapes live in localStorage; sign-out clears them with `forgetShapes()`.
+- A page shows its own skeleton, never a generic "Loading" screen. Import pages eagerly. A `Suspense` fallback is `null` or the page's `*Skeleton`; `eslint.config.js` enforces that and rejects `lazy()` page imports.
 
 ## API
 

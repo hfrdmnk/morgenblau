@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
+import { Skeleton } from 'skullet/react';
 import { Link, useLocation } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
 import { AddSourceDialog } from '@/components/add-source-dialog';
-import { ItemList, ListError, ListItem, ListSkeleton, SourceIcon } from '@/components/item-list';
+import { ItemList, ListError, ListItem, SourceIcon } from '@/components/item-list';
 import { EmptyState } from '@/components/status-state';
 import { Button } from '@/components/ui/button';
 import { useDigest, type DigestEntry } from '@/hooks/use-digest';
@@ -54,19 +55,35 @@ function useDayShortcuts(selected: Date, today: Date) {
     });
 }
 
+type DigestData = Extract<ReturnType<typeof useDigest>, { status: 'loaded' }>['data'];
+
+const SAMPLE_SOURCE = { title: 'Example Publication', siteUrl: 'https://example.com', faviconUrl: null };
+const SAMPLE_DIGEST: DigestData = {
+    date: '2026-01-01',
+    hasActiveJob: false,
+    entries: [
+        { id: 1, entrySlug: 'a', title: 'A sample headline that runs about as long as most do', body: 'An opening sentence or two of the post, long enough to fill the two lines an excerpt shows here.', source: { ...SAMPLE_SOURCE, primary: true } },
+        ...['A shorter sample headline', 'Another sample headline of a typical length', 'A sample headline'].map((title, index) => (
+            { id: index + 2, entrySlug: `${index}`, title, body: null, source: SAMPLE_SOURCE }
+        )),
+    ],
+};
+
 function DigestContent({ date, state }: { date: string; state: ReturnType<typeof useDigest> }) {
-    if (state.status === 'loading') return <ListSkeleton label="Loading digest" />;
-    if (state.status === 'error') return <ListError label="this digest" retry={state.retry} />;
-    return <LoadedDigest date={date} digest={state.data} />;
+    return (
+        <Skeleton
+            data={state.status === 'loaded' ? state.data : null}
+            error={state.status === 'error' ? <ListError label="this digest" retry={state.retry} /> : undefined}
+            id="digest"
+            label="Loading digest"
+            sample={SAMPLE_DIGEST}
+        >
+            {(digest) => <LoadedDigest date={date} digest={digest} />}
+        </Skeleton>
+    );
 }
 
-function LoadedDigest({
-    date,
-    digest,
-}: {
-    date: string;
-    digest: Extract<ReturnType<typeof useDigest>, { status: 'loaded' }>['data'];
-}) {
+function LoadedDigest({ date, digest }: { date: string; digest: DigestData }) {
     if (digest.entries.length === 0) {
         if (digest.hasActiveJob) return <EmptyDay>New entries are still being collected.</EmptyDay>;
         return <EmptyDigest />;
@@ -101,11 +118,23 @@ function EmptyDay({ children }: { children: string }) {
 function EmptyDigest() {
     const feeds = useSources<FeedSource[]>('/api/subscriptions');
     const newsletters = useSources<{ active: unknown[]; stopped: unknown[] }>('/api/newsletters');
-    if (feeds.status === 'loading' || newsletters.status === 'loading') return <ListSkeleton label="Loading digest" />;
-    if (feeds.status === 'error') return <ListError label="your sources" retry={feeds.retry} />;
     // Servers without newsletter delivery answer 404 here, which means the reader has no newsletters.
-    const noSources = feeds.data.length === 0
-        && (newsletters.status === 'error' || newsletters.data.active.length === 0);
+    const noSources = feeds.status === 'loaded' && newsletters.status !== 'loading'
+        ? feeds.data.length === 0 && (newsletters.status === 'error' || newsletters.data.active.length === 0)
+        : null;
+    return (
+        <Skeleton
+            data={noSources}
+            error={feeds.status === 'error' ? <ListError label="your sources" retry={feeds.retry} /> : undefined}
+            label="Loading digest"
+            sample
+        >
+            {(empty) => <EmptyDigestState noSources={empty} />}
+        </Skeleton>
+    );
+}
+
+function EmptyDigestState({ noSources }: { noSources: boolean }) {
     if (!noSources) {
         return <EmptyState title="A quiet day." description="None of your sources published anything on this day." />;
     }

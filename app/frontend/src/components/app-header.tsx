@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { Skeleton } from 'skullet/react';
 import { Link, useLocation } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
@@ -58,6 +59,8 @@ const fullDate = new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
 });
 
+const SAMPLE_PROFILE = { did: 'did:plc:sample', handle: 'reader.example', displayName: null, avatar: null };
+
 export function AppHeader() {
     const [location] = useLocation();
     const profile = useAppProfile();
@@ -87,17 +90,14 @@ export function AppHeader() {
                 {isSettingsPath(location) ? <SettingsNav location={location} /> : null}
                 <div className="col-start-2 row-start-1 flex min-h-10 items-center justify-end gap-4 md:col-start-3">
                     <AddSourceDialog />
-                    {profile.kind === 'ready' ? (
-                        <AccountMenu profile={profile.profile} />
-                    ) : (
-                        <span
-                            aria-label={profile.kind === 'loading' ? 'Loading profile' : 'Profile unavailable'}
-                            role="img"
-                            className={cn('size-8 rounded-full bg-muted', {
-                                'animate-pulse motion-reduce:animate-none': profile.kind === 'loading',
-                            })}
-                        />
-                    )}
+                    <Skeleton
+                        data={profile.kind === 'ready' ? profile.profile : null}
+                        error={profile.kind === 'error' ? <span aria-label="Profile unavailable" role="img" className="block size-8 rounded-full bg-muted" /> : undefined}
+                        label="Loading profile"
+                        sample={SAMPLE_PROFILE}
+                    >
+                        {(ready) => <AccountMenu profile={ready} />}
+                    </Skeleton>
                 </div>
             </header>
             <nav ref={modeNavRef} aria-label="Modes" className="app-mode-nav">

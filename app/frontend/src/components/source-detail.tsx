@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
+import { Skeleton } from 'skullet/react';
 
 import { BackLink } from '@/components/back-link';
-import { ItemList, ListError, ListItem, ListSkeleton, SourceIcon } from '@/components/item-list';
-import { useDocumentTitle } from '@/hooks/use-document-title';
+import { ItemList, ListError, ListItem, SourceIcon } from '@/components/item-list';
 import { useSources, type SourceEntry } from '@/hooks/use-sources';
 import { entryHref, PATHS } from '@/lib/paths';
 import { formatDate } from '@/lib/source-display';
@@ -29,7 +29,6 @@ export function SourceHeader({ title, icon, identity, facts, tags = [], health, 
     health?: ReactNode;
     menu: ReactNode;
 }) {
-    useDocumentTitle(title);
     return (
         <header className="mb-14">
             <div className="flex min-w-0 items-center gap-3">
@@ -76,33 +75,35 @@ function EntriesBody({ label, from, state, empty }: {
     state: Loadable<SourceEntry[]>;
     empty: string;
 }) {
-    if (state.status === 'loading') return <ListSkeleton label={`Loading ${label}`} />;
-    if (state.status === 'error') return <ListError label={label} retry={state.retry} />;
-    if (!state.data.length) return <p className="text-sm text-muted-foreground">{empty}</p>;
     return (
-        <ItemList>
-            {state.data.map((entry) => (
-                <ListItem
-                    href={entryHref(entry.entrySlug, from)}
-                    key={entry.entrySlug}
-                    meta={formatDate(entry.publishedAt)}
-                    title={entry.title || 'Untitled'}
-                />
-            ))}
-        </ItemList>
+        <Skeleton
+            data={state.status === 'loaded' ? state.data : null}
+            error={state.status === 'error' ? <ListError label={label} retry={state.retry} /> : undefined}
+            id="source-entries"
+            label={`Loading ${label}`}
+            sample={SAMPLE_ENTRIES}
+        >
+            {(entries) => entries.length ? (
+                <ItemList>
+                    {entries.map((entry) => (
+                        <ListItem
+                            href={entryHref(entry.entrySlug, from)}
+                            key={entry.entrySlug}
+                            meta={formatDate(entry.publishedAt)}
+                            title={entry.title || 'Untitled'}
+                        />
+                    ))}
+                </ItemList>
+            ) : <p className="text-sm text-muted-foreground">{empty}</p>}
+        </Skeleton>
     );
 }
 
-export function SourceUnavailable<T>({ state, label }: { state: Exclude<Loadable<T>, { status: 'loaded' }>; label: string }) {
-    useDocumentTitle('Source');
-    if (state.status === 'loading') {
-        return (
-            <div aria-label={`Loading ${label}`} role="status">
-                <div className="h-9 w-3/5 animate-pulse rounded bg-muted motion-reduce:animate-none" />
-                <div className="mt-3 h-5 w-48 animate-pulse rounded bg-muted motion-reduce:animate-none" />
-            </div>
-        );
-    }
+const SAMPLE_ENTRIES: SourceEntry[] = ['A sample headline of a typical length', 'A shorter sample headline', 'Another sample headline that runs a little longer'].map((title, index) => ({
+    id: index, entrySlug: `${index}`, title, contentType: 'blogpost', publishedAt: '2026-01-01T00:00:00Z',
+}));
+
+export function SourceUnavailable({ state, label }: { state: Extract<Loadable<unknown>, { status: 'error' }>; label: string }) {
     if (state.notFound) {
         return (
             <div className="space-y-3" role="alert">

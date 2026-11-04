@@ -66,19 +66,6 @@ export function SourceIcon({ src, className }: { src?: string | null; className?
     );
 }
 
-export function ListSkeleton({ label }: { label: string }) {
-    return (
-        <div aria-label={label} className="space-y-8" role="status">
-            {[72, 88, 64].map((width) => (
-                <div key={width}>
-                    <div className="h-6.5 animate-pulse rounded bg-muted motion-reduce:animate-none" style={{ width: `${width}%` }} />
-                    <div className="mt-2 h-5 w-2/5 animate-pulse rounded bg-muted motion-reduce:animate-none" />
-                </div>
-            ))}
-        </div>
-    );
-}
-
 export function ListError({ label, retry }: { label: string; retry: () => void }) {
     return (
         <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground" role="alert">

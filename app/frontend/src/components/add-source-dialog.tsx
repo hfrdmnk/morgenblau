@@ -13,6 +13,7 @@ import {
     type ReactNode,
     type RefObject,
 } from 'react';
+import { Skeleton } from 'skullet/react';
 import { toast } from 'sonner';
 import { useLocation } from 'wouter';
 
@@ -965,6 +966,10 @@ function postDate(value?: string) {
     return (date.getFullYear() === new Date().getFullYear() ? POST_DAY : POST_DATE).format(date);
 }
 
+const SAMPLE_POSTS: PreviewPost[] = ['A sample post title of typical length', 'A shorter sample title', 'Another sample post title'].map((title) => (
+    { title, publishedAt: '2026-01-01T00:00:00Z' }
+));
+
 // A save pops its feed screen when it lands, so nothing may open on top of it meanwhile.
 function PostPreview({ candidate, disabled, onOpen }: { candidate: SourceCandidate; disabled: boolean; onOpen: (post: PreviewPost) => void }) {
     const label = useId();
@@ -983,36 +988,32 @@ function PostPreview({ candidate, disabled, onOpen }: { candidate: SourceCandida
         <section aria-labelledby={label}>
             <h3 className="text-xs text-muted-foreground" id={label}>Latest posts</h3>
             <div className="mt-2 min-h-27 pointer-coarse:min-h-33">
-                {posts === 'loading' ? (
-                    <ul aria-label="Loading latest posts" role="status">
-                        {[72, 48, 60].map((width) => (
-                            <li className="flex h-9 items-center justify-between gap-4 pointer-coarse:h-11" key={width}>
-                                <span className="h-3.5 animate-pulse rounded bg-muted motion-reduce:animate-none" style={{ width: `${width}%` }} />
-                                <span className="h-3 w-10 animate-pulse rounded bg-muted motion-reduce:animate-none" />
-                            </li>
-                        ))}
-                    </ul>
-                ) : posts === 'failed' ? (
-                    <p className="pt-3 text-sm text-muted-foreground">Recent posts couldn’t be loaded.</p>
-                ) : posts.length ? (
-                    <ol>
-                        {posts.map((post, index) => (
-                            <li key={index}>
-                                <button
-                                    className="-mx-2 flex h-9 w-[calc(100%+1rem)] pointer-coarse:h-11 cursor-pointer items-center justify-between disabled:pointer-events-none gap-4 rounded-md px-2 text-left text-sm transition-[background-color] duration-(--motion-duration-fast) hover:bg-secondary/60"
-                                    disabled={disabled}
-                                    onClick={() => onOpen(post)}
-                                    type="button"
-                                >
-                                    <span className="min-w-0 truncate" title={post.title}>{post.title || 'Untitled'}</span>
-                                    <span className="shrink-0 text-xs text-subtle-foreground tabular-nums">{postDate(post.publishedAt)}</span>
-                                </button>
-                            </li>
-                        ))}
-                    </ol>
-                ) : (
-                    <p className="pt-3 text-sm text-muted-foreground">Nothing published yet. New posts reach your newspaper as they appear.</p>
-                )}
+                <Skeleton
+                    data={posts === 'loading' || posts === 'failed' ? null : posts}
+                    error={posts === 'failed' ? <p className="pt-3 text-sm text-muted-foreground">Recent posts couldn’t be loaded.</p> : undefined}
+                    label="Loading latest posts"
+                    sample={SAMPLE_POSTS}
+                >
+                    {(items) => items.length ? (
+                        <ol>
+                            {items.map((post, index) => (
+                                <li key={index}>
+                                    <button
+                                        className="-mx-2 flex h-9 w-[calc(100%+1rem)] pointer-coarse:h-11 cursor-pointer items-center justify-between disabled:pointer-events-none gap-4 rounded-md px-2 text-left text-sm transition-[background-color] duration-(--motion-duration-fast) hover:bg-secondary/60"
+                                        disabled={disabled}
+                                        onClick={() => onOpen(post)}
+                                        type="button"
+                                    >
+                                        <span className="min-w-0 truncate" title={post.title}>{post.title || 'Untitled'}</span>
+                                        <span className="shrink-0 text-xs text-subtle-foreground tabular-nums">{postDate(post.publishedAt)}</span>
+                                    </button>
+                                </li>
+                            ))}
+                        </ol>
+                    ) : (
+                        <p className="pt-3 text-sm text-muted-foreground">Nothing published yet. New posts reach your newspaper as they appear.</p>
+                    )}
+                </Skeleton>
             </div>
         </section>
     );
@@ -1117,11 +1118,11 @@ function ArticleBody({ body, url, original, pending, hasNotice }: {
         );
     if (pending)
         return (
-            <div aria-label="Loading article" className="space-y-3" role="status">
-                {[100, 100, 70].map((width, index) => (
-                    <div className="h-5 animate-pulse rounded bg-muted motion-reduce:animate-none" key={index} style={{ width: `${width}%` }} />
-                ))}
-            </div>
+            <Skeleton label="Loading article" loading>
+                <div className="reader-body" data-font={font}>
+                    <p>A paragraph of sample text that stands in for the article while it loads, running across a few lines.</p>
+                </div>
+            </Skeleton>
         );
     if (hasNotice) return null;
     return (
