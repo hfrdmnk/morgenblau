@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+<channel>
+<title>Example Image Feed</title>
+<link>{{ORIGIN}}/</link>
+<description>An entry with a lead image and a body image for verify runs.</description>
+<item>
+<title>Fixture entry with images</title>
+<link>{{ORIGIN}}/posts/images</link>
+<guid isPermaLink="false">example-fixture-images</guid>
+<pubDate>{{NOW_RFC822}}</pubDate>
+<media:content url="{{ORIGIN}}/images/lead.png" medium="image" type="image/png"/>
+<description>&lt;p&gt;A fixture entry whose body shows an image.&lt;/p&gt;&lt;p&gt;&lt;img src="{{ORIGIN}}/images/body.png" alt="Example body image"&gt;&lt;/p&gt;</description>
+</item>
+</channel>
+</rss>

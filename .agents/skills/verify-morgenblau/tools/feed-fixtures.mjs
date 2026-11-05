@@ -12,6 +12,8 @@ const origin = `http://127.0.0.1:${fixturePort}`
 const decoyOrigin = `http://127.0.0.1:${decoyPort}`
 // gofeed reads up to the fetcher's 5 MiB cap; one byte more makes the feed too large.
 const HUGE_BYTES = 5 * 1024 * 1024 + 1024
+// A 16x12 gradient PNG, small enough to inline; feeds/images.xml points its lead and body images here.
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAMBAMAAACZySCyAAAAJFBMVEUrbLA9d6lQgaFijJp1lpKHoYuaq4Ostny/wHTRy23k1WX24F6DyBZgAAAAMUlEQVQI12NggAFBKGBQggIGYyhgcIEChlAoYEiDAoZyKGDogAKGmVDAsAoKGHZDAQC6UCMRxM84EQAAAABJRU5ErkJggg==', 'base64')
 let toggleUp = true
 let undatedLater = false
 
@@ -44,6 +46,9 @@ const feeds = {
   '/feeds/stale.xml': () => ['application/rss+xml; charset=utf-8', render('stale.xml')],
   '/feeds/broken.xml': () => ['application/rss+xml; charset=utf-8', render('broken.xml')],
   '/feeds/undated.xml': () => ['application/rss+xml; charset=utf-8', render('undated.xml')],
+  '/feeds/images.xml': () => ['application/rss+xml; charset=utf-8', render('images.xml')],
+  '/images/lead.png': () => ['image/png', PNG],
+  '/images/body.png': () => ['image/png', PNG],
   '/feeds/latin1.xml': () => ['application/rss+xml; charset=ISO-8859-1', Buffer.from(render('latin1.xml'), 'latin1')],
   // The site's SocialSpec profile (socialspec.org), read by the add-source sheet.
   '/.well-known/about.md': () => ['text/markdown; charset=utf-8', render('well-known/about.md')],

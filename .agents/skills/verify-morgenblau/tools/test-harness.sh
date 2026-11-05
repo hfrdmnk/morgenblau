@@ -326,6 +326,11 @@ test_feed_fixtures_serve_each_case() {
     grep -q "<link>$origin/posts/fresh</link>" "$tmp/valid.xml"
     fresh_fixture_date "$(sed -n 's|.*<pubDate>\(.*\)</pubDate>.*|\1|p' "$tmp/valid.xml" | head -1)"
     fresh_fixture_date "$(curl -fsS "$origin/feeds/atom.xml" | sed -n 's|.*<published>\(.*\)</published>.*|\1|p')"
+    curl -fsS "$origin/feeds/images.xml" >"$tmp/images.xml"
+    grep -q "<media:content url=\"$origin/images/lead.png\" medium=\"image\"" "$tmp/images.xml"
+    grep -q "&lt;img src=\"$origin/images/body.png\"" "$tmp/images.xml"
+    [[ "$(curl -fsS -o "$tmp/lead.png" -w '%{content_type}' "$origin/images/lead.png")" == image/png ]]
+    [[ "$(head -c 8 "$tmp/lead.png" | od -An -tx1 | tr -d ' \n')" == 89504e470d0a1a0a ]]
     [[ "$(curl -fsS -o /dev/null -w '%{content_type}' "$origin/feeds/latin1.xml")" == *ISO-8859-1 ]]
     curl -fsS "$origin/feeds/latin1.xml" | grep -q $'Gr\xfc\xdfe aus Z\xfcrich'
     [[ "$(curl -fsS "$origin/feeds/huge.xml" | wc -c)" -gt $((5 * 1024 * 1024)) ]]

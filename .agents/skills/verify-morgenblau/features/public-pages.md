@@ -7,7 +7,7 @@ Help article: none
 ## Sub-features
 
 - `about` `/about` is a server-rendered page describing Morgenblau.
-- `health` `/api/health` answers `200` with `{"status":"up"}`, or still `200` with `{"status":"down","error":...}` when the database ping fails (`healthHandler` in `internal/server/routes.go`).
+- `health` `/api/health` answers `200` with `{"status":"up"}`, or `503` with `{"status":"down"}` and no error detail when the database ping fails (`healthHandler` in `internal/server/routes.go`; not drivable on a live instance, covered by `TestHealthReturnsUnavailableWhenDatabaseIsClosed`).
 - `web-feed` `GET /feed/<id>`, and its legacy alias `GET /web/<id>`, serve a generated feed as RSS without a session, so other feed readers can follow it too; an unknown id is `404` ([generated-feeds](./generated-feeds.md)).
 - `oauth-metadata` `/oauth-client-metadata.json` and `/oauth-jwks.json` serve the OAuth client documents.
 - `dev-routes-local-only` `/__dev/*` exists only when `APP_ENV=local`; `/__dev/login` also needs `DEV_LOGIN_ENABLED=true` and a valid account (`LoadDevConfig` in `internal/session/dev.go`), which `up` creates on the run's PDS.

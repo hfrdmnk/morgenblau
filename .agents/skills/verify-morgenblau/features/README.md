@@ -19,8 +19,8 @@ UI and public:
 - [Daily digest](./digest.md): `/` and `/?date=`, the header date navigation, digest API, entry API.
 - [Entry reader](./entry-reader.md): `/entry/<slug>`, `Load full article` (extract), newsletter inline assets and `Load images`, `Back to digest`.
 - [Subscriptions and Sources](./subscriptions.md): `/sources`, the `Add a source` dialog, the mode selector, resolve, add, edit, remove (PDS writes).
-- [Generated feeds](./generated-feeds.md): `Generate a feed` for a page without one, the preview, pointing at a post, blocked sites, the hourly limit, generated-feed health on `/sources`, the public `/feed/<id>` feed and its `/web/<id>` alias, section pages and their aliases, Livewire lazy lists, browser-built pages.
-- [Import and export](./import-export.md): `/settings/import` (OPML, Skyreader, Glean), `/settings/export`, the import and export API (PDS writes).
+- [Generated feeds](./generated-feeds.md): `Generate a feed` for a page without one, the preview, pointing at a post, blocked sites, the hourly limit, generated-feed health on `/sources`, the public `/feed/<id>` feed and its `/web/<id>` alias, section pages and their aliases, browser-built pages.
+- [Import and export](./import-export.md): `/settings/import` (OPML, Skyreader, Glean), `/settings/export`, the import and export API (PDS writes), the public following list (`/user/<did>/following.opml|json`).
 
 API and background:
 
@@ -41,4 +41,5 @@ Isolation:
 - Library page: `frontend/src/pages/library.tsx` (placeholder).
 - OAuth with the production confidential client: only the loopback public client runs on an instance (see [sign-in](./sign-in.md) gotchas).
 - Favicon proxy: `GET /api/favicon` in `internal/api/favicon.go`.
+- Avatar proxy: `GET /api/avatars/{did}/{cid}` in `internal/api/avatar.go` (a thumbnail of the profile's avatar blob; run accounts have no avatar).
 - Dev styleguide: `/__dev/styleguide` from `frontend/src/dev/` (development-only).
