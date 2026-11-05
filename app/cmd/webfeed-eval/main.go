@@ -127,14 +127,13 @@ func main() {
 	}
 	safe := safehttp.NewClient(opts.timeout, 5)
 	// Discovery is composed as in internal/server: the same finder with the Standardfeed probes.
-	e := env{client: safe, post: safehttp.NewClient(opts.timeout, 0), standard: standardfeed.NewClient(atidentity.Guarded(safe), safe)}
+	e := env{client: safe, standard: standardfeed.NewClient(atidentity.Guarded(safe), safe)}
 	if opts.cacheDir != "" {
 		if err := os.MkdirAll(opts.cacheDir, 0o700); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		e.client = cachingDoer{dir: opts.cacheDir, next: e.client}
-		e.post = cachingDoer{dir: opts.cacheDir, next: e.post}
 	}
 	if opts.judge == "haiku" {
 		model, err := newModel(os.Getenv("ANTHROPIC_API_KEY"))
@@ -152,9 +151,7 @@ func main() {
 
 // env holds what run fetches and asks through; a nil model or standard resolver turns that step off.
 type env struct {
-	client webfeed.Doer
-	// post sends Livewire's lazy-list POST and must not follow redirects; nil leaves lazy lists unloaded.
-	post     webfeed.Doer
+	client   webfeed.Doer
 	standard feedfinder.StandardResolver
 	model    webfeed.Model
 }
@@ -210,16 +207,11 @@ func evalSite(ctx context.Context, s site, opts options, e env) result {
 		}
 		client = snapshotDoer{listingURL: s.ListingURL, body: body, next: client}
 	}
-	post := e.post
 	if opts.explain {
-		gets, posts := &countingDoer{next: client}, &countingDoer{next: post}
+		gets := &countingDoer{next: client}
 		client = gets
-		if post != nil {
-			post = posts
-		}
 		defer func() {
-			slog.Info("fetches", "id", s.ID, "requests", gets.requests.Load()+posts.requests.Load(),
-				"posts", gets.posts.Load()+posts.posts.Load(), "bytes", gets.bytes.Load()+posts.bytes.Load())
+			slog.Info("fetches", "id", s.ID, "requests", gets.requests.Load(), "bytes", gets.bytes.Load())
 		}()
 	}
 	if !opts.skipFeed {
@@ -237,7 +229,7 @@ func evalSite(ctx context.Context, s site, opts options, e env) result {
 			return feedRoute(ctx, client, r, cands)
 		}
 	}
-	res, err := webfeed.Setup(ctx, s.ListingURL, webfeed.Options{Client: client, PostClient: post, Model: e.model})
+	res, err := webfeed.Setup(ctx, s.ListingURL, webfeed.Options{Client: client, Model: e.model})
 	if err != nil {
 		r.Health, r.Error = "failed", err.Error()
 		return r
@@ -315,15 +307,11 @@ func (d snapshotDoer) Do(req *http.Request) (*http.Response, error) {
 type countingDoer struct {
 	next     webfeed.Doer
 	requests atomic.Int64
-	posts    atomic.Int64
 	bytes    atomic.Int64
 }
 
 func (c *countingDoer) Do(req *http.Request) (*http.Response, error) {
 	c.requests.Add(1)
-	if req.Method == http.MethodPost {
-		c.posts.Add(1)
-	}
 	resp, err := c.next.Do(req)
 	if err != nil {
 		return nil, err

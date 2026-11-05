@@ -9,8 +9,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"morgenblau/internal/safehttp"
 )
 
 // testSite is an invented publication served over httptest, recording how it was fetched.
@@ -90,7 +88,7 @@ func (s *testSite) url(path string) string { return s.srv.URL + path }
 func (s *testSite) host() string { return strings.TrimPrefix(s.srv.URL, "http://") }
 
 func (s *testSite) opts() Options {
-	return Options{Client: s.srv.Client(), PostClient: safehttp.NewClient(5*time.Second, 0, safehttp.WithAllowLoopback())}
+	return Options{Client: s.srv.Client()}
 }
 
 // article is a post page with og:title and a publish date.

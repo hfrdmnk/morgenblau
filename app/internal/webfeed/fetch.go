@@ -40,7 +40,6 @@ type response struct {
 
 type session struct {
 	client   Doer
-	post     Doer
 	mu       sync.Mutex
 	lang     string
 	cache    map[string]*response
@@ -57,7 +56,7 @@ var ErrUnreachable = errors.New("webfeed: site unreachable")
 var errBudget = errors.New("webfeed: setup byte budget spent")
 
 func newSession(opts Options) *session {
-	s := &session{client: opts.Client, post: opts.PostClient, budget: opts.MaxSetupBytes, cache: map[string]*response{}, articles: map[string]*articleInfo{}, robots: map[string]robots{}}
+	s := &session{client: opts.Client, budget: opts.MaxSetupBytes, cache: map[string]*response{}, articles: map[string]*articleInfo{}, robots: map[string]robots{}}
 	if s.budget <= 0 {
 		s.budget = defaultMaxSetupBytes
 	}
@@ -68,12 +67,6 @@ func (s *session) setLang(lang string) {
 	s.mu.Lock()
 	s.lang = safehttp.LanguageTag(lang)
 	s.mu.Unlock()
-}
-
-func (s *session) language() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.lang
 }
 
 // cacheKey includes the language, since Accept-Language can change what a page returns.

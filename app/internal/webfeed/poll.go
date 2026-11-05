@@ -87,14 +87,6 @@ func Poll(ctx context.Context, in PollInput, opts Options) (*PollResult, error) 
 		return broken(out, reason, blocked), nil
 	}
 
-	if wantHTML {
-		var expanded bool
-		resp, expanded = s.expandLazy(ctx, resp, r.Lang, opts.Robots)
-		// The shell alone reads as an emptied list, which would send a passing outage to a paid repair.
-		if r.Lazy && !expanded && len(scanLivewire(resp.body).placeholders) > 0 {
-			return broken(out, ReasonUnreachable, false), nil
-		}
-	}
 	var p *pageDoc
 	var items []Item
 	body := resp.body
@@ -213,10 +205,10 @@ func broken(out *PollResult, reason Reason, blocked bool) *PollResult {
 	return out
 }
 
-// pollFetch is one GET, conditional unless the poll must see the page or the page is a lazy list's unchanging shell.
+// pollFetch is one GET, conditional unless the poll must see the page.
 func (s *session) pollFetch(ctx context.Context, rawURL, lang string, in PollInput) *response {
 	h := http.Header{}
-	if !in.Unconditional && !in.Recipe.Lazy {
+	if !in.Unconditional {
 		if in.ETag != "" {
 			h.Set("If-None-Match", in.ETag)
 		}

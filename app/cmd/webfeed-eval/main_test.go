@@ -199,8 +199,8 @@ func TestCountingDoerTalliesRequestsAndBodyBytes(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := &countingDoer{next: srv.Client()}
-	for _, method := range []string{http.MethodGet, http.MethodPost} {
-		req, _ := http.NewRequest(method, srv.URL+"/page", nil)
+	for range 2 {
+		req, _ := http.NewRequest(http.MethodGet, srv.URL+"/page", nil)
 		resp, err := c.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -208,44 +208,7 @@ func TestCountingDoerTalliesRequestsAndBodyBytes(t *testing.T) {
 		_, _ = io.ReadAll(resp.Body)
 		resp.Body.Close()
 	}
-	if c.requests.Load() != 2 || c.posts.Load() != 1 || c.bytes.Load() != 200 {
-		t.Fatalf("requests %d, posts %d, bytes %d", c.requests.Load(), c.posts.Load(), c.bytes.Load())
-	}
-}
-
-func TestEvalLoadsLivewireLazyListsThroughThePostClient(t *testing.T) {
-	posts := []string{"How we rebuilt the reading queue", "A quieter way to follow the news", "Shipping the offline mode for readers", "What we learned from daily digests", "Designing calm notifications for readers"}
-	var list strings.Builder
-	list.WriteString(`<ul class="posts">`)
-	for i, p := range posts {
-		fmt.Fprintf(&list, `<li><h2><a href="/blog/%s">%s</a></h2><time datetime="2024-03-%02d"></time></li>`, strings.ReplaceAll(strings.ToLower(p), " ", "-"), p, 10-i)
-	}
-	list.WriteString(`</ul>`)
-	shell := `<!doctype html><html lang="en"><head><title>Blog</title></head><body><main>` +
-		`<section wire:snapshot="{&quot;memo&quot;:{&quot;id&quot;:&quot;c1&quot;}}" x-init="$wire.__lazyLoad('eyJsaXN0IjoxfQ')"><span>Loading</span></section>` +
-		`</main><script src="/livewire/livewire.min.js" data-csrf="token-123" data-update-uri="/livewire/update"></script></body></html>`
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/blog":
-			fmt.Fprint(w, shell)
-		case r.URL.Path == "/livewire/update" && r.Method == http.MethodPost:
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"components": []any{map[string]any{"effects": map[string]string{"html": "<section>" + list.String() + "</section>"}}}})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(srv.Close)
-	var out bytes.Buffer
-	opts := options{judge: "off", concurrency: 1, timeout: 10 * time.Second, skipFeed: true}
-	if err := run(context.Background(), []site{{ID: "lazy", ListingURL: srv.URL + "/blog"}}, opts, env{client: srv.Client(), post: srv.Client()}, &out); err != nil {
-		t.Fatal(err)
-	}
-	var got output
-	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if r := got.Results[0]; len(r.Items) != len(posts) {
-		t.Fatalf("result = %+v, want the lazy list's %d posts", r, len(posts))
+	if c.requests.Load() != 2 || c.bytes.Load() != 200 {
+		t.Fatalf("requests %d, bytes %d", c.requests.Load(), c.bytes.Load())
 	}
 }

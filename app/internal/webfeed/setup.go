@@ -1,7 +1,6 @@
 package webfeed
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,9 +17,6 @@ import (
 type Options struct {
 	// Client fetches every page; it must be SSRF-safe for attacker-chosen URLs.
 	Client Doer
-	// PostClient sends the one POST that loads a Livewire lazy list; it must be SSRF-safe and must not follow redirects,
-	// since a 307 or 308 re-sends the body to any host. Nil skips lazy lists.
-	PostClient Doer
 	// Model judges unsure setups and writes a CSS recipe when fewer than 3 items survive; nil keeps the heuristic's
 	// pick, records that the judge was wanted and skips induction.
 	Model Model
@@ -150,11 +146,6 @@ func (s *session) setup(ctx context.Context, listingURL, anchorURL string, model
 	if _, blocked := resp.refusal(); blocked {
 		return s.sitemapSetup(ctx, res, u, rb)
 	}
-	lazy, expanded := s.expandLazy(ctx, resp, s.language(), nil)
-	unloaded := !expanded && bytes.Contains(resp.body, lazyMarker)
-	if expanded {
-		resp, rec.Lazy = lazy, true
-	}
 	p, err := listingPage(resp)
 	if err != nil {
 		return nil, err
@@ -174,8 +165,7 @@ func (s *session) setup(ctx context.Context, listingURL, anchorURL string, model
 	rec.Setup.Confidence, rec.Setup.Margin = round2(conf), round2(margin)
 	// Checked before the judge, which would otherwise pick the least wrong of the lists the page serves without its posts.
 	// Small server-rendered pages also mount into an app root, so an app root counts only when the page serves no list.
-	unsure := len(top) == 0 || conf < judgeBelowConfidence
-	if anchorURL == "" && ((unloaded && unsure) || (len(top) == 0 && emptyTier0(p, resp.body) == ReasonSPAShell)) {
+	if anchorURL == "" && len(top) == 0 && emptyTier0(p, resp.body) == ReasonSPAShell {
 		res.Reasons = []Reason{ReasonSPAShell}
 		return res, nil
 	}

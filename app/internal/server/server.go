@@ -164,7 +164,6 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		return nil, nil, fmt.Errorf("load local network: %w", err)
 	}
 	safeClient := safehttp.NewClient(30*time.Second, 5)
-	webPostClient := safehttp.NewClient(30*time.Second, 0)
 	// Well under the server's WriteTimeout, so a sender that confirms late still leaves time to delete and answer the reader.
 	unsubscribeClient := safehttp.NewClient(10*time.Second, 0)
 	identityDir := atidentity.Guarded(safeClient)
@@ -174,7 +173,6 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	if localNet != nil {
 		slog.Info("local PLC and PDS enabled", "plc", localNet.plc, "pds", localNet.pds, "feed_fixture_port", localNet.feedFixture)
 		safeClient = safehttp.NewClient(30*time.Second, 5, safehttp.WithAllowLoopbackPorts(localNet.ports...))
-		webPostClient = safehttp.NewClient(30*time.Second, 0, safehttp.WithAllowLoopbackPorts(localNet.ports...))
 		unsubscribeClient = safehttp.NewClient(10*time.Second, 0, safehttp.WithAllowLoopbackPorts(localNet.ports...))
 		identityDir = atidentity.Local(safeClient, localNet.plc, localNet.pds)
 		oauthApp = newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
@@ -194,7 +192,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 
 	profileCache := profiles.New(identityDir, profiles.PDSFetcher{Client: safeClient})
 	tracker := jobs.New()
-	webGenerator, webModel, err := newWebGenerator(safeClient, webPostClient, claude.Config{APIKey: os.Getenv("ANTHROPIC_API_KEY")})
+	webGenerator, webModel, err := newWebGenerator(safeClient, claude.Config{APIKey: os.Getenv("ANTHROPIC_API_KEY")})
 	if err != nil {
 		_ = db.Close()
 		return nil, nil, fmt.Errorf("configure feed generation: %w", err)

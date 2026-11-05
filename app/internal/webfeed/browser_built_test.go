@@ -3,7 +3,6 @@ package webfeed
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"testing"
 )
 
@@ -29,42 +28,6 @@ func TestSetupReportsAnAppShellAsBrowserBuiltWithoutAskingTheModel(t *testing.T)
 	}
 	if len(m.prompts) != 0 {
 		t.Fatalf("model asked %d times", len(m.prompts))
-	}
-}
-
-func TestSetupReportsAnUnloadedLazyListAsBrowserBuiltBeforeTheJudge(t *testing.T) {
-	l := lazyBlog(t, 6)
-	l.postStatus = http.StatusInternalServerError
-	m := &fakeModel{replies: map[Effort][]string{EffortHigh: {`{"pick":[0],"order":"page"}`}}}
-	opts := l.opts()
-	opts.Model = m
-
-	res, err := Setup(context.Background(), l.url("/blog"), opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !res.BrowserBuilt() || len(res.Items) != 0 {
-		t.Fatalf("browser built %v reasons %v items %v", res.BrowserBuilt(), res.Reasons, itemURLs(res.Items))
-	}
-	if len(m.prompts) != 0 {
-		t.Fatalf("judge asked %d times about a list the page never loaded", len(m.prompts))
-	}
-}
-
-func TestSetupKeepsAServedListBesideALazyWidget(t *testing.T) {
-	l := newLazySite(t)
-	l.addBlog(6)
-	l.postStatus = http.StatusInternalServerError
-	widget := placeholder("x-intersect", lazyParam)
-	script := `<script src="/livewire/livewire.min.js?id=1a2b" data-csrf="" data-update-uri="/livewire/update"></script>`
-	l.set("/blog", page("Blog | Example Publication", siteNav+blogList(6)+`<aside>`+widget+`</aside>`+siteFooter+script))
-
-	res, err := Setup(context.Background(), l.url("/blog"), l.opts())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.BrowserBuilt() || !res.Healthy() || len(res.Items) != 6 {
-		t.Fatalf("browser built %v reasons %v items %v", res.BrowserBuilt(), res.Reasons, itemURLs(res.Items))
 	}
 }
 
