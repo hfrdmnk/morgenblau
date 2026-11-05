@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -462,5 +463,103 @@ func TestNewsletterErrors_InvalidAndInternal(t *testing.T) {
 		if rr.Code != tt.want {
 			t.Errorf("error %v: status = %d, want %d", tt.err, rr.Code, tt.want)
 		}
+	}
+}
+
+type fakeUnsubscribeService struct {
+	url       string
+	urlErr    error
+	deletedID string
+}
+
+func (f *fakeUnsubscribeService) UnsubscribeURL(_ context.Context, did, id string) (string, error) {
+	if did != "did:plc:alice" || id != "source-1" {
+		return "", newsletter.ErrNotFound
+	}
+	return f.url, f.urlErr
+}
+
+func (f *fakeUnsubscribeService) DeleteSource(_ context.Context, did, id string) error {
+	if did != "did:plc:alice" || id != "source-1" {
+		return newsletter.ErrNotFound
+	}
+	f.deletedID = id
+	return nil
+}
+
+func TestNewsletterUnsubscribe_DeletesOnlyAfterTheSenderConfirms(t *testing.T) {
+	cases := map[string]struct {
+		senderStatus int
+		urlErr       error
+		wantStatus   int
+		wantPost     bool
+		wantDeleted  bool
+	}{
+		"sender confirms":              {senderStatus: http.StatusOK, wantStatus: http.StatusNoContent, wantPost: true, wantDeleted: true},
+		"sender confirms with no body": {senderStatus: http.StatusNoContent, wantStatus: http.StatusNoContent, wantPost: true, wantDeleted: true},
+		"sender fails":                 {senderStatus: http.StatusInternalServerError, wantStatus: http.StatusBadGateway, wantPost: true},
+		"sender redirects":             {senderStatus: http.StatusFound, wantStatus: http.StatusBadGateway, wantPost: true},
+		"sender gone":                  {senderStatus: http.StatusNotFound, wantStatus: http.StatusBadGateway, wantPost: true},
+		"no one-click header":          {urlErr: newsletter.ErrUnsubscribeUnsupported, wantStatus: http.StatusUnprocessableEntity},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var posted bool
+			sender := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				posted = true
+				body, _ := io.ReadAll(r.Body)
+				if r.Method != http.MethodPost || r.URL.RequestURI() != "/u/opaque?list=weekly" ||
+					r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" || string(body) != "List-Unsubscribe=One-Click" {
+					t.Errorf("request = %s %s %q %q, want the RFC 8058 one-click POST", r.Method, r.URL.RequestURI(), r.Header.Get("Content-Type"), body)
+				}
+				if tc.senderStatus == http.StatusFound {
+					w.Header().Set("Location", "/confirmed")
+				}
+				w.WriteHeader(tc.senderStatus)
+			}))
+			defer sender.Close()
+			client := sender.Client()
+			client.CheckRedirect = func(*http.Request, []*http.Request) error { return errors.New("redirect refused") }
+			service := &fakeUnsubscribeService{url: sender.URL + "/u/opaque?list=weekly", urlErr: tc.urlErr}
+			mux := http.NewServeMux()
+			mux.Handle("POST /api/newsletters/{id}/unsubscribe", NewsletterUnsubscribeHandler(service, client))
+			rr := httptest.NewRecorder()
+			mux.ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodPost, "/api/newsletters/source-1/unsubscribe", nil), "did:plc:alice", "sid-1"))
+
+			if rr.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d; body %s", rr.Code, tc.wantStatus, rr.Body.String())
+			}
+			if posted != tc.wantPost {
+				t.Fatalf("posted = %v, want %v", posted, tc.wantPost)
+			}
+			if deleted := service.deletedID == "source-1"; deleted != tc.wantDeleted {
+				t.Fatalf("deleted = %v, want %v", deleted, tc.wantDeleted)
+			}
+		})
+	}
+}
+
+func TestNewsletterUnsubscribe_AnotherOwnersSourceIs404WithoutAPost(t *testing.T) {
+	service := &fakeUnsubscribeService{url: "https://lists.example.com/u/opaque"}
+	mux := http.NewServeMux()
+	mux.Handle("POST /api/newsletters/{id}/unsubscribe", NewsletterUnsubscribeHandler(service, &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("posted for a source the reader does not own")
+		return nil, nil
+	})}))
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodPost, "/api/newsletters/not-mine/unsubscribe", nil), "did:plc:alice", "sid-1"))
+	if rr.Code != http.StatusNotFound || service.deletedID != "" {
+		t.Fatalf("status = %d, deleted %q; want 404 and nothing deleted", rr.Code, service.deletedID)
+	}
+}
+
+func TestNewsletterDelete_DeletesWithoutContactingTheSender(t *testing.T) {
+	service := &fakeUnsubscribeService{}
+	mux := http.NewServeMux()
+	mux.Handle("DELETE /api/newsletters/{id}", NewsletterDeleteHandler(service))
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodDelete, "/api/newsletters/source-1", nil), "did:plc:alice", "sid-1"))
+	if rr.Code != http.StatusNoContent || service.deletedID != "source-1" {
+		t.Fatalf("status = %d, deleted %q; want 204 and source-1 deleted", rr.Code, service.deletedID)
 	}
 }

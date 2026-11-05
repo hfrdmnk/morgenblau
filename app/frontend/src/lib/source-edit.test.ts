@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 
-import { addTags, canAddTags, hasOverlongTag, removeSource, renameSource, resumeNewsletter, retagSource, titleTooLong, type EditableSource } from './source-edit';
+import { addTags, canAddTags, hasOverlongTag, editNewsletter, removeSource, resumeNewsletter, titleTooLong, unsubscribeNewsletter, deleteNewsletter, type EditableSource } from './source-edit';
 
 const realFetch = globalThis.fetch;
 let requests: { url: string; method: string; body: unknown }[] = [];
@@ -22,39 +22,40 @@ afterEach(() => {
 
 const feed: EditableSource = { kind: 'feed', rkey: '3kexample', title: 'Example Publication', tags: ['tech'] };
 const newsletter = {
-    kind: 'newsletter', id: 'nl-1', title: 'Example Letter', tags: ['weekly', 'design'], stopped: false,
+    kind: 'newsletter', id: 'nl-1', title: 'Example Letter', tags: ['weekly', 'design'], stopped: false, canUnsubscribe: true,
 } as const satisfies EditableSource;
 
-test('an edit patches only the field that changed, for feeds and newsletters alike', async () => {
+test('a newsletter edit patches only the fields that changed', async () => {
     record();
-    await renameSource(feed, '  Example Renamed  ');
-    await retagSource(feed, ['tech', 'news']);
-    await renameSource(newsletter, 'Example Renamed');
-    await retagSource(newsletter, []);
+    await editNewsletter(newsletter, { title: 'Example Renamed' });
+    await editNewsletter(newsletter, { tags: [], primary: true });
     expect(requests).toEqual([
-        { url: '/api/subscriptions/3kexample', method: 'PATCH', body: { title: 'Example Renamed' } },
-        { url: '/api/subscriptions/3kexample', method: 'PATCH', body: { tags: ['tech', 'news'] } },
         { url: '/api/newsletters/nl-1', method: 'PATCH', body: { title: 'Example Renamed' } },
-        { url: '/api/newsletters/nl-1', method: 'PATCH', body: { tags: [] } },
+        { url: '/api/newsletters/nl-1', method: 'PATCH', body: { tags: [], primary: true } },
     ]);
 });
 
-test('removing deletes a feed but stops or resumes a newsletter, which v1 never deletes', async () => {
+test('removing deletes a feed but stops a newsletter, which unsubscribing or deleting removes', async () => {
     record(204);
     await removeSource(feed);
     await removeSource(newsletter);
     await resumeNewsletter({ ...newsletter, stopped: true });
+    await unsubscribeNewsletter(newsletter);
+    await deleteNewsletter(newsletter);
     expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
         'DELETE /api/subscriptions/3kexample',
         'POST /api/newsletters/nl-1/stop',
         'POST /api/newsletters/nl-1/enable',
+        'POST /api/newsletters/nl-1/unsubscribe',
+        'DELETE /api/newsletters/nl-1',
     ]);
 });
 
 test('ids are encoded into the path', async () => {
     record();
-    await renameSource({ ...feed, rkey: 'a/b' }, 'x');
-    expect(requests[0].url).toBe('/api/subscriptions/a%2Fb');
+    await removeSource({ ...feed, rkey: 'a/b' });
+    await editNewsletter({ ...newsletter, id: 'n/1' }, { primary: false });
+    expect(requests.map(({ url }) => url)).toEqual(['/api/subscriptions/a%2Fb', '/api/newsletters/n%2F1']);
 });
 
 test('adding tags splits on commas, trims, and skips case-insensitive duplicates', () => {

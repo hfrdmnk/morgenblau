@@ -10,6 +10,8 @@ var (
 	ErrNotFound     = errors.New("newsletter item not found")
 	ErrStorageQuota = errors.New("newsletter storage quota reached")
 	ErrUnavailable  = errors.New("newsletter ingestion is unavailable")
+	// ErrUnsubscribeUnsupported means the source's mail never offered RFC 8058 one-click unsubscribe.
+	ErrUnsubscribeUnsupported = errors.New("newsletter offers no one-click unsubscribe")
 )
 
 type Config struct {
@@ -32,6 +34,8 @@ type Source struct {
 	SenderAddress   string
 	Status          SourceStatus
 	Primary         bool
+	CanUnsubscribe  bool
+	LatestEntrySlug string
 	Tags            []string
 	FirstReceivedAt *time.Time
 	LastReceivedAt  *time.Time

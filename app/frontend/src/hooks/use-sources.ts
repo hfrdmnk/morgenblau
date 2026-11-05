@@ -31,6 +31,8 @@ export type NewsletterSource = {
     title: string;
     senderAddress: string;
     primary: boolean;
+    canUnsubscribe: boolean;
+    latestEntrySlug?: string;
     tags: string[];
 };
 

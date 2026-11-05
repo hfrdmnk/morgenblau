@@ -117,6 +117,8 @@ type NewsletterSource struct {
 	LastReceivedAt  *string `json:"last_received_at"`
 	CreatedAt       string  `json:"created_at"`
 	UpdatedAt       string  `json:"updated_at"`
+	UnsubscribeUrl  *string `json:"unsubscribe_url"`
+	DeletedAt       *string `json:"deleted_at"`
 }
 
 type OauthAuthRequest struct {

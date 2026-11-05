@@ -144,11 +144,12 @@ func (s *Service) GetSource(ctx context.Context, did, id string) (Source, error)
 		IdentityValue: row.IdentityValue, Title: row.Title, SenderName: row.SenderName,
 		SenderAddress: row.SenderAddress, Status: row.Status, IsPrimary: row.IsPrimary,
 		Tags: row.Tags, FirstReceivedAt: row.FirstReceivedAt, LastReceivedAt: row.LastReceivedAt,
-		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, UnsubscribeUrl: row.UnsubscribeUrl,
 	})
 	if err != nil {
 		return Source{}, err
 	}
+	source.LatestEntrySlug = row.LatestEntrySlug
 	source.IssueCount = row.IssueCount
 	source.SavedCount = row.SavedCount
 	source.Count7d = row.Count7d
@@ -222,6 +223,36 @@ func (s *Service) EnableSource(ctx context.Context, did, id string) (Source, err
 	return s.GetSource(ctx, did, id)
 }
 
+// UnsubscribeURL returns the one-click unsubscribe URL from the source's latest direct delivery that offered one.
+func (s *Service) UnsubscribeURL(ctx context.Context, did, id string) (string, error) {
+	url, err := s.read.GetNewsletterSourceUnsubscribeURL(ctx, db.GetNewsletterSourceUnsubscribeURLParams{Did: did, ID: id})
+	if err != nil {
+		return "", publicDBError(err)
+	}
+	if url == nil {
+		return "", ErrUnsubscribeUnsupported
+	}
+	return *url, nil
+}
+
+// DeleteSource removes the source and its unsaved issues; saved issues stay in the Library.
+func (s *Service) DeleteSource(ctx context.Context, did, id string) error {
+	return database.WithTx(ctx, s.writer, func(q *db.Queries) error {
+		deletedAt := formatTime(s.now())
+		rows, err := q.MarkNewsletterSourceDeleted(ctx, db.MarkNewsletterSourceDeletedParams{Did: did, ID: id, DeletedAt: &deletedAt})
+		if err != nil {
+			return err
+		}
+		if rows == 0 {
+			return ErrNotFound
+		}
+		if err := q.DeleteUnsavedNewsletterMessages(ctx, db.DeleteUnsavedNewsletterMessagesParams{Did: did, SourceID: id}); err != nil {
+			return err
+		}
+		return q.DeleteEmptyDeletedNewsletterSources(ctx, did)
+	})
+}
+
 func (s *Service) ListSourceMessages(ctx context.Context, did, sourceID string) ([]Message, error) {
 	if _, err := s.GetSource(ctx, did, sourceID); err != nil {
 		return nil, err
@@ -289,14 +320,20 @@ func (s *Service) MoveMessage(ctx context.Context, did, messageID string, target
 			}); err != nil {
 				return err
 			}
-			return q.MoveNewsletterMessage(ctx, db.MoveNewsletterMessageParams{Did: did, ID: messageID, SourceID: destinationID, UpdatedAt: now})
+			if err := q.MoveNewsletterMessage(ctx, db.MoveNewsletterMessageParams{Did: did, ID: messageID, SourceID: destinationID, UpdatedAt: now}); err != nil {
+				return err
+			}
+			return q.DeleteEmptyDeletedNewsletterSources(ctx, did)
 		}); err != nil {
 			return Source{}, err
 		}
 		return s.GetSource(ctx, did, destinationID)
 	}
 	if err := database.WithTx(ctx, s.writer, func(q *db.Queries) error {
-		return q.MoveNewsletterMessage(ctx, db.MoveNewsletterMessageParams{Did: did, ID: messageID, SourceID: destinationID, UpdatedAt: formatTime(s.now())})
+		if err := q.MoveNewsletterMessage(ctx, db.MoveNewsletterMessageParams{Did: did, ID: messageID, SourceID: destinationID, UpdatedAt: formatTime(s.now())}); err != nil {
+			return err
+		}
+		return q.DeleteEmptyDeletedNewsletterSources(ctx, did)
 	}); err != nil {
 		return Source{}, err
 	}
@@ -334,7 +371,10 @@ func (s *Service) DeleteSave(ctx context.Context, did, saveID string) error {
 		if err := q.DeleteNewsletterSave(ctx, db.DeleteNewsletterSaveParams{Did: did, ID: saveID}); err != nil {
 			return err
 		}
-		return q.DeleteStoppedUnsavedNewsletterMessage(ctx, db.DeleteStoppedUnsavedNewsletterMessageParams{Did: did, ID: row.MessageID})
+		if err := q.DeleteStoppedUnsavedNewsletterMessage(ctx, db.DeleteStoppedUnsavedNewsletterMessageParams{Did: did, ID: row.MessageID}); err != nil {
+			return err
+		}
+		return q.DeleteEmptyDeletedNewsletterSources(ctx, did)
 	})
 }
 

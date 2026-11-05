@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -23,6 +25,11 @@ type newsletterSourceService interface {
 	StopSource(context.Context, string, string) (newsletter.Source, error)
 	EnableSource(context.Context, string, string) (newsletter.Source, error)
 	ListSourceMessages(context.Context, string, string) ([]newsletter.Message, error)
+}
+
+type newsletterUnsubscribeService interface {
+	UnsubscribeURL(context.Context, string, string) (string, error)
+	DeleteSource(context.Context, string, string) error
 }
 
 type newsletterMessageService interface {
@@ -47,6 +54,8 @@ type newsletterSourceWire struct {
 	SenderName     *string                 `json:"senderName"`
 	SenderAddress  string                  `json:"senderAddress"`
 	Primary        bool                    `json:"primary"`
+	CanUnsubscribe bool                    `json:"canUnsubscribe"`
+	LatestEntry    string                  `json:"latestEntrySlug,omitempty"`
 	Tags           []string                `json:"tags"`
 	Status         newsletter.SourceStatus `json:"status"`
 	LastReceivedAt *time.Time              `json:"lastReceivedAt"`
@@ -182,6 +191,74 @@ func newsletterSourceActionHandler(action func(context.Context, string, string) 
 		}
 		writeJSON(w, newsletterSourceToWire(source, time.Now()))
 	})
+}
+
+// NewsletterUnsubscribeHandler sends the RFC 8058 one-click unsubscribe and deletes the source only once the sender confirms with a 2xx; any other outcome changes nothing.
+// client must refuse redirects (RFC 8058 forbids them) and guard against SSRF, since the URL comes from incoming mail.
+func NewsletterUnsubscribeHandler(service newsletterUnsubscribeService, client *http.Client) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		privateResponse(w)
+		sess, ok := requireSession(w, r)
+		if !ok {
+			return
+		}
+		did, id := sess.Data.AccountDID.String(), r.PathValue("id")
+		target, err := service.UnsubscribeURL(r.Context(), did, id)
+		if err != nil {
+			writeNewsletterError(w, err)
+			return
+		}
+		if err := postOneClickUnsubscribe(r.Context(), client, target); err != nil {
+			writeError(w, http.StatusBadGateway, codeUpstreamError, "The newsletter didn’t confirm the unsubscribe, so nothing was changed.")
+			return
+		}
+		if err := service.DeleteSource(r.Context(), did, id); err != nil {
+			writeNewsletterError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+}
+
+// NewsletterDeleteHandler deletes a newsletter the reader unsubscribed from by hand; mail that still arrives starts a new source.
+func NewsletterDeleteHandler(service newsletterUnsubscribeService) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		privateResponse(w)
+		sess, ok := requireSession(w, r)
+		if !ok {
+			return
+		}
+		if err := service.DeleteSource(r.Context(), sess.Data.AccountDID.String(), r.PathValue("id")); err != nil {
+			writeNewsletterError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+}
+
+func postOneClickUnsubscribe(ctx context.Context, client *http.Client, target string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, strings.NewReader("List-Unsubscribe=One-Click"))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := client.Do(req)
+	if err != nil {
+		// The URL is personalized to this reader, so only the underlying cause reaches the log.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = urlErr.Err
+		}
+		slog.Warn("newsletter unsubscribe request failed", "err", err)
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		slog.Warn("newsletter unsubscribe refused", "status", resp.StatusCode)
+		return errors.New("unsubscribe not confirmed")
+	}
+	return nil
 }
 
 func NewsletterEntriesHandler(service newsletterSourceService) http.Handler {
@@ -365,7 +442,7 @@ func newsletterSourceToWire(source newsletter.Source, now time.Time) newsletterS
 	}
 	return newsletterSourceWire{
 		ID: source.ID, Kind: "newsletter", Title: source.Title, SenderName: source.SenderName,
-		SenderAddress: source.SenderAddress, Primary: source.Primary, Tags: tags, Status: source.Status,
+		SenderAddress: source.SenderAddress, Primary: source.Primary, CanUnsubscribe: source.CanUnsubscribe, LatestEntry: source.LatestEntrySlug, Tags: tags, Status: source.Status,
 		LastReceivedAt: source.LastReceivedAt,
 		Frequency:      frequencyBucket(first, source.Count7d, source.Count28d, source.Count56d, source.Count84d, now),
 		IssueCount:     source.IssueCount, SavedByYou: source.SavedCount,
@@ -407,6 +484,8 @@ func writeNewsletterError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, codeNotFound, "not found")
 	case errors.Is(err, newsletter.ErrInvalid):
 		writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid request")
+	case errors.Is(err, newsletter.ErrUnsubscribeUnsupported):
+		writeError(w, http.StatusUnprocessableEntity, codeUnprocessable, "This newsletter doesn’t offer one-click unsubscribe.")
 	case errors.Is(err, newsletter.ErrUnavailable):
 		writeError(w, http.StatusServiceUnavailable, codeUnavailable, "newsletter ingestion is unavailable")
 	default:

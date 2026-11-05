@@ -178,7 +178,7 @@ func (s *Service) processNext(ctx context.Context) (bool, error) {
 			return createErr
 		}
 		if err := q.TouchNewsletterSource(ctx, db.TouchNewsletterSourceParams{
-			SenderName: parsed.SenderName, SenderAddress: parsed.SenderAddress,
+			SenderName: parsed.SenderName, SenderAddress: parsed.SenderAddress, UnsubscribeUrl: optionalString(parsed.UnsubscribeURL),
 			ReceivedAt: &receipt.ReceivedAt, Did: receipt.Did, ID: source.ID,
 		}); err != nil {
 			return err

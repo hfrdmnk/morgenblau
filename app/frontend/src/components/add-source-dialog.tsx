@@ -21,7 +21,7 @@ import { GenerateFeed } from '@/components/generate-feed';
 import { CheckIcon, ChevronDownIcon, CloseIcon, EnterIcon, ExternalLinkIcon, LoadingIcon, MoreIcon, PenIcon, PlusIcon } from '@/components/icons';
 import { NewsletterAddress } from '@/components/newsletter-address';
 import { PersonAvatar } from '@/components/person-avatar';
-import { RemoveDialog } from '@/components/source-menu';
+import { DeleteNewsletterDialog, RemoveDialog } from '@/components/source-removal';
 import { TagChips, TagInput } from '@/components/tag-input';
 import { Button } from '@/components/ui/button';
 import { DrawerBackdrop, DrawerPopup, DrawerViewport } from '@/components/ui/drawer';
@@ -29,7 +29,7 @@ import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/i
 import { Link } from '@/components/ui/link';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useReaderFont } from '@/hooks/use-reader-font';
-import type { FeedSource } from '@/hooks/use-sources';
+import type { FeedSource, NewsletterSource } from '@/hooks/use-sources';
 import {
     addSource,
     discoveryError,
@@ -55,7 +55,19 @@ import { PATHS } from '@/lib/paths';
 import { hasNewReaderContent, httpURL, readerBody } from '@/lib/reader';
 import { announceSourceAdded } from '@/lib/source-toast';
 import { displayURL } from '@/lib/source-display';
-import { addTags, canAddTags, feedEditable, GONE, hasOverlongTag, isGone, MAX_TITLE_LENGTH, titleTooLong } from '@/lib/source-edit';
+import {
+    addTags,
+    canAddTags,
+    editNewsletter,
+    feedEditable,
+    GONE,
+    hasOverlongTag,
+    isGone,
+    MAX_TITLE_LENGTH,
+    newsletterEditable,
+    resumeNewsletter,
+    titleTooLong,
+} from '@/lib/source-edit';
 import { cn } from '@/lib/utils';
 import '../pages/reader.css';
 
@@ -77,6 +89,7 @@ const SCREEN = {
 type Screen =
     | { kind: 'feed'; candidate: SourceCandidate; site?: SiteResult; rkey?: string }
     | { kind: 'edit'; source: FeedSource; onChanged: () => void; onRemoved: () => void; removedFocus?: RefObject<HTMLElement | null> }
+    | { kind: 'newsletter'; source: NewsletterSource; stopped: boolean; onChanged: () => void; onRemoved: () => void; removedFocus?: RefObject<HTMLElement | null> }
     | { kind: 'post'; candidate: SourceCandidate; post: PreviewPost }
     | { kind: 'profile'; site: SiteResult; profile: SiteProfile };
 
@@ -126,6 +139,21 @@ export function EditSourceSheet({ source, onChanged, onRemoved = onChanged, remo
     onRemoved?: () => void;
     removedFocus?: RefObject<HTMLElement | null>;
 }) {
+    return <EditSheet root={{ kind: 'edit', source, onChanged, onRemoved, removedFocus }} />;
+}
+
+// The same sheet for a newsletter: rename, retag, stop or resume, and unsubscribe or delete it.
+export function EditNewsletterSheet({ source, stopped, onChanged, onRemoved = onChanged, removedFocus }: {
+    source: NewsletterSource;
+    stopped: boolean;
+    onChanged: () => void;
+    onRemoved?: () => void;
+    removedFocus?: RefObject<HTMLElement | null>;
+}) {
+    return <EditSheet root={{ kind: 'newsletter', source, stopped, onChanged, onRemoved, removedFocus }} />;
+}
+
+function EditSheet({ root }: { root: Extract<Screen, { kind: 'edit' | 'newsletter' }> }) {
     const [open, setOpen] = useState(false);
     const [saving, setSaving] = useState(false);
     return (
@@ -134,17 +162,12 @@ export function EditSourceSheet({ source, onChanged, onRemoved = onChanged, remo
             open={open}
             saving={saving}
             trigger={(
-                <Button aria-label={`Edit ${feedSourceName(source)}`} className="text-subtle-foreground hover:text-foreground" size="icon-sm" variant="ghost">
+                <Button aria-label={`Edit ${screenTitle(root)}`} className="text-subtle-foreground hover:text-foreground" size="icon-sm" variant="ghost">
                     <MoreIcon className="size-5" />
                 </Button>
             )}
         >
-            <SheetBody
-                onClose={() => setOpen(false)}
-                onSavingChange={setSaving}
-                root={{ kind: 'edit', source, onChanged, onRemoved, removedFocus }}
-                saving={saving}
-            />
+            <SheetBody onClose={() => setOpen(false)} onSavingChange={setSaving} root={root} saving={saving} />
         </SheetDrawer>
     );
 }
@@ -185,6 +208,10 @@ function SheetDrawer({ open, saving, trigger, initialFocus, onOpenChange, childr
 
 function feedSourceName(source: FeedSource) {
     return source.title || displayURL(source.siteUrl || source.feedUrl);
+}
+
+function newsletterName(source: NewsletterSource) {
+    return source.title || source.senderAddress;
 }
 
 // A root screen replaces the search screen (which only the add sheet, with its inputRef, shows), so the sheet opens on it and Back never leaves it.
@@ -379,6 +406,7 @@ function NameLengthHint({ name, screen, form, canGoBack }: { name: string; scree
 function screenTitle(screen: Screen) {
     if (screen.kind === 'feed') return sourceTitle(screen.candidate);
     if (screen.kind === 'edit') return feedSourceName(screen.source);
+    if (screen.kind === 'newsletter') return newsletterName(screen.source);
     if (screen.kind === 'post') return screen.post.title || 'Untitled';
     return 'Profile';
 }
@@ -413,7 +441,7 @@ function ScreenTransition({ active, instant, focusOnMount, children }: {
 
 // Only a screen that will save a name lets the reader type one.
 function nameable(screen: Screen, subscriptions: Map<string, string | null>) {
-    if (screen.kind === 'edit') return true;
+    if (screen.kind === 'edit' || screen.kind === 'newsletter') return true;
     if (screen.kind !== 'feed') return false;
     const status = candidateStatus(screen.candidate, screen.site, subscriptions, screen.rkey);
     return !status.rkey && !status.note;
@@ -471,6 +499,7 @@ function ScreenView({ screen, form, name, sheet }: { screen: Screen; form: strin
     const tooLong = nameTooLong(name, screen);
     if (screen.kind === 'feed') return <FeedScreen candidate={screen.candidate} form={form} known={screen.rkey} name={name} nameTooLong={tooLong} sheet={sheet} site={screen.site} />;
     if (screen.kind === 'edit') return <EditScreen form={form} name={name} nameTooLong={tooLong} screen={screen} sheet={sheet} />;
+    if (screen.kind === 'newsletter') return <NewsletterScreen form={form} name={name} nameTooLong={tooLong} screen={screen} sheet={sheet} />;
     if (screen.kind === 'post') return <PostScreen post={screen.post} />;
     return <ProfileScreen profile={screen.profile} sheet={sheet} site={screen.site} />;
 }
@@ -863,6 +892,104 @@ function EditScreen({ screen, form, name, nameTooLong, sheet }: {
                 open={removing}
                 removedFocus={removedFocus}
                 source={feedEditable(source, feedSourceName(source))}
+            />
+        </div>
+    );
+}
+
+function NewsletterScreen({ screen, form, name, nameTooLong, sheet }: {
+    screen: Extract<Screen, { kind: 'newsletter' }>;
+    form: string;
+    name: string;
+    nameTooLong: boolean;
+    sheet: Sheet;
+}) {
+    const { source, stopped, onChanged, onRemoved, removedFocus } = screen;
+    const editable = newsletterEditable(source, stopped);
+    const { run, errorLine } = useSheetMutation(sheet);
+    const [dialog, setDialog] = useState<'stop' | 'delete' | null>(null);
+
+    function changeFor({ tags, primary }: SourceOptions) {
+        const change: { title?: string; tags?: string[]; primary?: boolean } = {};
+        // A newsletter has no title of its own to fall back to, so an emptied name keeps the current one.
+        const title = name.trim();
+        if (title && title !== newsletterName(source)) change.title = title;
+        if (tags.join('\n') !== source.tags.join('\n')) change.tags = tags;
+        if (primary !== source.primary) change.primary = primary;
+        return change;
+    }
+
+    function write(action: () => Promise<unknown>, done: string, failed: string) {
+        void run(async () => {
+            try {
+                await action();
+            } catch (problem) {
+                if (!isGone(problem)) throw problem;
+                toast.error(GONE);
+                onChanged();
+                sheet.close();
+                return;
+            }
+            toast.success(done);
+            onChanged();
+            sheet.close();
+        }, failed);
+    }
+
+    return (
+        <div className="space-y-8">
+            <p className="truncate text-xs text-subtle-foreground" title={source.senderAddress}>{source.senderAddress}</p>
+            {stopped ? (
+                <p className="rounded-lg bg-background p-4 text-sm text-muted-foreground">Stopped. New mail from this sender is discarded until you resume it.</p>
+            ) : null}
+            <SourceForm
+                action="Save changes"
+                busyLabel="Saving newsletter"
+                changed={(options) => Object.keys(changeFor(options)).length > 0}
+                errorLine={errorLine}
+                id={form}
+                initial={{ tags: source.tags, primary: source.primary }}
+                nameTooLong={nameTooLong}
+                onSave={(options) => write(() => editNewsletter(editable, changeFor(options)), 'Newsletter updated', 'The change couldn’t be confirmed.')}
+                saving={sheet.saving}
+                secondary={(
+                    <>
+                        {stopped ? (
+                            <Button className="w-full" disabled={sheet.saving} onClick={() => write(() => resumeNewsletter(editable), 'Newsletter resumed', 'Couldn’t resume this newsletter.')} size="lg" type="button" variant="secondary">
+                                Resume newsletter
+                            </Button>
+                        ) : (
+                            <Button className="w-full" disabled={sheet.saving} onClick={() => setDialog('stop')} size="lg" type="button" variant="secondary">
+                                Stop newsletter
+                            </Button>
+                        )}
+                        <Button className="w-full" disabled={sheet.saving} onClick={() => setDialog('delete')} size="lg" type="button" variant="destructive">
+                            {source.canUnsubscribe ? 'Unsubscribe and delete' : 'Delete newsletter'}
+                        </Button>
+                    </>
+                )}
+            />
+            <RemoveDialog
+                onChanged={onChanged}
+                onClose={() => setDialog(null)}
+                onRemoved={() => {
+                    sheet.close();
+                    onChanged();
+                }}
+                open={dialog === 'stop'}
+                removedFocus={removedFocus}
+                source={editable}
+            />
+            <DeleteNewsletterDialog
+                onChanged={onChanged}
+                onClose={() => setDialog(null)}
+                onRemoved={() => {
+                    sheet.close();
+                    onRemoved();
+                }}
+                open={dialog === 'delete'}
+                removedFocus={removedFocus}
+                source={editable}
             />
         </div>
     );

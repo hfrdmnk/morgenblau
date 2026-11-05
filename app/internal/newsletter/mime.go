@@ -27,6 +27,7 @@ const (
 	maxNestedMessages  = 4
 	maxDecodedPartSize = 8 << 20
 	maxInlineAssetSize = 2 << 20
+	maxUnsubscribeURL  = 2048
 )
 
 type normalizedMail struct {
@@ -37,6 +38,7 @@ type normalizedMail struct {
 	SenderName             *string
 	SenderAddress          string
 	MessageID              string
+	UnsubscribeURL         string
 	Title                  string
 	SentAt                 *time.Time
 	BodyHTMLBlocked        string
@@ -101,6 +103,7 @@ func parseMIMEAtDepth(raw []byte, depth int) (normalizedMail, bool) {
 		result.IdentityKind = "list_id"
 		result.IdentityValue = listID
 	}
+	result.UnsubscribeURL = oneClickUnsubscribeURL(reader.Header.Get("List-Unsubscribe"), reader.Header.Get("List-Unsubscribe-Post"))
 
 	var htmlBody string
 	var plainBody string
@@ -173,8 +176,13 @@ func parseMIMEAtDepth(raw []byte, depth int) (normalizedMail, bool) {
 	if result.BodyText == "" {
 		result.BodyText = strings.TrimSpace(bluemonday.StrictPolicy().Sanitize(htmlBody))
 	}
+	if len(forwarded) > 0 {
+		// A forward's links unsubscribe whoever forwarded it, never this reader.
+		result.UnsubscribeURL = ""
+	}
 	if len(forwarded) == 1 {
 		inner := forwarded[0]
+		inner.UnsubscribeURL = ""
 		inner.BodyText = joinReadable(result.BodyText, inner.BodyText)
 		inner.BodyHTMLBlocked = joinReadableHTML(result.BodyHTMLBlocked, inner.BodyHTMLBlocked)
 		inner.BodyHTMLRemote = joinReadableHTML(result.BodyHTMLRemote, inner.BodyHTMLRemote)
@@ -407,6 +415,24 @@ func parseListID(value string) string {
 		return ""
 	}
 	return value
+}
+
+// oneClickUnsubscribeURL returns the https URL an RFC 8058 one-click POST goes to, or "" when the mail offers none.
+func oneClickUnsubscribeURL(listUnsubscribe, listUnsubscribePost string) string {
+	if !strings.EqualFold(strings.TrimSpace(listUnsubscribePost), "List-Unsubscribe=One-Click") {
+		return ""
+	}
+	for _, entry := range strings.Split(listUnsubscribe, ",") {
+		entry = strings.Join(strings.Fields(entry), "")
+		if !strings.HasPrefix(entry, "<") || !strings.HasSuffix(entry, ">") || len(entry) > maxUnsubscribeURL {
+			continue
+		}
+		parsed, err := url.Parse(entry[1 : len(entry)-1])
+		if err == nil && parsed.Scheme == "https" && parsed.Host != "" && parsed.User == nil {
+			return parsed.String()
+		}
+	}
+	return ""
 }
 
 func validAddress(value string) string {

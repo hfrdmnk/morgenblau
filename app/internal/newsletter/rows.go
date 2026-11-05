@@ -22,7 +22,7 @@ func sourceFromRow(row db.NewsletterSource) (Source, error) {
 	}
 	return Source{
 		ID: row.ID, Title: row.Title, SenderName: row.SenderName, SenderAddress: row.SenderAddress,
-		Status: SourceStatus(row.Status), Primary: row.IsPrimary != 0, Tags: tags,
+		Status: SourceStatus(row.Status), Primary: row.IsPrimary != 0, CanUnsubscribe: row.UnsubscribeUrl != nil, Tags: tags,
 		FirstReceivedAt: first, LastReceivedAt: last,
 	}, nil
 }
@@ -33,11 +33,12 @@ func sourceFromListRow(row db.ListNewsletterSourcesRow) (Source, error) {
 		IdentityValue: row.IdentityValue, Title: row.Title, SenderName: row.SenderName,
 		SenderAddress: row.SenderAddress, Status: row.Status, IsPrimary: row.IsPrimary,
 		Tags: row.Tags, FirstReceivedAt: row.FirstReceivedAt, LastReceivedAt: row.LastReceivedAt,
-		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, UnsubscribeUrl: row.UnsubscribeUrl,
 	})
 	if err != nil {
 		return Source{}, err
 	}
+	source.LatestEntrySlug = row.LatestEntrySlug
 	source.IssueCount = row.IssueCount
 	source.SavedCount = row.SavedCount
 	source.Count7d = row.Count7d

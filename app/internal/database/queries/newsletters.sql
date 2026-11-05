@@ -59,6 +59,7 @@ SET sender_name = COALESCE(sqlc.arg(sender_name), sender_name),
     sender_address = CASE WHEN sqlc.arg(sender_address) = '' THEN sender_address ELSE sqlc.arg(sender_address) END,
     first_received_at = COALESCE(first_received_at, sqlc.arg(received_at)),
     last_received_at = sqlc.arg(received_at),
+    unsubscribe_url = COALESCE(sqlc.narg(unsubscribe_url), unsubscribe_url),
     updated_at = sqlc.arg(received_at)
 WHERE did = sqlc.arg(did) AND id = sqlc.arg(id);
 
@@ -70,9 +71,11 @@ SELECT s.*,
        (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?2 AND m.received_at < ?3) AS count_7d,
        (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?4 AND m.received_at < ?3) AS count_28d,
        (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?5 AND m.received_at < ?3) AS count_56d,
-       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?6 AND m.received_at < ?3) AS count_84d
+       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?6 AND m.received_at < ?3) AS count_84d,
+       CAST(COALESCE((SELECT m.entry_slug FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id
+           ORDER BY m.received_at DESC, m.id DESC LIMIT 1), '') AS TEXT) AS latest_entry_slug
 FROM newsletter_sources s
-WHERE s.did = ?1
+WHERE s.did = ?1 AND s.deleted_at IS NULL
 ORDER BY s.title COLLATE NOCASE, s.id;
 
 -- name: GetNewsletterSourceWithStats :one
@@ -83,9 +86,11 @@ SELECT s.*,
        (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?3 AND m.received_at < ?4) AS count_7d,
        (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?5 AND m.received_at < ?4) AS count_28d,
        (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?6 AND m.received_at < ?4) AS count_56d,
-       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?7 AND m.received_at < ?4) AS count_84d
+       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?7 AND m.received_at < ?4) AS count_84d,
+       CAST(COALESCE((SELECT m.entry_slug FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id
+           ORDER BY m.received_at DESC, m.id DESC LIMIT 1), '') AS TEXT) AS latest_entry_slug
 FROM newsletter_sources s
-WHERE s.did = ?1 AND s.id = ?2;
+WHERE s.did = ?1 AND s.id = ?2 AND s.deleted_at IS NULL;
 
 -- name: PatchNewsletterSource :execrows
 UPDATE newsletter_sources
@@ -93,7 +98,7 @@ SET title = COALESCE(sqlc.narg(title), title),
     is_primary = COALESCE(sqlc.narg(is_primary), is_primary),
     tags = COALESCE(sqlc.narg(tags), tags),
     updated_at = sqlc.arg(updated_at)
-WHERE did = sqlc.arg(did) AND id = sqlc.arg(id);
+WHERE did = sqlc.arg(did) AND id = sqlc.arg(id) AND deleted_at IS NULL;
 
 -- name: SetNewsletterSourceStatus :exec
 UPDATE newsletter_sources SET status = ?3, updated_at = ?4
@@ -103,6 +108,21 @@ WHERE did = ?1 AND id = ?2;
 UPDATE newsletter_sources
 SET status = 'active', accept_after = ?3, updated_at = ?3
 WHERE did = ?1 AND id = ?2;
+
+-- name: GetNewsletterSourceUnsubscribeURL :one
+SELECT unsubscribe_url FROM newsletter_sources
+WHERE did = ?1 AND id = ?2 AND deleted_at IS NULL;
+
+-- Saved issues still reference a deleted source, so it stays as a hidden stopped row until they are gone; freeing its key lets the sender's next mail start a new source.
+-- name: MarkNewsletterSourceDeleted :execrows
+UPDATE newsletter_sources
+SET status = 'stopped', source_key = 'deleted:' || id, unsubscribe_url = NULL, deleted_at = ?3, updated_at = ?3
+WHERE did = ?1 AND id = ?2 AND deleted_at IS NULL;
+
+-- name: DeleteEmptyDeletedNewsletterSources :exec
+DELETE FROM newsletter_sources AS s
+WHERE s.did = ?1 AND s.deleted_at IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id);
 
 -- name: DeleteUnsavedNewsletterMessages :exec
 DELETE FROM newsletter_messages AS m

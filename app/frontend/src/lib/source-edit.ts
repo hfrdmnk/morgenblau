@@ -4,7 +4,7 @@ import { api, ApiError } from './api';
 
 export type EditableSource =
     | { kind: 'feed'; rkey: string; title: string; tags: string[] }
-    | { kind: 'newsletter'; id: string; title: string; tags: string[]; stopped: boolean };
+    | { kind: 'newsletter'; id: string; title: string; tags: string[]; stopped: boolean; canUnsubscribe: boolean; latestEntrySlug?: string };
 
 // The subscription lexicon caps a record at ten tags of 64 graphemes and titles at 128.
 export const MAX_TAGS = 10;
@@ -21,8 +21,8 @@ export function feedEditable(source: FeedSource, title: string): EditableSource 
     return { kind: 'feed', rkey: source.rkey, title, tags: source.tags ?? [] };
 }
 
-export function newsletterEditable(source: NewsletterSource, stopped: boolean): EditableSource {
-    return { kind: 'newsletter', id: source.id, title: source.title, tags: source.tags, stopped };
+export function newsletterEditable(source: NewsletterSource, stopped: boolean): Extract<EditableSource, { kind: 'newsletter' }> {
+    return { kind: 'newsletter', id: source.id, title: source.title, tags: source.tags, stopped, canUnsubscribe: source.canUnsubscribe, latestEntrySlug: source.latestEntrySlug };
 }
 
 function sourcePath(source: EditableSource): string {
@@ -31,23 +31,24 @@ function sourcePath(source: EditableSource): string {
         : `/api/newsletters/${encodeURIComponent(source.id)}`;
 }
 
-// Both PATCH routes change only the fields they are sent, so an edit never rewrites a field from a stale copy.
-function patchSource(source: EditableSource, change: { title: string } | { tags: string[] }) {
+// The PATCH route changes only the fields it is sent, so an edit never rewrites a field from a stale copy.
+export function editNewsletter(source: Extract<EditableSource, { kind: 'newsletter' }>, change: { title?: string; tags?: string[]; primary?: boolean }) {
     return api(sourcePath(source), { method: 'PATCH', body: change });
 }
 
-export function renameSource(source: EditableSource, title: string) {
-    return patchSource(source, { title: title.trim() });
-}
-
-export function retagSource(source: EditableSource, tags: string[]) {
-    return patchSource(source, { tags });
-}
-
-// V1 never deletes a newsletter: stopping it is its removal, and a stopped one can resume.
+// Stopping is a newsletter's reversible removal; deleting one is unsubscribeNewsletter or deleteNewsletter.
 export function removeSource(source: EditableSource) {
     if (source.kind === 'feed') return api(sourcePath(source), { method: 'DELETE' });
     return api(`${sourcePath(source)}/stop`, { method: 'POST' });
+}
+
+// The server deletes the newsletter only after the sender confirms the one-click unsubscribe.
+export function unsubscribeNewsletter(source: Extract<EditableSource, { kind: 'newsletter' }>) {
+    return api(`${sourcePath(source)}/unsubscribe`, { method: 'POST' });
+}
+
+export function deleteNewsletter(source: Extract<EditableSource, { kind: 'newsletter' }>) {
+    return api(sourcePath(source), { method: 'DELETE' });
 }
 
 export function resumeNewsletter(source: Extract<EditableSource, { kind: 'newsletter' }>) {

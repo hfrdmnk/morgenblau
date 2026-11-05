@@ -288,6 +288,17 @@ func (q *Queries) CreateNewsletterSource(ctx context.Context, arg CreateNewslett
 	return err
 }
 
+const deleteEmptyDeletedNewsletterSources = `-- name: DeleteEmptyDeletedNewsletterSources :exec
+DELETE FROM newsletter_sources AS s
+WHERE s.did = ?1 AND s.deleted_at IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id)
+`
+
+func (q *Queries) DeleteEmptyDeletedNewsletterSources(ctx context.Context, did string) error {
+	_, err := q.db.ExecContext(ctx, deleteEmptyDeletedNewsletterSources, did)
+	return err
+}
+
 const deleteNewsletterReceipt = `-- name: DeleteNewsletterReceipt :exec
 DELETE FROM newsletter_receipts WHERE id = ?1
 `
@@ -643,7 +654,7 @@ func (q *Queries) GetNewsletterSaveForMessage(ctx context.Context, arg GetNewsle
 }
 
 const getNewsletterSource = `-- name: GetNewsletterSource :one
-SELECT id, did, source_key, identity_kind, identity_value, title, sender_name, sender_address, status, accept_after, is_primary, tags, first_received_at, last_received_at, created_at, updated_at FROM newsletter_sources WHERE did = ?1 AND id = ?2
+SELECT id, did, source_key, identity_kind, identity_value, title, sender_name, sender_address, status, accept_after, is_primary, tags, first_received_at, last_received_at, created_at, updated_at, unsubscribe_url, deleted_at FROM newsletter_sources WHERE did = ?1 AND id = ?2
 `
 
 type GetNewsletterSourceParams struct {
@@ -671,12 +682,14 @@ func (q *Queries) GetNewsletterSource(ctx context.Context, arg GetNewsletterSour
 		&i.LastReceivedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.UnsubscribeUrl,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const getNewsletterSourceByKey = `-- name: GetNewsletterSourceByKey :one
-SELECT id, did, source_key, identity_kind, identity_value, title, sender_name, sender_address, status, accept_after, is_primary, tags, first_received_at, last_received_at, created_at, updated_at FROM newsletter_sources WHERE did = ?1 AND source_key = ?2
+SELECT id, did, source_key, identity_kind, identity_value, title, sender_name, sender_address, status, accept_after, is_primary, tags, first_received_at, last_received_at, created_at, updated_at, unsubscribe_url, deleted_at FROM newsletter_sources WHERE did = ?1 AND source_key = ?2
 `
 
 type GetNewsletterSourceByKeyParams struct {
@@ -704,21 +717,42 @@ func (q *Queries) GetNewsletterSourceByKey(ctx context.Context, arg GetNewslette
 		&i.LastReceivedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.UnsubscribeUrl,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
+const getNewsletterSourceUnsubscribeURL = `-- name: GetNewsletterSourceUnsubscribeURL :one
+SELECT unsubscribe_url FROM newsletter_sources
+WHERE did = ?1 AND id = ?2 AND deleted_at IS NULL
+`
+
+type GetNewsletterSourceUnsubscribeURLParams struct {
+	Did string `json:"did"`
+	ID  string `json:"id"`
+}
+
+func (q *Queries) GetNewsletterSourceUnsubscribeURL(ctx context.Context, arg GetNewsletterSourceUnsubscribeURLParams) (*string, error) {
+	row := q.db.QueryRowContext(ctx, getNewsletterSourceUnsubscribeURL, arg.Did, arg.ID)
+	var unsubscribe_url *string
+	err := row.Scan(&unsubscribe_url)
+	return unsubscribe_url, err
+}
+
 const getNewsletterSourceWithStats = `-- name: GetNewsletterSourceWithStats :one
-SELECT s.id, s.did, s.source_key, s.identity_kind, s.identity_value, s.title, s.sender_name, s.sender_address, s.status, s.accept_after, s.is_primary, s.tags, s.first_received_at, s.last_received_at, s.created_at, s.updated_at,
+SELECT s.id, s.did, s.source_key, s.identity_kind, s.identity_value, s.title, s.sender_name, s.sender_address, s.status, s.accept_after, s.is_primary, s.tags, s.first_received_at, s.last_received_at, s.created_at, s.updated_at, s.unsubscribe_url, s.deleted_at,
        (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id) AS issue_count,
        (SELECT COUNT(*) FROM newsletter_saves sv WHERE sv.did = s.did AND sv.message_id IN
            (SELECT id FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id)) AS saved_count,
        (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?3 AND m.received_at < ?4) AS count_7d,
        (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?5 AND m.received_at < ?4) AS count_28d,
        (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?6 AND m.received_at < ?4) AS count_56d,
-       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?7 AND m.received_at < ?4) AS count_84d
+       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?7 AND m.received_at < ?4) AS count_84d,
+       CAST(COALESCE((SELECT m.entry_slug FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id
+           ORDER BY m.received_at DESC, m.id DESC LIMIT 1), '') AS TEXT) AS latest_entry_slug
 FROM newsletter_sources s
-WHERE s.did = ?1 AND s.id = ?2
+WHERE s.did = ?1 AND s.id = ?2 AND s.deleted_at IS NULL
 `
 
 type GetNewsletterSourceWithStatsParams struct {
@@ -748,12 +782,15 @@ type GetNewsletterSourceWithStatsRow struct {
 	LastReceivedAt  *string `json:"last_received_at"`
 	CreatedAt       string  `json:"created_at"`
 	UpdatedAt       string  `json:"updated_at"`
+	UnsubscribeUrl  *string `json:"unsubscribe_url"`
+	DeletedAt       *string `json:"deleted_at"`
 	IssueCount      int64   `json:"issue_count"`
 	SavedCount      int64   `json:"saved_count"`
 	Count7d         int64   `json:"count_7d"`
 	Count28d        int64   `json:"count_28d"`
 	Count56d        int64   `json:"count_56d"`
 	Count84d        int64   `json:"count_84d"`
+	LatestEntrySlug string  `json:"latest_entry_slug"`
 }
 
 func (q *Queries) GetNewsletterSourceWithStats(ctx context.Context, arg GetNewsletterSourceWithStatsParams) (GetNewsletterSourceWithStatsRow, error) {
@@ -784,12 +821,15 @@ func (q *Queries) GetNewsletterSourceWithStats(ctx context.Context, arg GetNewsl
 		&i.LastReceivedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.UnsubscribeUrl,
+		&i.DeletedAt,
 		&i.IssueCount,
 		&i.SavedCount,
 		&i.Count7d,
 		&i.Count28d,
 		&i.Count56d,
 		&i.Count84d,
+		&i.LatestEntrySlug,
 	)
 	return i, err
 }
@@ -1109,16 +1149,18 @@ func (q *Queries) ListNewsletterSaves(ctx context.Context, did string) ([]ListNe
 }
 
 const listNewsletterSources = `-- name: ListNewsletterSources :many
-SELECT s.id, s.did, s.source_key, s.identity_kind, s.identity_value, s.title, s.sender_name, s.sender_address, s.status, s.accept_after, s.is_primary, s.tags, s.first_received_at, s.last_received_at, s.created_at, s.updated_at,
+SELECT s.id, s.did, s.source_key, s.identity_kind, s.identity_value, s.title, s.sender_name, s.sender_address, s.status, s.accept_after, s.is_primary, s.tags, s.first_received_at, s.last_received_at, s.created_at, s.updated_at, s.unsubscribe_url, s.deleted_at,
        (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id) AS issue_count,
        (SELECT COUNT(*) FROM newsletter_saves sv WHERE sv.did = s.did AND sv.message_id IN
            (SELECT id FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id)) AS saved_count,
        (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?2 AND m.received_at < ?3) AS count_7d,
        (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?4 AND m.received_at < ?3) AS count_28d,
        (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?5 AND m.received_at < ?3) AS count_56d,
-       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?6 AND m.received_at < ?3) AS count_84d
+       (SELECT COUNT(*) FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id AND m.received_at >= ?6 AND m.received_at < ?3) AS count_84d,
+       CAST(COALESCE((SELECT m.entry_slug FROM newsletter_messages m WHERE m.did = s.did AND m.source_id = s.id
+           ORDER BY m.received_at DESC, m.id DESC LIMIT 1), '') AS TEXT) AS latest_entry_slug
 FROM newsletter_sources s
-WHERE s.did = ?1
+WHERE s.did = ?1 AND s.deleted_at IS NULL
 ORDER BY s.title COLLATE NOCASE, s.id
 `
 
@@ -1148,12 +1190,15 @@ type ListNewsletterSourcesRow struct {
 	LastReceivedAt  *string `json:"last_received_at"`
 	CreatedAt       string  `json:"created_at"`
 	UpdatedAt       string  `json:"updated_at"`
+	UnsubscribeUrl  *string `json:"unsubscribe_url"`
+	DeletedAt       *string `json:"deleted_at"`
 	IssueCount      int64   `json:"issue_count"`
 	SavedCount      int64   `json:"saved_count"`
 	Count7d         int64   `json:"count_7d"`
 	Count28d        int64   `json:"count_28d"`
 	Count56d        int64   `json:"count_56d"`
 	Count84d        int64   `json:"count_84d"`
+	LatestEntrySlug string  `json:"latest_entry_slug"`
 }
 
 func (q *Queries) ListNewsletterSources(ctx context.Context, arg ListNewsletterSourcesParams) ([]ListNewsletterSourcesRow, error) {
@@ -1189,12 +1234,15 @@ func (q *Queries) ListNewsletterSources(ctx context.Context, arg ListNewsletterS
 			&i.LastReceivedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.UnsubscribeUrl,
+			&i.DeletedAt,
 			&i.IssueCount,
 			&i.SavedCount,
 			&i.Count7d,
 			&i.Count28d,
 			&i.Count56d,
 			&i.Count84d,
+			&i.LatestEntrySlug,
 		); err != nil {
 			return nil, err
 		}
@@ -1226,6 +1274,27 @@ func (q *Queries) MarkNewsletterReceiptFailed(ctx context.Context, arg MarkNewsl
 	return err
 }
 
+const markNewsletterSourceDeleted = `-- name: MarkNewsletterSourceDeleted :execrows
+UPDATE newsletter_sources
+SET status = 'stopped', source_key = 'deleted:' || id, unsubscribe_url = NULL, deleted_at = ?3, updated_at = ?3
+WHERE did = ?1 AND id = ?2 AND deleted_at IS NULL
+`
+
+type MarkNewsletterSourceDeletedParams struct {
+	Did       string  `json:"did"`
+	ID        string  `json:"id"`
+	DeletedAt *string `json:"deleted_at"`
+}
+
+// Saved issues still reference a deleted source, so it stays as a hidden stopped row until they are gone; freeing its key lets the sender's next mail start a new source.
+func (q *Queries) MarkNewsletterSourceDeleted(ctx context.Context, arg MarkNewsletterSourceDeletedParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markNewsletterSourceDeleted, arg.Did, arg.ID, arg.DeletedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const moveNewsletterMessage = `-- name: MoveNewsletterMessage :exec
 UPDATE newsletter_messages SET source_id = ?3, updated_at = ?4
 WHERE did = ?1 AND id = ?2
@@ -1254,7 +1323,7 @@ SET title = COALESCE(?1, title),
     is_primary = COALESCE(?2, is_primary),
     tags = COALESCE(?3, tags),
     updated_at = ?4
-WHERE did = ?5 AND id = ?6
+WHERE did = ?5 AND id = ?6 AND deleted_at IS NULL
 `
 
 type PatchNewsletterSourceParams struct {
@@ -1309,16 +1378,18 @@ SET sender_name = COALESCE(?1, sender_name),
     sender_address = CASE WHEN ?2 = '' THEN sender_address ELSE ?2 END,
     first_received_at = COALESCE(first_received_at, ?3),
     last_received_at = ?3,
+    unsubscribe_url = COALESCE(?4, unsubscribe_url),
     updated_at = ?3
-WHERE did = ?4 AND id = ?5
+WHERE did = ?5 AND id = ?6
 `
 
 type TouchNewsletterSourceParams struct {
-	SenderName    *string     `json:"sender_name"`
-	SenderAddress interface{} `json:"sender_address"`
-	ReceivedAt    *string     `json:"received_at"`
-	Did           string      `json:"did"`
-	ID            string      `json:"id"`
+	SenderName     *string     `json:"sender_name"`
+	SenderAddress  interface{} `json:"sender_address"`
+	ReceivedAt     *string     `json:"received_at"`
+	UnsubscribeUrl *string     `json:"unsubscribe_url"`
+	Did            string      `json:"did"`
+	ID             string      `json:"id"`
 }
 
 func (q *Queries) TouchNewsletterSource(ctx context.Context, arg TouchNewsletterSourceParams) error {
@@ -1326,6 +1397,7 @@ func (q *Queries) TouchNewsletterSource(ctx context.Context, arg TouchNewsletter
 		arg.SenderName,
 		arg.SenderAddress,
 		arg.ReceivedAt,
+		arg.UnsubscribeUrl,
 		arg.Did,
 		arg.ID,
 	)

@@ -25,6 +25,7 @@ type Querier interface {
 	CreateNewsletterSource(ctx context.Context, arg CreateNewsletterSourceParams) error
 	CreateWebSource(ctx context.Context, arg CreateWebSourceParams) error
 	DeleteAuthRequest(ctx context.Context, state string) error
+	DeleteEmptyDeletedNewsletterSources(ctx context.Context, did string) error
 	DeleteExpiredAuthRequests(ctx context.Context, expiresAt string) (int64, error)
 	DeleteFeedEntry(ctx context.Context, arg DeleteFeedEntryParams) error
 	DeleteNewsletterReceipt(ctx context.Context, id string) error
@@ -64,6 +65,7 @@ type Querier interface {
 	GetNewsletterSaveForMessage(ctx context.Context, arg GetNewsletterSaveForMessageParams) (NewsletterSafe, error)
 	GetNewsletterSource(ctx context.Context, arg GetNewsletterSourceParams) (NewsletterSource, error)
 	GetNewsletterSourceByKey(ctx context.Context, arg GetNewsletterSourceByKeyParams) (NewsletterSource, error)
+	GetNewsletterSourceUnsubscribeURL(ctx context.Context, arg GetNewsletterSourceUnsubscribeURLParams) (*string, error)
 	GetNewsletterSourceWithStats(ctx context.Context, arg GetNewsletterSourceWithStatsParams) (GetNewsletterSourceWithStatsRow, error)
 	GetNextNewsletterReceipt(ctx context.Context, nextAttemptAt *string) (GetNextNewsletterReceiptRow, error)
 	GetOldestWebSourceItemDate(ctx context.Context, sourceID string) (*string, error)
@@ -135,6 +137,8 @@ type Querier interface {
 	ListWebSourcePolls(ctx context.Context, arg ListWebSourcePollsParams) ([]WebSourcePoll, error)
 	ListWebSourcesCreatedSince(ctx context.Context, arg ListWebSourcesCreatedSinceParams) ([]string, error)
 	MarkNewsletterReceiptFailed(ctx context.Context, arg MarkNewsletterReceiptFailedParams) error
+	// Saved issues still reference a deleted source, so it stays as a hidden stopped row until they are gone; freeing its key lets the sender's next mail start a new source.
+	MarkNewsletterSourceDeleted(ctx context.Context, arg MarkNewsletterSourceDeletedParams) (int64, error)
 	MarkOrphanedFeeds(ctx context.Context, now *string) error
 	// Matches nothing when a setup replaced the source while the check ran; that setup answers for itself.
 	MarkWebSourceSectionChecked(ctx context.Context, arg MarkWebSourceSectionCheckedParams) (int64, error)

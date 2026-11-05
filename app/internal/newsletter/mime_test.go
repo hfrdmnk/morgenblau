@@ -164,3 +164,45 @@ func TestBlockedNewsletterBodyFetchesNothingRemote(t *testing.T) {
 		})
 	}
 }
+
+func TestParseMIMEKeepsOneClickUnsubscribeOnlyFromDirectDelivery(t *testing.T) {
+	direct := func(headers string) []byte {
+		return []byte("From: Weekly <hello@example.com>\r\nSubject: Issue\r\n" + headers + "Content-Type: text/plain\r\n\r\nBody")
+	}
+	cases := map[string]struct {
+		raw  []byte
+		want string
+	}{
+		"one-click https after mailto": {
+			raw: direct("List-Unsubscribe: <mailto:leave@example.com?subject=unsubscribe>,\r\n <https://lists.example.com/u/opaque-1?list=weekly>\r\n" +
+				"List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n"),
+			want: "https://lists.example.com/u/opaque-1?list=weekly",
+		},
+		"https link without one-click post": {
+			raw: direct("List-Unsubscribe: <https://lists.example.com/u/opaque-2>\r\n"),
+		},
+		"one-click with only plain http": {
+			raw: direct("List-Unsubscribe: <http://lists.example.com/u/opaque-3>\r\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n"),
+		},
+		"one-click with only mailto": {
+			raw: direct("List-Unsubscribe: <mailto:leave@example.com>\r\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n"),
+		},
+		"forwarded issue carries the original reader's link": {
+			raw: []byte("From: Alice <alice@example.net>\r\nSubject: Fwd: Issue\r\nMIME-Version: 1.0\r\n" +
+				"Content-Type: multipart/mixed; boundary=mix\r\n\r\n" +
+				"--mix\r\nContent-Type: text/plain\r\n\r\nLook at this.\r\n" +
+				"--mix\r\nContent-Type: message/rfc822\r\n\r\n" +
+				"From: Weekly <hello@example.com>\r\nSubject: Issue\r\nList-ID: <weekly.example>\r\n" +
+				"List-Unsubscribe: <https://lists.example.com/u/alice-token>\r\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n" +
+				"Content-Type: text/plain\r\n\r\nInner body.\r\n" +
+				"--mix--\r\n"),
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := parseMIME(tc.raw, "bounce@example.com").UnsubscribeURL; got != tc.want {
+				t.Fatalf("UnsubscribeURL = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

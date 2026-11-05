@@ -103,7 +103,7 @@ function useTagSuggestions(path: string, exclude: string[]) {
     return state.status === 'loaded' ? state.data.tags.filter((tag) => !taken.has(tag.toLowerCase())) : [];
 }
 
-export function LimitHint({ id, shown, children }: { id: string; shown: boolean; children: ReactNode }) {
+function LimitHint({ id, shown, children }: { id: string; shown: boolean; children: ReactNode }) {
     if (!shown) return null;
     return <p className="mt-2 text-sm text-destructive" id={id}>{children}</p>;
 }

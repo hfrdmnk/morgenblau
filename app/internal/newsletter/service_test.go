@@ -154,8 +154,15 @@ func TestGetSourceReadsOnlyRequestedSourceAndIncludesItsStats(t *testing.T) {
 	if source.ID != targetID || source.IssueCount != 2 || source.SavedCount != 1 || source.Count7d != 1 || source.Count28d != 1 || source.Count56d != 2 || source.Count84d != 2 {
 		t.Fatalf("GetSource details = %+v", source)
 	}
+	if source.LatestEntrySlug != "recent" {
+		t.Fatalf("GetSource LatestEntrySlug = %q, want the most recently received issue", source.LatestEntrySlug)
+	}
 	if got := countRows(t, reader, "newsletter_sources"); got != 2 {
 		t.Fatalf("source count = %d, want 2", got)
+	}
+	empty := seedSource(t, writer, "did:plc:alice", "empty", SourceActive)
+	if source, err := service.GetSource(ctx, "did:plc:alice", empty); err != nil || source.LatestEntrySlug != "" {
+		t.Fatalf("empty source LatestEntrySlug = %q, %v; want none", source.LatestEntrySlug, err)
 	}
 }
 

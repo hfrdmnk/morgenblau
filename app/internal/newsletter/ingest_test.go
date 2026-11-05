@@ -340,3 +340,117 @@ func TestProcessNextLogsRetryStatePersistenceFailure(t *testing.T) {
 		t.Fatalf("log contains private message content: %s", logs.String())
 	}
 }
+
+func TestDeleteSourceKeepsSavedIssuesAndLetsTheSenderStartOver(t *testing.T) {
+	service, reader, _ := newTestService(t)
+	ctx := context.Background()
+	address, _ := service.CreateAddress(ctx, "did:plc:alice")
+	deliver := func(messageID string) {
+		t.Helper()
+		raw := []byte("From: Weekly <hello@example.com>\r\nSubject: " + messageID + "\r\nMessage-ID: <" + messageID + "@example.com>\r\n" +
+			"List-ID: Weekly <weekly.example>\r\nList-Unsubscribe: <https://lists.example.com/u/opaque>\r\n" +
+			"List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\nContent-Type: text/plain\r\n\r\n" + messageID)
+		if err := service.acceptReceipts(ctx, "bounce@example.com", []deliveryRecipient{{DID: "did:plc:alice", Address: address}}, raw); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.processNext(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deliver("first")
+	deliver("second")
+	groups, _ := service.ListSources(ctx, "did:plc:alice")
+	if len(groups.Active) != 1 || !groups.Active[0].CanUnsubscribe {
+		t.Fatalf("sources = %+v, want one that can unsubscribe", groups)
+	}
+	sourceID := groups.Active[0].ID
+	if got, err := service.UnsubscribeURL(ctx, "did:plc:alice", sourceID); err != nil || got != "https://lists.example.com/u/opaque" {
+		t.Fatalf("UnsubscribeURL = %q, %v", got, err)
+	}
+	if _, err := service.UnsubscribeURL(ctx, "did:plc:bob", sourceID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("another owner's UnsubscribeURL err = %v, want ErrNotFound", err)
+	}
+	if err := service.DeleteSource(ctx, "did:plc:bob", sourceID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("another owner's DeleteSource err = %v, want ErrNotFound", err)
+	}
+	messages, _ := service.ListSourceMessages(ctx, "did:plc:alice", sourceID)
+	save, err := service.SaveMessage(ctx, "did:plc:alice", messages[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.DeleteSource(ctx, "did:plc:alice", sourceID); err != nil {
+		t.Fatal(err)
+	}
+	groups, _ = service.ListSources(ctx, "did:plc:alice")
+	if len(groups.Active)+len(groups.Stopped) != 0 {
+		t.Fatalf("sources after delete = %+v, want none", groups)
+	}
+	if _, err := service.GetSource(ctx, "did:plc:alice", sourceID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetSource after delete err = %v, want ErrNotFound", err)
+	}
+	if err := service.DeleteSource(ctx, "did:plc:alice", sourceID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("second DeleteSource err = %v, want ErrNotFound", err)
+	}
+	saves, _ := service.ListSaves(ctx, "did:plc:alice")
+	if len(saves) != 1 || saves[0].SourceTitle != "Weekly" {
+		t.Fatalf("saves after delete = %+v, want the saved issue under its old title", saves)
+	}
+	if got := countRows(t, reader, "newsletter_messages"); got != 1 {
+		t.Fatalf("messages after delete = %d, want only the saved one", got)
+	}
+
+	deliver("third")
+	groups, _ = service.ListSources(ctx, "did:plc:alice")
+	if len(groups.Active) != 1 || groups.Active[0].ID == sourceID || groups.Active[0].IssueCount != 1 {
+		t.Fatalf("sources after resubscribe = %+v, want a fresh source with only the new issue", groups)
+	}
+
+	if err := service.DeleteSave(ctx, "did:plc:alice", save.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := countRows(t, reader, "newsletter_sources"); got != 1 {
+		t.Fatalf("sources rows after unsaving the last kept issue = %d, want only the fresh source", got)
+	}
+}
+
+func TestUnsubscribeURLIsUnsupportedWithoutOneClickHeaders(t *testing.T) {
+	service, _, writer := newTestService(t)
+	sourceID := seedSource(t, writer, "did:plc:alice", "source-a", SourceActive)
+	if _, err := service.UnsubscribeURL(context.Background(), "did:plc:alice", sourceID); !errors.Is(err, ErrUnsubscribeUnsupported) {
+		t.Fatalf("err = %v, want ErrUnsubscribeUnsupported", err)
+	}
+}
+
+func TestMovingTheLastSavedIssueOutOfADeletedSourceRemovesItsRow(t *testing.T) {
+	service, reader, writer := newTestService(t)
+	ctx := context.Background()
+	deletedID := seedSource(t, writer, "did:plc:alice", "deleted", SourceActive)
+	keptID := seedSource(t, writer, "did:plc:alice", "kept", SourceActive)
+	seedMessage(t, writer, "did:plc:alice", deletedID, "saved-a", "dedupe-a")
+	seedMessage(t, writer, "did:plc:alice", deletedID, "saved-b", "dedupe-b")
+	for _, id := range []string{"saved-a", "saved-b"} {
+		if _, err := service.SaveMessage(ctx, "did:plc:alice", id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := service.DeleteSource(ctx, "did:plc:alice", deletedID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.MoveMessage(ctx, "did:plc:alice", "saved-a", MoveTarget{SourceID: keptID}); err != nil {
+		t.Fatal(err)
+	}
+	if got := countRows(t, reader, "newsletter_sources"); got != 2 {
+		t.Fatalf("sources rows while a saved issue remains = %d, want the hidden row kept", got)
+	}
+	if _, err := service.MoveMessage(ctx, "did:plc:alice", "saved-b", MoveTarget{NewSourceTitle: "Example Moved"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := countRows(t, reader, "newsletter_sources"); got != 2 {
+		t.Fatalf("sources rows after moving the last saved issue = %d, want only kept and Example Moved", got)
+	}
+	if got := countRows(t, reader, "newsletter_saves"); got != 2 {
+		t.Fatalf("saves after moves = %d, want both kept", got)
+	}
+}

@@ -2,14 +2,12 @@ import { useRef, type ReactNode, type RefObject } from 'react';
 import { Skeleton } from 'skullet/react';
 import { Link } from 'wouter';
 
-import { EditSourceSheet } from '@/components/add-source-dialog';
+import { EditNewsletterSheet, EditSourceSheet } from '@/components/add-source-dialog';
 import { FeedHealth, GeneratedNote } from '@/components/feed-health';
 import { ItemList, ListError, ListItem } from '@/components/item-list';
-import { SourceMenu } from '@/components/source-menu';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-sources';
 import { newsletterSourceHref, PATHS, sourceHref } from '@/lib/paths';
-import { newsletterEditable } from '@/lib/source-edit';
 import { displayURL, groupByInitial } from '@/lib/source-display';
 
 type RemovedFocus = RefObject<HTMLHeadingElement | null>;
@@ -31,7 +29,7 @@ const SAMPLE_FEEDS: FeedSource[] = ['Example Publication', 'Another Example Jour
 }));
 
 const SAMPLE_NEWSLETTERS: NewsletterSource[] = ['Example Newsletter', 'Sample Dispatch'].map((title, index) => ({
-    id: `${index}`, title, senderAddress: 'hello@example.com', primary: false, tags: [],
+    id: `${index}`, title, senderAddress: 'hello@example.com', primary: false, canUnsubscribe: false, tags: [],
 }));
 
 function FeedList({ removedFocus }: { removedFocus: RemovedFocus }) {
@@ -107,7 +105,7 @@ function NewsletterRows({ sources, stopped = false, onChanged, removedFocus }: {
             row={(source) => (
                 <SourceRow key={source.id} href={newsletterSourceHref(source.id)} title={source.title}
                     identity={source.senderAddress} primary={!stopped && source.primary}
-                    menu={<SourceMenu onChanged={onChanged} removedFocus={removedFocus} source={newsletterEditable(source, stopped)} />} />
+                    menu={<EditNewsletterSheet onChanged={onChanged} removedFocus={removedFocus} source={source} stopped={stopped} />} />
             )} />
     );
 }

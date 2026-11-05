@@ -79,6 +79,7 @@ type Server struct {
 	fetcher     *fetcher.Fetcher
 	standard    *standardfeed.Client
 	safeClient  *http.Client
+	postClient  *http.Client
 	newsletters *newsletter.Service
 	webSources  *websource.Service
 	allowedDIDs auth.Allowlist
@@ -164,6 +165,8 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	}
 	safeClient := safehttp.NewClient(30*time.Second, 5)
 	webPostClient := safehttp.NewClient(30*time.Second, 0)
+	// Well under the server's WriteTimeout, so a sender that confirms late still leaves time to delete and answer the reader.
+	unsubscribeClient := safehttp.NewClient(10*time.Second, 0)
 	identityDir := atidentity.Guarded(safeClient)
 	oauthApp := newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
 	var oauthFlow handler.ClientApp = oauthApp
@@ -172,6 +175,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		slog.Info("local PLC and PDS enabled", "plc", localNet.plc, "pds", localNet.pds, "feed_fixture_port", localNet.feedFixture)
 		safeClient = safehttp.NewClient(30*time.Second, 5, safehttp.WithAllowLoopbackPorts(localNet.ports...))
 		webPostClient = safehttp.NewClient(30*time.Second, 0, safehttp.WithAllowLoopbackPorts(localNet.ports...))
+		unsubscribeClient = safehttp.NewClient(10*time.Second, 0, safehttp.WithAllowLoopbackPorts(localNet.ports...))
 		identityDir = atidentity.Local(safeClient, localNet.plc, localNet.pds)
 		oauthApp = newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
 		oauthFlow = localflow.App{ClientApp: oauthApp, PDS: localNet.pds}
@@ -271,6 +275,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		fetcher:     fetcherInst,
 		standard:    stdClient,
 		safeClient:  safeClient,
+		postClient:  unsubscribeClient,
 		newsletters: newsletterService,
 		webSources:  webSources,
 		allowedDIDs: allowedDIDs,
