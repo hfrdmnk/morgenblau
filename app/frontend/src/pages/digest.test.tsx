@@ -35,8 +35,8 @@ async function emptyDigest({ feeds, newsletters }: Routes) {
     return container.textContent ?? '';
 }
 
-async function renderDigest(entries: unknown[]) {
-    globalThis.fetch = Object.assign(async () => Response.json({ date: '2026-10-29', entries, hasActiveJob: false }), { preconnect: realFetch.preconnect });
+async function renderDigest(entries: unknown[], respond = () => Response.json({ date: '2026-10-29', entries, hasActiveJob: false })) {
+    globalThis.fetch = Object.assign(async () => respond(), { preconnect: realFetch.preconnect });
     const container = document.createElement('div');
     const root = createRoot(container);
     cleanup = () => { root.unmount(); container.remove(); };
@@ -66,6 +66,51 @@ test('primary sources lead the digest with an excerpt, and an image only when th
     expect(container.textContent).toContain('First paragraph. Second paragraph.');
     const images = [...container.querySelectorAll('img')].map((img) => img.getAttribute('src'));
     expect(images).toEqual(['/api/entries/pictured/image']);
+});
+
+test('a source with several posts keeps its latest in place and folds the rest beneath it', async () => {
+    const linkblog = { title: 'Example Linkblog', siteUrl: 'https://links.example.com', feedUrl: 'https://links.example.com/rss', faviconUrl: null };
+    const post = (slug: string, source: Record<string, unknown>) => ({ ...feedEntry(slug, slug, false), source });
+    const container = await renderDigest([
+        post('links-latest', linkblog),
+        post('weekly', { title: 'Example Weekly', siteUrl: 'https://links.example.com', feedUrl: 'https://weekly.example.com/feed', faviconUrl: null }),
+        post('links-older', linkblog),
+        post('letter', { kind: 'newsletter', id: 'letters', title: 'Example Letters', siteUrl: null, faviconUrl: null }),
+        post('links-oldest', linkblog),
+    ]);
+    const visible = () => [...container.querySelectorAll('a[href*="?from="]')].map((link) => link.textContent);
+    expect(visible()).toEqual(['links-latest', 'weekly', 'letter']);
+
+    const toggle = container.querySelector<HTMLButtonElement>('button[aria-expanded]');
+    expect(toggle?.textContent).toBe('+2 more');
+    await act(async () => toggle?.click());
+    // Unmounting mid-animation leaves the next test's digest stuck loading under happy-dom.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 300)));
+    expect(visible()).toEqual(['links-latest', 'links-older', 'links-oldest', 'weekly', 'letter']);
+});
+
+test('an open group stays open when a sync brings a newer post from its source, and when the page mounts again', async () => {
+    const source = { title: 'Example Notes', siteUrl: 'https://notes.example.com', feedUrl: 'https://notes.example.com/feed', faviconUrl: null };
+    const post = (slug: string) => ({ ...feedEntry(slug, slug, false), source });
+    let syncing = true;
+    const respond = () => Response.json({
+        date: '2026-10-29',
+        entries: syncing ? [post('notes-a'), post('notes-b')] : [post('notes-new'), post('notes-a'), post('notes-b')],
+        hasActiveJob: syncing,
+    });
+    let container = await renderDigest([], respond);
+    const visible = () => [...container.querySelectorAll('a[href*="?from="]')].map((link) => link.textContent);
+    const settle = (ms: number) => act(async () => new Promise((resolve) => setTimeout(resolve, ms)));
+
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-expanded]')?.click());
+    await settle(300);
+    syncing = false;
+    await settle(1200);
+    expect(visible()).toEqual(['notes-new', 'notes-a', 'notes-b']);
+
+    act(() => cleanup());
+    container = await renderDigest([], respond);
+    expect(visible()).toEqual(['notes-new', 'notes-a', 'notes-b']);
 });
 
 const notFound = () => Response.json({ code: 'not_found', message: 'not found' }, { status: 404 });

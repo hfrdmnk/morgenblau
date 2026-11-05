@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { useId, useMemo, useState } from 'react';
 import { Skeleton } from 'skullet/react';
 import { Link, useLocation } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
 import { AddSourceDialog } from '@/components/add-source-dialog';
+import { ChevronDownIcon } from '@/components/icons';
 import { ItemList, ListError, ListItem, SourceIcon } from '@/components/item-list';
 import { EmptyState } from '@/components/status-state';
 import { Button } from '@/components/ui/button';
@@ -15,6 +17,7 @@ import { addCalendarDays, selectedDigestDate, startOfToday, toDateKey } from '@/
 import { digestHref, entryHref, readerSourceHref } from '@/lib/paths';
 import { entryExcerpt } from '@/lib/reader';
 import { showShortcutNotice } from '@/lib/shortcuts';
+import { cn } from '@/lib/utils';
 
 const dayName = new Intl.DateTimeFormat(undefined, { weekday: 'long' });
 export function Digest() {
@@ -78,36 +81,61 @@ function DigestContent({ date, state }: { date: string; state: ReturnType<typeof
             label="Loading digest"
             sample={SAMPLE_DIGEST}
         >
-            {(digest) => <LoadedDigest date={date} digest={digest} />}
+            {(digest) => <LoadedDigest date={date} digest={digest} key={date} />}
         </Skeleton>
     );
 }
 
+// Kept outside the page so going back from a folded post finds its group still open.
+const openSources = new Map<string, Set<string>>();
+
 function LoadedDigest({ date, digest }: { date: string; digest: DigestData }) {
+    const [open, setOpen] = useState(() => new Set(openSources.get(date)));
     if (digest.entries.length === 0) {
         if (digest.hasActiveJob) return <EmptyDay>New entries are still being collected.</EmptyDay>;
         return <EmptyDigest />;
     }
-    const primary = digest.entries.filter((entry) => entry.source.primary);
-    const rest = digest.entries.filter((entry) => !entry.source.primary);
+    const toggle = (key: string) => {
+        const next = new Set(open);
+        if (!next.delete(key)) next.add(key);
+        openSources.set(date, next);
+        setOpen(next);
+    };
+    const primary = groupBySource(digest.entries.filter((entry) => entry.source.primary));
+    const rest = groupBySource(digest.entries.filter((entry) => !entry.source.primary));
     return (
         <div className="flex flex-col gap-20">
             {primary.length > 0 ? (
                 <ol aria-label="Primary sources" className="flex flex-col gap-12">
-                    {primary.map((entry) => (
-                        <PrimaryItem date={date} entry={entry} key={`${entry.id}-${entry.entrySlug}`} />
+                    {primary.map((group) => (
+                        <PrimaryItem date={date} group={group} key={group.key} onToggle={() => toggle(group.key)} open={open.has(group.key)} />
                     ))}
                 </ol>
             ) : null}
             {rest.length > 0 ? (
                 <ItemList ordered>
-                    {rest.map((entry) => (
-                        <DigestItem date={date} entry={entry} key={`${entry.id}-${entry.entrySlug}`} />
+                    {rest.map((group) => (
+                        <DigestItem date={date} group={group} key={group.key} onToggle={() => toggle(group.key)} open={open.has(group.key)} />
                     ))}
                 </ItemList>
             ) : null}
         </div>
     );
+}
+
+type SourceGroup = { key: string; lead: DigestEntry; more: DigestEntry[] };
+
+// Entries arrive newest first, so a busy source keeps its latest post in place and folds the rest beneath it.
+function groupBySource(entries: DigestEntry[]): SourceGroup[] {
+    const groups = new Map<string, SourceGroup>();
+    for (const entry of entries) {
+        const { source } = entry;
+        const key = source.kind === 'newsletter' ? `newsletter:${source.id}` : source.feedUrl ? `feed:${source.feedUrl}` : `entry:${entry.id}`;
+        const group = groups.get(key);
+        if (group) group.more.push(entry);
+        else groups.set(key, { key, lead: entry, more: [] });
+    }
+    return [...groups.values()];
 }
 
 function EmptyDay({ children }: { children: string }) {
@@ -155,22 +183,28 @@ function greeting(now: Date): string {
 }
 
 // Primary posts lead with type and whitespace; the image appears only when the post has one that loads.
-function PrimaryItem({ date, entry }: { date: string; entry: DigestEntry }) {
+type GroupProps = { date: string; group: SourceGroup; onToggle: () => void; open: boolean };
+
+function PrimaryItem({ date, group, onToggle, open }: GroupProps) {
+    const entry = group.lead;
     // The digest re-polls every second while a sync runs; memoizing on the body skips reparsing unchanged posts.
     const excerpt = useMemo(() => entryExcerpt(entry.body), [entry.body]);
     const [failedImage, setFailedImage] = useState<string | null>(null);
     const image = entry.image && entry.image !== failedImage ? entry.image : null;
     const href = entryHref(entry.entrySlug, date);
     return (
-        <li className={image ? 'flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_auto] sm:grid-rows-[auto_auto_1fr] sm:gap-x-8' : 'flex flex-col gap-3'}>
-            <PrimarySource entry={entry} />
-            <h2 className="text-2xl font-medium tracking-[-0.015em] text-balance break-words sm:col-start-1 sm:row-start-2 sm:text-3xl">
-                <Link className={`rounded-sm hover:text-foreground/75 ${entry.title ? 'text-foreground' : 'text-muted-foreground'}`} href={href}>{entry.title || 'Untitled'}</Link>
-            </h2>
-            {excerpt ? (
-                <p className="line-clamp-2 max-w-[60ch] self-start text-base text-muted-foreground text-pretty sm:col-start-1 sm:row-start-3">{excerpt}</p>
-            ) : null}
-            {image ? <PrimaryImage href={href} onError={() => setFailedImage(image)} src={image} /> : null}
+        <li className="flex flex-col gap-3">
+            <div className={image ? 'flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_auto] sm:grid-rows-[auto_auto_1fr] sm:gap-x-8' : 'flex flex-col gap-3'}>
+                <PrimarySource entry={entry} />
+                <h2 className="text-2xl font-medium tracking-[-0.015em] text-balance break-words sm:col-start-1 sm:row-start-2 sm:text-3xl">
+                    <Link className={`rounded-sm hover:text-foreground/75 ${entry.title ? 'text-foreground' : 'text-muted-foreground'}`} href={href}>{entry.title || 'Untitled'}</Link>
+                </h2>
+                {excerpt ? (
+                    <p className="line-clamp-2 max-w-[60ch] self-start text-base text-muted-foreground text-pretty sm:col-start-1 sm:row-start-3">{excerpt}</p>
+                ) : null}
+                {image ? <PrimaryImage href={href} onError={() => setFailedImage(image)} src={image} /> : null}
+            </div>
+            {group.more.length > 0 ? <MoreFromSource className="text-xl" date={date} group={group} onToggle={onToggle} open={open} /> : null}
         </li>
     );
 }
@@ -206,7 +240,9 @@ function sourceLabel(entry: DigestEntry): string {
     return entry.source.title || hostLabel(firstDefined(entry.source.siteUrl, entry.source.feedUrl));
 }
 
-function DigestItem({ date, entry }: { date: string; entry: DigestEntry }) {
+function DigestItem({ date, group, onToggle, open }: GroupProps) {
+    const entry = group.lead;
+    const id = useId();
     const sourceTitle = sourceLabel(entry);
     const postHost = hostLabel(firstDefined(entry.url, entry.source.siteUrl, entry.source.feedUrl));
     const meta = [sourceTitle, postHost].filter(Boolean).join(' · ');
@@ -216,8 +252,72 @@ function DigestItem({ date, entry }: { date: string; entry: DigestEntry }) {
             href={entryHref(entry.entrySlug, date)}
             icon={entry.source.faviconUrl}
             meta={sourceHref ? <Link className="rounded-sm hover:text-foreground" href={sourceHref}>{meta}</Link> : meta}
+            note={group.more.length > 0 ? <MoreList className="text-lg" date={date} entries={group.more} id={id} open={open} /> : null}
+            status={group.more.length > 0 ? <MoreToggle controls={id} group={group} onToggle={onToggle} open={open} /> : null}
             title={entry.title || 'Untitled'}
         />
+    );
+}
+
+function MoreFromSource({ className, date, group, onToggle, open }: GroupProps & { className: string }) {
+    const id = useId();
+    return (
+        <div>
+            <div className="-ml-2">
+                <MoreToggle controls={id} group={group} onToggle={onToggle} open={open} />
+            </div>
+            <MoreList className={className} date={date} entries={group.more} id={id} open={open} />
+        </div>
+    );
+}
+
+function MoreToggle({ controls, group, onToggle, open }: { controls: string; group: SourceGroup; onToggle: () => void; open: boolean }) {
+    return (
+        <button
+            aria-controls={controls}
+            aria-expanded={open}
+            aria-label={`${open ? 'Hide' : 'Show'} ${group.more.length} more from ${sourceLabel(group.lead)}`}
+            className="-my-1 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full px-2 py-1 text-sm font-medium text-muted-foreground tabular-nums transition-[color,background-color,transform] duration-(--motion-duration-fast) hover:bg-foreground/5 hover:text-foreground active:scale-96 aria-expanded:bg-foreground/5 aria-expanded:text-foreground"
+            onClick={onToggle}
+            type="button"
+        >
+            +{group.more.length} more
+            <ChevronDownIcon
+                aria-hidden
+                className={cn('size-3.5 shrink-0 transition-transform duration-(--motion-duration-ui) ease-(--ease-out) motion-reduce:transition-none', open && 'rotate-180')}
+            />
+        </button>
+    );
+}
+
+// Closing runs faster than opening because the reader has already decided.
+const MORE_TIMING = { open: 0.24, close: 0.16, ease: [0.16, 1, 0.3, 1] as const };
+
+// The source already heads the group, so the folded posts show only their titles.
+function MoreList({ className, date, entries, id, open }: { className: string; date: string; entries: DigestEntry[]; id: string; open: boolean }) {
+    const reduced = useReducedMotion();
+    return (
+        <AnimatePresence initial={false}>
+            {open ? (
+                <motion.div
+                    animate={{ height: 'auto', opacity: 1, transition: { duration: reduced ? 0 : MORE_TIMING.open, ease: MORE_TIMING.ease } }}
+                    className="overflow-hidden"
+                    exit={{ height: 0, opacity: 0, transition: { duration: reduced ? 0 : MORE_TIMING.close, ease: MORE_TIMING.ease } }}
+                    id={id}
+                    initial={{ height: 0, opacity: 0 }}
+                >
+                    <ol className="ml-[7px] flex flex-col gap-5 border-l border-border pt-5 pl-[17px]">
+                        {entries.map((entry) => (
+                            <li className="min-w-0" key={`${entry.id}-${entry.entrySlug}`}>
+                                <Link className={cn('block min-w-0 truncate rounded-sm font-medium text-foreground hover:text-foreground/75', className)} href={entryHref(entry.entrySlug, date)} title={entry.title || 'Untitled'}>
+                                    {entry.title || 'Untitled'}
+                                </Link>
+                            </li>
+                        ))}
+                    </ol>
+                </motion.div>
+            ) : null}
+        </AnimatePresence>
     );
 }
 

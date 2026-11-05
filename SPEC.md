@@ -77,6 +77,8 @@ Digest dates use the browser's local calendar boundaries for every source type, 
 
 Primary sources appear at the top with distinct presentation. This is a user preference, not a social ranking signal.
 
+A source with several entries on one day shows its latest entry in its place, with the others folded directly beneath it until the reader opens them, so a busy source cannot crowd the day.
+
 The in-app reader remains the default for articles, with an option to open the original URL. YouTube playback and inline microblog rendering remain supported. Default content-type filters and custom Views are retained product scope.
 
 HTML is sanitized before storage. Feed-supplied bodies are processed during ingestion; summary-only entries may lazily extract and cache sanitized article content on first open. Native Standardfeed documents use the canonical web page for the reader rather than requiring renderers for each publisher's content format. Documents without a web path may fall back to plain text.
