@@ -1,10 +1,14 @@
 -- name: UpsertFeedEntry :exec
 -- keep_undated = 1 stores an undated entry with an empty published_at, which no digest day matches, instead of its first-seen time.
+-- A stored date only moves earlier: feeds that bump the date on every edit must not resurface a post on a later digest day.
 INSERT INTO feed_entries (feed_url, guid, entry_slug, url, title, content_html, content_type, published_at, fetched_at, metadata)
 VALUES (
     sqlc.arg(feed_url), sqlc.arg(guid), sqlc.arg(entry_slug), sqlc.arg(url),
     sqlc.arg(title), sqlc.arg(content_html), sqlc.arg(content_type),
-    COALESCE(NULLIF(CAST(sqlc.arg(published_at) AS TEXT), ''),
+    COALESCE(
+        MIN(NULLIF(CAST(sqlc.arg(published_at) AS TEXT), ''),
+            NULLIF((SELECT published_at FROM feed_entries WHERE feed_url = sqlc.arg(feed_url) AND guid = sqlc.arg(guid)), '')),
+        NULLIF(CAST(sqlc.arg(published_at) AS TEXT), ''),
         (SELECT published_at FROM feed_entries WHERE feed_url = sqlc.arg(feed_url) AND guid = sqlc.arg(guid)),
         CASE WHEN CAST(sqlc.arg(keep_undated) AS INTEGER) = 1 THEN '' ELSE sqlc.arg(fetched_at) END),
     sqlc.arg(fetched_at), sqlc.arg(metadata)

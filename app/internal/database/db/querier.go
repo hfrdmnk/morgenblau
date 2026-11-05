@@ -181,6 +181,7 @@ type Querier interface {
 	// bind ("missing argument with index N").
 	UpsertFeed(ctx context.Context, arg UpsertFeedParams) error
 	// keep_undated = 1 stores an undated entry with an empty published_at, which no digest day matches, instead of its first-seen time.
+	// A stored date only moves earlier: feeds that bump the date on every edit must not resurface a post on a later digest day.
 	UpsertFeedEntry(ctx context.Context, arg UpsertFeedEntryParams) error
 	// Standardfeed counterpart to UpsertFeedEntry. Unlike the rss upsert it owns
 	// extracted_body and record_cid on conflict: a CID change must reset the

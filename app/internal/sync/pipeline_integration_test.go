@@ -128,11 +128,11 @@ func TestFeedPipeline_PublicationDateRepairAndStability(t *testing.T) {
 	mu.Lock()
 	date = "2025-11-09T23:30:00-05:00"
 	mu.Unlock()
-	check("2025-11-10T04:30:00Z")
-	mu.Lock()
-	published = "2025-11-08  T00:00:00Z"
-	mu.Unlock()
 	check("2025-11-08T00:00:00Z")
+	mu.Lock()
+	published = "2025-11-07  T00:00:00Z"
+	mu.Unlock()
+	check("2025-11-07T00:00:00Z")
 }
 
 func TestFeedPipeline_FetchAndStore_BackoffPersistsAcrossCallsThenRecovers(t *testing.T) {

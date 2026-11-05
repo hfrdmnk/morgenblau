@@ -272,7 +272,10 @@ INSERT INTO feed_entries (feed_url, guid, entry_slug, url, title, content_html, 
 VALUES (
     ?1, ?2, ?3, ?4,
     ?5, ?6, ?7,
-    COALESCE(NULLIF(CAST(?8 AS TEXT), ''),
+    COALESCE(
+        MIN(NULLIF(CAST(?8 AS TEXT), ''),
+            NULLIF((SELECT published_at FROM feed_entries WHERE feed_url = ?1 AND guid = ?2), '')),
+        NULLIF(CAST(?8 AS TEXT), ''),
         (SELECT published_at FROM feed_entries WHERE feed_url = ?1 AND guid = ?2),
         CASE WHEN CAST(?9 AS INTEGER) = 1 THEN '' ELSE ?10 END),
     ?10, ?11
@@ -302,6 +305,7 @@ type UpsertFeedEntryParams struct {
 }
 
 // keep_undated = 1 stores an undated entry with an empty published_at, which no digest day matches, instead of its first-seen time.
+// A stored date only moves earlier: feeds that bump the date on every edit must not resurface a post on a later digest day.
 func (q *Queries) UpsertFeedEntry(ctx context.Context, arg UpsertFeedEntryParams) error {
 	_, err := q.db.ExecContext(ctx, upsertFeedEntry,
 		arg.FeedUrl,
