@@ -16,6 +16,9 @@ const HUGE_BYTES = 5 * 1024 * 1024 + 1024
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAMBAMAAACZySCyAAAAJFBMVEUrbLA9d6lQgaFijJp1lpKHoYuaq4Ostny/wHTRy23k1WX24F6DyBZgAAAAMUlEQVQI12NggAFBKGBQggIGYyhgcIEChlAoYEiDAoZyKGDogAKGmVDAsAoKGHZDAQC6UCMRxM84EQAAAABJRU5ErkJggg==', 'base64')
 let toggleUp = true
 let undatedLater = false
+// While on, /feeds/held.xml answers only at release, so a fetch job stays in flight; release before safehttp's 30s client timeout.
+let holding = false
+const heldResponses = []
 
 // Entries dated a minute before the request land in today's digest whatever time the run starts, except in the first minute after midnight.
 function render(name) {
@@ -66,6 +69,12 @@ const fixtures = http.createServer((req, res) => {
     undatedLater = true
     return send(res, 200, 'application/json', JSON.stringify({ undated: 'later' }))
   }
+  if (req.method === 'POST' && /^\/control\/hold\/(on|off)$/.test(pathname)) {
+    holding = pathname.endsWith('/on')
+    const released = heldResponses.length
+    if (!holding) heldResponses.splice(0).forEach((held) => send(held, 200, 'application/rss+xml; charset=utf-8', render('held.xml')))
+    return send(res, 200, 'application/json', JSON.stringify({ hold: holding ? 'on' : 'off', released }))
+  }
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'text/plain', 'method not allowed\n')
   if (feeds[pathname]) return send(res, 200, ...feeds[pathname]())
   switch (pathname) {
@@ -75,6 +84,8 @@ const fixtures = http.createServer((req, res) => {
       return huge(res)
     case '/feeds/unavailable.xml':
       return send(res, 503, 'text/plain', 'fixture unavailable\n')
+    case '/feeds/held.xml':
+      return holding ? heldResponses.push(res) : send(res, 200, 'application/rss+xml; charset=utf-8', render('held.xml'))
     case '/feeds/toggle.xml':
       return toggleUp ? send(res, 200, 'application/rss+xml; charset=utf-8', render('toggle.xml')) : send(res, 503, 'text/plain', 'toggle is down\n')
     case '/feeds/redirect-decoy.xml':

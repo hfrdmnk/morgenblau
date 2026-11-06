@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<title>Example Held Feed</title>
+<link>{{ORIGIN}}/</link>
+<description>Answers only once the hold is released, so a fetch job stays in flight.</description>
+<item>
+<title>Fixture entry that arrived after the hold</title>
+<link>{{ORIGIN}}/posts/held</link>
+<guid isPermaLink="false">example-fixture-held</guid>
+<pubDate>{{NOW_RFC822}}</pubDate>
+<description>&lt;p&gt;A fixture entry served once the hold was released.&lt;/p&gt;</description>
+</item>
+</channel>
+</rss>
