@@ -138,3 +138,57 @@ test('a failed feed list offers a retry instead of guessing which empty state ap
     expect(text).not.toContain('A quiet day.');
     expect(text).not.toContain('Nothing to read yet.');
 });
+
+test('an empty day keeps the digest skeleton while a sync is still collecting, then shows what arrived', async () => {
+    let calls = 0;
+    globalThis.fetch = Object.assign(async () => {
+        calls += 1;
+        return Response.json(calls === 1
+            ? { date: '2026-10-29', entries: [], hasActiveJob: true }
+            : { date: '2026-10-29', entries: [feedEntry('arrived', 'Freshly collected post', false)], hasActiveJob: false });
+    }, { preconnect: realFetch.preconnect });
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    cleanup = () => { root.unmount(); container.remove(); };
+    await act(async () => root.render(<Digest />));
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(calls).toBe(1);
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(container.textContent).not.toContain('A quiet day.');
+    expect(container.textContent).not.toContain('Nothing to read yet.');
+
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 1100)));
+    expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+    expect(container.textContent).toContain('Freshly collected post');
+});
+
+test('adding a first source never flashes the quiet-day copy before the digest reports its collection', async () => {
+    let feeds: unknown[] = [];
+    let digestCalls = 0;
+    let answerDigest = () => {};
+    globalThis.fetch = Object.assign(async (input: RequestInfo | URL) => {
+        const path = new URL(String(input), 'http://app.example.com').pathname;
+        if (path === '/api/subscriptions') return Response.json(feeds);
+        if (path === '/api/newsletters') return Response.json({ active: [], stopped: [] });
+        digestCalls += 1;
+        if (digestCalls === 1) return Response.json({ date: '2026-10-29', entries: [], hasActiveJob: false });
+        await new Promise<void>((resolve) => { answerDigest = resolve; });
+        return Response.json({ date: '2026-10-29', entries: [], hasActiveJob: true });
+    }, { preconnect: realFetch.preconnect });
+    const { subscriptionChanges } = await import('@/lib/add-source');
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    cleanup = () => { root.unmount(); container.remove(); };
+    await act(async () => root.render(<Digest />));
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(container.textContent).toContain('Nothing to read yet.');
+
+    feeds = [feedEntry('first', 'Example Publication', false)];
+    await act(async () => { subscriptionChanges.dispatchEvent(new Event('change')); });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(container.textContent).not.toContain('A quiet day.');
+
+    await act(async () => { answerDigest(); });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+});

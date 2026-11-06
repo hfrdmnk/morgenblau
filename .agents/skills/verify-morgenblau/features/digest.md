@@ -6,7 +6,7 @@ Help article: none
 
 ## Sub-features
 
-- `digest-today` `/` lists today's entries, or, when empty, `A quiet day.` (`None of your sources published anything on this day.`) for a reader with sources and `Good <morning|afternoon|evening>. Nothing to read yet.` with `Add your first source` for one without (`EmptyDigest` in `frontend/src/pages/digest.tsx`), or `New entries are still being collected.` while a sync runs.
+- `digest-today` `/` lists today's entries, or, when empty, `A quiet day.` (`None of your sources published anything on this day.`) for a reader with sources and `Good <morning|afternoon|evening>. Nothing to read yet.` with `Add your first source` for one without (`EmptyDigest` in `frontend/src/pages/digest.tsx`), or keeps its skeleton (`aria-busy`) while a sync runs on an empty day.
 - `digest-date` `/?date=YYYY-MM-DD` shows that day; the UI shows today for a future date.
 - `date-nav` the header's `Digest date` navigation (`DigestDateNav` in `frontend/src/components/app-header.tsx`, only on `/`) links three days before the selected day and up to three after it, never past today (`digestDateRange` in `frontend/src/lib/digest-dates.ts`); the selected one has `aria-current="date"`.
 - `day-keys` on `/`, `Shift+ArrowLeft`/`Shift+ArrowRight` (or `h`/`l`) move one day and `Shift+T` goes to today; past today an info toast answers instead. `Shift+D`/`Shift+S`/`Shift+L` switch modes anywhere signed in (`APP_MODES` in `frontend/src/lib/paths.ts`); `shortcutKey` in `frontend/src/lib/shortcuts.ts` leaves keys alone in text fields and dialogs.
@@ -32,6 +32,7 @@ Preconditions:
 - **Entry detail.** `$V api $S GET /api/entries/<entrySlug> --out entry`: `200` with the same title.
 - **Date navigation.** `click "getByRole('link', { name: '<yesterday full date>' })"`, then `eval "() => location.search"`: `?date=<yesterday>`; the newsletter item is gone; `screenshot --filename=digest-yesterday.png`. `goto "/?date=2999-01-01"`: the heading shows today's weekday and `eval "() => document.querySelector('[aria-current=date]')?.getAttribute('aria-label')"` is today. `$V api $S GET "/api/digest?date=2999-01-01&timezone=Europe/Zurich" --out digest-future`: `200`, `date` `2999-01-01`, no entries.
 - **Primary sources.** `POST /api/subscriptions --data '{"feedUrl":"'$F'/feeds/valid.xml","primary":true}'` (`F` as in [subscriptions](./subscriptions.md)) and wait until `GET /api/jobs/active` is `null`. On `/`, list `Primary sources` comes first and holds `Fixture entry published just now`; the newsletter follows in the ordinary list (`digest-primary.png`).
+- **Collecting.** On a fresh account, add `$F/feeds/held.xml` through `Add your first source`, `curl -X POST $F/control/hold/on` once its preview shows, then click `Add to sources`: while `/api/jobs/active` is `running`, `main [aria-busy=true]` holds the skeleton and `eval "() => document.querySelector('main').innerText"` has no empty-state copy (read `innerText`: the skeleton keeps a hidden measuring copy that `textContent` and `getByText` still see); `curl -X POST $F/control/hold/off` and `Fixture entry that arrived after the hold` replaces it.
 - **Negative.** `$V api $S GET "/api/digest?date=not-a-date"`: `400`. `GET "/api/digest?timezone=Mars/Olympus"`: `400` `invalid timezone`. `$V api $S GET /api/entries/unknownslug`: `404`.
 
 ## Evidence

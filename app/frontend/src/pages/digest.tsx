@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { Skeleton } from 'skullet/react';
 import { Link, useLocation } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
@@ -13,6 +13,7 @@ import { useDigest, type DigestEntry } from '@/hooks/use-digest';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useShortcuts } from '@/hooks/use-shortcuts';
 import { useSources, type FeedSource } from '@/hooks/use-sources';
+import { subscriptionChanges } from '@/lib/add-source';
 import { addCalendarDays, selectedDigestDate, startOfToday, toDateKey } from '@/lib/digest-dates';
 import { digestHref, entryHref, readerSourceHref } from '@/lib/paths';
 import { entryExcerpt } from '@/lib/reader';
@@ -73,9 +74,11 @@ const SAMPLE_DIGEST: DigestData = {
 };
 
 function DigestContent({ date, state }: { date: string; state: ReturnType<typeof useDigest> }) {
+    // An empty day while a sync runs is still loading: entries are on their way, so it keeps the skeleton until they land or the job ends.
+    const collecting = state.status === 'loaded' && state.data.hasActiveJob && state.data.entries.length === 0;
     return (
         <Skeleton
-            data={state.status === 'loaded' ? state.data : null}
+            data={state.status === 'loaded' && !collecting ? state.data : null}
             error={state.status === 'error' ? <ListError label="this digest" retry={state.retry} /> : undefined}
             id="digest"
             label="Loading digest"
@@ -91,10 +94,7 @@ const openSources = new Map<string, Set<string>>();
 
 function LoadedDigest({ date, digest }: { date: string; digest: DigestData }) {
     const [open, setOpen] = useState(() => new Set(openSources.get(date)));
-    if (digest.entries.length === 0) {
-        if (digest.hasActiveJob) return <EmptyDay>New entries are still being collected.</EmptyDay>;
-        return <EmptyDigest />;
-    }
+    if (digest.entries.length === 0) return <EmptyDigest digest={digest} />;
     const toggle = (key: string) => {
         const next = new Set(open);
         if (!next.delete(key)) next.add(key);
@@ -138,21 +138,27 @@ function groupBySource(entries: DigestEntry[]): SourceGroup[] {
     return [...groups.values()];
 }
 
-function EmptyDay({ children }: { children: string }) {
-    return <p className="py-8 text-sm text-muted-foreground">{children}</p>;
-}
-
 // An empty day reads differently for a reader who has nothing to follow yet, so it checks before choosing the copy.
-function EmptyDigest() {
+function EmptyDigest({ digest }: { digest: DigestData }) {
     const feeds = useSources<FeedSource[]>('/api/subscriptions');
     const newsletters = useSources<{ active: unknown[]; stopped: unknown[] }>('/api/newsletters');
     // Servers without newsletter delivery answer 404 here, which means the reader has no newsletters.
     const noSources = feeds.status === 'loaded' && newsletters.status !== 'loading'
         ? feeds.data.length === 0 && (newsletters.status === 'error' || newsletters.data.active.length === 0)
         : null;
+    // After a source change the copy waits for the digest's own answer, which may turn this day into collecting instead.
+    const [changedAt, setChangedAt] = useState<DigestData | null>(null);
+    useEffect(() => {
+        const change = () => setChangedAt(digest);
+        subscriptionChanges.addEventListener('change', change);
+        return () => subscriptionChanges.removeEventListener('change', change);
+    }, [digest]);
+    const waiting = changedAt === digest;
+    const [held, setHeld] = useState(noSources);
+    if (!waiting && held !== noSources) setHeld(noSources);
     return (
         <Skeleton
-            data={noSources}
+            data={waiting ? held : noSources}
             error={feeds.status === 'error' ? <ListError label="your sources" retry={feeds.retry} /> : undefined}
             label="Loading digest"
             sample
