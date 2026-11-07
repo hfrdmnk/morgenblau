@@ -2,8 +2,7 @@ import { useState } from 'react';
 
 import { ReaderNotice } from '@/components/reader-notice';
 import { Button } from '@/components/ui/button';
-import { api } from '@/lib/api';
-import type { ReaderEntry } from '@/lib/reader';
+import { allowRemoteImages, type ReaderEntry } from '@/lib/reader';
 
 export function NewsletterImages({ entry, newsletter, onChange }: {
     entry: ReaderEntry;
@@ -17,10 +16,7 @@ export function NewsletterImages({ entry, newsletter, onChange }: {
         setPending(true);
         setNotice('');
         try {
-            const result = await api<{ body: string; remoteImagesAllowed: boolean; hasBlockedRemoteImages: boolean }>(
-                `/api/newsletters/messages/${encodeURIComponent(newsletter.messageId)}/images`, { method: 'POST' },
-            );
-            onChange({ ...entry, body: result.body, newsletter: { ...newsletter, ...result } });
+            onChange(await allowRemoteImages(entry, newsletter));
         } catch {
             setNotice('Images could not be loaded. Please try again.');
         } finally {

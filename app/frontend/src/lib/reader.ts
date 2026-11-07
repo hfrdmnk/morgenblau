@@ -1,3 +1,5 @@
+import { api } from '@/lib/api';
+
 export type ReaderEntry = {
     entrySlug: string;
     title: string | null;
@@ -17,6 +19,14 @@ export type ReaderEntry = {
     };
     savedState?: { kind?: string; id?: string; rkey?: string; tags?: string[] } | null;
 };
+
+// The choice applies to this one message, which comes back with its images allowed.
+export async function allowRemoteImages(entry: ReaderEntry, newsletter: NonNullable<ReaderEntry['newsletter']>): Promise<ReaderEntry> {
+    const result = await api<{ body: string; remoteImagesAllowed: boolean; hasBlockedRemoteImages: boolean }>(
+        `/api/newsletters/messages/${encodeURIComponent(newsletter.messageId)}/images`, { method: 'POST' },
+    );
+    return { ...entry, body: result.body, newsletter: { ...newsletter, ...result } };
+}
 
 export function hasNewReaderContent(current: string | null, updated: string | null): boolean {
     return Boolean(updated?.trim()) && updated?.trim() !== current?.trim();
@@ -103,4 +113,10 @@ export function readerMetadata(raw?: string | null): {
     } catch {
         return {};
     }
+}
+
+export function sourceActionLabel(entry: ReaderEntry): string {
+    const labels: Record<string, string> = { newsletter: 'Open web version', video: 'Watch at source', microblog: 'View original post' };
+    const isYoutube = entry.contentType === 'video' && youtubeID(entry.url);
+    return isYoutube ? 'Watch on YouTube' : labels[entry.contentType] ?? 'Read original';
 }

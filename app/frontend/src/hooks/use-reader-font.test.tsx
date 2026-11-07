@@ -97,3 +97,20 @@ test('failed writes preserve the saved selection and report failure, then a retr
         localStorage.clear();
     }
 });
+
+test('a font chosen in one place shows everywhere the font is read', async () => {
+    localStorage.clear();
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    try {
+        await act(async () => root.render(<><FontChoice /><FontChoice /></>));
+        const [first, second] = container.querySelectorAll('button');
+        await act(async () => first.click());
+        expect(second.textContent).toBe('serif');
+    } finally {
+        act(() => root.unmount());
+        container.remove();
+        localStorage.clear();
+    }
+});

@@ -32,12 +32,12 @@ test('a tag added while the save is in flight patches the record that save creat
     });
 
     const save = createEntrySave(entry)!;
-    save.save();
-    save.setTags(['read-later']);
+    const saving = save.save();
+    const tagging = save.setTags(['read-later']);
     expect(save.get()).toEqual({ saved: true, tags: ['read-later'] });
     await settle();
     created();
-    await settle();
+    expect(await Promise.all([saving, tagging])).toEqual([true, true]);
 
     expect(calls).toEqual([
         'POST /api/saves {"itemUrl":"https://example.com/post","feedUrl":"https://example.com/feed.xml"}',
@@ -48,8 +48,7 @@ test('a tag added while the save is in flight patches the record that save creat
 test('a failed tag change falls back to what the server confirmed', async () => {
     stubFetch(() => Response.json({}, { status: 502 }));
     const save = createEntrySave({ ...entry, savedState: { rkey: '3old', tags: ['design'] } })!;
-    save.setTags(['design', 'weekend']);
-    await settle();
+    expect(await save.setTags(['design', 'weekend'])).toBe(false);
     expect(save.get()).toEqual({ saved: true, tags: ['design'] });
 });
 
@@ -61,9 +60,8 @@ test('a failure drops the changes queued behind it, so the server keeps what the
         return Response.json({}, { status: 502 });
     });
     const save = createEntrySave({ ...entry, savedState: { rkey: '3old', tags: ['design'] } })!;
-    save.setTags(['design', 'weekend']);
-    save.setTags(['design', 'weekend', 'later']);
-    for (let i = 0; i < 5; i++) await settle();
+    const changes = [save.setTags(['design', 'weekend']), save.setTags(['design', 'weekend', 'later'])];
+    expect(await Promise.all(changes)).toEqual([false, false]);
 
     expect(calls).toEqual(['PATCH /api/saves/3old {"tags":["design","weekend"]}']);
     expect(save.get()).toEqual({ saved: true, tags: ['design'] });

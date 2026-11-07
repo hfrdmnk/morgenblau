@@ -19,14 +19,18 @@ export function usePublicFollowing() {
         return () => controller.abort();
     }, []);
 
+    async function set(next: boolean) {
+        const setting = await api<Setting>('/api/public-following', {
+            method: 'PUT',
+            body: { enabled: next },
+        });
+        setEnabled(setting.enabled);
+    }
+
     async function toggle() {
         setBusy(true);
         try {
-            const setting = await api<Setting>('/api/public-following', {
-                method: 'PUT',
-                body: { enabled: !enabled },
-            });
-            setEnabled(setting.enabled);
+            await set(!enabled);
         } catch (error) {
             toast.error(
                 describeMutationError(
@@ -39,5 +43,5 @@ export function usePublicFollowing() {
         }
     }
 
-    return { enabled, busy, toggle };
+    return { enabled, busy, toggle, set };
 }

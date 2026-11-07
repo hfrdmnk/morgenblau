@@ -9,6 +9,7 @@ import { ChevronDownIcon } from '@/components/icons';
 import { ItemList, ListError, ListItem, SourceIcon } from '@/components/item-list';
 import { EmptyState } from '@/components/status-state';
 import { Button } from '@/components/ui/button';
+import { useCommands } from '@/hooks/use-commands';
 import { useDigest, type DigestEntry } from '@/hooks/use-digest';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useShortcuts } from '@/hooks/use-shortcuts';
@@ -27,7 +28,7 @@ export function Digest() {
     const selectedDate = selectedDigestDate(search, today);
     const selectedKey = toDateKey(selectedDate);
     const digest = useDigest(selectedKey);
-    useDayShortcuts(selectedDate, today);
+    useDayShortcuts(selectedDate, today, digest.status === 'loaded' ? digest.data.entries : []);
     useDocumentTitle(dayName.format(selectedDate));
 
     return (
@@ -40,8 +41,9 @@ export function Digest() {
     );
 }
 
-function useDayShortcuts(selected: Date, today: Date) {
+function useDayShortcuts(selected: Date, today: Date, entries: DigestEntry[]) {
     const [, navigate] = useLocation();
+    const group = dayName.format(selected);
     const todayKey = toDateKey(today);
     const isToday = toDateKey(selected) === todayKey;
     const show = (date: Date) => {
@@ -57,6 +59,22 @@ function useDayShortcuts(selected: Date, today: Date) {
         l: later,
         'Shift+T': () => isToday ? showShortcutNotice('Already showing today') : show(today),
     });
+    useCommands([
+        { id: 'day:previous', group, label: 'Previous day', shortcut: 'h', keywords: ['earlier', 'back'], run: earlier },
+        ...(isToday ? [] : [
+            { id: 'day:next', group, label: 'Next day', shortcut: 'l', keywords: ['later', 'forward'], run: later },
+            { id: 'day:today', group, label: 'Today', shortcut: 'Shift+T', run: () => show(today) },
+        ]),
+        ...entries.map((entry) => ({
+            id: `headline:${entry.entrySlug}`,
+            group: 'Headlines',
+            label: entry.title || 'Untitled',
+            detail: entry.source.title ?? undefined,
+            icon: entry.source.faviconUrl,
+            searchOnly: true,
+            run: () => navigate(entryHref(entry.entrySlug, toDateKey(selected))),
+        })),
+    ]);
 }
 
 type DigestData = Extract<ReturnType<typeof useDigest>, { status: 'loaded' }>['data'];

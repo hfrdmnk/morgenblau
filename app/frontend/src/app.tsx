@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import { lazy, Suspense } from 'react';
 import { Route, Router, Switch } from 'wouter';
 
+import { CommandMenu } from '@/components/command-menu';
 import { Toaster } from '@/components/ui/sonner';
 import { useAppLocation } from '@/hooks/use-app-location';
 import { AppShell } from '@/layouts/app-shell';
@@ -82,6 +83,7 @@ export default function App() {
                     </AppShell>
                 </Route>
             </Switch>
+            <CommandMenu />
             <Toaster />
         </Router>
     );

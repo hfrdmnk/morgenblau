@@ -48,19 +48,27 @@ export function createEntrySave(entry: ReaderEntry) {
     // A failure resets the view to the server's state, so changes queued behind it are dropped rather than applied unseen.
     let generation = 0;
 
-    function enqueue(request: () => Promise<void>, failure: string) {
+    // Resolves to whether the change reached the server; a dropped or failed one resolves false.
+    function enqueue(request: () => Promise<void>, failure: string): Promise<boolean> {
         const queuedIn = generation;
-        queue = queue.then(() => (queuedIn === generation ? request() : undefined)).catch((error: unknown) => {
+        const done = queue.then(async () => {
+            if (queuedIn !== generation) return false;
+            await request();
+            return true;
+        }).catch((error: unknown) => {
             generation += 1;
             set(confirmed);
             toast.error(describeMutationError(error, failure));
+            return false;
         });
+        queue = done.then(() => undefined);
+        return done;
     }
 
-    function save() {
-        if (state.saved) return;
+    async function save() {
+        if (state.saved) return true;
         set({ saved: true, tags: [] });
-        enqueue(async () => {
+        return enqueue(async () => {
             if (id) return;
             const created = await routes.create();
             id = created.id ?? created.rkey ?? null;
@@ -68,20 +76,20 @@ export function createEntrySave(entry: ReaderEntry) {
         }, 'Couldn’t save this. Try again.');
     }
 
-    function setTags(tags: string[]) {
-        if (!state.saved) save();
+    async function setTags(tags: string[]) {
+        if (!state.saved) void save();
         set({ saved: true, tags });
-        enqueue(async () => {
+        return enqueue(async () => {
             if (!id) return;
             const updated = await api<{ tags?: string[] }>(routes.path(id), { method: 'PATCH', body: { tags } });
             confirmed = { saved: true, tags: updated.tags ?? [] };
         }, 'Couldn’t save these tags. Try again.');
     }
 
-    function remove() {
-        if (!state.saved) return;
+    async function remove() {
+        if (!state.saved) return true;
         set({ saved: false, tags: [] });
-        enqueue(async () => {
+        return enqueue(async () => {
             if (!id) return;
             await api(routes.path(id), { method: 'DELETE' });
             id = null;

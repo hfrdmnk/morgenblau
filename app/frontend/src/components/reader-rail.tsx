@@ -4,7 +4,7 @@ import { BookmarkIcon, ExternalLinkIcon } from '@/components/icons';
 import { announceRemove, announceSave, dismissSaveToasts } from '@/lib/save-announce';
 import { useSaveState } from '@/hooks/use-entry-save';
 import type { EntrySave } from '@/lib/entry-save';
-import { httpURL, youtubeID, type ReaderEntry } from '@/lib/reader';
+import { httpURL, sourceActionLabel, type ReaderEntry } from '@/lib/reader';
 import { cn } from '@/lib/utils';
 
 const RAIL_BUTTON =
@@ -29,12 +29,6 @@ export function ReaderRail({ entry, save }: { entry: ReaderEntry; save: EntrySav
             </aside>
         </>
     );
-}
-
-function sourceActionLabel(entry: ReaderEntry): string {
-    const labels: Record<string, string> = { newsletter: 'Open web version', video: 'Watch at source', microblog: 'View original post' };
-    const isYoutube = entry.contentType === 'video' && youtubeID(entry.url);
-    return isYoutube ? 'Watch on YouTube' : labels[entry.contentType] ?? 'Read original';
 }
 
 function RailActions({ entry, save }: { entry: ReaderEntry; save: EntrySave | null }) {

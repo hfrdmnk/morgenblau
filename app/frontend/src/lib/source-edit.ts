@@ -13,6 +13,38 @@ export const MAX_TITLE_LENGTH = 128;
 
 export const GONE = 'This source is no longer in your sources.';
 
+export const REMOVAL = {
+    feed: {
+        title: (name: string) => `Delete “${name}”?`,
+        description: 'Its posts leave your digest. Posts you saved stay in your Library.',
+        action: 'Delete source',
+        done: 'Source deleted',
+        failed: 'Couldn’t delete this source.',
+    },
+    newsletter: {
+        title: (name: string) => `Stop “${name}”?`,
+        description: 'Unsaved issues are deleted and new mail from this sender is discarded. Saved issues stay in your Library, and you can resume it later.',
+        action: 'Stop newsletter',
+        done: 'Newsletter stopped',
+        failed: 'Couldn’t stop this newsletter.',
+    },
+};
+
+export const DELETION = {
+    automatic: {
+        title: (name: string) => `Unsubscribe from “${name}”?`,
+        description: 'Morgenblau asks the sender to remove your address, then deletes this newsletter and its unsaved issues. Saved issues stay in your Library.',
+        action: 'Unsubscribe and delete',
+        done: 'Unsubscribed and deleted',
+    },
+    manual: {
+        title: (name: string) => `Delete “${name}”?`,
+        description: 'Unsubscribe manually, usually through the link at the bottom of an issue, then delete it here. Saved issues stay in your Library. If you don’t unsubscribe, its next issue shows up again as a new newsletter.',
+        action: 'Delete newsletter',
+        done: 'Newsletter deleted',
+    },
+};
+
 export function isGone(error: unknown): boolean {
     return error instanceof ApiError && error.status === 404;
 }

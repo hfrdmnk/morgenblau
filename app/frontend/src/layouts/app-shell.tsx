@@ -7,45 +7,19 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { ErrorState } from '@/components/status-state';
 import { Button } from '@/components/ui/button';
 import { useNavigationScrollRestoration } from '@/hooks/use-app-location';
+import { useCommands } from '@/hooks/use-commands';
 import { useModeShortcuts } from '@/hooks/use-shortcuts';
-import { api, ApiError } from '@/lib/api';
-import {
-    AppProfileContext,
-    type AppProfile,
-    type AppProfileState,
-} from '@/lib/app-profile-context';
+import { AppProfileContext, loadProfile, type AppProfileState } from '@/lib/app-profile-context';
+import { GO_TO, type Command } from '@/lib/commands';
 import { isAdminPath, PATHS } from '@/lib/paths';
-
-function isAbortError(error: unknown): boolean {
-    return error instanceof DOMException && error.name === 'AbortError';
-}
-
-function isUnauthorized(error: unknown): boolean {
-    return error instanceof ApiError && error.status === 401;
-}
-
-async function loadProfile(signal: AbortSignal): Promise<AppProfileState | null> {
-    try {
-        const profile = await api<AppProfile>('/api/profiles/me', { signal });
-        return { kind: 'ready', profile };
-    } catch (error) {
-        if (isAbortError(error)) {
-            return null;
-        }
-        if (isUnauthorized(error)) {
-            window.location.replace(PATHS.login);
-            return null;
-        }
-        return { kind: 'error' };
-    }
-}
 
 export function AppShell({ children }: { children: ReactNode }) {
     const [attempt, setAttempt] = useState(0);
     const [state, setState] = useState<AppProfileState>({ kind: 'loading' });
-    const [location] = useLocation();
+    const [location, navigate] = useLocation();
     useNavigationScrollRestoration();
     useModeShortcuts();
+    useCommands(adminCommands(state, navigate));
 
     useEffect(() => {
         const controller = new AbortController();
@@ -96,6 +70,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
         </AppProfileContext.Provider>
     );
+}
+
+function adminCommands(state: AppProfileState, navigate: (to: string) => void): Command[] {
+    if (state.kind !== 'ready' || !state.profile.isAdmin) return [];
+    return [{ id: 'go:admin', group: GO_TO, label: 'Admin', keywords: ['usage'], run: () => navigate(PATHS.admin) }];
 }
 
 function AdminBanner() {

@@ -14,13 +14,14 @@ export function announceSave(save: EntrySave) {
 }
 
 export function announceRemove(save: EntrySave, tags: string[]) {
-    save.remove();
+    const removed = save.remove();
     toast.dismiss(SAVE_TOAST);
     toast('Removed from Library', {
         id: REMOVED_TOAST,
         action: { label: 'Undo', onClick: () => (tags.length ? save.setTags(tags) : save.save()) },
         classNames: { actionButton: '-my-1 ml-auto shrink-0 cursor-pointer rounded-sm px-2 py-1 text-sm font-medium hover:bg-secondary' },
     });
+    return removed;
 }
 
 export function dismissSaveToasts() {

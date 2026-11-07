@@ -79,4 +79,5 @@ export function useEntrySteps(slug: string, from: string | null) {
     const previous = () => step(-1);
     const next = () => step(1);
     useShortcuts({ 'Shift+ArrowUp': previous, k: previous, 'Shift+ArrowDown': next, j: next });
+    return { previous, next };
 }

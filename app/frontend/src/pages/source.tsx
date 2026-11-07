@@ -5,10 +5,11 @@ import { EditSourceSheet } from '@/components/add-source-dialog';
 import { SourceHealth } from '@/components/feed-health';
 import { SourceDetailPage, SourceEntries, SourceHeader, SourceUnavailable } from '@/components/source-detail';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { useFeedSourceCommands } from '@/hooks/use-source-commands';
 import { useSources, type FeedSourceDetail, type SourceEntry } from '@/hooks/use-sources';
 import { httpURL } from '@/lib/reader';
 import { PATHS, sourceHref } from '@/lib/paths';
-import { displayURL, feedFacts } from '@/lib/source-display';
+import { displayURL, feedFacts, feedSite, feedTitle } from '@/lib/source-display';
 
 export function Source() {
     const { rkey = '' } = useParams<{ rkey: string }>();
@@ -16,12 +17,14 @@ export function Source() {
     const source = useSources<FeedSourceDetail>(path, 15_000);
     const entries = useSources<SourceEntry[]>(`${path}/entries`);
     const [, navigate] = useLocation();
-    useDocumentTitle(source.status === 'loaded' ? feedTitle(source.data) : 'Source');
+    const loaded = source.status === 'loaded' ? source.data : null;
+    useDocumentTitle(loaded ? feedTitle(loaded) : 'Source');
+    useFeedSourceCommands(loaded, entries);
 
     return (
         <SourceDetailPage>
             <Skeleton
-                data={source.status === 'loaded' ? source.data : null}
+                data={loaded}
                 error={source.status === 'error' ? <SourceUnavailable label="this source" state={source} /> : undefined}
                 id="source"
                 label="Loading this source"
@@ -42,14 +45,6 @@ const SAMPLE_SOURCE: FeedSourceDetail = {
     rkey: 'sample', title: 'Example Publication', feedUrl: 'https://example.com/feed.xml', siteUrl: 'https://example.com',
     primary: false, fetchStatus: 'ready', frequency: 'weekly', totalEntries: 12, lastPublishedAt: '2026-01-01T00:00:00Z',
 };
-
-function feedSite(source: FeedSourceDetail): string {
-    return httpURL(source.siteUrl) || httpURL(source.feedUrl) || source.feedUrl;
-}
-
-function feedTitle(source: FeedSourceDetail): string {
-    return source.title || displayURL(feedSite(source));
-}
 
 function FeedSourceHeader({ source, onChanged, onRemoved }: { source: FeedSourceDetail; onChanged: () => void; onRemoved: () => void }) {
     const site = feedSite(source);

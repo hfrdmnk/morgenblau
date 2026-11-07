@@ -111,9 +111,10 @@ type Sheet = {
     announce: (rkey: string) => void;
 };
 
-export function AddSourceDialog({ trigger }: { trigger?: ReactElement }) {
+// With an initialUrl the sheet opens at once, already looking that site up, and has no trigger of its own.
+export function AddSourceDialog({ trigger, initialUrl }: { trigger?: ReactElement; initialUrl?: string }) {
     const inputRef = useRef<HTMLInputElement>(null);
-    const [open, setOpen] = useState(false);
+    const [open, setOpen] = useState(initialUrl !== undefined);
     const [saving, setSaving] = useState(false);
     return (
         <SheetDrawer
@@ -121,13 +122,13 @@ export function AddSourceDialog({ trigger }: { trigger?: ReactElement }) {
             onOpenChange={setOpen}
             open={open}
             saving={saving}
-            trigger={trigger ?? (
+            trigger={initialUrl !== undefined ? undefined : trigger ?? (
                 <Button aria-label="Add a source" className="text-subtle-foreground" size="icon-sm" variant="ghost">
                     <PlusIcon className="size-5" />
                 </Button>
             )}
         >
-            <SheetBody inputRef={inputRef} onClose={() => setOpen(false)} onSavingChange={setSaving} saving={saving} />
+            <SheetBody initialUrl={initialUrl} inputRef={inputRef} onClose={() => setOpen(false)} onSavingChange={setSaving} saving={saving} />
         </SheetDrawer>
     );
 }
@@ -175,7 +176,7 @@ function EditSheet({ root }: { root: Extract<Screen, { kind: 'edit' | 'newslette
 function SheetDrawer({ open, saving, trigger, initialFocus, onOpenChange, children }: {
     open: boolean;
     saving: boolean;
-    trigger: ReactElement;
+    trigger?: ReactElement;
     initialFocus?: ComponentProps<typeof DrawerPopup>['initialFocus'];
     onOpenChange: (open: boolean) => void;
     children: ReactNode;
@@ -190,7 +191,7 @@ function SheetDrawer({ open, saving, trigger, initialFocus, onOpenChange, childr
             }}
             swipeDirection={side === 'right' ? 'right' : 'down'}
         >
-            <Drawer.Trigger render={trigger} />
+            {trigger ? <Drawer.Trigger render={trigger} /> : null}
             <Drawer.Portal>
                 <DrawerBackdrop />
                 <DrawerViewport side={side}>
@@ -214,14 +215,38 @@ function newsletterName(source: NewsletterSource) {
     return source.title || source.senderAddress;
 }
 
+function lookUp(input: string, signal: AbortSignal): Promise<Discovery> {
+    return findSite(input, signal).then(
+        (site): Discovery => ({ stage: 'found', site }),
+        (error): Discovery => ({ stage: 'error', error: discoveryError(error) }),
+    );
+}
+
+// A sheet opened with a URL starts looking it up at once, as if the reader had pasted it and pressed Enter.
+function useInitialLookup(initialUrl: string, requestRef: RefObject<AbortController | null>) {
+    const [discovery, setDiscovery] = useState<Discovery>({ stage: initialUrl ? 'loading' : 'idle' });
+    useEffect(() => {
+        if (!initialUrl) return;
+        const controller = new AbortController();
+        requestRef.current = controller;
+        void lookUp(initialUrl, controller.signal).then((next) => {
+            if (!controller.signal.aborted) setDiscovery(next);
+        });
+        return () => controller.abort();
+    }, [initialUrl, requestRef]);
+    return [discovery, setDiscovery] as const;
+}
+
 // A root screen replaces the search screen (which only the add sheet, with its inputRef, shows), so the sheet opens on it and Back never leaves it.
 function SheetBody({
+    initialUrl = '',
     inputRef,
     root,
     saving,
     onSavingChange,
     onClose,
 }: {
+    initialUrl?: string;
     inputRef?: RefObject<HTMLInputElement | null>;
     root?: Screen;
     saving: boolean;
@@ -229,15 +254,15 @@ function SheetBody({
     onClose: () => void;
 }) {
     const [, navigate] = useLocation();
-    const [url, setUrl] = useState('');
-    const [discovery, setDiscovery] = useState<Discovery>({ stage: 'idle' });
+    const [url, setUrl] = useState(initialUrl);
+    const request = useRef<AbortController | null>(null);
+    const [discovery, setDiscovery] = useInitialLookup(initialUrl, request);
     const { stack, canGoBack, push, pop } = useScreenStack(root);
     const { nameOf, formOf, rename } = useScreenNames();
     const [keyboard, setKeyboard] = useState(false);
     // Sources added (rkey) or removed (null) in this sheet, overriding what earlier lookups reported.
     const [subscriptions, setSubscriptions] = useState<Map<string, string | null>>(new Map());
     const reduced = useReducedMotion();
-    const request = useRef<AbortController | null>(null);
     useEffect(() => () => request.current?.abort(), []);
     const top = stack.at(-1);
     const screen = top?.screen;
@@ -265,10 +290,7 @@ function SheetBody({
         const controller = new AbortController();
         request.current = controller;
         setDiscovery({ stage: 'loading' });
-        const next = await findSite(url, controller.signal).then(
-            (site): Discovery => ({ stage: 'found', site }),
-            (error): Discovery => ({ stage: 'error', error: discoveryError(error) }),
-        );
+        const next = await lookUp(url, controller.signal);
         if (!controller.signal.aborted) setDiscovery(next);
     }
 

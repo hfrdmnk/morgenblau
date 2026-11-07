@@ -10,14 +10,18 @@ import { ReaderRail } from '@/components/reader-rail';
 import { SaveFiling } from '@/components/save-filing';
 import { Button } from '@/components/ui/button';
 import { useDocumentTitle } from '@/hooks/use-document-title';
-import { useEntrySave } from '@/hooks/use-entry-save';
+import { useCommands } from '@/hooks/use-commands';
+import { useEntrySave, useSaveState } from '@/hooks/use-entry-save';
 import { useEntrySteps } from '@/hooks/use-entry-steps';
 import { useReaderFont } from '@/hooks/use-reader-font';
 import { useModeShortcuts, useShortcuts } from '@/hooks/use-shortcuts';
 import { api, ApiError } from '@/lib/api';
+import { CommandProblem, copied, openInTab, type Command } from '@/lib/commands';
 import { parseDigestDate, toDateKey } from '@/lib/digest-dates';
 import { digestHref, PATHS, readerSourceHref, sourceOrigin } from '@/lib/paths';
-import { hasNewReaderContent, httpURL, readerBody, readerMetadata, youtubeID, type ReaderEntry } from '@/lib/reader';
+import type { EntrySave } from '@/lib/entry-save';
+import { allowRemoteImages, hasNewReaderContent, httpURL, readerBody, readerMetadata, sourceActionLabel, youtubeID, type ReaderEntry } from '@/lib/reader';
+import { announceRemove, announceSave } from '@/lib/save-announce';
 import './reader.css';
 
 export function Entry() {
@@ -26,18 +30,25 @@ export function Entry() {
     const source = sourceOrigin(from);
     const date = parseDigestDate(from);
     const back = source ?? digestHref(date ? toDateKey(date) : undefined);
+    const backLabel = source ? 'Back to source' : 'Back to digest';
     const [, navigate] = useLocation();
     useModeShortcuts();
-    useEntrySteps(slug, from);
+    const steps = useEntrySteps(slug, from);
     useShortcuts({ Escape: () => navigate(back) });
+    // The reader registers these after its own actions, so saving leads the menu and Enter never leaves the entry by surprise.
+    const navigation: Command[] = [
+        { id: 'entry:previous', group: READER, label: 'Previous entry', shortcut: 'k', run: steps.previous },
+        { id: 'entry:next', group: READER, label: 'Next entry', shortcut: 'j', run: steps.next },
+        { id: 'entry:back', group: READER, label: backLabel, shortcut: 'Escape', run: () => navigate(back) },
+    ];
 
     return (
         <div className="min-h-dvh bg-background">
             <nav aria-label="Reader" className="mx-auto max-w-3xl px-5 pt-6 sm:px-8 sm:pt-10">
-                <BackLink href={back} keyShortcut="Escape" label={source ? 'Back to source' : 'Back to digest'} />
+                <BackLink href={back} keyShortcut="Escape" label={backLabel} />
             </nav>
             <main className="mx-auto max-w-3xl px-5 pb-24 pt-12 sm:px-8 sm:pt-16" id="reader">
-                <EntryLoader key={slug} slug={slug} />
+                <EntryLoader key={slug} navigation={navigation} slug={slug} />
             </main>
         </div>
     );
@@ -66,7 +77,7 @@ async function loadEntry(slug: string, signal: AbortSignal): Promise<Extract<Ent
     return state;
 }
 
-function EntryLoader({ slug }: { slug: string }) {
+function EntryLoader({ slug, navigation }: { slug: string; navigation: Command[] }) {
     const [state, setState] = useState<EntryState>({ status: 'loading' });
     const [attempt, setAttempt] = useState(0);
     useDocumentTitle(readerTitle(state));
@@ -90,7 +101,7 @@ function EntryLoader({ slug }: { slug: string }) {
     ) : undefined;
     return (
         <Skeleton data={state.status === 'loaded' ? state : null} error={error} id="entry" label="Loading entry" sample={SAMPLE_ENTRY}>
-            {(loaded) => <Reader initialEntry={loaded.entry} initiallyExtracted={loaded.extracted} extractionFailed={loaded.extractionFailed} />}
+            {(loaded) => <Reader initialEntry={loaded.entry} initiallyExtracted={loaded.extracted} extractionFailed={loaded.extractionFailed} live={loaded !== SAMPLE_ENTRY} navigation={navigation} />}
         </Skeleton>
     );
 }
@@ -126,10 +137,13 @@ function EntryError({ status, retry }: { status: number; retry: () => void }) {
     );
 }
 
-function Reader({ initialEntry, initiallyExtracted, extractionFailed }: {
+// live is false for the loading sample, which must not offer its commands.
+function Reader({ initialEntry, initiallyExtracted, extractionFailed, live, navigation }: {
     initialEntry: ReaderEntry;
     initiallyExtracted: boolean;
     extractionFailed: boolean;
+    live: boolean;
+    navigation: Command[];
 }) {
     const [entry, setEntry] = useState(initialEntry);
     const save = useEntrySave(initialEntry);
@@ -141,8 +155,78 @@ function Reader({ initialEntry, initiallyExtracted, extractionFailed }: {
             {canExtractArticle(entry) ? <ArticleExtraction entry={entry} onChange={setEntry} initiallyExtracted={initiallyExtracted} extractionFailed={extractionFailed} /> : null}
             {save ? <SaveFiling save={save} /> : null}
             <ReaderRail entry={entry} save={save} />
+            {live ? <ReaderCommands entry={entry} navigation={navigation} onChange={setEntry} save={save} /> : null}
         </article>
     );
+}
+
+const READER = 'Reader';
+
+// The save's commands register first, as a child, so they lead the menu.
+function ReaderCommands({ entry, save, navigation, onChange }: {
+    entry: ReaderEntry;
+    save: EntrySave | null;
+    navigation: Command[];
+    onChange: (entry: ReaderEntry) => void;
+}) {
+    const [, navigate] = useLocation();
+    const sourceLink = readerSourceHref(entry.source);
+    useCommands([
+        ...originalCommands(entry),
+        ...(sourceLink ? [{ id: 'entry:source', group: READER, label: `Go to ${sourceTitle(entry)}`, run: () => navigate(sourceLink) }] : []),
+        ...imageCommands(entry, onChange),
+        ...navigation,
+    ]);
+    return save ? <SaveCommands save={save} /> : null;
+}
+
+function originalCommands(entry: ReaderEntry): Command[] {
+    const original = httpURL(entry.url);
+    if (!original) return [];
+    return [
+        { id: 'entry:original', group: READER, label: sourceActionLabel(entry), run: () => openInTab(original) },
+        { id: 'entry:copy-link', group: READER, label: 'Copy link to original', run: () => copied(original, 'Link copied') },
+    ];
+}
+
+function imageCommands(entry: ReaderEntry, onChange: (entry: ReaderEntry) => void): Command[] {
+    const { newsletter } = entry;
+    if (!newsletter?.hasBlockedRemoteImages || newsletter.remoteImagesAllowed) return [];
+    return [{
+        id: 'entry:images',
+        group: READER,
+        label: 'Load remote images',
+        detail: 'This message only',
+        run: async () => onChange(await allowRemoteImages(entry, newsletter)),
+    }];
+}
+
+function SaveCommands({ save }: { save: EntrySave }) {
+    const { saved, tags } = useSaveState(save);
+    useCommands([
+        {
+            id: 'entry:save',
+            group: READER,
+            label: 'Saved to Library',
+            keywords: ['save', 'bookmark', 'library', 'remove'],
+            toggle: {
+                on: saved,
+                set: (on) => {
+                    if (!on) return applied(announceRemove(save, tags));
+                    const saving = save.save();
+                    announceSave(save);
+                    return applied(saving);
+                },
+            },
+        },
+        { id: 'entry:tags', group: READER, label: 'Edit tags', detail: tags.join(', '), step: { kind: 'tags', title: 'Tags', tags, suggestionsPath: '/api/saves/tags', save: (next) => applied(save.setTags(next)) } },
+    ]);
+    return null;
+}
+
+// The save toasts its own failure, so the menu is only told to roll back.
+async function applied(change: Promise<boolean>) {
+    if (!(await change)) throw new CommandProblem('');
 }
 
 function ReaderMedia({ entry, onChange }: { entry: ReaderEntry; onChange: (entry: ReaderEntry) => void }) {

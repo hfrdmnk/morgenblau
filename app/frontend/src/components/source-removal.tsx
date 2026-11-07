@@ -8,7 +8,7 @@ import { Link } from '@/components/ui/link';
 import { ApiError, classifyMutationError, describeMutationError } from '@/lib/api';
 import { ExternalLinkIcon } from '@/components/icons';
 import { entryHref, newsletterSourceHref, PATHS } from '@/lib/paths';
-import { deleteNewsletter, GONE, isGone, removeSource, unsubscribeNewsletter, type EditableSource } from '@/lib/source-edit';
+import { deleteNewsletter, DELETION, GONE, isGone, REMOVAL, removeSource, unsubscribeNewsletter, type EditableSource } from '@/lib/source-edit';
 
 // onChanged refreshes the page's copy; a source that vanished closes its dialog so the refresh can drop it.
 type DialogProps = { source: EditableSource; open: boolean; onClose: () => void; onChanged: () => void };
@@ -38,23 +38,6 @@ function useMutation({ onClose, onChanged }: DialogProps, onDone: () => void, fa
     }
     return { pending, error, run };
 }
-
-const REMOVAL = {
-    feed: {
-        title: (name: string) => `Delete “${name}”?`,
-        description: 'Its posts leave your digest. Posts you saved stay in your Library.',
-        action: 'Delete source',
-        done: 'Source deleted',
-        failed: 'Couldn’t delete this source.',
-    },
-    newsletter: {
-        title: (name: string) => `Stop “${name}”?`,
-        description: 'Unsaved issues are deleted and new mail from this sender is discarded. Saved issues stay in your Library, and you can resume it later.',
-        action: 'Stop newsletter',
-        done: 'Newsletter stopped',
-        failed: 'Couldn’t stop this newsletter.',
-    },
-};
 
 type RemovalCopy = { title: (name: string) => string; description: string; action: string; done: string };
 
@@ -97,21 +80,6 @@ export function RemoveDialog(props: DialogProps & {
     const copy = REMOVAL[props.source.kind];
     return <RemovalDialog {...props} confirm={() => removeSource(props.source)} copy={copy} failed={copy.failed} />;
 }
-
-const DELETION = {
-    automatic: {
-        title: (name: string) => `Unsubscribe from “${name}”?`,
-        description: 'Morgenblau asks the sender to remove your address, then deletes this newsletter and its unsaved issues. Saved issues stay in your Library.',
-        action: 'Unsubscribe and delete',
-        done: 'Unsubscribed and deleted',
-    },
-    manual: {
-        title: (name: string) => `Delete “${name}”?`,
-        description: 'Unsubscribe manually, usually through the link at the bottom of an issue, then delete it here. Saved issues stay in your Library. If you don’t unsubscribe, its next issue shows up again as a new newsletter.',
-        action: 'Delete newsletter',
-        done: 'Newsletter deleted',
-    },
-};
 
 // The sender refused or never offered one-click unsubscribe; nothing changed, so the reader can still delete by hand.
 function unsubscribeRefused(error: unknown): boolean {

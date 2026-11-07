@@ -7,7 +7,8 @@ import { useAppProfile } from '@/hooks/use-app-profile';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { usePublicFollowing } from '@/hooks/use-public-following';
 import { DataSettings } from '@/layouts/data-settings';
-import { api, describeMutationError } from '@/lib/api';
+import { describeMutationError } from '@/lib/api';
+import { downloadOpml } from '@/lib/opml';
 
 export function ExportSources() {
     const [busy, setBusy] = useState(false);
@@ -16,21 +17,7 @@ export function ExportSources() {
     async function download() {
         setBusy(true);
         try {
-            const { opml } = await api<{ opml: string }>(
-                '/api/subscriptions/export',
-                { method: 'POST' },
-            );
-            const url = URL.createObjectURL(
-                new Blob([opml], { type: 'text/x-opml;charset=utf-8' }),
-            );
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'morgenblau.opml';
-            document.body.append(link);
-            link.click();
-            link.remove();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-            toast.success('Your OPML download is ready.');
+            toast.success(await downloadOpml());
         } catch (error) {
             toast.error(
                 describeMutationError(

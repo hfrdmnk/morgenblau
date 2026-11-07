@@ -1,3 +1,5 @@
+import { httpURL } from '@/lib/reader';
+
 type Frequency = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'new' | 'irregular' | 'noPosts';
 
 const FREQUENCY_LABELS: Record<Frequency, string> = {
@@ -16,6 +18,18 @@ function frequencyLabel(frequency?: string): string | undefined {
 
 export function displayURL(value: string): string {
     return value.replace(/^https?:\/\//, '').replace(/\/$/, '');
+}
+
+export function feedSite(source: { siteUrl?: string; feedUrl: string }): string {
+    return httpURL(source.siteUrl) || httpURL(source.feedUrl) || source.feedUrl;
+}
+
+export function feedTitle(source: { title?: string; siteUrl?: string; feedUrl: string }): string {
+    return source.title || displayURL(feedSite(source));
+}
+
+export function newsletterTitle(source: { title: string; senderAddress: string }): string {
+    return source.title || source.senderAddress;
 }
 
 const labelOrder = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });

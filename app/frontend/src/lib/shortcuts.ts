@@ -2,7 +2,7 @@ import { toast } from 'sonner';
 
 const KEEPS_ITS_KEYS = 'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"]';
 
-// Shift alone is the app's modifier: Ctrl, Alt and Meta combinations belong to the browser and the OS.
+// Shift alone is the app's modifier: Ctrl, Alt and Meta combinations belong to the browser and the OS, except ⌘K (isCommandMenuKey).
 export function shortcutKey(event: KeyboardEvent): string | null {
     if (event.ctrlKey || event.altKey || event.metaKey) return null;
     if (event.repeat || event.isComposing || event.defaultPrevented) return null;
@@ -14,3 +14,22 @@ export function shortcutKey(event: KeyboardEvent): string | null {
 export function showShortcutNotice(message: string) {
     toast.info(message, { id: 'shortcut-notice' });
 }
+
+// The command menu takes ⌘K, or Ctrl+K off Apple platforms, from anywhere, text fields included, as other apps do.
+export function isCommandMenuKey(event: KeyboardEvent): boolean {
+    return (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && !event.repeat && event.key.toLowerCase() === 'k';
+}
+
+export const SHORTCUTS = [
+    { keys: 'Mod+K', label: 'Command menu', where: 'Anywhere' },
+    { keys: 'Shift+D', label: 'Digest', where: 'Anywhere' },
+    { keys: 'Shift+S', label: 'Sources', where: 'Anywhere' },
+    { keys: 'Shift+L', label: 'Library', where: 'Anywhere' },
+    { keys: 'h', label: 'Previous day', where: 'Digest' },
+    { keys: 'l', label: 'Next day', where: 'Digest' },
+    { keys: 'Shift+T', label: 'Today', where: 'Digest' },
+    { keys: 'k', label: 'Previous entry', where: 'Reader' },
+    { keys: 'j', label: 'Next entry', where: 'Reader' },
+    { keys: 'Escape', label: 'Back', where: 'Reader' },
+    { keys: 't', label: 'Add tags after saving', where: 'Reader' },
+];
