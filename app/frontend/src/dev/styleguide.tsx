@@ -119,7 +119,7 @@ type ThemePanelProps = {
 
 function ThemePanel({ children, dark = false, label }: ThemePanelProps) {
     return (
-        <div className={dark ? 'dark' : ''}>
+        <div className={dark ? 'dark' : 'light'}>
             <div className="min-h-full rounded-xl bg-background p-5 text-foreground ring-1 ring-border sm:p-6">
                 <p className="mb-5 text-xs font-medium tracking-wide text-subtle-foreground uppercase">
                     {label}

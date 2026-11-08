@@ -5,7 +5,7 @@
 @import '@fontsource-variable/newsreader/standard.css';
 @import '@fontsource-variable/newsreader/standard-italic.css';
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark *):not(.light *));
 
 @theme static {
     --font-sans: 'Geist Variable', system-ui, sans-serif;
@@ -86,7 +86,8 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
+:root,
+.light {
     color-scheme: light;
     --background: oklch(0.97 0.001 106.424);
     --foreground: oklch(0.216 0.006 56.043);
@@ -222,7 +223,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    :root {
+    :root,
+    .light {
         --motion-duration-fast: 1ms;
         --motion-duration-ui: 1ms;
         --motion-duration-overlay: 1ms;
