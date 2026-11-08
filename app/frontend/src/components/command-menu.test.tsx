@@ -153,6 +153,15 @@ test('Ctrl+K opens the menu from a text field, and a typed day goes to that dige
     expect(`${location.pathname}${location.search}`).toBe('/?date=2026-11-02');
 });
 
+test('closing the menu opened from nowhere leaves focus off the page, not on its first control', async () => {
+    await render();
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    await press('k', { metaKey: true });
+    await press('Escape');
+    expect(document.querySelector('[role="dialog"][data-open]')).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+});
+
 test('a step edits in place: Escape steps back out, and Enter submits what was typed', async () => {
     await render();
     renames.length = 0;

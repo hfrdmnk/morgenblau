@@ -24,7 +24,6 @@ export type Command = {
     label: string;
     keywords?: string[];
     detail?: string;
-    shortcut?: string;
     icon?: string | null;
     // Listed only once the reader types, so long lists such as every source stay out of the opening view.
     searchOnly?: boolean;

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import { forgetShapes } from 'skullet';
 import { Link } from 'wouter';
 
@@ -34,7 +34,7 @@ export function AccountMenu({ profile }: { profile: AppProfile }) {
             >
                 <PersonAvatar seed={profile.did} src={profile.avatar} />
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-64">
+            <PopoverContent align="end" className="w-64" onKeyDown={moveThroughItems}>
                 <PopoverHeader>
                     <PopoverTitle className="truncate">
                         {accountName}
@@ -91,4 +91,17 @@ export function AccountMenu({ profile }: { profile: AppProfile }) {
             </PopoverContent>
         </Popover>
     );
+}
+
+const STEPS: Partial<Record<string, number>> = { ArrowDown: 1, ArrowUp: -1 };
+
+// The links and Log out read as one vertical list, so the arrows move through them instead of scrolling the page behind.
+function moveThroughItems(event: KeyboardEvent<HTMLElement>) {
+    const step = STEPS[event.key];
+    if (!step) return;
+    event.preventDefault();
+    const items = [...event.currentTarget.querySelectorAll<HTMLElement>('a, button')];
+    const index = items.findIndex((item) => item === document.activeElement);
+    // From outside the list, down starts at the first item and up at the last.
+    items.at(index === -1 ? Math.min(step, 0) : (index + step) % items.length)?.focus();
 }

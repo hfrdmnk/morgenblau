@@ -113,6 +113,40 @@ test('an open group stays open when a sync brings a newer post from its source, 
     expect(visible()).toEqual(['notes-new', 'notes-a', 'notes-b']);
 });
 
+test('the arrows and j/k walk the posts from the primary ones down, and Enter opens the one the pointer selected last', async () => {
+    const container = await renderDigest([
+        feedEntry('first-ordinary', 'First ordinary post', false, { source: { title: 'Example Weekly', siteUrl: 'https://weekly.example.com', feedUrl: 'https://weekly.example.com/feed', faviconUrl: null } }),
+        feedEntry('second-ordinary', 'Second ordinary post', false, { source: { title: 'Example Notes', siteUrl: 'https://notes.example.com', feedUrl: 'https://notes.example.com/feed', faviconUrl: null } }),
+        feedEntry('lead', 'Primary post', true),
+    ]);
+    document.body.append(container);
+    // Navigating would go through this file's native Event, which Happy DOM's window refuses, so the opened link is recorded instead.
+    const opened: string[] = [];
+    container.addEventListener('click', (event) => {
+        if (event.target instanceof HTMLAnchorElement) opened.push(event.target.textContent ?? '');
+        event.preventDefault();
+    }, { capture: true });
+    const press = (key: string) => act(async () => {
+        (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    });
+    const selected = () => container.querySelector('[data-selected]')?.querySelector('[data-post-link]')?.textContent;
+
+    await press('ArrowDown');
+    expect(selected()).toBe('Primary post');
+    await press('j');
+    expect(selected()).toBe('First ordinary post');
+    expect(document.activeElement?.textContent).toBe('First ordinary post');
+    await press('k');
+    await press('ArrowUp');
+    expect(selected()).toBe('Primary post');
+
+    const last = [...container.querySelectorAll('[data-post]')].at(-1)!;
+    await act(async () => last.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: 40, clientY: 40 })));
+    expect(selected()).toBe('Second ordinary post');
+    await press('Enter');
+    expect(opened).toEqual(['Second ordinary post']);
+});
+
 const notFound = () => Response.json({ code: 'not_found', message: 'not found' }, { status: 404 });
 
 test('a reader with no feeds gets the first-run state even when the server has no newsletter delivery', async () => {

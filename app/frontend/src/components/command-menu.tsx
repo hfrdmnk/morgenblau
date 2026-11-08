@@ -33,7 +33,8 @@ export function CommandMenu() {
     const [adding, setAdding] = useState<{ url: string; key: number } | null>(null);
     const [location] = useLocation();
     const popup = useRef<HTMLDivElement>(null);
-    // ⌘K has no trigger to return focus to, so closing returns it to whatever had it before the menu opened.
+    // ⌘K has no trigger to return focus to, so closing returns it to whatever had it before the menu opened. With nothing
+    // focused, the opener is the body, and Base UI would focus its first tabbable child, the skip link.
     const opener = useRef<HTMLElement | null>(null);
     const enabled = location !== PATHS.login;
 
@@ -76,7 +77,7 @@ export function CommandMenu() {
                     <DialogBackdrop className="transition-none" />
                     <DialogPopup
                         className="top-[min(16dvh,8rem)] max-w-xl translate-y-0 overflow-hidden p-0 transition-none"
-                        finalFocus={() => (opener.current?.isConnected ? opener.current : true)}
+                        finalFocus={() => (opener.current?.isConnected && opener.current !== document.body ? opener.current : false)}
                         ref={popup}
                     >
                         <Dialog.Title className="sr-only">Command menu</Dialog.Title>
@@ -211,8 +212,18 @@ function Shell({ query, onQuery, chip, placeholder, shouldFilter = true, error, 
     children: ReactNode;
 }) {
     const input = useRef<HTMLInputElement>(null);
+    const list = useRef<HTMLDivElement>(null);
     // A step opens on its current value, selected so typing replaces it.
     useEffect(() => input.current?.select(), []);
+    // A new query selects the first row, but cmdk 1.1.1 first scrolls to the row selected before it, which still carries
+    // aria-selected, so the list lands partway down. cmdk does that in a render of its own after this one; the frame
+    // callback runs after it and before paint.
+    useEffect(() => {
+        const frame = requestAnimationFrame(() => {
+            list.current!.scrollTop = 0;
+        });
+        return () => cancelAnimationFrame(frame);
+    }, [query]);
     return (
         <Cmdk filter={filter} label="Command menu" loop shouldFilter={shouldFilter}>
             <div className="flex h-14 items-center gap-2 border-b border-border px-5">
@@ -239,7 +250,7 @@ function Shell({ query, onQuery, chip, placeholder, shouldFilter = true, error, 
                 />
             </div>
             {error ? <p className="px-5 pt-3 text-sm text-destructive" role="alert">{error}</p> : null}
-            <Cmdk.List className="max-h-[min(26rem,60dvh)] scroll-py-2 overflow-y-auto overscroll-contain p-2">
+            <Cmdk.List className="max-h-[min(26rem,60dvh)] scroll-py-2 overflow-y-auto overscroll-contain p-2" ref={list}>
                 {children}
             </Cmdk.List>
         </Cmdk>
@@ -289,14 +300,19 @@ const KEY_NAMES: Record<string, string> = {
     ArrowRight: '→',
     ArrowUp: '↑',
     ArrowDown: '↓',
+    Enter: '↵',
     Escape: 'Esc',
 };
 
 function Keys({ keys }: { keys: string }) {
     return (
-        <kbd className="shrink-0 rounded-sm px-1.5 font-sans text-xs text-subtle-foreground shadow-[inset_0_0_0_1px_var(--border)]">
-            {keys.split('+').map((key) => KEY_NAMES[key] ?? key.toUpperCase()).join(APPLE ? '' : ' ')}
-        </kbd>
+        <span className="flex shrink-0 gap-1">
+            {keys.split(' ').map((combo) => (
+                <kbd className="rounded-sm px-1.5 font-sans text-xs text-subtle-foreground shadow-[inset_0_0_0_1px_var(--border)]" key={combo}>
+                    {combo.split('+').map((key) => KEY_NAMES[key] ?? key.toUpperCase()).join(APPLE ? '' : ' ')}
+                </kbd>
+            ))}
+        </span>
     );
 }
 
@@ -421,12 +437,7 @@ function rankedGroups(commands: Command[], query: string) {
 
 function RowEnd({ command, on }: { command: Command; on?: boolean }) {
     if ('toggle' in command) return <><span className="sr-only">{(on ?? command.toggle.on) ? 'On' : 'Off'}</span><Toggle on={on ?? command.toggle.on} /></>;
-    return (
-        <>
-            {command.shortcut ? <Keys keys={command.shortcut} /> : null}
-            {'step' in command ? <ChevronDownIcon aria-hidden="true" className="size-3.5 shrink-0 -rotate-90 text-subtle-foreground" /> : null}
-        </>
-    );
+    return 'step' in command ? <ChevronDownIcon aria-hidden="true" className="size-3.5 shrink-0 -rotate-90 text-subtle-foreground" /> : null;
 }
 
 function StepView({ step, run, onStep }: MenuProps & { step: CommandStep; run: Run }) {
@@ -583,7 +594,7 @@ function useGlobalCommands(onAddSource: (url: string) => void): Command[] {
     const go = (href: string) => () => navigate(href);
 
     const navigation: Command[] = [
-        ...APP_MODES.map(({ label, href, shortcut }) => ({ id: `go:${href}`, group: GO_TO, label, shortcut, run: go(href) })),
+        ...APP_MODES.map(({ label, href }) => ({ id: `go:${href}`, group: GO_TO, label, run: go(href) })),
         {
             id: 'go:day',
             group: GO_TO,

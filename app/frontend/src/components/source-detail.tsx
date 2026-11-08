@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Skeleton } from 'skullet/react';
 
 import { BackLink } from '@/components/back-link';
-import { ItemList, ListError, ListItem, SourceIcon } from '@/components/item-list';
+import { ItemList, ListError, ListItem, PostList, SourceIcon } from '@/components/item-list';
 import { useSources, type SourceEntry } from '@/hooks/use-sources';
 import { entryHref, PATHS } from '@/lib/paths';
 import { formatDate } from '@/lib/source-display';
@@ -84,16 +84,18 @@ function EntriesBody({ label, from, state, empty }: {
             sample={SAMPLE_ENTRIES}
         >
             {(entries) => entries.length ? (
-                <ItemList>
-                    {entries.map((entry) => (
-                        <ListItem
-                            href={entryHref(entry.entrySlug, from)}
-                            key={entry.entrySlug}
-                            meta={formatDate(entry.publishedAt)}
-                            title={entry.title || 'Untitled'}
-                        />
-                    ))}
-                </ItemList>
+                <PostList>
+                    <ItemList>
+                        {entries.map((entry) => (
+                            <ListItem
+                                href={entryHref(entry.entrySlug, from)}
+                                key={entry.entrySlug}
+                                meta={formatDate(entry.publishedAt)}
+                                title={entry.title || 'Untitled'}
+                            />
+                        ))}
+                    </ItemList>
+                </PostList>
             ) : <p className="text-sm text-muted-foreground">{empty}</p>}
         </Skeleton>
     );

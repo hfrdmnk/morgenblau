@@ -78,6 +78,7 @@ export function useEntrySteps(slug: string, from: string | null) {
     };
     const previous = () => step(-1);
     const next = () => step(1);
-    useShortcuts({ 'Shift+ArrowUp': previous, k: previous, 'Shift+ArrowDown': next, j: next });
+    // Up and Down stay with scrolling the article, so stepping between entries takes Left and Right.
+    useShortcuts({ ArrowLeft: previous, k: previous, ArrowRight: next, j: next });
     return { previous, next };
 }

@@ -20,16 +20,20 @@ export function isCommandMenuKey(event: KeyboardEvent): boolean {
     return (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && !event.repeat && event.key.toLowerCase() === 'k';
 }
 
+// A space separates keys that do the same thing.
 export const SHORTCUTS = [
     { keys: 'Mod+K', label: 'Command menu', where: 'Anywhere' },
     { keys: 'Shift+D', label: 'Digest', where: 'Anywhere' },
     { keys: 'Shift+S', label: 'Sources', where: 'Anywhere' },
     { keys: 'Shift+L', label: 'Library', where: 'Anywhere' },
-    { keys: 'h', label: 'Previous day', where: 'Digest' },
-    { keys: 'l', label: 'Next day', where: 'Digest' },
+    { keys: 'ArrowLeft h', label: 'Previous day', where: 'Digest' },
+    { keys: 'ArrowRight l', label: 'Next day', where: 'Digest' },
     { keys: 'Shift+T', label: 'Today', where: 'Digest' },
-    { keys: 'k', label: 'Previous entry', where: 'Reader' },
-    { keys: 'j', label: 'Next entry', where: 'Reader' },
+    { keys: 'ArrowUp k', label: 'Previous post', where: 'Post lists' },
+    { keys: 'ArrowDown j', label: 'Next post', where: 'Post lists' },
+    { keys: 'Enter', label: 'Open post', where: 'Post lists' },
+    { keys: 'ArrowLeft k', label: 'Previous entry', where: 'Reader' },
+    { keys: 'ArrowRight j', label: 'Next entry', where: 'Reader' },
     { keys: 'Escape', label: 'Back', where: 'Reader' },
     { keys: 't', label: 'Add tags after saving', where: 'Reader' },
 ];

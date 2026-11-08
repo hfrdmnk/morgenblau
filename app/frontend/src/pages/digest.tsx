@@ -6,7 +6,7 @@ import { useSearch } from 'wouter/use-browser-location';
 
 import { AddSourceDialog } from '@/components/add-source-dialog';
 import { ChevronDownIcon } from '@/components/icons';
-import { ItemList, ListError, ListItem, SourceIcon } from '@/components/item-list';
+import { ItemList, ListError, ListItem, PostList, SourceIcon } from '@/components/item-list';
 import { EmptyState } from '@/components/status-state';
 import { Button } from '@/components/ui/button';
 import { useCommands } from '@/hooks/use-commands';
@@ -53,17 +53,17 @@ function useDayShortcuts(selected: Date, today: Date, entries: DigestEntry[]) {
     const earlier = () => show(addCalendarDays(selected, -1));
     const later = () => isToday ? showShortcutNotice('Today is the latest digest') : show(addCalendarDays(selected, 1));
     useShortcuts({
-        'Shift+ArrowLeft': earlier,
+        ArrowLeft: earlier,
         h: earlier,
-        'Shift+ArrowRight': later,
+        ArrowRight: later,
         l: later,
         'Shift+T': () => isToday ? showShortcutNotice('Already showing today') : show(today),
     });
     useCommands([
-        { id: 'day:previous', group, label: 'Previous day', shortcut: 'h', keywords: ['earlier', 'back'], run: earlier },
+        { id: 'day:previous', group, label: 'Previous day', keywords: ['earlier', 'back'], run: earlier },
         ...(isToday ? [] : [
-            { id: 'day:next', group, label: 'Next day', shortcut: 'l', keywords: ['later', 'forward'], run: later },
-            { id: 'day:today', group, label: 'Today', shortcut: 'Shift+T', run: () => show(today) },
+            { id: 'day:next', group, label: 'Next day', keywords: ['later', 'forward'], run: later },
+            { id: 'day:today', group, label: 'Today', run: () => show(today) },
         ]),
         ...entries.map((entry) => ({
             id: `headline:${entry.entrySlug}`,
@@ -122,7 +122,7 @@ function LoadedDigest({ date, digest }: { date: string; digest: DigestData }) {
     const primary = groupBySource(digest.entries.filter((entry) => entry.source.primary));
     const rest = groupBySource(digest.entries.filter((entry) => !entry.source.primary));
     return (
-        <div className="flex flex-col gap-20">
+        <PostList className="flex flex-col gap-20">
             {primary.length > 0 ? (
                 <ol aria-label="Primary sources" className="flex flex-col gap-12">
                     {primary.map((group) => (
@@ -137,7 +137,7 @@ function LoadedDigest({ date, digest }: { date: string; digest: DigestData }) {
                     ))}
                 </ItemList>
             ) : null}
-        </div>
+        </PostList>
     );
 }
 
@@ -218,10 +218,10 @@ function PrimaryItem({ date, group, onToggle, open }: GroupProps) {
     const href = entryHref(entry.entrySlug, date);
     return (
         <li className="flex flex-col gap-3">
-            <div className={image ? 'flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_auto] sm:grid-rows-[auto_auto_1fr] sm:gap-x-8' : 'flex flex-col gap-3'}>
+            <div className={cn('-m-3 p-3', image ? 'flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_auto] sm:grid-rows-[auto_auto_1fr] sm:gap-x-8' : 'flex flex-col gap-3')} data-post>
                 <PrimarySource entry={entry} />
                 <h2 className="text-2xl font-medium tracking-[-0.015em] text-balance break-words sm:col-start-1 sm:row-start-2 sm:text-3xl">
-                    <Link className={`rounded-sm hover:text-foreground/75 ${entry.title ? 'text-foreground' : 'text-muted-foreground'}`} href={href}>{entry.title || 'Untitled'}</Link>
+                    <Link className={`rounded-sm hover:text-foreground/75 ${entry.title ? 'text-foreground' : 'text-muted-foreground'}`} data-post-link href={href}>{entry.title || 'Untitled'}</Link>
                 </h2>
                 {excerpt ? (
                     <p className="line-clamp-2 max-w-[60ch] self-start text-base text-muted-foreground text-pretty sm:col-start-1 sm:row-start-3">{excerpt}</p>
@@ -332,8 +332,8 @@ function MoreList({ className, date, entries, id, open }: { className: string; d
                 >
                     <ol className="ml-[7px] flex flex-col gap-5 border-l border-border pt-5 pl-[17px]">
                         {entries.map((entry) => (
-                            <li className="min-w-0" key={`${entry.id}-${entry.entrySlug}`}>
-                                <Link className={cn('block min-w-0 truncate rounded-sm font-medium text-foreground hover:text-foreground/75', className)} href={entryHref(entry.entrySlug, date)} title={entry.title || 'Untitled'}>
+                            <li className="-mx-2 -my-1.5 min-w-0 px-2 py-1.5" data-post key={`${entry.id}-${entry.entrySlug}`}>
+                                <Link className={cn('block min-w-0 truncate rounded-sm font-medium text-foreground hover:text-foreground/75', className)} data-post-link href={entryHref(entry.entrySlug, date)} title={entry.title || 'Untitled'}>
                                     {entry.title || 'Untitled'}
                                 </Link>
                             </li>

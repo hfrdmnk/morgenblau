@@ -60,27 +60,27 @@ async function open(href: string, respond: (path: string, call: number) => unkno
     return requested;
 }
 
-async function press(key: string, shiftKey = true) {
+async function press(key: string) {
     await act(async () => {
-        window.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey }));
+        window.dispatchEvent(new KeyboardEvent('keydown', { key }));
         await Bun.sleep(0);
     });
 }
 
 const here = () => window.location.pathname + window.location.search;
 
-test('Shift+Down and Shift+Up step through the digest day the entry came from', async () => {
+test('Right and Left step through the digest day the entry came from', async () => {
     const requested = await open('/entry/b?from=2026-10-14', () => ({ date: '2026-10-14', hasActiveJob: false, entries: [{ entrySlug: 'a' }, { entrySlug: 'b' }, { entrySlug: 'c' }] }));
 
-    await press('ArrowDown');
+    await press('ArrowRight');
     expect(here()).toBe('/entry/c?from=2026-10-14');
-    await press('ArrowDown');
+    await press('ArrowRight');
     expect(here()).toBe('/entry/c?from=2026-10-14');
     expect(notices).toEqual(['No next article in this digest']);
-    await press('k', false);
-    await press('k', false);
+    await press('k');
+    await press('k');
     expect(here()).toBe('/entry/a?from=2026-10-14');
-    await press('j', false);
+    await press('j');
     expect(here()).toBe('/entry/b?from=2026-10-14');
     expect(requested).toHaveLength(2);
     expect(requested[0]).toStartWith('/api/digest?date=2026-10-14&');
@@ -89,9 +89,9 @@ test('Shift+Down and Shift+Up step through the digest day the entry came from', 
 test('an entry opened from a newsletter steps through that newsletter, and stops at its first issue', async () => {
     const requested = await open('/entry/second?from=%2Fsources%2Fnewsletters%2Fnl_example', () => [{ entrySlug: 'first' }, { entrySlug: 'second' }]);
 
-    await press('ArrowUp');
+    await press('ArrowLeft');
     expect(here()).toBe('/entry/first?from=%2Fsources%2Fnewsletters%2Fnl_example');
-    await press('ArrowUp');
+    await press('ArrowLeft');
     expect(notices).toEqual(['No previous article from this source']);
     expect(requested).toEqual(['/api/newsletters/nl_example/entries', '/api/newsletters/nl_example/entries']);
 });
@@ -100,8 +100,8 @@ test('an entry collected after the list was loaded is still reached', async () =
     const digest = (slugs: string[]) => ({ date: '2026-10-14', hasActiveJob: false, entries: slugs.map((entrySlug) => ({ entrySlug })) });
     const requested = await open('/entry/a?from=2026-10-14', (_, call) => digest(call === 1 ? ['a', 'b'] : ['a', 'b', 'c']));
 
-    await press('j', false);
-    await press('j', false);
+    await press('j');
+    await press('j');
     expect(here()).toBe('/entry/c?from=2026-10-14');
     expect(requested).toHaveLength(2);
     expect(notices).toEqual([]);

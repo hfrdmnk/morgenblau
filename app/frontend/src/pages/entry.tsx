@@ -37,9 +37,9 @@ export function Entry() {
     useShortcuts({ Escape: () => navigate(back) });
     // The reader registers these after its own actions, so saving leads the menu and Enter never leaves the entry by surprise.
     const navigation: Command[] = [
-        { id: 'entry:previous', group: READER, label: 'Previous entry', shortcut: 'k', run: steps.previous },
-        { id: 'entry:next', group: READER, label: 'Next entry', shortcut: 'j', run: steps.next },
-        { id: 'entry:back', group: READER, label: backLabel, shortcut: 'Escape', run: () => navigate(back) },
+        { id: 'entry:previous', group: READER, label: 'Previous entry', run: steps.previous },
+        { id: 'entry:next', group: READER, label: 'Next entry', run: steps.next },
+        { id: 'entry:back', group: READER, label: backLabel, run: () => navigate(back) },
     ];
 
     return (
