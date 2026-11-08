@@ -7,7 +7,7 @@ ignore ./frontend/node_modules
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.0
-	github.com/andybalholm/cascadia v1.3.3
+	github.com/andybalholm/cascadia v1.3.5
 	github.com/anthropics/anthropic-sdk-go v1.80.0
 	github.com/bluesky-social/indigo v0.0.0-20260428083920-ce62b8fce9e0
 	github.com/caddyserver/certmagic v0.25.6
