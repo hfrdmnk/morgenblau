@@ -1,26 +1,19 @@
 import { motion } from 'motion/react';
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { useLocation } from 'wouter';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 
 import { EnterIcon, LoadingIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
-import { Link } from '@/components/ui/link';
-import { useGeneration, type GenerationStep } from '@/hooks/use-generation';
+import type { GenerationStep } from '@/hooks/use-generation';
 import {
-    addSource,
     anchorError,
     anchorRejection,
-    generatedCandidate,
     generatedVerdict,
     type GeneratedSource,
 } from '@/lib/add-source';
-import { classifyMutationError, describeMutationError } from '@/lib/api';
-import { PATHS } from '@/lib/paths';
-import { announceSourceAdded } from '@/lib/source-toast';
 import { cn } from '@/lib/utils';
 
-// A sample is enough to recognize the site's posts and keeps Add source on screen, with the post field still in view when unsure.
+// A sample is enough to recognize the site's posts, with the post field still in view when unsure.
 const PREVIEW_POSTS = { sure: 5, unsure: 3 };
 
 // Listing pages print a day, which the server keeps as midnight UTC.
@@ -35,54 +28,48 @@ function postCount(count: number) {
     return count === 1 ? '1 post' : `${count} posts`;
 }
 
-type SaveProps = {
+type PreviewProps = {
     saving: boolean;
-    onSavingChange: (saving: boolean) => void;
-    onSaved: () => void;
+    onPointAt: (anchor: string) => Promise<void>;
+    // The sheet's own form for adding the feed.
+    add: (source: GeneratedSource) => ReactNode;
 };
 
 export function GenerateFeed({
-    url,
+    step,
     instant,
-    ...save
-}: SaveProps & { url: string; instant: boolean }) {
-    const { state, generate, pointAt } = useGeneration(url);
+    onRetry,
+    ...preview
+}: PreviewProps & { step: GenerationStep; instant: boolean; onRetry: () => void }) {
     const root = useRef<HTMLDivElement>(null);
     useEffect(() => {
-        if (state.step !== 'offer') settleFocus(root.current, focusOrder(state));
-    }, [state]);
+        settleFocus(root.current, focusOrder(step));
+    }, [step]);
     return (
         <div className="outline-none" ref={root} tabIndex={-1}>
             <p className="sr-only" role="status">
-                {resultStatus(state)}
+                {resultStatus(step)}
             </p>
             <motion.div
-                key={state.step}
+                key={step.step}
                 initial={{ opacity: instant ? 1 : 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: instant ? 0 : 0.2 }}
             >
-                {state.step === 'offer' && (
-                    <GenerateOffer onGenerate={generate} />
-                )}
-                {state.step === 'pending' && (
+                {step.step === 'pending' && (
                     <Pending>
                         Reading the page and a few of its posts. This can take
                         a little while.
                     </Pending>
                 )}
-                {state.step === 'failed' && (
+                {step.step === 'failed' && (
                     <GenerationFailed
-                        message={state.message}
-                        onRetry={state.retry ? generate : undefined}
+                        message={step.message}
+                        onRetry={step.retry ? onRetry : undefined}
                     />
                 )}
-                {state.step === 'preview' && (
-                    <GeneratedPreview
-                        source={state.source}
-                        onPointAt={pointAt}
-                        {...save}
-                    />
+                {step.step === 'preview' && (
+                    <GeneratedPreview source={step.source} {...preview} />
                 )}
             </motion.div>
         </div>
@@ -106,7 +93,14 @@ function focusOrder(state: GenerationStep) {
     return state.anchored ? ['add', 'anchor'] : ['heading', 'anchor'];
 }
 
-// Each step unmounts the control that started it, and the dialog would park focus on its popup after a long wait.
+// The add form belongs to the sheet, so its submit button is found inside the slot rather than marked itself.
+function focusTarget(root: HTMLElement, name: string) {
+    return root.querySelector<HTMLElement>(
+        name === 'add' ? '[data-focus="add"] [type="submit"]' : `[data-focus="${name}"]`,
+    );
+}
+
+// Each step unmounts the control that started it, and the sheet would park focus on its popup after a long wait.
 function settleFocus(root: HTMLElement | null, order: string[]) {
     if (!root) return;
     const active = document.activeElement;
@@ -117,15 +111,11 @@ function settleFocus(root: HTMLElement | null, order: string[]) {
         active.contains(root) ||
         root.contains(active);
     if (!ours) return;
-    const target = order
-        .map((name) =>
-            root.querySelector<HTMLElement>(`[data-focus="${name}"]`),
-        )
-        .find(Boolean);
+    const target = order.map((name) => focusTarget(root, name)).find(Boolean);
     (target ?? root).focus();
 }
 
-function GenerateOffer({ onGenerate }: { onGenerate: () => void }) {
+export function GenerateOffer({ onGenerate }: { onGenerate: () => void }) {
     return (
         <div className="rounded-lg bg-background p-4">
             <p className="text-sm text-muted-foreground">
@@ -185,12 +175,10 @@ function GenerationFailed({
 
 function GeneratedPreview({
     source,
+    saving,
     onPointAt,
-    ...save
-}: SaveProps & {
-    source: GeneratedSource;
-    onPointAt: (anchor: string) => Promise<void>;
-}) {
+    add,
+}: PreviewProps & { source: GeneratedSource }) {
     const [anchoring, setAnchoring] = useState(false);
     const verdict = generatedVerdict(source);
 
@@ -218,22 +206,21 @@ function GeneratedPreview({
                     limit={unsure ? PREVIEW_POSTS.unsure : PREVIEW_POSTS.sure}
                 />
             )}
-            {verdict.subscribable && (
-                <AddGeneratedSource
-                    source={source}
-                    anchoring={anchoring}
-                    {...save}
-                />
-            )}
             {verdict.askAnchor && (
                 <AnchorForm
                     key={source.id + source.itemCount}
                     prompt={anchorPrompt(source, verdict.subscribable)}
                     rejected={source.anchorRejected}
                     anchoring={anchoring}
-                    disabled={save.saving}
+                    disabled={saving}
                     onSubmit={pointAt}
                 />
+            )}
+            {verdict.subscribable && (
+                // A post being looked up may still change the feed, so its form waits.
+                <fieldset className="mt-8 min-w-0" data-focus="add" disabled={anchoring}>
+                    {add(source)}
+                </fieldset>
             )}
         </>
     );
@@ -295,79 +282,6 @@ function PostRow({ item }: { item: GeneratedSource['items'][number] }) {
                 </time>
             )}
         </li>
-    );
-}
-
-function AddGeneratedSource({
-    source,
-    anchoring,
-    saving,
-    onSavingChange,
-    onSaved,
-}: SaveProps & { source: GeneratedSource; anchoring: boolean }) {
-    const [, navigate] = useLocation();
-    const [failure, setFailure] = useState<{
-        source: GeneratedSource;
-        message: string;
-        reauth: boolean;
-    } | null>(null);
-    const error = failure?.source === source ? failure : null;
-
-    async function save() {
-        onSavingChange(true);
-        try {
-            const { rkey } = await addSource(generatedCandidate(source));
-            announceSourceAdded(
-                rkey,
-                navigate,
-                'New posts appear in your newspaper as the site publishes them.',
-            );
-            onSaved();
-        } catch (problem) {
-            setFailure({
-                source,
-                message: describeMutationError(
-                    problem,
-                    'The save couldn’t be confirmed.',
-                ),
-                reauth: classifyMutationError(problem) === 'reauth',
-            });
-        } finally {
-            onSavingChange(false);
-        }
-    }
-
-    return (
-        <>
-            {error && (
-                <p className="mt-3 text-sm text-destructive" role="alert">
-                    {error.message}{' '}
-                    {error.reauth && (
-                        <Link href={PATHS.login}>Sign in again</Link>
-                    )}
-                </p>
-            )}
-            <div className="mt-4 flex items-center justify-between gap-3">
-                <p className="text-xs text-muted-foreground" aria-live="polite">
-                    {saving && 'Keep this dialog open while saving.'}
-                </p>
-                <Button
-                    aria-busy={saving}
-                    data-focus="add"
-                    disabled={saving || anchoring || Boolean(error)}
-                    onClick={save}
-                >
-                    {saving ? (
-                        <>
-                            <LoadingIcon className="motion-safe:animate-spin" />
-                            <span className="sr-only">Adding source</span>
-                        </>
-                    ) : (
-                        'Add source'
-                    )}
-                </Button>
-            </div>
-        </>
     );
 }
 

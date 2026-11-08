@@ -17,7 +17,7 @@ import { Skeleton } from 'skullet/react';
 import { toast } from 'sonner';
 import { useLocation } from 'wouter';
 
-import { GenerateFeed } from '@/components/generate-feed';
+import { GenerateFeed, GenerateOffer } from '@/components/generate-feed';
 import { CheckIcon, ChevronDownIcon, CloseIcon, EnterIcon, ExternalLinkIcon, LoadingIcon, MoreIcon, PenIcon, PlusIcon } from '@/components/icons';
 import { NewsletterAddress } from '@/components/newsletter-address';
 import { PersonAvatar } from '@/components/person-avatar';
@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button';
 import { DrawerBackdrop, DrawerPopup, DrawerViewport } from '@/components/ui/drawer';
 import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 import { Link } from '@/components/ui/link';
+import { useGeneration, type GenerationStep } from '@/hooks/use-generation';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useReaderFont } from '@/hooks/use-reader-font';
 import type { FeedSource, NewsletterSource } from '@/hooks/use-sources';
@@ -35,6 +36,8 @@ import {
     discoveryError,
     editSource,
     findSite,
+    generatedCandidate,
+    generatedVerdict,
     previewArticle,
     previewSource,
     profileSummary,
@@ -91,7 +94,8 @@ type Screen =
     | { kind: 'edit'; source: FeedSource; onChanged: () => void; onRemoved: () => void; removedFocus?: RefObject<HTMLElement | null> }
     | { kind: 'newsletter'; source: NewsletterSource; stopped: boolean; onChanged: () => void; onRemoved: () => void; removedFocus?: RefObject<HTMLElement | null> }
     | { kind: 'post'; candidate: SourceCandidate; post: PreviewPost }
-    | { kind: 'profile'; site: SiteResult; profile: SiteProfile };
+    | { kind: 'profile'; site: SiteResult; profile: SiteProfile }
+    | { kind: 'generated'; url: string; step: GenerationStep };
 
 type Discovery =
     | { stage: 'idle' }
@@ -108,7 +112,9 @@ type Sheet = {
     close: () => void;
     onSavingChange: (saving: boolean) => void;
     record: (key: string, rkey: string | null) => void;
-    announce: (rkey: string) => void;
+    announce: (rkey: string, description?: string) => void;
+    generate: (url: string) => void;
+    pointAt: (url: string, anchor: string) => Promise<void>;
 };
 
 // With an initialUrl the sheet opens at once, already looking that site up, and has no trigger of its own.
@@ -257,7 +263,8 @@ function SheetBody({
     const [url, setUrl] = useState(initialUrl);
     const request = useRef<AbortController | null>(null);
     const [discovery, setDiscovery] = useInitialLookup(initialUrl, request);
-    const { stack, canGoBack, push, pop } = useScreenStack(root);
+    const { stack, canGoBack, push, pop, showGeneration } = useScreenStack(root);
+    const generation = useGeneration(showGeneration);
     const { nameOf, formOf, rename } = useScreenNames();
     const [keyboard, setKeyboard] = useState(false);
     // Sources added (rkey) or removed (null) in this sheet, overriding what earlier lookups reported.
@@ -276,11 +283,13 @@ function SheetBody({
         close: onClose,
         onSavingChange,
         record: (key, rkey) => setSubscriptions((previous) => new Map(previous).set(key, rkey)),
-        announce: (rkey) =>
+        announce: (rkey, description) =>
             announceSourceAdded(rkey, (to) => {
                 onClose();
                 navigate(to);
-            }),
+            }, description),
+        generate: (url) => void generation.generate(url),
+        pointAt: generation.pointAt,
     };
 
     async function find(event: FormEvent) {
@@ -402,6 +411,9 @@ function useScreenStack(root?: Screen) {
         canGoBack: stack.length > (root ? 1 : 0),
         push: (next: Screen) => setStack([...stack, { id: nextId.current++, screen: next }]),
         pop: () => setStack(stack.slice(0, -1)),
+        // Only one generation runs at a time, so its steps land on whichever generated screen is open.
+        showGeneration: (step: GenerationStep) =>
+            setStack((previous) => previous.map((entry) => (entry.screen.kind === 'generated' ? { ...entry, screen: { ...entry.screen, step } } : entry))),
     };
 }
 
@@ -430,6 +442,7 @@ function screenTitle(screen: Screen) {
     if (screen.kind === 'edit') return feedSourceName(screen.source);
     if (screen.kind === 'newsletter') return newsletterName(screen.source);
     if (screen.kind === 'post') return screen.post.title || 'Untitled';
+    if (screen.kind === 'generated') return screen.step.step === 'preview' ? screen.step.source.title || displayURL(screen.step.source.siteUrl) : displayURL(screen.url);
     return 'Profile';
 }
 
@@ -464,6 +477,7 @@ function ScreenTransition({ active, instant, focusOnMount, children }: {
 // Only a screen that will save a name lets the reader type one.
 function nameable(screen: Screen, subscriptions: Map<string, string | null>) {
     if (screen.kind === 'edit' || screen.kind === 'newsletter') return true;
+    if (screen.kind === 'generated') return screen.step.step === 'preview' && generatedVerdict(screen.step.source).subscribable;
     if (screen.kind !== 'feed') return false;
     const status = candidateStatus(screen.candidate, screen.site, subscriptions, screen.rkey);
     return !status.rkey && !status.note;
@@ -523,6 +537,7 @@ function ScreenView({ screen, form, name, sheet }: { screen: Screen; form: strin
     if (screen.kind === 'edit') return <EditScreen form={form} name={name} nameTooLong={tooLong} screen={screen} sheet={sheet} />;
     if (screen.kind === 'newsletter') return <NewsletterScreen form={form} name={name} nameTooLong={tooLong} screen={screen} sheet={sheet} />;
     if (screen.kind === 'post') return <PostScreen post={screen.post} />;
+    if (screen.kind === 'generated') return <GeneratedScreen form={form} name={name} nameTooLong={tooLong} screen={screen} sheet={sheet} />;
     return <ProfileScreen profile={screen.profile} sheet={sheet} site={screen.site} />;
 }
 
@@ -617,12 +632,11 @@ function SiteResults({ site, sheet }: { site: SiteResult; sheet: Sheet }) {
     const feedsLabel = useId();
     if (site.candidates.length === 0)
         return (
-            <GenerateFeed
-                instant={sheet.instant}
-                onSaved={sheet.close}
-                onSavingChange={sheet.onSavingChange}
-                saving={sheet.saving}
-                url={site.url}
+            <GenerateOffer
+                onGenerate={() => {
+                    sheet.push({ kind: 'generated', url: site.url, step: { step: 'pending' } });
+                    sheet.generate(site.url);
+                }}
             />
         );
     const profile = site.profile;
@@ -831,6 +845,47 @@ function FeedScreen({ candidate, site, known, form, name, nameTooLong, sheet }: 
                 </SourceForm>
             )}
         </div>
+    );
+}
+
+// The add closes the sheet: the feed is the site's only one, so there is nothing left to pick.
+function GeneratedScreen({ screen, form, name, nameTooLong, sheet }: {
+    screen: Extract<Screen, { kind: 'generated' }>;
+    form: string;
+    name: string;
+    nameTooLong: boolean;
+    sheet: Sheet;
+}) {
+    const { run, errorLine } = useSheetMutation(sheet);
+    const renamed = name.trim() !== screenTitle(screen);
+
+    function save(source: SourceCandidate, options: SourceOptions) {
+        void run(async () => {
+            const { rkey } = await addSource(source, { ...options, title: renamed ? name.trim() || undefined : undefined });
+            sheet.announce(rkey, 'New posts appear in your newspaper as the site publishes them.');
+            sheet.close();
+        }, 'The save couldn’t be confirmed.');
+    }
+
+    return (
+        <GenerateFeed
+            add={(source) => (
+                <SourceForm
+                    action="Add to sources"
+                    busyLabel="Adding source"
+                    errorLine={errorLine}
+                    id={form}
+                    nameTooLong={nameTooLong}
+                    onSave={(options) => save(generatedCandidate(source), options)}
+                    saving={sheet.saving}
+                />
+            )}
+            instant={sheet.instant}
+            onPointAt={(anchor) => sheet.pointAt(screen.url, anchor)}
+            onRetry={() => sheet.generate(screen.url)}
+            saving={sheet.saving}
+            step={screen.step}
+        />
     );
 }
 
@@ -1069,10 +1124,10 @@ function SourceForm({ id, action, busyLabel, nameTooLong, initial = { tags: [], 
                 label="Primary"
                 onChange={setPrimary}
             />
-            {errorLine}
             <SheetAction
                 busyLabel={busyLabel}
                 disabled={overlong || (changed && !changed({ tags: addTags(tags, draft), primary }))}
+                error={errorLine}
                 saving={saving}
                 secondary={secondary}
                 type="submit"
@@ -1083,15 +1138,17 @@ function SourceForm({ id, action, busyLabel, nameTooLong, initial = { tags: [], 
     );
 }
 
-// secondary rides in the same sticky footer, so it stays beside the main action.
-function SheetAction({ saving, busyLabel, disabled = false, secondary, children, ...props }: Omit<ComponentProps<typeof Button>, 'disabled'> & {
+// error and secondary ride in the same sticky footer, so a screen taller than the sheet never hides them behind it.
+function SheetAction({ saving, busyLabel, disabled = false, error, secondary, children, ...props }: Omit<ComponentProps<typeof Button>, 'disabled'> & {
     saving: boolean;
     busyLabel: string;
     disabled?: boolean;
+    error?: ReactNode;
     secondary?: ReactNode;
 }) {
     return (
         <div className="sticky bottom-0 -mx-6 space-y-2 bg-popover px-6 pt-2 pb-1">
+            {error}
             <Button aria-busy={saving} className="w-full" disabled={saving || disabled} size="lg" {...props}>
                 {saving ? (
                     <>
