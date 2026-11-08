@@ -1,5 +1,5 @@
 FROM node:24-slim AS build
-COPY --from=oven/bun:1.3.11 /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=oven/bun:1.4.4 /usr/local/bin/bun /usr/local/bin/bun
 
 WORKDIR /src
 COPY package.json bun.lock ./

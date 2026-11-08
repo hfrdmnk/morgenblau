@@ -1,4 +1,4 @@
-FROM oven/bun:1.3.11 AS frontend
+FROM oven/bun:1.4.4 AS frontend
 
 WORKDIR /src
 COPY frontend/package.json frontend/bun.lock ./frontend/
