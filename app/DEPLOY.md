@@ -145,7 +145,7 @@ fly logs --app "$FLY_APP"
 
 `--ha=false` prevents Fly's default redundant Machine creation on the initial deploy. Subsequent deploys should still leave exactly one Machine. Its volume persists; pending goose migrations run on that volume before HTTP/SMTP starts. There are no automatic schema downs on rollback.
 
-After the first deploy, Fly's GitHub integration deploys every push to `main`. In the app's GitHub settings on Fly, set Current Working Directory to `app` and leave Config path empty so it uses `app/fly.toml`.
+After the first deploy, the `deploy` job in `.github/workflows/ci.yml` deploys each push to `main` once that commit's CI is green. Give it an app-scoped token with `fly tokens create deploy --app "$FLY_APP"` and save it as the GitHub Actions secret `FLY_API_TOKEN_APP`. Keep Fly's own GitHub deploy-on-push off: it does not wait for CI.
 
 The app and Litestream run unprivileged. SIGTERM stops the app first and then attempts a final backup sync; `fly.toml` allows time for both. Hard kills, storage outages, and host failures can still lose changes not yet replicated. Litestream is asynchronous backup, not synchronous replication or automatic failover.
 

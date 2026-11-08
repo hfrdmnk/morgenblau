@@ -7,4 +7,4 @@ bun install
 bun run dev
 ```
 
-`bun run build` writes static files to `dist/`; the `Dockerfile` serves them with nginx. Pushes to `main` deploy to Fly through Fly's GitHub integration, with its working directory set to `site`.
+`bun run build` writes static files to `dist/`; the `Dockerfile` serves them with nginx. Pushes to `main` deploy to Fly from the `deploy` job in `.github/workflows/ci.yml` once CI passes, using the `FLY_API_TOKEN_SITE` secret.
