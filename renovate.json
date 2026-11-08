@@ -1,0 +1,38 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "customManagers:githubActionsVersions"],
+  "timezone": "Europe/Zurich",
+  "postUpdateOptions": ["gomodTidy"],
+  "platformAutomerge": false,
+  "packageRules": [
+    {
+      "description": "Merge stable minor and patch updates once CI passes; 0.x minors can break, so they stay manual.",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "matchCurrentVersion": "!/^[\\^~]?v?0\\./",
+      "automerge": true
+    },
+    {
+      "description": "Majors wait for a checkbox in the Dependency Dashboard issue before a PR opens.",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true,
+      "labels": ["major-upgrade"]
+    },
+    {
+      "description": "Automerged code lands in production, so give the registry time to pull compromised releases.",
+      "matchDatasources": ["npm"],
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "One version across package.json, Dockerfiles and CI.",
+      "matchPackageNames": ["bun", "oven/bun"],
+      "groupName": "Bun"
+    },
+    {
+      "description": "CI tests the Go version in go.mod, which Renovate never bumps, so a new Go release in the build image needs a hand-made go.mod change.",
+      "matchPackageNames": ["golang"],
+      "matchUpdateTypes": ["minor"],
+      "automerge": false,
+      "dependencyDashboardApproval": true
+    }
+  ]
+}

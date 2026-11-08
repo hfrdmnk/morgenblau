@@ -18,6 +18,11 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # renovate: datasource=github-releases depName=sqlc-dev/sqlc extractVersion=^v(?<version>.*)$
+      SQLC_VERSION: 1.31.1
+      # renovate: datasource=go depName=github.com/pressly/goose/v3
+      GOOSE_VERSION: v3.27.1
     defaults:
       run:
         working-directory: app
@@ -50,7 +55,7 @@ jobs:
       - name: Set up sqlc
         uses: sqlc-dev/setup-sqlc@v5
         with:
-          sqlc-version: "1.31.1"
+          sqlc-version: ${{ env.SQLC_VERSION }}
 
       # internal/database/db embeds the SQL that runs; a stale copy runs queries nobody reviewed.
       - name: Check sqlc output is current
@@ -58,7 +63,7 @@ jobs:
 
       - name: Install Goose for migration tests
         run: |
-          go install github.com/pressly/goose/v3/cmd/goose@v3.27.1
+          go install github.com/pressly/goose/v3/cmd/goose@"$GOOSE_VERSION"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Set up Bun
@@ -119,3 +124,29 @@ jobs:
         env:
           FALLOW_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: cd frontend && ./node_modules/.bin/fallow audit --base "$FALLOW_BASE" --gate new-only --quiet
+
+  build-web:
+    name: Build ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        project: [site, brand]
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: ${{ matrix.project }}/package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
