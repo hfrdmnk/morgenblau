@@ -1,6 +1,6 @@
 module morgenblau
 
-go 1.27
+go 1.27.3
 
 // npm packages (e.g. flatted) ship Go files that ./... would otherwise build and vet
 ignore ./frontend/node_modules

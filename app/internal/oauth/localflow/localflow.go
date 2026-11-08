@@ -96,7 +96,7 @@ func (a App) getJSON(ctx context.Context, docURL string, out any) error {
 	return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out)
 }
 
-// validateAuthServer checks the parts of indigo's AuthServerMetadata.Validate that demand https against a loopback origin instead, then runs Validate itself on a copy moved to a placeholder https origin for everything else.
+// validateAuthServer checks the issuer, authorize, PAR, token and revocation endpoints, which indigo's AuthServerMetadata.Validate demands be https, against a loopback origin instead, then runs Validate itself on a copy moved to a placeholder https origin for everything else.
 func validateAuthServer(meta oauth.AuthServerMetadata, serverURL string) error {
 	_, issuerPort, err := safehttp.LoopbackOrigin(meta.Issuer)
 	if err != nil {
@@ -111,28 +111,30 @@ func validateAuthServer(meta oauth.AuthServerMetadata, serverURL string) error {
 		return fmt.Errorf("%w: invalid auth endpoint URL: %s", oauth.ErrInvalidAuthServerMetadata, meta.AuthorizationEndpoint)
 	}
 
+	const placeholder = "https://issuer.invalid"
 	for _, endpoint := range []struct {
 		name string
-		url  string
+		url  *string
 	}{
-		{"PAR", meta.PushedAuthorizationRequestEndpoint},
-		{"token", meta.TokenEndpoint},
-		{"revocation", meta.RevocationEndpoint},
+		{"PAR", &meta.PushedAuthorizationRequestEndpoint},
+		{"token", &meta.TokenEndpoint},
+		{"revocation", &meta.RevocationEndpoint},
 	} {
-		if endpoint.name == "revocation" && endpoint.url == "" {
+		if endpoint.name == "revocation" && *endpoint.url == "" {
 			continue
 		}
-		u, err := url.Parse(endpoint.url)
+		u, err := url.Parse(*endpoint.url)
 		if err != nil {
 			return fmt.Errorf("%w: invalid %s endpoint URL", oauth.ErrInvalidAuthServerMetadata, endpoint.name)
 		}
+		path := u.EscapedPath()
 		u.Path, u.RawPath, u.RawQuery, u.ForceQuery = "", "", "", false
 		if _, port, err := safehttp.LoopbackOrigin(u.String()); err != nil || port != issuerPort {
 			return fmt.Errorf("%w: %s endpoint must be on the issuer's loopback port", oauth.ErrInvalidAuthServerMetadata, endpoint.name)
 		}
+		*endpoint.url = placeholder + path
 	}
 
-	const placeholder = "https://issuer.invalid"
 	meta.Issuer = placeholder
 	meta.AuthorizationEndpoint = placeholder + authorize.Path
 	return meta.Validate(placeholder)
