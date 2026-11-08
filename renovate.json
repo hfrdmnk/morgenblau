@@ -3,7 +3,6 @@
   "extends": ["config:recommended", "customManagers:githubActionsVersions"],
   "timezone": "Europe/Zurich",
   "postUpdateOptions": ["gomodTidy"],
-  "platformAutomerge": false,
   "packageRules": [
     {
       "description": "Merge stable minor and patch updates once CI passes; 0.x minors can break, so they stay manual.",
