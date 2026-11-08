@@ -16,7 +16,7 @@ COPY --from=frontend /src/frontend/dist ./frontend/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/morgenblau ./cmd/api
 RUN GOBIN=/out go install github.com/pressly/goose/v3/cmd/goose@v3.26.0
 
-FROM litestream/litestream:0.5.17 AS litestream
+FROM litestream/litestream:0.5.18 AS litestream
 
 FROM debian:bookworm-slim
 
