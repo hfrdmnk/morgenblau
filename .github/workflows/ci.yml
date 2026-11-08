@@ -47,7 +47,19 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: app/go.mod
-          cache-dependency-path: app/go.sum
+          cache: false
+
+      # setup-go saves once per go.sum and Go trims entries unused for 5 days, so roll the cache on every main push.
+      - name: Restore Go cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('app/go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ hashFiles('app/go.sum') }}-
+            go-${{ runner.os }}-
 
       - name: Check Go formatting
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
@@ -119,6 +131,15 @@ jobs:
           GOOS: linux
           GOARCH: amd64
         run: go build -ldflags="-s -w" -o /tmp/morgenblau ./cmd/api
+
+      - name: Save Go cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('app/go.sum') }}-${{ github.sha }}
 
       - name: Audit introduced frontend findings
         env:
