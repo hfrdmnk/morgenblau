@@ -43,7 +43,7 @@ export function AccountMenu({ profile }: { profile: AppProfile }) {
                         @{profile.handle}
                     </PopoverDescription>
                 </PopoverHeader>
-                <nav aria-label="Account" className="-mx-2">
+                <nav aria-label="Account" className="-mx-2 select-none">
                     <Link
                         href={PATHS.general}
                         className="flex min-h-10 items-center gap-3 rounded-md px-2 text-sm hover:bg-secondary/50"

@@ -131,6 +131,9 @@
     --atmosphere-blue-off: oklch(78.4% 0.165 220.2);
     --sunrise-orange-off: oklch(85% 0.17 74);
     --aurora-violet-off: oklch(76% 0.17 336);
+    /* Lighter steps of a cool ramp turn their hue down and darker steps turn it up, so the pair stays in the blue's family. */
+    --selection: oklch(from var(--color-atmosphere-blue) 0.88 0.06 calc(h - 7) / 0.8);
+    --selection-foreground: oklch(from var(--color-atmosphere-blue) calc(l - 0.12) c calc(h + 7));
     --motion-duration-fast: 120ms;
     --motion-duration-ui: 160ms;
     --motion-duration-overlay: 240ms;
@@ -172,6 +175,8 @@
     --sidebar-accent-foreground: oklch(0.97 0.001 106.424);
     --sidebar-border: oklch(0.374 0.01 67.558);
     --sidebar-ring: oklch(0.923 0.003 48.717);
+    --selection: oklch(from var(--color-atmosphere-blue) calc(l - 0.05) c calc(h + 7) / 0.8);
+    --selection-foreground: oklch(from var(--color-atmosphere-blue) 0.97 0.02 calc(h - 7));
     --popover-shadow:
         0 12px 32px -8px oklch(0 0 0 / 0.56),
         0 3px 8px -2px oklch(0 0 0 / 0.4);
@@ -199,6 +204,11 @@
         margin: 0;
     }
 
+    ::selection {
+        background-color: var(--selection);
+        color: var(--selection-foreground);
+    }
+
     :focus-visible {
         outline: 2px solid var(--ring);
         outline-offset: 2px;
@@ -215,6 +225,11 @@
     label,
     [role='button'] {
         touch-action: manipulation;
+    }
+
+    button,
+    [role='button'] {
+        @apply select-none;
     }
 
     a:active {

@@ -19,7 +19,7 @@ export function Settings() {
                     </p>
                     <div className="mt-5 grid grid-cols-2 gap-3">
                         {(['sans', 'serif'] as const).map((font) => (
-                            <label key={font} className="relative cursor-pointer">
+                            <label key={font} className="relative cursor-pointer select-none">
                                 <input
                                     type="radio"
                                     name="reader-font"

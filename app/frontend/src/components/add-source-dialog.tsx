@@ -1348,7 +1348,7 @@ function OptionSwitch({ label, description, checked, disabled, onChange }: {
     const id = useId();
     return (
         <div className="flex items-center justify-between gap-4">
-            <label className="cursor-pointer" htmlFor={id}>
+            <label className="cursor-pointer select-none" htmlFor={id}>
                 <span className="block text-sm font-medium">{label}</span>
                 <span className="block text-xs text-muted-foreground">{description}</span>
             </label>

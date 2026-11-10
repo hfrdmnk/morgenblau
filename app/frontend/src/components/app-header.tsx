@@ -73,7 +73,7 @@ export function AppHeader() {
 
     return (
         <>
-            <header ref={headerRef} className="app-header grid grid-cols-[1fr_auto] items-start gap-y-6 px-5 sm:px-8 md:grid-cols-3 md:px-14">
+            <header ref={headerRef} className="app-header grid grid-cols-[1fr_auto] select-none items-start gap-y-6 px-5 sm:px-8 md:grid-cols-3 md:px-14">
                 {current && mark ? (
                     <>
                         <span className="flex min-h-10 items-center text-base text-muted-foreground md:hidden">
@@ -100,7 +100,7 @@ export function AppHeader() {
                     </Skeleton>
                 </div>
             </header>
-            <nav ref={modeNavRef} aria-label="Modes" className="app-mode-nav">
+            <nav ref={modeNavRef} aria-label="Modes" className="app-mode-nav select-none">
                 {APP_MODES.map((mode) => {
                     const active = current === mode;
                     const { Icon, color, tabSize } = artwork[mode.href];

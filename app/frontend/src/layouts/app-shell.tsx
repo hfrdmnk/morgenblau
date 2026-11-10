@@ -59,7 +59,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <AppProfileContext.Provider value={state}>
             <div className="app-shell min-h-dvh bg-background">
                 <a
-                    className="sr-only rounded-md bg-popover px-4 py-2 text-sm font-medium shadow-popover focus:not-sr-only focus:fixed focus:top-[calc(1rem+env(safe-area-inset-top))] focus:left-4 focus:z-50"
+                    className="sr-only rounded-md bg-popover px-4 py-2 text-sm font-medium shadow-popover select-none focus:not-sr-only focus:fixed focus:top-[calc(1rem+env(safe-area-inset-top))] focus:left-4 focus:z-50"
                     href="#main"
                 >
                     Skip to content
