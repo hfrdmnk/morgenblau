@@ -6,7 +6,7 @@ go 1.27.3
 ignore ./frontend/node_modules
 
 require (
-	github.com/PuerkitoBio/goquery v1.8.0
+	github.com/PuerkitoBio/goquery v1.13.0
 	github.com/andybalholm/cascadia v1.3.5
 	github.com/anthropics/anthropic-sdk-go v1.84.0
 	github.com/bluesky-social/indigo v0.0.0-20261106080107-a20146f0f81d
