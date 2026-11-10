@@ -22,7 +22,7 @@ jobs:
       # renovate: datasource=github-releases depName=sqlc-dev/sqlc extractVersion=^v(?<version>.*)$
       SQLC_VERSION: 1.31.1
       # renovate: datasource=go depName=github.com/pressly/goose/v3
-      GOOSE_VERSION: v3.27.1
+      GOOSE_VERSION: v3.29.0
     defaults:
       run:
         working-directory: app
