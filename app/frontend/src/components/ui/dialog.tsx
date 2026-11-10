@@ -2,12 +2,14 @@ import { Dialog } from '@base-ui/react/dialog';
 
 import { cn } from '@/lib/utils';
 
+// Base UI skips a nested dialog's backdrop, so a confirm opened from a sheet would leave the sheet unblurred.
 function DialogBackdrop({ className, ...props }: Dialog.Backdrop.Props) {
     return (
         <Dialog.Backdrop
             data-slot="dialog-backdrop"
+            forceRender
             className={cn(
-                'fixed inset-0 z-40 bg-background/40 backdrop-blur-xs backdrop-saturate-180 transition-[opacity,backdrop-filter] duration-(--motion-duration-overlay) ease-out data-[starting-style]:opacity-0 data-[starting-style]:backdrop-blur-none data-[starting-style]:backdrop-saturate-100 data-[ending-style]:opacity-0 data-[ending-style]:backdrop-blur-none data-[ending-style]:backdrop-saturate-100',
+                'fixed inset-0 z-50 bg-background/40 backdrop-blur-xs backdrop-saturate-180 transition-[opacity,backdrop-filter] duration-(--motion-duration-overlay) ease-out data-[starting-style]:opacity-0 data-[starting-style]:backdrop-blur-none data-[starting-style]:backdrop-saturate-100 data-[ending-style]:opacity-0 data-[ending-style]:backdrop-blur-none data-[ending-style]:backdrop-saturate-100',
                 className,
             )}
             {...props}
