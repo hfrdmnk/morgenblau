@@ -39,7 +39,7 @@ paths:
 
 ## Loading
 
-- Skeletons come from skullet's `Skeleton` (`skullet/react`): wrap what renders once data arrives, with a `sample` next to the component and an `id` for page-level content. Never hand-draw placeholder bars. skullet holds a skeleton back for 150ms, so a fast load shows none.
+- Skeletons come from skullet's `Skeleton` (`skullet/react`): wrap what renders once data arrives, with a `sample` next to the component and an `id` for page-level content. Never hand-draw placeholder bars; `eslint.config.js` rejects `animate-pulse` outside `src/components/ui/`.
 - Content rendered from a `sample` mounts hidden while loading, so effects with visible side effects, like `useDocumentTitle`, belong outside the `Skeleton`.
 - Remembered shapes live in localStorage; sign-out clears them with `forgetShapes()`.
 - A page shows its own skeleton, never a generic "Loading" screen. Import pages eagerly. A `Suspense` fallback is `null` or the page's `*Skeleton`; `eslint.config.js` enforces that and rejects `lazy()` page imports.

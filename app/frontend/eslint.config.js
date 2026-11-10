@@ -35,6 +35,15 @@ const transitionRules = [
   },
 ]
 
+const pulseClass = String.raw`/\banimate-pulse\b/`
+
+const skeletonRules = [
+  {
+    selector: `:matches(Literal[value=${pulseClass}], TemplateElement[value.raw=${pulseClass}])`,
+    message: 'Wrap the content in skullet’s Skeleton instead: a hand-drawn placeholder drifts from the real layout and shifts the page when data arrives.',
+  },
+]
+
 export default defineConfig([
   globalIgnores(['dist']),
   {
@@ -68,7 +77,7 @@ export default defineConfig([
           message: 'Call api() from src/lib/api.ts: it parses the {code, message} error body and throws ApiError, which reauth and form errors depend on.',
         })),
       ],
-      'no-restricted-syntax': ['error', ...loadingRules, ...transitionRules],
+      'no-restricted-syntax': ['error', ...loadingRules, ...transitionRules, ...skeletonRules],
       'no-restricted-imports': [
         'error',
         {
@@ -88,7 +97,7 @@ export default defineConfig([
     rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' },
   },
   {
-    // shadcn's generated primitives ship their own transitions.
+    // shadcn's generated primitives ship their own transitions and animations.
     files: ['src/components/ui/**'],
     rules: { 'no-restricted-syntax': ['error', ...loadingRules] },
   },
