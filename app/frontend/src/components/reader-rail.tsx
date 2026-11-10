@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 
-import { BookmarkIcon, ExternalLinkIcon } from '@/components/icons';
+import { IconCrossfade } from '@/components/icon-crossfade';
+import { BookmarkIcon, CheckIcon, CopyIcon, ExternalLinkIcon } from '@/components/icons';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { announceRemove, announceSave, dismissSaveToasts } from '@/lib/save-announce';
+import { useCopy } from '@/hooks/use-copy';
 import { useSaveState } from '@/hooks/use-entry-save';
 import type { EntrySave } from '@/lib/entry-save';
 import { httpURL, sourceActionLabel, type ReaderEntry } from '@/lib/reader';
@@ -13,39 +16,55 @@ const RAIL_BUTTON =
 export function ReaderRail({ entry, save }: { entry: ReaderEntry; save: EntrySave | null }) {
     const progress = useScrollProgress();
     useEffect(() => dismissSaveToasts, []);
-    const actions = <RailActions entry={entry} save={save} />;
 
     return (
-        <>
+        <TooltipProvider>
             <aside aria-label="Reader actions" className="pointer-events-none fixed top-1/2 right-4 z-10 hidden -translate-y-1/2 sm:right-6 sm:block">
                 <div className="pointer-events-auto flex flex-col items-center gap-2">
-                    {actions}
+                    <RailActions entry={entry} save={save} side="left" />
                     <ProgressRing progress={progress} />
                 </div>
             </aside>
             <aside aria-label="Reader actions" className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
                 <ProgressBar progress={progress} />
-                <div className="flex items-center justify-around px-4 py-1">{actions}</div>
+                <div className="flex items-center justify-around px-4 py-1">
+                    <RailActions entry={entry} save={save} side="top" />
+                </div>
             </aside>
-        </>
+        </TooltipProvider>
     );
 }
 
-function RailActions({ entry, save }: { entry: ReaderEntry; save: EntrySave | null }) {
+type TooltipSide = 'left' | 'top';
+
+function RailActions({ entry, save, side }: { entry: ReaderEntry; save: EntrySave | null; side: TooltipSide }) {
     const original = httpURL(entry.url);
+    const label = sourceActionLabel(entry);
     return (
         <>
-            {save ? <SaveButton save={save} /> : null}
+            {save ? <SaveButton save={save} side={side} /> : null}
             {original ? (
-                <a aria-label={sourceActionLabel(entry)} className={cn(RAIL_BUTTON, 'text-muted-foreground hover:text-foreground')} href={original} rel="noopener noreferrer" target="_blank">
-                    <ExternalLinkIcon className="size-[1.125rem]" />
-                </a>
+                <RailTooltip label={label} side={side}>
+                    <a aria-label={label} className={cn(RAIL_BUTTON, 'text-muted-foreground hover:text-foreground')} href={original} rel="noopener noreferrer" target="_blank">
+                        <ExternalLinkIcon className="size-[1.125rem]" />
+                    </a>
+                </RailTooltip>
             ) : null}
+            {original ? <CopyLinkButton side={side} url={original} /> : null}
         </>
     );
 }
 
-function SaveButton({ save }: { save: EntrySave }) {
+function RailTooltip({ label, side, children }: { label: string; side: TooltipSide; children: ReactElement }) {
+    return (
+        <Tooltip>
+            <TooltipTrigger render={children} />
+            <TooltipContent side={side}>{label}</TooltipContent>
+        </Tooltip>
+    );
+}
+
+function SaveButton({ save, side }: { save: EntrySave; side: TooltipSide }) {
     const { saved, tags } = useSaveState(save);
 
     function toggle() {
@@ -56,17 +75,43 @@ function SaveButton({ save }: { save: EntrySave }) {
         }
         announceRemove(save, tags);
     }
+    const label = saved ? 'Remove from Library' : 'Save to Library';
 
     return (
-        <button
-            aria-label={saved ? 'Remove from Library' : 'Save to Library'}
-            aria-pressed={saved}
-            className={cn(RAIL_BUTTON, saved ? 'text-primary' : 'text-muted-foreground hover:text-foreground')}
-            onClick={toggle}
-            type="button"
-        >
-            <BookmarkIcon className={cn('size-[1.125rem]', saved && '[&_path]:fill-current')} />
-        </button>
+        <RailTooltip label={label} side={side}>
+            <button
+                aria-label={label}
+                aria-pressed={saved}
+                className={cn(RAIL_BUTTON, saved ? 'text-primary' : 'text-muted-foreground hover:text-foreground')}
+                onClick={toggle}
+                type="button"
+            >
+                <BookmarkIcon className={cn('size-[1.125rem]', saved && '[&_path]:fill-current')} />
+            </button>
+        </RailTooltip>
+    );
+}
+
+const COPY_LINK_FAILURE = { title: 'Couldn’t copy the link', description: 'Open the original and copy its address instead.' };
+
+const COPY_LINK = {
+    idle: { label: 'Copy link', icon: CopyIcon, tone: 'text-muted-foreground hover:text-foreground', announcement: '' },
+    copied: { label: 'Link copied', icon: CheckIcon, tone: 'text-success', announcement: 'Link copied.' },
+};
+
+function CopyLinkButton({ url, side }: { url: string; side: TooltipSide }) {
+    const { copied, copy, instant } = useCopy(url, COPY_LINK_FAILURE);
+    const state = copied ? COPY_LINK.copied : COPY_LINK.idle;
+
+    return (
+        <RailTooltip label={state.label} side={side}>
+            <button aria-label={state.label} className={cn(RAIL_BUTTON, 'relative', state.tone)} onClick={copy} type="button">
+                <IconCrossfade className="size-[1.125rem]" icon={state.icon} instant={instant} name={state.label} />
+                <span aria-live="polite" className="sr-only">
+                    {state.announcement}
+                </span>
+            </button>
+        </RailTooltip>
     );
 }
 

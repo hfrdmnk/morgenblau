@@ -1,7 +1,5 @@
-import { useReducedMotion } from 'motion/react';
-import { useEffect, useId, useState, type MouseEvent } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Skeleton } from 'skullet/react';
-import { toast } from 'sonner';
 import { Link as RouterLink } from 'wouter';
 
 import { IconCrossfade } from '@/components/icon-crossfade';
@@ -9,6 +7,7 @@ import { CheckIcon, CopyIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 import { useAppProfile } from '@/hooks/use-app-profile';
+import { useCopy } from '@/hooks/use-copy';
 import { newsletterAddress } from '@/lib/add-source';
 import { ApiError } from '@/lib/api';
 import { PATHS } from '@/lib/paths';
@@ -145,26 +144,13 @@ function NewsletterAddressContent({
     );
 }
 
+const COPY_ADDRESS_FAILURE = {
+    title: 'Couldn’t copy the address',
+    description: 'Select the address and copy it manually.',
+};
+
 function CopyNewsletterAddress({ address }: { address: string }) {
-    const [copied, setCopied] = useState(false);
-    const [keyboard, setKeyboard] = useState(false);
-    const reduced = useReducedMotion();
-    useEffect(() => {
-        if (!copied) return;
-        const timer = window.setTimeout(() => setCopied(false), 1500);
-        return () => window.clearTimeout(timer);
-    }, [copied]);
-    async function copy(event: MouseEvent) {
-        setKeyboard(event.detail === 0);
-        try {
-            await navigator.clipboard.writeText(address);
-            setCopied(true);
-        } catch {
-            toast.error('Couldn’t copy the address', {
-                description: 'Select the address and copy it manually.',
-            });
-        }
-    }
+    const { copied, copy, instant } = useCopy(address, COPY_ADDRESS_FAILURE);
     return (
         <InputGroup className="mt-4">
             <InputGroupInput
@@ -185,7 +171,7 @@ function CopyNewsletterAddress({ address }: { address: string }) {
                 <IconCrossfade
                     className="size-4"
                     icon={copied ? CheckIcon : CopyIcon}
-                    instant={Boolean(reduced) || keyboard}
+                    instant={instant}
                     name={copied ? 'check' : 'copy'}
                 />
             </InputGroupButton>
