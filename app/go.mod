@@ -12,7 +12,7 @@ require (
 	github.com/bluesky-social/indigo v0.0.0-20261106080107-a20146f0f81d
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/emersion/go-message v0.18.2
-	github.com/emersion/go-smtp v0.25.0
+	github.com/emersion/go-smtp v0.25.1
 	github.com/go-shiori/go-readability v0.0.0-20251205110129-5db1dc9836f0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/joho/godotenv v1.5.1
