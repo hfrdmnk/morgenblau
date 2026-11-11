@@ -27,9 +27,17 @@
       "groupName": "Bun"
     },
     {
+      "description": "One PR a week for every non-major update. It automerges only when no update in it is a 0.x minor.",
+      "matchUpdateTypes": ["minor", "patch", "pin", "pinDigest", "digest"],
+      "groupName": "all non-major dependencies",
+      "groupSlug": "all-minor-patch",
+      "schedule": ["* 0-5 * * 1"]
+    },
+    {
       "description": "CI tests the Go version in go.mod, which Renovate never bumps, so a new Go release in the build image needs a hand-made go.mod change.",
       "matchPackageNames": ["golang"],
       "matchUpdateTypes": ["minor"],
+      "groupName": null,
       "automerge": false,
       "dependencyDashboardApproval": true
     }
