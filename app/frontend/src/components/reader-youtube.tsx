@@ -50,11 +50,12 @@ function ReaderTranscript({ paragraphs, kind, player, playerBox }: {
     const started = player.playing || player.currentTime > 0;
     const active = useMemo(() => (started ? activeIndex(paragraphs, player.currentTime) : -1), [paragraphs, started, player.currentTime]);
     const previous = useRef(active);
+    // Scrolling waits for playback: a seek moves the time before the player pins, and scrolling the unpinned player away stops it from starting.
     useEffect(() => {
         const before = previous.current;
         previous.current = active;
-        if (list.current && active >= 0 && active !== before) follow(list.current.children, before, active, playerBox.current);
-    }, [active, playerBox]);
+        if (player.playing && list.current && active >= 0) follow(list.current.children, before, active, playerBox.current);
+    }, [active, player.playing, playerBox]);
     return (
         <section aria-labelledby="transcript-title" className="mt-10">
             <h2 className="mb-6 flex items-baseline gap-3 text-sm text-muted-foreground" id="transcript-title">
@@ -80,9 +81,23 @@ function ReaderTranscript({ paragraphs, kind, player, playerBox }: {
 
 // Follow playback only while the reader is following it: their line is on screen. Scrolling away is never undone.
 function follow(items: HTMLCollection, before: number, active: number, stuck: HTMLElement | null) {
-    if (before >= 0 && !isOnScreen(items[before], stuck)) return;
+    if (before === active) return uncover(items[active], stuck);
+    if (before < 0 || isOnScreen(items[before], stuck)) reveal(items[active], stuck);
+}
+
+// Centres the passage in the part of the window the pinned player leaves free.
+function reveal(item: Element, playerBox: HTMLElement | null) {
+    const covered = playerBox?.offsetHeight ?? 0;
+    const free = window.innerHeight - covered;
+    const rect = item.getBoundingClientRect();
+    const offset = covered + Math.max(0, (free - rect.height) / 2);
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    items[active].scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    window.scrollTo({ top: window.scrollY + rect.top - offset, behavior: reduce ? 'auto' : 'smooth' });
+}
+
+// Playback just started or resumed, pinning the player over the top of the page, which can cover the reader's passage.
+function uncover(item: Element, stuck: HTMLElement | null) {
+    if (stuck && item.getBoundingClientRect().top < stuck.getBoundingClientRect().bottom) reveal(item, stuck);
 }
 
 function isOnScreen(element: Element, stuck: HTMLElement | null): boolean {
