@@ -33,7 +33,7 @@ const faq = [
 	{ q: 'Which sources does it support?', a: 'Blogs and news sites with RSS or Atom feeds, email newsletters, YouTube channels, Standard.site publications on ATProto, and many sites that have no feed at all.' },
 	{ q: 'Is there an app?', a: 'Morgenblau runs in the browser on your phone and computer, and you can install it to your home screen like an app.' },
 	{ q: 'Can I take my subscriptions with me?', a: 'Yes. Import and export your feeds as OPML, the format every feed reader understands. Your feed subscriptions also live in your own ATProto account.' },
-	{ q: 'Is Morgenblau open source?', a: 'Yes. The code is on GitHub.' },
+	{ q: 'Is Morgenblau open source?', a: 'Yes. The code is on <a href="https://github.com/hfrdmnk/morgenblau">GitHub</a>.' },
 ];
 
 const faqSchema = {
@@ -131,7 +131,7 @@ const faqSchema = {
 			<section class="wrap two faq" aria-labelledby="faq-title">
 				<h2 id="faq-title">Frequently asked questions</h2>
 				<div>
-					{faq.map((f) => <details><summary>{f.q}</summary><p>{f.a}</p></details>)}
+					{faq.map((f) => <details><summary>{f.q}</summary><p set:html={f.a} /></details>)}
 				</div>
 			</section>
 
@@ -258,12 +258,11 @@ const faqSchema = {
 	.faq details[open] summary::after { content: '−'; }
 	.faq details p { margin: 10px 0 0; }
 
-	/* Why: two taped prints with handwritten captions beside them; the one under the pointer comes to the front. */
+	/* Why: two taped prints with handwritten captions beside them. */
 	.why { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 72px; align-items: start; padding-bottom: 140px; }
 	.prints { position: sticky; top: 112px; aspect-ratio: 1 / 1.14; }
 	.print { position: absolute; margin: 0; padding: 5px; border-radius: 2px; background: oklch(0.993 0.003 85);
-		box-shadow: 0 0 0 1px oklch(0.216 0.006 56 / 0.06), 0 1px 2px oklch(0.216 0.006 56 / 0.1), 0 10px 28px -6px oklch(0.216 0.006 56 / 0.22);
-		transition: transform var(--motion-overlay) var(--ease-out); }
+		box-shadow: 0 0 0 1px oklch(0.216 0.006 56 / 0.06), 0 1px 2px oklch(0.216 0.006 56 / 0.1), 0 10px 28px -6px oklch(0.216 0.006 56 / 0.22); }
 	.print img { aspect-ratio: 3 / 4; width: 100%; object-fit: cover; border-radius: 1px; }
 	/* Tape: a translucent strip with torn ends across the top edge. */
 	.print::before { content: ''; position: absolute; top: -13px; left: 50%; width: 32%; height: 24px; pointer-events: none;
@@ -274,10 +273,6 @@ const faqSchema = {
 	.me::before { transform: translateX(-50%) rotate(-3deg); }
 	.dog { bottom: 1%; right: 1%; width: 47%; z-index: 2; transform: rotate(3deg); }
 	.dog::before { transform: translateX(-50%) rotate(4deg); }
-	@media (hover: hover) and (pointer: fine) {
-		.me:hover { z-index: 3; transform: rotate(-1.5deg) translateY(-4px); }
-		.dog:hover { transform: rotate(2deg) translateY(-4px); }
-	}
 	/* Captions are written on the page beside each print, counter-rotated so they read level. */
 	.print figcaption { position: absolute; display: flex; gap: 6px; font: 400 clamp(25px, 2.6vw, 30px)/1.15 var(--hand); color: oklch(from var(--foreground) l c h / 0.85); text-wrap: balance; }
 	.print svg { flex: none; width: 44px; height: auto; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.8; }
