@@ -78,21 +78,24 @@ install_dev_tools() {
 	local goose_version=v3.27.1
 	local sqlc_version=v1.31.1
 	local mprocs_version=v0.9.6
+	local flyctl_version=v0.5.7
 	local lint_version archive_dir
 	lint_version="$(sed -n 's/^[[:space:]]*version: \(v[0-9.]*\)$/\1/p' "$repo_root/.github/workflows/ci.yml")"
-	local archive air_arch goose_arch sqlc_arch mprocs_arch
+	local archive air_arch goose_arch sqlc_arch mprocs_arch flyctl_arch
 	case "$(uname -m)" in
 		x86_64)
 			air_arch=amd64
 			goose_arch=x86_64
 			sqlc_arch=amd64
 			mprocs_arch=x86_64
+			flyctl_arch=x86_64
 			;;
 		aarch64)
 			air_arch=arm64
 			goose_arch=arm64
 			sqlc_arch=arm64
 			mprocs_arch=aarch64
+			flyctl_arch=arm64
 			;;
 		*) printf 'unsupported architecture: %s\n' "$(uname -m)" >&2; return 1 ;;
 	esac
@@ -127,6 +130,15 @@ install_dev_tools() {
 		curl -fsSL "https://github.com/golangci/golangci-lint/releases/download/${lint_version}/${archive_dir}.tar.gz" -o "$archive"
 		tar -xzf "$archive" -C "$tmp_dir"
 		install -m 0755 "$tmp_dir/$archive_dir/golangci-lint" "$bin_dir/golangci-lint"
+	fi
+
+	# Deploys run from CI; flyctl is for inspecting production (app/DEPLOY.md) with the orb's FLY_API_TOKEN.
+	if ! command -v flyctl >/dev/null || ! flyctl version 2>&1 | grep -Fq "${flyctl_version}"; then
+		archive="$tmp_dir/flyctl.tar.gz"
+		curl -fsSL "https://github.com/superfly/flyctl/releases/download/${flyctl_version}/flyctl_${flyctl_version#v}_Linux_${flyctl_arch}.tar.gz" -o "$archive"
+		tar -xzf "$archive" -C "$tmp_dir"
+		install -m 0755 "$tmp_dir/flyctl" "$bin_dir/flyctl"
+		ln -sfn "$bin_dir/flyctl" "$bin_dir/fly"
 	fi
 }
 
