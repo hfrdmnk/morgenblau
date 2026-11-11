@@ -56,6 +56,11 @@ const faqSchema = {
 		<meta property="og:title" content={title} />
 		<meta property="og:description" content={description} />
 		<meta property="og:url" content="https://morgen.blue/" />
+		<meta property="og:image" content="https://morgen.blue/og.jpg" />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta property="og:image:alt" content="The Morgenblau mark and wordmark over a blue and orange sunrise gradient" />
+		<meta name="twitter:card" content="summary_large_image" />
 		<link rel="preload" as="image" href="/images/bg-hero.webp" type="image/webp" />
 		<script defer data-domain="morgen.blue" src="https://analytics.linea.studio/js/script.js"></script>
 		<script type="application/ld+json" set:html={JSON.stringify(faqSchema)} />
@@ -264,7 +269,9 @@ const faqSchema = {
 	.hint { margin: 14px 0 0; font-size: 13px; }
 	.on-art .hint { color: oklch(1 0 0 / 0.7); }
 	.foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; padding: 24px 0 32px; box-shadow: 0 -1px 0 oklch(1 0 0 / 0.16); font: 400 13px var(--sans); color: oklch(1 0 0 / 0.75); }
-	.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; color: oklch(0.99 0 0); }
+	.brand { display: inline-flex; align-items: baseline; gap: 8px; font-weight: 500; color: oklch(0.99 0 0); }
+	/* An svg's baseline is its bottom edge; dropping it by the notch height (20 of the mark's 144 units) puts the horizon on the text baseline. */
+	.brand :global(svg) { translate: 0 calc(20 / 144 * 100%); }
 	.foot nav { display: flex; flex-wrap: wrap; gap: 20px; }
 	.foot a { text-decoration: none; }
 	@media (hover: hover) and (pointer: fine) { .foot a:hover { color: oklch(0.99 0 0); } }
