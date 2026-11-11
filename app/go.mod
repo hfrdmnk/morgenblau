@@ -9,7 +9,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.13.0
 	github.com/andybalholm/cascadia v1.3.5
 	github.com/anthropics/anthropic-sdk-go v1.84.0
-	github.com/bluesky-social/indigo v0.0.0-20261106080107-a20146f0f81d
+	github.com/bluesky-social/indigo v0.0.0-20261109211454-42946cbf2164
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-smtp v0.25.1
