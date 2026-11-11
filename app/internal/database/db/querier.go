@@ -78,6 +78,7 @@ type Querier interface {
 	GetUserSourceWithStats(ctx context.Context, arg GetUserSourceWithStatsParams) (GetUserSourceWithStatsRow, error)
 	GetUserSubscription(ctx context.Context, arg GetUserSubscriptionParams) (UserSubscription, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg GetUserSubscriptionByFeedURLParams) (UserSubscription, error)
+	GetVideoTranscript(ctx context.Context, entryID int64) (GetVideoTranscriptRow, error)
 	GetWebSource(ctx context.Context, id string) (WebSource, error)
 	// A listing key finds the source keyed by it, else the source it is an alias of.
 	GetWebSourceByKey(ctx context.Context, listingKey string) (WebSource, error)
@@ -192,6 +193,7 @@ type Querier interface {
 	// Fully named params (see UpsertFeed): avoids the mixed named/positional
 	// numbering that breaks binding under modernc.org/sqlite.
 	UpsertUserSubscription(ctx context.Context, arg UpsertUserSubscriptionParams) error
+	UpsertVideoTranscript(ctx context.Context, arg UpsertVideoTranscriptParams) error
 }
 
 var _ Querier = (*Queries)(nil)

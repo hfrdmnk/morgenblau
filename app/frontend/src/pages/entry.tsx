@@ -7,6 +7,7 @@ import { BackLink } from '@/components/back-link';
 import { NewsletterImages } from '@/components/newsletter-images';
 import { ReaderNotice } from '@/components/reader-notice';
 import { ReaderRail } from '@/components/reader-rail';
+import { ReaderYouTube } from '@/components/reader-youtube';
 import { SaveFiling } from '@/components/save-filing';
 import { Button } from '@/components/ui/button';
 import { useDocumentTitle } from '@/hooks/use-document-title';
@@ -231,8 +232,14 @@ async function applied(change: Promise<boolean>) {
 
 function ReaderMedia({ entry, onChange }: { entry: ReaderEntry; onChange: (entry: ReaderEntry) => void }) {
     if (entry.newsletter) return <NewsletterImages entry={entry} newsletter={entry.newsletter} onChange={onChange} />;
-    if (entry.contentType === 'video') return <ReaderVideo youtube={youtubeID(entry.url)} video={readerMetadata(entry.metadata).video} title={entry.title || 'Video'} />;
-    return null;
+    return entry.contentType === 'video' ? <EntryVideo entry={entry} /> : null;
+}
+
+function EntryVideo({ entry }: { entry: ReaderEntry }) {
+    const youtube = youtubeID(entry.url);
+    const title = entry.title || 'Video';
+    if (youtube) return <ReaderYouTube entrySlug={entry.entrySlug} title={title} videoID={youtube} />;
+    return <ReaderVideo video={readerMetadata(entry.metadata).video} title={title} />;
 }
 
 function ArticleExtraction({ entry, onChange, initiallyExtracted, extractionFailed }: {
@@ -319,16 +326,10 @@ function SourceLink({ entry, children }: { entry: ReaderEntry; children: string 
     return <Link className="rounded-sm hover:text-foreground" href={href}>{children}</Link>;
 }
 
-function ReaderVideo({ youtube, video, title }: {
-    youtube: string | null;
+function ReaderVideo({ video, title }: {
     video?: { url: string; type: string };
     title: string;
 }) {
-    if (youtube) return (
-        <div className="mb-10 aspect-video overflow-hidden rounded-lg bg-muted">
-            <iframe className="h-full w-full border-0" src={`https://www.youtube-nocookie.com/embed/${youtube}`} title={title} allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" />
-        </div>
-    );
     if (video) return <video aria-label={title} className="mb-10 aspect-video w-full rounded-lg bg-muted" controls preload="none"><source src={video.url} type={video.type} /><p>Your browser cannot play this video. Open it at the source.</p></video>;
     return <p className="mb-8 text-muted-foreground">This video is available at its original source.</p>;
 }

@@ -45,6 +45,7 @@ import (
 	"morgenblau/internal/standardfeed"
 	internalsync "morgenblau/internal/sync"
 	"morgenblau/internal/websource"
+	"morgenblau/internal/youtube"
 )
 
 // syncDispatcher is the slice of the sync orchestrator the routes dispatch through.
@@ -82,6 +83,7 @@ type Server struct {
 	postClient  *http.Client
 	newsletters *newsletter.Service
 	webSources  *websource.Service
+	youtube     *youtube.Client
 	allowedDIDs auth.Allowlist
 	admins      auth.Admins
 
@@ -276,6 +278,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		postClient:  unsubscribeClient,
 		newsletters: newsletterService,
 		webSources:  webSources,
+		youtube:     youtube.New(safeClient, youtubeOrigin(localNet)),
 		allowedDIDs: allowedDIDs,
 		admins:      admins,
 		gcCancel:    gcCancel,

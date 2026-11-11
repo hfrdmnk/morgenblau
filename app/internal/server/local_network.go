@@ -13,6 +13,8 @@ type localNetwork struct {
 	plc, pds    string
 	ports       []int
 	feedFixture int
+	// fixtureOrigin stands in for www.youtube.com, so a verify run never calls YouTube.
+	fixtureOrigin string
 }
 
 func loadLocalNetwork(getenv func(string) string) (*localNetwork, error) {
@@ -29,7 +31,7 @@ func loadLocalNetwork(getenv func(string) string) (*localNetwork, error) {
 	}
 	n := &localNetwork{plc: plc, pds: pds, ports: []int{plcPort, pdsPort}}
 	if raw := getenv("FEED_FIXTURE_ORIGIN"); raw != "" {
-		_, n.feedFixture, err = safehttp.LoopbackOrigin(raw)
+		n.fixtureOrigin, n.feedFixture, err = safehttp.LoopbackOrigin(raw)
 		if err != nil {
 			return nil, fmt.Errorf("FEED_FIXTURE_ORIGIN: %w", err)
 		}
@@ -61,4 +63,12 @@ func checkDevPDS(dev *session.DevConfig, local *localNetwork) error {
 		}
 	}
 	return fmt.Errorf("ATPROTO_PDS %s is plain HTTP on loopback, which the server reaches only as the PDS beside PLC_URL", dev.PDS)
+}
+
+// youtubeOrigin is where transcripts are fetched from: YouTube, or a verify run's fixture server.
+func youtubeOrigin(n *localNetwork) string {
+	if n == nil || n.fixtureOrigin == "" {
+		return "https://www.youtube.com"
+	}
+	return n.fixtureOrigin
 }

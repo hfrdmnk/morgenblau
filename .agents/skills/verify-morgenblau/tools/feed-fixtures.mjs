@@ -43,6 +43,33 @@ function huge(res) {
   res.end('</channel></rss>')
 }
 
+// Stand-ins for YouTube's InnerTube player and timedtext calls (internal/youtube), keyed by the invented video IDs in feeds/video.xml.
+const TRANSCRIPT = {
+  events: [
+    { tStartMs: 0, dDurationMs: 4000, segs: [{ utf8: 'Welcome to the example channel.' }] },
+    { tStartMs: 4000, dDurationMs: 5000, segs: [{ utf8: 'Today we look at' }, { utf8: ' calm reading.', tOffsetMs: 1200 }] },
+    { tStartMs: 65000, dDurationMs: 3000, segs: [{ utf8: 'Thanks for watching.' }] },
+  ],
+}
+
+function player(req, res) {
+  let body = ''
+  req.on('data', (chunk) => { body += chunk })
+  req.on('end', () => {
+    const { videoId } = JSON.parse(body || '{}')
+    if (videoId === 'exampleBusy') return send(res, 429, 'application/json', '{}')
+    const ok = { playabilityStatus: { status: 'OK' }, videoDetails: { lengthSeconds: '70' } }
+    if (videoId === 'exampleCap1') {
+      ok.captions = { playerCaptionsTracklistRenderer: {
+        captionTracks: [{ baseUrl: `${origin}/api/timedtext?v=${videoId}&lang=en`, languageCode: 'en' }],
+        audioTracks: [{ defaultCaptionTrackIndex: 0 }],
+        defaultAudioTrackIndex: 0,
+      } }
+    }
+    send(res, 200, 'application/json', JSON.stringify(ok))
+  })
+}
+
 const feeds = {
   '/feeds/valid.xml': () => ['application/rss+xml; charset=utf-8', render('valid.xml')],
   '/feeds/atom.xml': () => ['application/atom+xml; charset=utf-8', render('atom.xml')],
@@ -50,6 +77,8 @@ const feeds = {
   '/feeds/broken.xml': () => ['application/rss+xml; charset=utf-8', render('broken.xml')],
   '/feeds/undated.xml': () => ['application/rss+xml; charset=utf-8', render('undated.xml')],
   '/feeds/images.xml': () => ['application/rss+xml; charset=utf-8', render('images.xml')],
+  '/feeds/video.xml': () => ['application/rss+xml; charset=utf-8', render('video.xml')],
+  '/api/timedtext': () => ['application/json', JSON.stringify(TRANSCRIPT)],
   '/images/lead.png': () => ['image/png', PNG],
   '/images/body.png': () => ['image/png', PNG],
   '/feeds/latin1.xml': () => ['application/rss+xml; charset=ISO-8859-1', Buffer.from(render('latin1.xml'), 'latin1')],
@@ -75,6 +104,7 @@ const fixtures = http.createServer((req, res) => {
     if (!holding) heldResponses.splice(0).forEach((held) => send(held, 200, 'application/rss+xml; charset=utf-8', render('held.xml')))
     return send(res, 200, 'application/json', JSON.stringify({ hold: holding ? 'on' : 'off', released }))
   }
+  if (req.method === 'POST' && pathname === '/youtubei/v1/player') return player(req, res)
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'text/plain', 'method not allowed\n')
   if (feeds[pathname]) return send(res, 200, ...feeds[pathname]())
   switch (pathname) {

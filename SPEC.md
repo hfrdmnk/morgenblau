@@ -81,6 +81,11 @@ A source with several entries on one day shows its latest entry in its place, wi
 
 The in-app reader remains the default for articles, with an option to open the original URL. YouTube playback and inline microblog rendering remain supported. Default content-type filters and custom Views are retained product scope.
 
+**YouTube transcripts.** A YouTube video shows its own caption track under the player, so the reader can read along, jump by timestamp and see the playing passage marked. The track follows the video: its default caption language, a manual track over an auto-generated one (labelled "Auto-generated"), no machine translation, nothing for videos over four hours. It is fetched the first time anyone opens the video, never at ingest or on save, and stored for every later reader. Transcripts are best-effort: a video without captions or a refused fetch shows the video as before, with no error. `app/internal/youtube/` owns the fetch; `app/internal/api/entry_transcript.go` owns storage and the route.
+
+- One named exception to the honest-fetcher rule: YouTube has no public API for other people's captions, so Morgenblau asks its InnerTube player API as YouTube's iOS app does. Requests still carry `safehttp.UserAgent`, and a refusal pauses every fetch on a backoff instead of being worked around.
+- Reader-only: transcripts live in their own server-owned table and reach only the reader's transcript route. They never enter a PDS record, a digest list, a generated feed, OPML, a public page or an export, so Morgenblau stays a reader rather than a republisher.
+
 HTML is sanitized before storage. Feed-supplied bodies are processed during ingestion; summary-only entries may lazily extract and cache sanitized article content on first open. Native Standardfeed documents use the canonical web page for the reader rather than requiring renderers for each publisher's content format. Documents without a web path may fall back to plain text.
 
 Content classification belongs to ingestion. The fetch pipelines in `app/internal/sync/` own classification and entry metadata; reader extraction lives in `app/internal/api/entries.go`.

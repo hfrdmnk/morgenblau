@@ -166,6 +166,14 @@ type UserSubscription struct {
 	UpdatedAt   string  `json:"updated_at"`
 }
 
+type VideoTranscript struct {
+	EntryID    int64   `json:"entry_id"`
+	VideoID    string  `json:"video_id"`
+	Status     string  `json:"status"`
+	Transcript *string `json:"transcript"`
+	CheckedAt  string  `json:"checked_at"`
+}
+
 type WebModelSpend struct {
 	ID      int64   `json:"id"`
 	SpentAt string  `json:"spent_at"`

@@ -7,8 +7,9 @@ import { cn } from '@/lib/utils';
 
 // The arrows, or j and k, walk the posts and Enter opens the selected one; the pointer selects too, as in the command menu. Selection is a
 // data attribute the list sets on its rows, so a page marks each post's row with data-post and the link that opens it with
-// data-post-link. A selected row's highlight is its focus indicator, so its link drops the ring.
-export function PostList({ children, className }: { children: ReactNode; className?: string }) {
+// data-post-link. A selected row's highlight is its focus indicator, so its link drops the ring. With nothing selected, the keys start from
+// the row marked aria-current. arrowsOnly leaves j and k to a page that already uses them.
+export function PostList({ children, className, arrowsOnly = false }: { children: ReactNode; className?: string; arrowsOnly?: boolean }) {
     const root = useRef<HTMLDivElement>(null);
     useEffect(() => {
         const list = root.current!;
@@ -17,7 +18,7 @@ export function PostList({ children, className }: { children: ReactNode; classNa
         // Sample rows mount inert while a skeleton shows.
         const rows = () => [...list.querySelectorAll<HTMLElement>('[data-post]')].filter((row) => !row.closest('[inert]'));
         const selected = () => list.querySelector<HTMLElement>('[data-post][data-selected]');
-        const link = (row: HTMLElement) => row.querySelector<HTMLAnchorElement>('[data-post-link]')!;
+        const link = (row: HTMLElement) => row.querySelector<HTMLElement>('[data-post-link]')!;
         const rowOf = (target: EventTarget | null) => (target instanceof Element ? target.closest<HTMLElement>('[data-post]') : null);
         function select(row: HTMLElement | null, by: typeof source) {
             const current = selected();
@@ -28,15 +29,15 @@ export function PostList({ children, className }: { children: ReactNode; classNa
 
         function onKeyDown(event: KeyboardEvent) {
             const key = shortcutKey(event);
-            if (key === 'ArrowDown' || key === 'j') move(event, 1);
-            else if (key === 'ArrowUp' || key === 'k') move(event, -1);
+            if (key === 'ArrowDown' || (key === 'j' && !arrowsOnly)) move(event, 1);
+            else if (key === 'ArrowUp' || (key === 'k' && !arrowsOnly)) move(event, -1);
             else if (key === 'Enter') open(event);
         }
         function move(event: KeyboardEvent, step: number) {
             const all = rows();
             if (!all.length) return;
             event.preventDefault();
-            const current = selected();
+            const current = selected() ?? list.querySelector<HTMLElement>('[data-post][aria-current]');
             const next = all[current ? Math.min(Math.max(all.indexOf(current) + step, 0), all.length - 1) : 0];
             select(next, 'keys');
             link(next).focus({ preventScroll: true });
@@ -91,7 +92,7 @@ export function PostList({ children, className }: { children: ReactNode; classNa
             list.removeEventListener('focusout', onFocusOut);
             list.removeEventListener('click', onClick);
         };
-    }, []);
+    }, [arrowsOnly]);
     return (
         <div
             className={cn(

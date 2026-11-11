@@ -75,3 +75,76 @@
 
 .reader-body[data-size='compact'] { font-size: var(--text-base); }
 .reader-body[data-size='compact'] :is(h1, h2, h3, h4, h5, h6) { font-size: var(--text-lg); font-weight: 600; }
+
+.reader-transcript {
+    display: grid;
+    gap: 0.25rem;
+    font-family: var(--font-sans);
+    font-size: var(--text-lg);
+    line-height: 1.8;
+    overflow-wrap: anywhere;
+}
+
+.reader-transcript[data-font='serif'] { font-family: var(--font-serif); }
+
+.reader-transcript li {
+    display: grid;
+    grid-template-columns: 4rem 1fr;
+    align-items: baseline;
+    column-gap: 1rem;
+    margin-inline: -0.75rem;
+    position: relative;
+    padding: 0.375rem 0.75rem;
+    transition: background-color var(--motion-duration-fast) ease;
+}
+
+/* While the player is stuck to the top, a passage reached by the keys must land below it. */
+.reader-transcript[data-stuck] li { scroll-margin-top: calc(var(--reader-player-height, 0px) + 0.75rem); }
+
+/* Playing is a bar, selection is the list's grey row, so the two read apart when they sit on different passages. */
+.reader-transcript li::before {
+    content: '';
+    position: absolute;
+    inset: 0.625rem auto 0.625rem 0;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--foreground);
+    opacity: 0;
+    transition: opacity var(--motion-duration-ui) ease;
+}
+
+.reader-transcript li[aria-current]::before { opacity: 1; }
+
+.reader-transcript :where(button, span) {
+    justify-self: start;
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--muted-foreground);
+}
+
+.reader-transcript li[aria-current] :where(button, span) { color: var(--foreground); }
+
+.reader-transcript button {
+    position: relative;
+    border-radius: var(--radius-sm);
+    transition: color var(--motion-duration-fast) ease;
+}
+
+/* The time is small; the hit area is not. */
+.reader-transcript button::before {
+    content: '';
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: max(100%, 44px);
+    height: max(100%, 40px);
+    transform: translate(-50%, -50%);
+}
+
+.reader-transcript button:hover { color: var(--foreground); }
+
+/* On narrow screens the time sits on its own line, tight to its passage, and passages part further from each other. */
+@media (max-width: 40rem) {
+    .reader-transcript { gap: 1rem; }
+    .reader-transcript li { grid-template-columns: 1fr; row-gap: 0.125rem; }
+}

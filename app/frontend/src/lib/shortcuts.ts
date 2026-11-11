@@ -36,4 +36,7 @@ export const SHORTCUTS = [
     { keys: 'ArrowRight j', label: 'Next entry', where: 'Reader' },
     { keys: 'Escape', label: 'Back', where: 'Reader' },
     { keys: 't', label: 'Add tags after saving', where: 'Reader' },
+    { keys: 'ArrowUp', label: 'Previous passage', where: 'Video transcript' },
+    { keys: 'ArrowDown', label: 'Next passage', where: 'Video transcript' },
+    { keys: 'Enter', label: 'Play from passage', where: 'Video transcript' },
 ];

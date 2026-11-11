@@ -14,12 +14,13 @@ Help article: none
 - `inline-assets` newsletter inline (CID) images load from `GET /api/newsletter-assets/{token}`.
 - `remote-images` a newsletter with remote images shows `Remote images are blocked` and `Load images`, which calls `POST /api/newsletters/messages/{id}/images`.
 - `images` a feed entry's lead image loads from `GET /api/entries/{slug}/image`, and body images from `GET /api/entries/{slug}/images?src=<raw src>`, which answers only for an `<img>` the stored body or extracted article holds (`internal/api/entry_image.go`).
+- `transcript` a YouTube video shows its transcript under the player (`frontend/src/components/reader-youtube.tsx`): `POST /api/entries/{slug}/transcript` fetches the caption track on the first open, stores it in `video_transcripts`, and answers `{status: "ready"|"none"}` or `502` when YouTube refuses. Timestamps are `Play from <time>` buttons once the embed answers its postMessage handshake.
 - `unavailable` an unknown slug shows `Entry unavailable`.
 
 ## How to reach it
 
 - Browser: a digest item link on `/`, or `goto /entry/<entrySlug>` with a slug from `GET /api/digest`.
-- API: `GET /api/entries/{slug}`, `POST /api/entries/{slug}/extract`, `GET /api/newsletter-assets/{token}`, `POST /api/newsletters/messages/{id}/images`.
+- API: `GET /api/entries/{slug}`, `POST /api/entries/{slug}/extract`, `POST /api/entries/{slug}/transcript`, `GET /api/newsletter-assets/{token}`, `POST /api/newsletters/messages/{id}/images`.
 
 ## Drive and prove
 
@@ -34,10 +35,12 @@ Preconditions:
 - **Full article.** Open the blog post's entry, note `sqlite3 -readonly $E/run/morgenblau.db "select length(coalesce(extracted_body,'')) from feed_entries where entry_slug='<slug>'"`, click `Load full article`: the button is gone, the body grows and the stored length is above 0. `screenshot --filename=reader-article.png`. `$V api $S POST /api/entries/<slug>/extract --out extract`: `200` with the extracted `body`.
 - **Save.** On the blog post's entry, complementary `Reader actions` holds button `Save to Library`, link `Read original` and progressbar `Reading progress`. Click `Save to Library` (catch the toast with a MutationObserver on `[data-sonner-toast]` set before the click): toast `Saved to Library` with `Add tags` (`reader-saved-toast.png`); `T` opens combobox `Add a tag`, and a typed tag plus Enter saves it (`GET /api/saves` shows it). The button reads `Remove from Library`, and the article ends with `Saved to Library`, `Add tags` and `Remove` (`reader-filing.png`); `Remove` unsaves it and the end block is gone. At 390 wide the rail is a bottom bar (`reader-mobile-bar.png`).
 - **Image routes.** `POST /api/subscriptions --data '{"feedUrl":"'$F'/feeds/images.xml","primary":true}'` and wait for jobs: `Fixture entry with images` in `GET /api/digest` has `image` `/api/entries/<slug>/image`, which answers `200 image/jpeg` (the fixture's 16×12 PNG re-encoded). On `/`, its `Primary sources` item shows that image with a `naturalWidth` above 0 (`digest-image.png`); only primary items show images. In its reader, the body `img` points at `/api/entries/<slug>/images?src=<encoded $F/images/body.png>` and loads (`reader-body-image.png`); that URL answers `200 image/png`. Refusals: `/image` for an entry without one, a newsletter entry or an unknown slug, and `/images?src=` for a `src` the body does not hold (`$F/images/lead.png`), answer `404`; `--anon` answers `401` (`image-proxy-negatives.txt`).
+- **Transcript.** `POST /api/subscriptions --data '{"feedUrl":"'$F'/feeds/video.xml","primary":true}'` and wait for jobs. `Fixture video with captions` (`exampleCap1`): `POST /api/entries/<slug>/transcript` answers `ready` with three cues, and a second call reads the stored row (`sqlite3 -readonly $E/run/morgenblau.db "select count(*) from video_transcripts"`). In its reader, `Transcript` holds two paragraphs led by `0:00` and `1:05`, which become `Play from` buttons once the embed answers (`reader-transcript.png`). `Fixture video without captions` (`exampleNone`): `none`, a stored row, and no `Transcript` heading. `Fixture video YouTube refuses` (`exampleBusy`): `502`, no stored row, and its reader shows the plain embed with no error.
 - **Negative.** `goto /entry/unknownslug`: `Entry unavailable`. `POST /api/entries/unknownslug/extract` and `POST /api/entries/<newsletter entrySlug>/extract`: `404` (newsletters are never extracted). `POST /api/entries/<slug>/extract --anon`: `401`.
 
 ## Evidence
 
+- `reader-transcript.png`, `tr-<slug>.json` per video
 - `reader-newsletter-blocked.png`, `reader-newsletter-images.png`, `reader-article.png`, `reader-unknown.png`, `reader-saved-toast.png`, `reader-filing.png`, `reader-mobile-bar.png`, `digest-image.png`, `reader-body-image.png`, `image-proxy-negatives.txt`
 - `asset.txt`, `extract.json`, `extract-db.txt` (before and after lengths)
 - `inspect-before.json`, `inspect-after.json`
@@ -46,4 +49,6 @@ Preconditions:
 
 - Extraction fetches the entry's original page through the SSRF-guarded client, which reaches the run's fixture origin and the public internet only. An unreachable site answers `502` and the page says `The full article could not be loaded`: `blocked` for a public page, a failure for a fixture page.
 - An extracted body is cached in the run DB, so a second `extract` returns it without fetching.
+- The fixture server stands in for YouTube (`FEED_FIXTURE_ORIGIN` replaces `https://www.youtube.com` in `youtubeOrigin`), but the embed is real YouTube and shows `This video is unavailable` for the invented IDs, so playback sync cannot be proven offline. To check it, point the captioned entry at a real video in the run DB (`update feed_entries set url='https://www.youtube.com/watch?v=<real id>'`) and click a `Play from` button: the clicked paragraph gets `aria-current` and the player turns `position: sticky`.
+- `exampleBusy` puts the server's YouTube client in a 15-minute cooldown, so drive it last: every transcript fetch after it answers `502` until the cooldown ends. Stored transcripts are still served.
 - Tenant checks for another reader's entry live in [tenant-isolation](./tenant-isolation.md).

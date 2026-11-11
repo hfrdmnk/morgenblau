@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<title>Example Video Channel</title>
+<link>{{ORIGIN}}/</link>
+<description>YouTube videos for verify runs; the fixture server answers their transcript requests.</description>
+<item>
+<title>Fixture video with captions</title>
+<link>https://www.youtube.com/watch?v=exampleCap1</link>
+<guid isPermaLink="false">example-video-captions</guid>
+<pubDate>{{NOW_RFC822}}</pubDate>
+<enclosure url="{{ORIGIN}}/videos/captions.mp4" type="video/mp4" length="0"/>
+<description>&lt;p&gt;A fixture video with a short transcript.&lt;/p&gt;</description>
+</item>
+<item>
+<title>Fixture video without captions</title>
+<link>https://www.youtube.com/watch?v=exampleNone</link>
+<guid isPermaLink="false">example-video-none</guid>
+<pubDate>{{NOW_RFC822}}</pubDate>
+<enclosure url="{{ORIGIN}}/videos/none.mp4" type="video/mp4" length="0"/>
+<description>&lt;p&gt;A fixture video with no caption track.&lt;/p&gt;</description>
+</item>
+<item>
+<title>Fixture video YouTube refuses</title>
+<link>https://www.youtube.com/watch?v=exampleBusy</link>
+<guid isPermaLink="false">example-video-blocked</guid>
+<pubDate>{{NOW_RFC822}}</pubDate>
+<enclosure url="{{ORIGIN}}/videos/blocked.mp4" type="video/mp4" length="0"/>
+<description>&lt;p&gt;A fixture video whose transcript request is throttled.&lt;/p&gt;</description>
+</item>
+</channel>
+</rss>

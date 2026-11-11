@@ -44,4 +44,17 @@ The schema and owner-scoped queries live in [`internal/database/`](internal/data
 - Private saves: `TestNewsletterSaveStaysPrivateWhenMessageHasPublicWebURL` in [`newsletter_integration_test.go`](internal/api/newsletter_integration_test.go) and `TestNewsletterSaveRouteWritesOnlyPrivateStorage` in [`newsletter_routes_test.go`](internal/server/newsletter_routes_test.go).
 - Remote images: `TestBlockedNewsletterBodyFetchesNothingRemote` in [`mime_test.go`](internal/newsletter/mime_test.go), `TestNewsletterSMTPToAuthenticatedEntryFlow`, `TestRemoteImagePermissionIsRememberedPerMessage`, and [`newsletter-images.test.tsx`](frontend/src/components/newsletter-images.test.tsx).
 
+## 4. YouTube transcripts stay in the reader
+
+Caption text fetched from YouTube is shown only in the in-app reader. It never enters the PDS, a digest or list response, a generated feed, OPML, a public page or an export.
+
+The fetch lives in [`internal/youtube/`](internal/youtube/); storage and the one route that serves transcripts live in [`entry_transcript.go`](internal/api/entry_transcript.go). See [SPEC.md](../SPEC.md#digest-and-reader).
+
+**Enforced by:**
+
+- Own table, own queries: `TestVideoTranscriptsStayInTheirOwnQueries` in [`video_transcripts_test.go`](internal/database/video_transcripts_test.go) keeps `video_transcripts` in `queries/video_transcripts.sql`, which touches no other table.
+- One reader: `TestVideoTranscriptsReachOnlyTheReaderEndpoint` in the same file lets only `internal/api/entry_transcript.go` call the transcript queries, and rejects SQL for the table embedded in Go.
+- One holder: `TestOnlyAPIAndServerImportYouTube` in [`boundary_test.go`](internal/youtube/boundary_test.go).
+- Only followers fetch: `TestEntryTranscript_NothingIsFetchedForAReaderWhoDoesNotFollowTheFeed` in [`entry_transcript_test.go`](internal/api/entry_transcript_test.go).
+
 An intentional change to a law updates [SPEC.md](../SPEC.md), this file, and the checks that enforce it together. There is no changed-file exception for the law checks.
