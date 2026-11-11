@@ -211,8 +211,9 @@ jobs:
             echo "main has moved past $GITHUB_SHA; its newer run deploys instead."
           fi
 
+      # Builds on the runner: Fly's Depot builders fail to push to the internal registry (_api.internal:5000 connection refused).
       - name: Deploy to Fly
         if: steps.head.outputs.current == 'true'
         env:
           FLY_API_TOKEN: ${{ secrets[matrix.token] }}
-        run: flyctl deploy --remote-only
+        run: flyctl deploy --local-only
