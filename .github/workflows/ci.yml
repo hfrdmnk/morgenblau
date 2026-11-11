@@ -9,8 +9,9 @@ on:
 permissions:
   contents: read
 
+# PR pushes supersede each other; every commit on main gets its own run so none skips CI or its deploy.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -171,3 +172,47 @@ jobs:
 
       - name: Build
         run: bun run build
+
+  deploy:
+    name: Deploy ${{ matrix.project }}
+    if: github.event_name == 'push'
+    needs: [test, build-web]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: fly-deploy-${{ matrix.project }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: app
+            token: FLY_API_TOKEN_APP
+          - project: site
+            token: FLY_API_TOKEN_SITE
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@v1
+
+      # A slower run for an older commit must not replace what a newer commit deployed; the newer commit's run deploys it.
+      - name: Check commit is still main's head
+        id: head
+        run: |
+          if [ "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "main has moved past $GITHUB_SHA; its newer run deploys instead."
+          fi
+
+      - name: Deploy to Fly
+        if: steps.head.outputs.current == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets[matrix.token] }}
+        run: flyctl deploy --remote-only

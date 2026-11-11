@@ -128,4 +128,4 @@ docker build -t morgenblau .
 
 For production, follow [DEPLOY.md](DEPLOY.md): the single-Machine Fly setup, DID-based alpha access, Tigris backups, domains, SMTP certificates, and recovery. Public configuration lives in `fly.toml`; secrets are imported from a private environment file. A production container requires a Litestream replica.
 
-Pushes to `main` deploy through Fly's GitHub integration, with its working directory set to `app`.
+Pushes to `main` deploy from the `deploy` job in `.github/workflows/ci.yml` once CI passes for that commit.

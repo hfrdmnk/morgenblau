@@ -21,7 +21,7 @@ Install goose, sqlc and golangci-lint once, at the versions `.github/workflows/c
 
 ## Deploy
 
-Pushes to `main` deploy to Fly through Fly's GitHub integration, with its working directory set to `app`. [DEPLOY.md](DEPLOY.md) owns the production setup.
+Pushes to `main` deploy to Fly from the `deploy` job in `.github/workflows/ci.yml`, only after CI passes for that commit. [DEPLOY.md](DEPLOY.md) owns the production setup.
 
 ## ATProto
 
