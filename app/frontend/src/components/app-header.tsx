@@ -72,14 +72,13 @@ export function AppHeader() {
         <>
             <header ref={headerRef} className="app-header grid grid-cols-[1fr_auto] select-none items-start gap-y-6 px-5 sm:px-8 md:grid-cols-3 md:px-14">
                 {current ? (
-                    <>
-                        <span className="flex min-h-10 items-center text-base text-muted-foreground md:hidden">
-                            Morgenblau
-                        </span>
-                        <span aria-label="Morgenblau" role="img" className="hidden min-h-10 items-center md:flex">
-                            <MorgenblauMark className="h-6 text-subtle-foreground" />
-                        </span>
-                    </>
+                    <Link
+                        href={PATHS.digest}
+                        aria-label="Morgenblau"
+                        className="flex min-h-10 items-center justify-self-start text-subtle-foreground hover:text-muted-foreground"
+                    >
+                        <MorgenblauMark className="h-6" />
+                    </Link>
                 ) : (
                     <SettingsReturnLink />
                 )}
