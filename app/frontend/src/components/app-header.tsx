@@ -9,6 +9,7 @@ import {
     ArrowRightIcon,
     DigestIcon,
     LibraryIcon,
+    MorgenblauMark,
     SourcesIcon,
 } from '@/components/icons';
 import type { AppNavigationState } from '@/hooks/use-app-location';
@@ -22,19 +23,16 @@ const artwork = {
     [PATHS.digest]: {
         Icon: DigestIcon,
         color: 'text-atmosphere-blue',
-        size: 'size-8',
         tabSize: 'size-5.5',
     },
     [PATHS.sources]: {
         Icon: SourcesIcon,
         color: 'text-sunrise-orange',
-        size: 'h-7 w-8 -mt-0.5',
         tabSize: 'h-5 w-6 -translate-y-px',
     },
     [PATHS.library]: {
         Icon: LibraryIcon,
         color: 'text-aurora-violet',
-        size: 'size-7',
         tabSize: 'size-5',
     },
 };
@@ -69,18 +67,17 @@ export function AppHeader() {
     useHeightProperty(headerRef, '--app-header-height');
     useHeightProperty(modeNavRef, '--app-mode-nav-height');
     const current = appMode(location);
-    const mark = current ? artwork[current.href] : null;
 
     return (
         <>
             <header ref={headerRef} className="app-header grid grid-cols-[1fr_auto] select-none items-start gap-y-6 px-5 sm:px-8 md:grid-cols-3 md:px-14">
-                {current && mark ? (
+                {current ? (
                     <>
                         <span className="flex min-h-10 items-center text-base text-muted-foreground md:hidden">
                             Morgenblau
                         </span>
-                        <span aria-label={current.label} role="img" className="relative hidden size-10 md:block">
-                            <mark.Icon className={cn('absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2', mark.size, mark.color)} />
+                        <span aria-label="Morgenblau" role="img" className="hidden min-h-10 items-center md:flex">
+                            <MorgenblauMark className="h-6 text-subtle-foreground" />
                         </span>
                     </>
                 ) : (

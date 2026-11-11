@@ -371,6 +371,17 @@ function MoreIcon(props: IconProps) {
     );
 }
 
+function MorgenblauMark(props: IconProps) {
+    return (
+        <svg aria-hidden focusable={false} viewBox="0 0 224 144" {...props}>
+            <path
+                d="M124 63.7156C124 70.8428 132.617 74.4122 137.657 69.3724L182.711 24.3184L199.682 41.2891L156.004 84.9663C150.77 90.2004 154.878 100.034 162.28 100.02C169.352 100.007 175.552 100 176 100H224V124H144C132.954 124 124 132.954 124 144H100C100 132.954 91.0457 124 80 124H0V100H48C48.4476 100 54.6478 100.007 61.7203 100.02C69.1224 100.034 73.2302 90.2009 67.9962 84.9669L24.3184 41.2891L41.2891 24.3184L86.3431 69.3724C91.3829 74.4122 100 70.8428 100 63.7156V0H124V63.7156Z"
+                fill="currentColor"
+            />
+        </svg>
+    );
+}
+
 function PenIcon(props: IconProps) {
     return (
         <svg {...iconProps} {...props}>
@@ -402,6 +413,7 @@ export {
     LibraryIcon,
     LoadingIcon,
     MoreIcon,
+    MorgenblauMark,
     PenIcon,
     PlusIcon,
     SettingsIcon,
