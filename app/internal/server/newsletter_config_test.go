@@ -160,7 +160,9 @@ func TestStartNewsletterSMTPEnforcesConnectionLimitBeforeGreeting(t *testing.T) 
 	}
 	t.Cleanup(func() {
 		_ = server.Close()
-		<-done
+		if err := <-done; err != nil {
+			t.Errorf("SMTP serve: %v", err)
+		}
 	})
 
 	first, err := net.Dial("tcp", addr.String())

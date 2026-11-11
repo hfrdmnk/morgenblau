@@ -101,7 +101,12 @@ func TestSMTPSTARTTLSNoSNIAndReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = server.Close(); <-done })
+	t.Cleanup(func() {
+		_ = server.Close()
+		if err := <-done; err != nil {
+			t.Errorf("SMTP serve: %v", err)
+		}
+	})
 	for i := range 2 {
 		certPEM, keyPEM := testSMTPCertificate(t, m.hostname, time.Now().Add(-time.Hour), time.Now().Add(time.Duration(i+1)*time.Hour))
 		cert, err := tls.X509KeyPair(certPEM, keyPEM)
@@ -157,7 +162,12 @@ func TestSMTPSTARTTLSTicketsCannotBypassPolicy(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				t.Cleanup(func() { _ = server.Close(); <-done })
+				t.Cleanup(func() {
+					_ = server.Close()
+					if err := <-done; err != nil {
+						t.Errorf("SMTP serve: %v", err)
+					}
+				})
 				return addr.String()
 			}
 			legacy := m.tlsConfig()
@@ -323,7 +333,10 @@ func TestSMTPCertificateGatesGreetingAndClosesWhileWaiting(t *testing.T) {
 		_ = conn.Close()
 		_ = server.Close()
 		select {
-		case <-done:
+		case err := <-done:
+			if err != nil {
+				t.Errorf("SMTP serve: %v", err)
+			}
 		case <-time.After(time.Second):
 			t.Fatal("SMTP shutdown stuck on certificate readiness")
 		}
@@ -361,7 +374,9 @@ func newSMTPACMETestManager(t *testing.T, profile string) (*smtpCertificates, sm
 	t.Cleanup(func() {
 		m.cache.Stop()
 		_ = httpServer.Close()
-		<-httpDone
+		if err := <-httpDone; !errors.Is(err, http.ErrServerClosed) {
+			t.Errorf("HTTP serve: %v", err)
+		}
 	})
 	return m, settings
 }
@@ -385,7 +400,9 @@ func TestSMTPACMEIntegration(t *testing.T) {
 		cancel()
 		<-workerDone
 		_ = smtpServer.Close()
-		<-smtpDone
+		if err := <-smtpDone; err != nil {
+			t.Errorf("SMTP serve: %v", err)
+		}
 	})
 	select {
 	case <-m.ready:

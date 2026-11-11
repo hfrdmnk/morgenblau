@@ -157,9 +157,13 @@ func deliverNewsletterOverSMTP(t *testing.T, service *newsletter.Service, addres
 	go func() { smtpDone <- smtpServer.Serve(newsletter.LimitSMTPListener(listener, 2)) }()
 	t.Cleanup(func() {
 		_ = smtpServer.Close()
-		<-smtpDone
+		if err := <-smtpDone; err != nil {
+			t.Errorf("SMTP serve: %v", err)
+		}
 		cancelProcessor()
-		<-processorDone
+		if err := <-processorDone; !errors.Is(err, context.Canceled) {
+			t.Errorf("newsletter processor: %v", err)
+		}
 	})
 
 	message = strings.ReplaceAll(strings.ReplaceAll(message, "RECIPIENT", address), "\n", "\r\n")

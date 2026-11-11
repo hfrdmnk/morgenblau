@@ -118,7 +118,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           working-directory: app
-          version: v2.14.0
+          version: v2.15.0
 
       - name: Run Go race tests
         run: go test -race ./...
