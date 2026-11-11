@@ -13,6 +13,14 @@
 <description>&lt;p&gt;A fixture video with a short transcript.&lt;/p&gt;</description>
 </item>
 <item>
+<title>Fixture video with auto-generated captions</title>
+<link>https://www.youtube.com/watch?v=exampleAuto</link>
+<guid isPermaLink="false">example-video-auto</guid>
+<pubDate>{{NOW_RFC822}}</pubDate>
+<enclosure url="{{ORIGIN}}/videos/auto.mp4" type="video/mp4" length="0"/>
+<description>&lt;p&gt;A fixture video whose only captions are auto-generated.&lt;/p&gt;</description>
+</item>
+<item>
 <title>Fixture video without captions</title>
 <link>https://www.youtube.com/watch?v=exampleNone</link>
 <guid isPermaLink="false">example-video-none</guid>
@@ -27,6 +35,14 @@
 <pubDate>{{NOW_RFC822}}</pubDate>
 <enclosure url="{{ORIGIN}}/videos/blocked.mp4" type="video/mp4" length="0"/>
 <description>&lt;p&gt;A fixture video whose transcript request is throttled.&lt;/p&gt;</description>
+</item>
+<item>
+<title>Fixture video hosted elsewhere</title>
+<link>{{ORIGIN}}/videos/elsewhere</link>
+<guid isPermaLink="false">example-video-elsewhere</guid>
+<pubDate>{{NOW_RFC822}}</pubDate>
+<enclosure url="{{ORIGIN}}/videos/elsewhere.mp4" type="video/mp4" length="0"/>
+<description>&lt;p&gt;A fixture video that is not on YouTube.&lt;/p&gt;</description>
 </item>
 </channel>
 </rss>

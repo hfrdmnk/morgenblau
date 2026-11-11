@@ -44,6 +44,9 @@ function huge(res) {
 }
 
 // Stand-ins for YouTube's InnerTube player and timedtext calls (internal/youtube), keyed by the invented video IDs in feeds/video.xml.
+// Any other ID gets a long transcript, so a run that points an entry at a real video can play it against many passages.
+// GET /control/youtube counts the calls, so a run can show that a cached open or a cooldown reached nothing.
+const youtubeCalls = { player: 0, timedtext: 0 }
 const TRANSCRIPT = {
   events: [
     { tStartMs: 0, dDurationMs: 4000, segs: [{ utf8: 'Welcome to the example channel.' }] },
@@ -51,23 +54,39 @@ const TRANSCRIPT = {
     { tStartMs: 65000, dDurationMs: 3000, segs: [{ utf8: 'Thanks for watching.' }] },
   ],
 }
+const LONG_TRANSCRIPT = {
+  events: Array.from({ length: 220 }, (_, i) => ({
+    tStartMs: i * 5000,
+    dDurationMs: 5000,
+    segs: [{ utf8: `Line ${i + 1} of the long example transcript, spoken at ${Math.floor(i * 5 / 60)}:${String(i * 5 % 60).padStart(2, '0')}.` }],
+  })),
+}
+
+function track(videoId, kind) {
+  return {
+    captionTracks: [{ baseUrl: `${origin}/api/timedtext?v=${videoId}&lang=en`, languageCode: 'en', ...(kind ? { kind } : {}) }],
+    audioTracks: [{ defaultCaptionTrackIndex: 0 }],
+    defaultAudioTrackIndex: 0,
+  }
+}
 
 function player(req, res) {
+  youtubeCalls.player++
   let body = ''
   req.on('data', (chunk) => { body += chunk })
   req.on('end', () => {
     const { videoId } = JSON.parse(body || '{}')
     if (videoId === 'exampleBusy') return send(res, 429, 'application/json', '{}')
-    const ok = { playabilityStatus: { status: 'OK' }, videoDetails: { lengthSeconds: '70' } }
-    if (videoId === 'exampleCap1') {
-      ok.captions = { playerCaptionsTracklistRenderer: {
-        captionTracks: [{ baseUrl: `${origin}/api/timedtext?v=${videoId}&lang=en`, languageCode: 'en' }],
-        audioTracks: [{ defaultCaptionTrackIndex: 0 }],
-        defaultAudioTrackIndex: 0,
-      } }
-    }
+    const ok = { playabilityStatus: { status: 'OK' }, videoDetails: { lengthSeconds: '1200' } }
+    if (videoId !== 'exampleNone') ok.captions = { playerCaptionsTracklistRenderer: track(videoId, videoId === 'exampleAuto' ? 'asr' : undefined) }
     send(res, 200, 'application/json', JSON.stringify(ok))
   })
+}
+
+function timedtext(searchParams) {
+  youtubeCalls.timedtext++
+  const short = ['exampleCap1', 'exampleAuto'].includes(searchParams.get('v'))
+  return ['application/json', JSON.stringify(short ? TRANSCRIPT : LONG_TRANSCRIPT)]
 }
 
 const feeds = {
@@ -78,7 +97,6 @@ const feeds = {
   '/feeds/undated.xml': () => ['application/rss+xml; charset=utf-8', render('undated.xml')],
   '/feeds/images.xml': () => ['application/rss+xml; charset=utf-8', render('images.xml')],
   '/feeds/video.xml': () => ['application/rss+xml; charset=utf-8', render('video.xml')],
-  '/api/timedtext': () => ['application/json', JSON.stringify(TRANSCRIPT)],
   '/images/lead.png': () => ['image/png', PNG],
   '/images/body.png': () => ['image/png', PNG],
   '/feeds/latin1.xml': () => ['application/rss+xml; charset=ISO-8859-1', Buffer.from(render('latin1.xml'), 'latin1')],
@@ -89,7 +107,7 @@ const feeds = {
 }
 
 const fixtures = http.createServer((req, res) => {
-  const { pathname } = new URL(req.url, origin)
+  const { pathname, searchParams } = new URL(req.url, origin)
   if (req.method === 'POST' && /^\/control\/toggle\/(up|down)$/.test(pathname)) {
     toggleUp = pathname.endsWith('/up')
     return send(res, 200, 'application/json', JSON.stringify({ toggle: toggleUp ? 'up' : 'down' }))
@@ -106,6 +124,8 @@ const fixtures = http.createServer((req, res) => {
   }
   if (req.method === 'POST' && pathname === '/youtubei/v1/player') return player(req, res)
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'text/plain', 'method not allowed\n')
+  if (pathname === '/control/youtube') return send(res, 200, 'application/json', JSON.stringify(youtubeCalls))
+  if (pathname === '/api/timedtext') return send(res, 200, ...timedtext(searchParams))
   if (feeds[pathname]) return send(res, 200, ...feeds[pathname]())
   switch (pathname) {
     case '/':
