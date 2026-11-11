@@ -141,7 +141,9 @@ func TestLimitedSMTPListenerCapsConnectionsBeforeGreeting(t *testing.T) {
 	go func() { done <- server.Serve(limited) }()
 	t.Cleanup(func() {
 		server.Close()
-		<-done
+		if err := <-done; err != nil {
+			t.Errorf("SMTP serve: %v", err)
+		}
 	})
 
 	first, err := net.Dial("tcp", listener.Addr().String())
@@ -186,7 +188,10 @@ func serveSMTP(t *testing.T, service *Service) (*smtpServerHandle, *smtp.Client)
 	handle := &smtpServerHandle{close: func() {
 		server.Close()
 		select {
-		case <-done:
+		case err := <-done:
+			if err != nil {
+				t.Errorf("SMTP serve: %v", err)
+			}
 		case <-time.After(2 * time.Second):
 			t.Error("SMTP server did not stop")
 		}
