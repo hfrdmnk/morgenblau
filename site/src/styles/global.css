@@ -2,6 +2,7 @@
 :root {
 	--sans: 'Geist Variable', system-ui, sans-serif;
 	--serif: 'Newsreader Variable', Georgia, serif;
+	--hand: 'Reenie Beanie', cursive;
 	--background: oklch(0.97 0.001 106.424);
 	--foreground: oklch(0.216 0.006 56.043);
 	--popover: oklch(1 0 0);

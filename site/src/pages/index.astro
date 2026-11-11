@@ -2,6 +2,7 @@
 import '@fontsource-variable/geist';
 import '@fontsource-variable/newsreader/standard.css';
 import '@fontsource-variable/newsreader/standard-italic.css';
+import '@fontsource/reenie-beanie';
 import '../styles/global.css';
 import Logo from '../components/Logo.astro';
 import SignupForm from '../components/SignupForm.astro';
@@ -11,24 +12,24 @@ const description =
 	'Morgenblau gathers your favorite blogs, YouTube channels and newsletters into finite daily digests. So you never miss the content you actually care about. And when you’re done, you’re done.';
 
 const steps = [
-	{ title: 'Choose your sources', body: 'Add blogs, newsletters, YouTube channels and websites. Only what you add ever shows up.' },
-	{ title: 'Read today’s newspaper', body: 'Everything your sources published today, in one calm list. No ranking, no recommendations, no counts.' },
-	{ title: 'Close it', body: 'At the end of the list, you’re done. Yesterday is still there if you want it. It never turns into a pile.' },
+	{ title: 'Curate your sources', body: 'Add blogs, newsletters, YouTube channels and more. Morgenblau also makes it easy to import subscriptions from other tools.' },
+	{ title: 'Use Morgenblau as your daily web newspaper', body: 'All the content that was published today is presented in one calm list. Morgenblau doesn’t artificially boost or hide posts. It only prioritizes sources that you explicitly marked as important to you.' },
+	{ title: 'Go on with your day', body: 'When you reach the end of the list, you’re done. Previous days are still available to read if you want to, but that’s your choice. One that you can explicitly make. Or decide not to. It’s up to you.' },
 ];
 
 const useCases = [
-	{ label: 'Newsletters', title: 'Newsletters, out of your inbox', body: 'You get a private address. Give it to the newsletters you love, and they arrive in your newspaper instead of between work mail and receipts. Tracking images stay blocked until you choose to load them.', art: '/images/bg-card-newsletters.webp' },
-	{ label: 'YouTube', title: 'Channels without the recommendations', body: 'New videos from the channels you follow, next to everything else. No Shorts, no autoplay, no sidebar. Bring your subscriptions over from a Google Takeout export.', art: '/images/bg-card-youtube.webp' },
-	{ label: 'Reading', title: 'A quiet place to read', body: 'Articles open in a clean reader, in the typeface you prefer. The original page is always one click away.', art: '/images/bg-card-reading.webp' },
-	{ label: 'Library', title: 'Keep what’s worth keeping', body: 'Save articles and newsletters to your Library and come back to them when you have time.', art: '/images/bg-card-library.webp' },
-	{ label: 'Any website', title: 'Follow sites that never had a feed', body: 'Morgenblau finds the feeds sites forget to mention. When there is none, it builds one from the site’s list of posts. Sites that ask not to be read by bots are left alone.', art: '/images/bg-card-web.webp' },
+	{ label: 'Newsletters', title: 'Newsletters, out of your inbox', body: 'You get a private email address. Use it to sign up to your favorite newsletters. From now on, they arrive in your curated feed, not in your inbox between bills and work mail.', art: '/images/bg-card-newsletters.webp' },
+	{ label: 'YouTube', title: 'Channels without the recommendations', body: 'Don’t miss a video from the channels you follow. And then watch them in a calm interface without any distracting sidebars or recommendations. You can even filter out Shorts.', art: '/images/bg-card-youtube.webp' },
+	{ label: 'Reading', title: 'A quiet place to read', body: 'Morgenblau’s interface is intentionally calm and simple. So the only thing that takes your attention is the content. Set in beautiful typography and, depending on your device, in light or dark mode.', art: '/images/bg-card-reading.webp' },
+	{ label: 'Library', title: 'Save the gems', body: 'If you want to keep a post for later, simply save it to your personal library. Use tags to organize and find them later.', art: '/images/bg-card-library.webp' },
+	{ label: 'Any website', title: 'Follow (almost) every site', body: 'Even if your favorite blog doesn’t have an RSS feed, Morgenblau can still let you follow it. You shouldn’t have to manually visit websites every day, just because they don’t have a feed. Morgenblau can do that for you.', art: '/images/bg-card-web.webp' },
 ];
 
 const faq = [
-	{ q: 'What is Morgenblau?', a: 'A reader for the web you choose. You follow blogs, newsletters, YouTube channels and websites, and Morgenblau gathers what they publish into one newspaper per day.' },
+	{ q: 'What is Morgenblau?', a: 'A reader for the web you curate. You follow blogs, newsletters, YouTube channels and websites, and Morgenblau gathers what they publish into one web newspaper per day.' },
 	{ q: 'Can I use it today?', a: 'Morgenblau is in an invite-only alpha while I finish the essentials. Subscribe to the newsletter and you’ll hear when it opens up.' },
 	{ q: 'Do I need to know what RSS is?', a: 'No. Paste the address of a website or a YouTube channel and Morgenblau works out the rest. For newsletters, you sign up with your Morgenblau address.' },
-	{ q: 'What happens to the days I skip?', a: 'Nothing. They don’t pile up and nothing counts against you. Every past day stays available if you want to go back.' },
+	{ q: 'What happens to the days I skip?', a: 'Nothing. They don’t pile up and no unread count makes you feel guilty. Every past daily digest stays available if you want to go back.' },
 	{ q: 'Which sources does it support?', a: 'Blogs and news sites with RSS or Atom feeds, email newsletters, YouTube channels, Standard.site publications on ATProto, and many sites that have no feed at all.' },
 	{ q: 'Is there an app?', a: 'Morgenblau runs in the browser on your phone and computer, and you can install it to your home screen like an app.' },
 	{ q: 'Can I take my subscriptions with me?', a: 'Yes. Import and export your feeds as OPML, the format every feed reader understands. Your feed subscriptions also live in your own ATProto account.' },
@@ -50,6 +51,7 @@ const faqSchema = {
 		<link rel="canonical" href="https://morgen.blue/" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<link rel="icon" href="/favicon.ico" />
+		<link rel="me" href="https://mastodon.social/@dominikhofer_me" />
 		<meta name="theme-color" content="#f5f5f4" />
 		<meta property="og:type" content="website" />
 		<meta property="og:site_name" content="Morgenblau" />
@@ -89,9 +91,9 @@ const faqSchema = {
 			<section class="wrap" aria-labelledby="usual-title">
 				<h2 id="usual-title">We just have the wrong tools</h2>
 				<div class="three">
-					<div><h3>Social feeds</h3><p>An algorithm picks what you see, and there is always more. The people you followed are in there somewhere, between the outrage and the ads.</p></div>
-					<div><h3>Newsletters</h3><p>Some of the best writing arrives by email, where it competes with work, bills and password resets for the same attention.</p></div>
-					<div><h3>Feed readers</h3><p>RSS readers gave you back the choice. Many kept the unread count, so every day you skip becomes a backlog.</p></div>
+					<div><h3>Social feeds</h3><p>An algorithm assembles an infinite feed for you. With one goal: Making you spend as much time as possible on the platform. You are never done. And the posts from creators you actually want to see might not even reach you. The algorithm decides.</p></div>
+					<div><h3>Newsletters</h3><p>The best content often gets sent via email. But it might get buried in your inbox or not even reach it (hello spam folder). Newsletters deserve to be read in a calm environment. And your inbox deserves to not get filled with even more unread messages.</p></div>
+					<div><h3>Feed readers</h3><p>RSS readers are the best tool we got for taking back control over our feeds. But they still have one problem: They can quickly turn into a chore because they tell you exactly how many posts you haven’t read yet. That shouldn’t be the case.</p></div>
 				</div>
 			</section>
 
@@ -105,7 +107,7 @@ const faqSchema = {
 			</section>
 
 			<section class="wrap" aria-labelledby="uses-title">
-				<h2 id="uses-title">Everything you follow, in one place.</h2>
+				<h2 id="uses-title">All the content you don’t want to miss. In one feed.</h2>
 				<ul class="rail">
 					{useCases.map((u) => (
 						<li class="card on-art" style={`--art: url(${u.art})`}>
@@ -117,42 +119,53 @@ const faqSchema = {
 
 			<section class="wrap two" aria-label="For RSS and ATProto people">
 				<div>
-					<h2>For people who miss Google Reader.</h2>
-					<p>At heart, Morgenblau is a feed reader. Import your subscriptions from any RSS app with OPML, export them whenever you like, and follow anything that has a feed. What’s different is the shape: a day instead of an unread count.</p>
+					<h2>For those of you that still miss Google Reader</h2>
+					<p>At its core, Morgenblau is a feed reader. Import your subscriptions from any RSS app with OPML, export them whenever you like, and follow anything that has a feed. Social features are coming, for those that want them.</p>
 				</div>
 				<div>
-					<h2>Your subscriptions belong to you.</h2>
-					<p>You sign in with your internet handle, the same one you might use on Bluesky. Your feed subscriptions and saves live in your own ATProto account as public records, not locked inside Morgenblau. Newsletters are the exception, on purpose: they stay private and never become public records.</p>
+					<h2>Your data belongs to you.</h2>
+					<p>You sign in with <a href="https://atmosphereaccount.com/">your Atmosphere account</a>, the same one you might use on platforms like Bluesky. Your feed subscriptions and saves live in your own ATProto account as public records, not locked inside Morgenblau. You can use them with other apps, build your own or simply take your data wherever you want to go. Private data is coming soon as well.</p>
 				</div>
 			</section>
 
 			<section class="wrap two faq" aria-labelledby="faq-title">
-				<h2 id="faq-title">Questions</h2>
+				<h2 id="faq-title">Frequently asked questions</h2>
 				<div>
 					{faq.map((f) => <details><summary>{f.q}</summary><p>{f.a}</p></details>)}
 				</div>
 			</section>
 
 			<section class="wrap why" aria-labelledby="why-title">
-				<div class="polaroids">
-					<figure class="polaroid me"><img src="/images/dominik.webp" width="720" height="960" alt="Dominik outdoors, wearing sunglasses" loading="lazy" /><figcaption>That’s me</figcaption></figure>
-					<figure class="polaroid dog"><img src="/images/naida.webp" width="720" height="960" alt="Naida, Dominik’s dog, lying in the sun" loading="lazy" /><figcaption>Naida, head of quality control</figcaption></figure>
+				<div class="prints">
+					<figure class="print me">
+						<img src="/images/dominik.webp" width="720" height="960" alt="Dominik, wearing sunglasses" loading="lazy" />
+						<figcaption>That’s me<svg viewBox="0 0 64 52" aria-hidden="true"><path d="M54 4c-2 18-14 34-44 40M10 44l9-8M10 44l11 4" /></svg></figcaption>
+					</figure>
+					<figure class="print dog">
+						<img src="/images/naida.webp" width="720" height="960" alt="Naida, Dominik’s dog, lying in the sun" loading="lazy" />
+						<figcaption>Naida, head of good vibes<svg viewBox="0 0 64 44" aria-hidden="true"><path d="M4 34c16 8 36 4 52-22M56 12l-9 3M56 12l0 10" /></svg></figcaption>
+					</figure>
 				</div>
 				<div class="note">
-					<h2 id="why-title">Why I’m building this.</h2>
-					<p>Hoi, I’m Dominik. I live in Bern, and most of my days include some writing, some running and a lot of reading.</p>
-					<p>For years I read the web through feed readers, and I loved them, until the unread count started to feel like homework. I’d open the app, see a number, and close it again. The people I wanted to read were still writing. I just couldn’t face the pile.</p>
-					<p>Morgenblau is the reader I wanted: the writers I chose, one day at a time, and then done. I’m building it slowly and in the open, and I’d like you to come along.</p>
+					<h2 id="why-title">Why I’m creating (not) another RSS reader.</h2>
+					<p>Hi, I’m Dominik.</p>
+					<p>Developer, Student, Runner and a big fan of the open web. I <a href="https://dominikhofer.me/">write my own blog</a> and love to read others’. Which made me a big RSS aficionado over the years.</p>
+					<p>As a digital native, RSS readers always felt like this almost ancient but very calm technology to me. One that I’m still surprised is still around and so widely used.</p>
+					<p>Unfortunately, most feed readers also feel a bit ancient at times and not much has changed since Google Reader was shut down. They almost all have the same layout and, my biggest gripe, use a system where posts are treated as read or unread.</p>
+					<p>I wanted to change that and <a href="https://dominikhofer.me/5hge1qszrnpanydh/">build my own ideal minimal reader</a>. Along the way, I’m exploring how newer technologies like the <a href="https://atproto.com/">AT Protocol</a> can enable an even better experience for users.</p>
+					<p>My vision is that Morgenblau doesn’t just turn into another RSS reader. It should become the app for all those people who feel burnt out from modern-day social media feeds that are noisy, depressing and never-ending.</p>
+					<p>The old web, the interesting bloggers, the small authentic creators: they are still out there and creating original content every day. You just have to rediscover them.</p>
+					<p>Morgenblau helps you with that.</p>
 					<img class="signature" src="/signature.svg" width="98" height="93" alt="Dominik’s signature" loading="lazy" />
 				</div>
 			</section>
 
 			<section class="panel cta on-art" style="--art: url(/images/bg-footer.webp)" aria-labelledby="cta-title">
 				<div class="cta-copy">
-					<h2 id="cta-title">Follow along.</h2>
-					<p>I write a short weekly newsletter about what I’m building, what’s on my mind and good links from the week. Morgenblau news lands there first, including when it opens up.</p>
+					<h2 id="cta-title">I’m building it in public.</h2>
+					<p>I write a short weekly newsletter about what I’m building, what’s on my mind and good links from the week. Any updates regarding Morgenblau are announced there first, including when it opens up.</p>
 					<SignupForm id="footer" tone="glass" />
-					<p class="hint">Casual, no spam. Unsubscribe whenever you like.</p>
+					<p class="hint">Very casual, no spam ever. Pinky promise. Unsubscribe at any time.</p>
 				</div>
 				<footer class="foot">
 					<span class="brand"><Logo size={16} /> Morgenblau</span>
@@ -173,7 +186,7 @@ const faqSchema = {
 				<h2 id="signup-title">Follow along</h2>
 				<p>Morgenblau is in an invite-only alpha. Get my weekly newsletter and you’ll hear first when it opens up.</p>
 				<SignupForm id="modal" stacked />
-				<p class="hint">You’ll join my <a href="https://buttondown.com/dominikhofer">personal newsletter</a>. Casual, no spam.</p>
+				<p class="hint">You’ll join my <a href="https://buttondown.com/dominikhofer">personal newsletter</a>. Very casual, no spam ever. Pinky promise. Unsubscribe at any time.</p>
 			</div>
 		</dialog>
 	</body>
@@ -245,20 +258,32 @@ const faqSchema = {
 	.faq details[open] summary::after { content: '−'; }
 	.faq details p { margin: 10px 0 0; }
 
-	/* Why: two overlapping polaroids; the one under the pointer comes to the front. */
-	.why { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 72px; align-items: center; padding-bottom: 140px; }
-	.polaroids { position: relative; aspect-ratio: 1 / 1; }
-	.polaroid { position: absolute; width: 56%; margin: 0; padding: 12px 12px 0; background: oklch(0.995 0.002 90); border-radius: 3px;
-		box-shadow: 0 0 0 1px var(--line), 0 2px 4px oklch(0.216 0.006 56 / 0.08), 0 16px 40px oklch(0.216 0.006 56 / 0.16);
+	/* Why: two taped prints with handwritten captions beside them; the one under the pointer comes to the front. */
+	.why { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 72px; align-items: start; padding-bottom: 140px; }
+	.prints { position: sticky; top: 112px; aspect-ratio: 1 / 1.14; }
+	.print { position: absolute; margin: 0; padding: 5px; border-radius: 2px; background: oklch(0.993 0.003 85);
+		box-shadow: 0 0 0 1px oklch(0.216 0.006 56 / 0.06), 0 1px 2px oklch(0.216 0.006 56 / 0.1), 0 10px 28px -6px oklch(0.216 0.006 56 / 0.22);
 		transition: transform var(--motion-overlay) var(--ease-out); }
-	.polaroid img { aspect-ratio: 3 / 4; object-fit: cover; width: 100%; }
-	.polaroid figcaption { padding: 12px 4px 16px; font: italic 400 18px/1.2 var(--serif); color: var(--muted-foreground); text-align: center; }
-	.me { top: 0; left: 0; z-index: 1; transform: rotate(-5deg); }
-	.dog { top: 18%; right: 0; z-index: 2; transform: rotate(4deg); }
+	.print img { aspect-ratio: 3 / 4; width: 100%; object-fit: cover; border-radius: 1px; }
+	/* Tape: a translucent strip with torn ends across the top edge. */
+	.print::before { content: ''; position: absolute; top: -13px; left: 50%; width: 32%; height: 24px; pointer-events: none;
+		background: oklch(0.95 0.02 85 / 0.62); -webkit-backdrop-filter: blur(1px) saturate(120%); backdrop-filter: blur(1px) saturate(120%);
+		box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.25);
+		clip-path: polygon(0 4%, 4% 18%, 1% 34%, 5% 50%, 1% 68%, 4% 84%, 0 100%, 100% 96%, 97% 80%, 100% 64%, 96% 48%, 100% 30%, 97% 14%, 100% 0); }
+	.me { top: 3%; left: 1%; width: 60%; z-index: 1; transform: rotate(-2.5deg); }
+	.me::before { transform: translateX(-50%) rotate(-3deg); }
+	.dog { bottom: 1%; right: 1%; width: 47%; z-index: 2; transform: rotate(3deg); }
+	.dog::before { transform: translateX(-50%) rotate(4deg); }
 	@media (hover: hover) and (pointer: fine) {
-		.me:hover { z-index: 3; transform: rotate(-3deg) translateY(-6px); }
-		.dog:hover { transform: rotate(2deg) translateY(-6px); }
+		.me:hover { z-index: 3; transform: rotate(-1.5deg) translateY(-4px); }
+		.dog:hover { transform: rotate(2deg) translateY(-4px); }
 	}
+	/* Captions are written on the page beside each print, counter-rotated so they read level. */
+	.print figcaption { position: absolute; display: flex; gap: 6px; font: 400 clamp(25px, 2.6vw, 30px)/1.15 var(--hand); color: oklch(from var(--foreground) l c h / 0.85); text-wrap: balance; }
+	.print svg { flex: none; width: 44px; height: auto; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.8; }
+	.me figcaption { top: 6%; left: calc(100% + 18px); width: 58%; flex-direction: column; transform: rotate(2.5deg); }
+	.dog figcaption { bottom: 8%; right: calc(100% + 8px); width: 100%; align-items: flex-end; justify-content: flex-end; gap: 2px; text-align: right; transform: rotate(-3deg); }
+	.dog svg { margin-bottom: 0.6em; }
 	.note p { color: var(--foreground); font: 400 19px/1.65 var(--serif); }
 	.signature { width: 88px; height: auto; }
 
@@ -296,7 +321,7 @@ const faqSchema = {
 		.how { min-height: auto; }
 		.how .wrap { padding-block: 64px; }
 		.wrap, .statement { padding-top: 96px; }
-		.polaroids { max-width: 440px; }
+		.prints { position: relative; top: 0; max-width: 440px; }
 		.rail { grid-template-columns: 1fr; }
 		.card, .card:nth-child(-n + 2) { grid-column: auto; min-height: 380px; }
 	}
