@@ -3,7 +3,7 @@ name: Refresh site
 # The landing page's hero shows Dominik's digest for the current day in Zurich, fetched when the site builds, so the site rebuilds every hour.
 on:
   schedule:
-    - cron: '5 * * * *'
+    - cron: '7 * * * *'
   workflow_dispatch:
 
 permissions:
