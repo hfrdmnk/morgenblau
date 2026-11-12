@@ -1,9 +1,8 @@
 name: Refresh site
 
 # The landing page's hero shows Dominik's digest for the current day in Zurich, fetched when the site builds, so the site rebuilds every hour.
+# GitHub never fired a schedule trigger on this workflow, so the Cloudflare Worker in site/refresh dispatches it hourly instead.
 on:
-  schedule:
-    - cron: '10 * * * *'
   workflow_dispatch:
 
 permissions:
