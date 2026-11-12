@@ -19,11 +19,11 @@ const steps = [
 ];
 
 const useCases = [
-	{ label: 'Newsletters', title: 'Newsletters, out of your inbox', body: 'You get a private email address. Use it to sign up to your favorite newsletters. From now on, they arrive in your curated feed, not in your inbox between bills and work mail.', art: '/images/bg-card-newsletters.webp' },
-	{ label: 'YouTube', title: 'Channels without the recommendations', body: 'Don’t miss a video from the channels you follow. And then watch them in a calm interface without any distracting sidebars or recommendations. You can even filter out Shorts.', art: '/images/bg-card-youtube.webp' },
-	{ label: 'Reading', title: 'A quiet place to read', body: 'Morgenblau’s interface is intentionally calm and simple. So the only thing that takes your attention is the content. Set in beautiful typography and, depending on your device, in light or dark mode.', art: '/images/bg-card-reading.webp' },
-	{ label: 'Library', title: 'Save the gems', body: 'If you want to keep a post for later, simply save it to your personal library. Use tags to organize and find them later.', art: '/images/bg-card-library.webp' },
-	{ label: 'Any website', title: 'Follow (almost) every site', body: 'Even if your favorite blog doesn’t have an RSS feed, Morgenblau can still let you follow it. You shouldn’t have to manually visit websites every day, just because they don’t have a feed. Morgenblau can do that for you.', art: '/images/bg-card-web.webp' },
+	{ title: 'Newsletters, out of your inbox', body: 'You get a private email address. Use it to sign up to your favorite newsletters. From now on, they arrive in your curated feed, not in your inbox between bills and work mail.', art: '/images/bg-card-newsletters.webp' },
+	{ title: 'Channels without the recommendations', body: 'Don’t miss a video from the channels you follow. And then watch them in a calm interface without any distracting sidebars or recommendations. You can even filter out Shorts.', art: '/images/bg-card-youtube.webp' },
+	{ title: 'A quiet place to read', body: 'Morgenblau’s interface is intentionally calm and simple. So the only thing that takes your attention is the content. Set in beautiful typography and, depending on your device, in light or dark mode.', art: '/images/bg-card-reading.webp' },
+	{ title: 'Save the gems', body: 'If you want to keep a post for later, simply save it to your personal library. Use tags to organize and find them later.', art: '/images/bg-card-library.webp' },
+	{ title: 'Follow (almost) every site', body: 'Even if your favorite blog doesn’t have an RSS feed, Morgenblau can still let you follow it. You shouldn’t have to manually visit websites every day, just because they don’t have a feed. Morgenblau can do that for you.', art: '/images/bg-card-web.webp' },
 ];
 
 const faq = [
@@ -109,7 +109,7 @@ const faqSchema = {
 				<ul class="rail">
 					{useCases.map((u) => (
 						<li class="card on-art" style={`--art: url(${u.art})`}>
-							<div class="card-copy"><span class="label">{u.label}</span><h3>{u.title}</h3><p>{u.body}</p></div>
+							<div class="card-copy"><h3>{u.title}</h3><p>{u.body}</p></div>
 						</li>
 					))}
 				</ul>
@@ -207,10 +207,9 @@ const faqSchema = {
 	.panel { position: relative; display: flex; flex-direction: column; margin: var(--panel-gap); border-radius: var(--panel-radius); overflow: hidden; isolation: isolate; color: oklch(0.99 0 0); background: var(--art) center / cover, var(--scrim); }
 	.panel::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; }
 
-	h1, h2, h3 { text-wrap: balance; }
 	h2 { margin: 0 0 32px; font: 500 clamp(var(--step-3), 3vw, var(--step-4))/1.15 var(--sans); letter-spacing: -0.03em; }
 	h3 { margin: 0 0 8px; font: 600 17px/1.3 var(--sans); }
-	p { margin: 0 0 1.5em; font: 400 17px/1.6 var(--sans); color: var(--muted-foreground); text-wrap: pretty; }
+	p { margin: 0 0 1.5em; font: 400 17px/1.6 var(--sans); color: var(--muted-foreground); }
 	.on-art p { color: oklch(1 0 0 / 0.82); }
 
 	/* Hero: centred mark, headline and button; the app rises out of the panel's bottom edge. */
@@ -220,33 +219,40 @@ const faqSchema = {
 	.hero-top a { display: grid; place-items: center; width: 44px; height: 44px; color: oklch(0.99 0 0); }
 	.hero-copy { display: flex; flex-direction: column; align-items: center; max-width: 760px; padding: clamp(32px, 7vh, 80px) 24px clamp(36px, 6vh, 64px); }
 	h1 { margin: 0 0 20px; font: 500 clamp(var(--step-4), 4.4vw, var(--step-6))/1.05 var(--sans); letter-spacing: -0.04em; }
-	.hero-copy p { max-width: 46ch; margin-bottom: 32px; font-size: clamp(17px, 1.6vw, var(--step-1)); color: oklch(1 0 0 / 0.9); }
+	.hero-copy p { max-width: 46ch; margin-bottom: 32px; font-size: clamp(17px, 1.6vw, var(--step-1)); line-height: 1.45; color: oklch(1 0 0 / 0.9); }
 	.app-shot { width: min(1080px, 90%); height: clamp(260px, 44vh, 520px); margin-top: auto; overflow: hidden; container-type: inline-size; border-radius: 12px 12px 0 0; background: var(--background);
 		box-shadow: 0 0 0 1px oklch(1 0 0 / 0.25), 0 2px 6px oklch(0.2 0.06 250 / 0.12), 0 24px 64px oklch(0.2 0.06 250 / 0.35); }
 
-	.statement { max-width: 900px; margin: 0 auto; padding: 140px clamp(20px, 5vw, 64px) 0; }
-	.statement p { margin: 0; font: 400 clamp(var(--step-2), 2.6vw, var(--step-3))/1.4 var(--serif); letter-spacing: -0.01em; color: var(--foreground); }
+	.statement { max-width: 900px; margin: 0 auto; padding: 220px clamp(20px, 5vw, 64px) 80px; }
+	.statement p { margin: 0; font: 400 clamp(var(--step-2), 2.8vw, var(--step-4))/1.35 var(--serif); letter-spacing: -0.01em; color: var(--foreground); }
 
 	.wrap { max-width: 1160px; margin: 0 auto; padding: 140px clamp(20px, 5vw, 64px) 0; }
-	.three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin: 0; padding: 0; list-style: none; }
+	.wrap > h2 { margin-bottom: 64px; }
+	.three { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(40px, 5vw, 72px); margin: 0; padding: 0; list-style: none; }
+	.three h3 { margin-bottom: 14px; font-size: var(--step-1); font-weight: 500; letter-spacing: -0.01em; }
 	.three p { margin: 0; }
 
 	.how { justify-content: center; min-height: calc(100svh - 2 * var(--panel-gap)); margin-top: 140px; }
 	.how::before { background: oklch(0.18 0.04 30 / 0.34); }
 	.how .wrap { width: 100%; padding-block: 80px; }
+	.steps { gap: 16px; }
+	.steps li { display: flex; flex-direction: column; min-height: clamp(300px, 44vh, 420px); }
+	.steps h3 { margin-top: auto; }
 	.glass { padding: 28px; border-radius: var(--radius-xl); background: oklch(0.18 0.03 30 / 0.22); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%); box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.18); }
-	.num { display: block; margin-bottom: 24px; font: 500 15px var(--sans); font-variant-numeric: tabular-nums; color: oklch(1 0 0 / 0.7); }
+	.num { display: block; margin-bottom: 32px; font: 500 var(--step-3)/1 var(--sans); font-variant-numeric: tabular-nums; color: oklch(1 0 0 / 0.7); }
 	.glass p { font-size: 15px; }
 
 	.rail { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin: 0; padding: 0; list-style: none; }
 	.card { display: flex; grid-column: span 2; align-items: flex-end; min-height: 440px; border-radius: var(--radius-xl); overflow: hidden; background: var(--art) center / cover; }
 	.card:nth-child(-n + 2) { grid-column: span 3; }
 	.card-copy { width: 100%; padding: 72px 24px 24px; color: oklch(0.99 0 0); background: linear-gradient(to top, oklch(0.15 0.02 260 / 0.62), oklch(0.15 0.02 260 / 0.5) 45%, oklch(0.15 0.02 260 / 0)); }
-	.label { display: block; margin-bottom: 8px; font: 500 12px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: oklch(1 0 0 / 0.75); }
 	.card-copy p { max-width: 46ch; margin: 0; font-size: 15px; line-height: 1.55; }
 
 	.two { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; }
 	.two h2 { font-size: clamp(var(--step-2), 2.2vw, var(--step-3)); margin-bottom: 20px; }
+	/* Each column spans both parent rows, so headings of different line counts end on the same line. */
+	.two > div:has(> h2) { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 0; }
+	.two > div > h2 { align-self: end; }
 	.faq details { padding: 18px 0; box-shadow: 0 1px 0 var(--line); }
 	.faq details:first-child { padding-top: 0; }
 	.faq summary { display: flex; justify-content: space-between; gap: 16px; cursor: pointer; list-style: none; font: 500 17px/1.4 var(--sans); }
@@ -312,7 +318,10 @@ const faqSchema = {
 		.three, .two, .why { grid-template-columns: 1fr; gap: 28px; }
 		.how { min-height: auto; }
 		.how .wrap { padding-block: 64px; }
-		.wrap, .statement { padding-top: 96px; }
+		.wrap { padding-top: 96px; }
+		.statement { padding-block: 128px 32px; }
+		.wrap > h2 { margin-bottom: 40px; }
+		.steps li { min-height: 260px; }
 		.prints { position: relative; top: 0; max-width: 440px; }
 		.rail { grid-template-columns: 1fr; }
 		.card, .card:nth-child(-n + 2) { grid-column: auto; min-height: 380px; }

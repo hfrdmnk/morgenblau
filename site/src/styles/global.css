@@ -41,7 +41,8 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; font-family: var(--sans); background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+body { margin: 0; font-family: var(--sans); background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; text-wrap: pretty; }
+h1, h2, h3, h4, h5, h6 { text-wrap: balance; }
 img { display: block; max-width: 100%; height: auto; }
 a { color: inherit; }
 ::selection { background: oklch(from var(--atmosphere-blue) l c h / 0.18); }
