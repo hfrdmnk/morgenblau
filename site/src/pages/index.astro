@@ -4,6 +4,7 @@ import '@fontsource-variable/newsreader/standard.css';
 import '@fontsource-variable/newsreader/standard-italic.css';
 import '@fontsource/reenie-beanie';
 import '../styles/global.css';
+import AppDigest from '../components/AppDigest.astro';
 import Logo from '../components/Logo.astro';
 import SignupForm from '../components/SignupForm.astro';
 
@@ -76,11 +77,8 @@ const faqSchema = {
 					<p>{description}</p>
 					<button type="button" class="button lg on-color" data-open-signup>Follow along</button>
 				</div>
-				<div class="app-shot">
-					<picture>
-						<source media="(max-width: 640px)" srcset="/images/app-digest-mobile.webp" width="1170" height="2532" />
-						<img src="/images/app-digest.webp" width="2560" height="1600" alt="Today’s newspaper in Morgenblau: a list of posts from blogs the reader follows, each with its source." fetchpriority="high" />
-					</picture>
+				<div class="app-shot" role="img" aria-label="Today’s newspaper in Morgenblau: a list of posts from blogs the reader follows, each with its source.">
+					<AppDigest />
 				</div>
 			</section>
 
@@ -223,9 +221,8 @@ const faqSchema = {
 	.hero-copy { display: flex; flex-direction: column; align-items: center; max-width: 760px; padding: clamp(32px, 7vh, 80px) 24px clamp(36px, 6vh, 64px); }
 	h1 { margin: 0 0 20px; font: 500 clamp(var(--step-4), 4.4vw, var(--step-6))/1.05 var(--sans); letter-spacing: -0.04em; }
 	.hero-copy p { max-width: 46ch; margin-bottom: 32px; font-size: clamp(17px, 1.6vw, var(--step-1)); color: oklch(1 0 0 / 0.9); }
-	.app-shot { width: min(1080px, 90%); height: clamp(260px, 44vh, 520px); margin-top: auto; overflow: hidden; border-radius: 12px 12px 0 0; background: var(--background);
+	.app-shot { width: min(1080px, 90%); height: clamp(260px, 44vh, 520px); margin-top: auto; overflow: hidden; container-type: inline-size; border-radius: 12px 12px 0 0; background: var(--background);
 		box-shadow: 0 0 0 1px oklch(1 0 0 / 0.25), 0 2px 6px oklch(0.2 0.06 250 / 0.12), 0 24px 64px oklch(0.2 0.06 250 / 0.35); }
-	.app-shot img { width: 100%; }
 
 	.statement { max-width: 900px; margin: 0 auto; padding: 140px clamp(20px, 5vw, 64px) 0; }
 	.statement p { margin: 0; font: 400 clamp(var(--step-2), 2.6vw, var(--step-3))/1.4 var(--serif); letter-spacing: -0.01em; color: var(--foreground); }

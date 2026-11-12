@@ -1,0 +1,203 @@
+---
+// A still copy of the app's digest page (app/frontend/src/pages/digest.tsx and its app shell), showing Dominik's digest for the Zurich day the site was built on.
+// It lays out a 1280px-wide desktop or 390px-wide phone screen in --rem units, which scale that screen to the width of its container.
+import { heroDigest, type HeroSource } from '../lib/hero-digest';
+
+const { day, avatar, primary, rest } = await heroDigest();
+const format = (options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-US', { ...options, timeZone: 'UTC' });
+const dayNumber = format({ day: '2-digit' });
+const monthName = format({ month: 'short' });
+const shortDate = format({ weekday: 'short', day: 'numeric', month: 'short' });
+const dayName = format({ weekday: 'long' });
+// Today is the latest digest, so the strip shows the three days before it and keeps the three after it empty.
+const dates = [-3, -2, -1, 0, 1, 2, 3].map((offset) => ({ offset, date: new Date(day.getTime() + offset * 86_400_000) }));
+
+function hostLabel(value: string | null): string {
+	if (!value) return '';
+	try {
+		return new URL(value).hostname.replace(/^www\./, '');
+	} catch {
+		return value.replace(/^https?:\/\//, '').split('/')[0];
+	}
+}
+
+function sourceLabel(source: HeroSource): string {
+	return source.title || hostLabel(source.siteUrl || source.feedUrl);
+}
+---
+<div class="screen" aria-hidden="true">
+	<header class="bar">
+		<span class="brand-mark"><svg viewBox="0 0 224 144" fill="currentColor"><path d="M124 63.7156C124 70.8428 132.617 74.4122 137.657 69.3724L182.711 24.3184L199.682 41.2891L156.004 84.9663C150.77 90.2004 154.878 100.034 162.28 100.02C169.352 100.007 175.552 100 176 100H224V124H144C132.954 124 124 132.954 124 144H100C100 132.954 91.0457 124 80 124H0V100H48C48.4476 100 54.6478 100.007 61.7203 100.02C69.1224 100.034 73.2302 90.2009 67.9962 84.9669L24.3184 41.2891L41.2891 24.3184L86.3431 69.3724C91.3829 74.4122 100 70.8428 100 63.7156V0H124V63.7156Z" /></svg></span>
+		<div class="dates">
+			{dates.map(({ offset, date }) => (
+				<span class:list={['date', { selected: offset === 0, 'empty-slot': offset > 0 }]}><span class="num">{dayNumber.format(date)}</span><span class="month">{monthName.format(date)}</span></span>
+			))}
+		</div>
+		<div class="day">
+			<span class="day-arrow"><svg class="back" viewBox="0 0 24 24" fill="none"><path d="M3 12H21M21 12L14 5M21 12L14 19" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" /></svg></span>
+			<span>{shortDate.format(day)}</span>
+			<span class="day-arrow disabled"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12H21M21 12L14 5M21 12L14 19" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" /></svg></span>
+		</div>
+		<div class="actions">
+			<span class="add"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5V19M5 12H19" stroke="currentColor" stroke-linecap="round" stroke-width="1.5" /></svg></span>
+			<span class="account-slot"><span class="account"><span class="avatar">{avatar && <img alt="" src={avatar} />}</span></span></span>
+		</div>
+	</header>
+	<nav class="modes">
+		<span class="mode active"><span class="artwork"><svg class="digest" viewBox="-8.68 -10 52 52"><path d="M29.914 38.75C26.183 40.82 21.889 42 17.32 42 12.75 42 8.459 40.82 4.726 38.75H29.914ZM39.841 29C38.425 31.447 36.622 33.641 34.516 35.5H0.124C-1.982 33.641-3.784 31.447-5.199 29H39.841ZM17.32-10C31.68-10 43.32 1.64 43.32 16 43.32 18.244 43.036 20.422 42.501 22.5H-7.861C-8.396 20.422-8.68 18.244-8.68 16-8.68 1.64 2.961-10 17.32-10Z" fill="currentColor" /></svg></span>Digest</span>
+		<span class="mode"><span class="artwork"><svg class="sources" viewBox="-9.811 76.475 18.504 16.025"><path d="M4.756 85.727L0.865 92.418H-9.768L-0.56 76.588 4.756 85.727ZM7.212 89.948L5.776 92.418H3.32L5.984 87.838 7.212 89.948ZM8.649 92.418H7.004L7.826 91.004 8.649 92.418Z" fill="currentColor" /></svg></span>Sources</span>
+		<span class="mode"><span class="artwork"><svg class="library" viewBox="-4.68 106 48 48"><path d="M22.784 154.25H-4.93V105.75H22.784V154.25ZM36.641 154.25H29.713V105.75H36.641V154.25ZM43.57 154.25H40.106V105.75H43.57V154.25Z" fill="currentColor" /></svg></span>Library</span>
+	</nav>
+	<main class="page">
+		<h1>{dayName.format(day)}</h1>
+		<div class="posts">
+			{primary.length > 0 && (
+				<ol class="primaries">
+					{primary.map(({ source, lead, more }) => (
+						<li class="primary">
+							<div class:list={['post', { 'with-image': lead.image }]}>
+								<span class="source">{source.favicon && <img class="icon" alt="" src={source.favicon} />}<span class="truncate">{sourceLabel(source)}</span></span>
+								<h2 class:list={{ untitled: !lead.title }}>{lead.title || 'Untitled'}</h2>
+								{lead.excerpt && <p class="excerpt">{lead.excerpt}</p>}
+								{lead.image && <span class="image"><img alt="" src={lead.image} /></span>}
+							</div>
+							{more > 0 && <div class="more-from"><span class="more">+{more} more<svg viewBox="0 0 24 24" fill="none"><path d="M5 9L12 16L19 9" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" /></svg></span></div>}
+						</li>
+					))}
+				</ol>
+			)}
+			{rest.length > 0 && (
+				<ol class="items">
+					{rest.map(({ source, lead, more }) => (
+						<li class="item">
+							<div class="post">
+								<span class="title">{lead.title || 'Untitled'}</span>
+								<span class="meta">{source.favicon && <img class="icon" alt="" src={source.favicon} />}<span class="truncate">{[sourceLabel(source), hostLabel(lead.url || source.siteUrl || source.feedUrl)].filter(Boolean).join(' · ')}</span>{more > 0 && <span class="more">+{more} more<svg viewBox="0 0 24 24" fill="none"><path d="M5 9L12 16L19 9" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" /></svg></span>}</span>
+							</div>
+						</li>
+					))}
+				</ol>
+			)}
+			{primary.length + rest.length === 0 && (
+				<div class="empty">
+					<svg viewBox="0 0 24 24" fill="none"><path d="M3.04819 12H8.44444L10.2222 14H13.7778L15.5556 12H20.9361M6.70951 5.4902L3.27942 11.2785C3.09651 11.5871 3 11.9393 3 12.2981V17C3 18.1046 3.89543 19 5 19H19C20.1046 19 21 18.1046 21 17V12.2981C21 11.9393 20.9035 11.5871 20.7206 11.2785L17.2905 5.4902C17.1104 5.18633 16.7834 5 16.4302 5H7.5698C7.21659 5 6.88958 5.18633 6.70951 5.4902Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" /></svg>
+					<p class="empty-title">A quiet day.</p>
+					<p class="empty-copy">None of your sources published anything on this day.</p>
+				</div>
+			)}
+		</div>
+	</main>
+</div>
+
+<style>
+	/* Values are the app's Tailwind classes and src/index.css rules, read at its 16px rem. */
+	.screen {
+		--rem: calc(100cqw / 80);
+		--border: oklch(0.869 0.005 56.366);
+		--muted: oklch(0.923 0.003 48.717);
+		--radius: calc(0.45 * var(--rem));
+		position: relative;
+		width: 100%;
+		height: calc(50 * var(--rem));
+		overflow: hidden;
+		text-align: left;
+		color: var(--foreground);
+		background: var(--background);
+		font: 400 var(--rem) / 1.5 var(--sans);
+		-webkit-user-select: none;
+		user-select: none;
+	}
+	svg { display: block; }
+	img { display: block; max-width: none; }
+	.truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+	.bar { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; row-gap: calc(1.5 * var(--rem)); padding: calc(2.5 * var(--rem)) calc(3.5 * var(--rem)) 0; background: var(--background); }
+	.bar::after { content: ''; position: absolute; top: 100%; inset-inline: 0; height: calc(2 * var(--rem)); background: linear-gradient(var(--background), transparent); }
+	.brand-mark { display: flex; min-height: calc(2.5 * var(--rem)); align-items: center; color: var(--subtle-foreground); }
+	.brand-mark svg { height: calc(1.5 * var(--rem)); }
+
+	.dates { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); align-items: start; gap: calc(0.875 * var(--rem)); justify-self: center; margin-top: calc(0.5625 * var(--rem)); font-weight: 450;
+		mask-image: linear-gradient(to right, transparent, #000 40%, #000 60%, transparent); }
+	.date { display: flex; width: calc(1.25 * var(--rem)); flex-direction: column; align-items: center; font-size: calc(0.8889 * var(--rem)); line-height: 1.4; color: var(--muted-foreground); }
+	.date .num { font-variant-numeric: tabular-nums; }
+	.date .month { visibility: hidden; white-space: nowrap; }
+	.date.selected { color: var(--primary); }
+	.date.selected .month { visibility: visible; }
+	.date.empty-slot { visibility: hidden; }
+	.day { display: none; }
+
+	.actions { grid-column: 3; grid-row: 1; display: flex; min-height: calc(2.5 * var(--rem)); align-items: center; justify-content: flex-end; gap: var(--rem); }
+	.add { display: grid; place-items: center; width: calc(2 * var(--rem)); height: calc(2 * var(--rem)); color: var(--subtle-foreground); }
+	.add svg { width: calc(1.25 * var(--rem)); height: calc(1.25 * var(--rem)); }
+	/* In the app, skullet's Skeleton wraps the account button in a block, so the inline-flex button sits on a line box that is taller than the button. */
+	.account-slot { display: block; }
+	.account { display: inline-flex; align-items: center; justify-content: center; width: calc(2.5 * var(--rem)); height: calc(2.5 * var(--rem)); }
+	.avatar { display: flex; width: calc(2 * var(--rem)); height: calc(2 * var(--rem)); overflow: hidden; border-radius: 999px; background: var(--muted); }
+	.avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+	.modes { position: absolute; top: 50%; left: calc(3.5 * var(--rem)); display: flex; flex-direction: column; gap: calc(0.25 * var(--rem)); transform: translateY(-50%); }
+	.mode { display: flex; min-height: calc(2 * var(--rem)); flex-direction: column; align-items: flex-start; justify-content: center; gap: calc(0.25 * var(--rem)); font-weight: 450; color: var(--muted-foreground); }
+	.mode.active { color: var(--foreground); }
+	.artwork { display: none; height: calc(1.5 * var(--rem)); align-items: center; justify-content: center; }
+	.artwork .digest { width: calc(1.375 * var(--rem)); height: calc(1.375 * var(--rem)); }
+	.mode.active .digest { color: var(--atmosphere-blue); }
+	.artwork .sources { width: calc(1.5 * var(--rem)); height: calc(1.25 * var(--rem)); translate: 0 calc(-0.0625 * var(--rem)); }
+	.artwork .library { width: calc(1.25 * var(--rem)); height: calc(1.25 * var(--rem)); }
+
+	.page { width: calc(48 * var(--rem)); margin-inline: auto; padding: calc(6 * var(--rem)) calc(2 * var(--rem)) calc(5 * var(--rem)); }
+	h1 { margin: 0 0 calc(2 * var(--rem)); font: 450 var(--rem) / 1.5 var(--sans); color: var(--muted-foreground); }
+	.posts { display: flex; flex-direction: column; gap: calc(5 * var(--rem)); }
+	.posts ol { margin: 0; padding: 0; list-style: none; }
+	.primaries { display: flex; flex-direction: column; gap: calc(3 * var(--rem)); }
+	.items { display: flex; flex-direction: column; gap: calc(2 * var(--rem)); }
+
+	.icon { width: var(--rem); height: var(--rem); flex-shrink: 0; border-radius: calc(var(--radius) * 0.6); object-fit: cover; }
+
+	.primary { display: flex; flex-direction: column; gap: calc(0.75 * var(--rem)); }
+	.primary .post { display: flex; flex-direction: column; gap: calc(0.75 * var(--rem)); margin: calc(-0.75 * var(--rem)); padding: calc(0.75 * var(--rem)); }
+	.primary .post.with-image { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto 1fr; column-gap: calc(2 * var(--rem)); }
+	.source { display: flex; min-width: 0; align-items: center; gap: calc(0.5 * var(--rem)); align-self: start; grid-area: 1 / 1; font-size: calc(0.8889 * var(--rem)); font-weight: 500; line-height: 1.4; }
+	h2 { grid-area: 2 / 1; margin: 0; font-size: calc(1.6018 * var(--rem)); font-weight: 500; line-height: 1.25; letter-spacing: -0.015em; text-wrap: balance; overflow-wrap: break-word; }
+	h2.untitled { color: var(--muted-foreground); }
+	.excerpt { display: -webkit-box; grid-area: 3 / 1; max-width: 60ch; align-self: start; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: var(--rem); line-height: 1.5; color: var(--muted-foreground); text-wrap: pretty; }
+	.image { grid-column: 2; grid-row: 2 / span 2; align-self: start; width: calc(11 * var(--rem)); aspect-ratio: 4 / 3; overflow: hidden; border-radius: var(--radius); background: var(--muted); box-shadow: 0 0 0 calc(var(--rem) / 16) oklch(from var(--foreground) l c h / 0.05); }
+	.image img { width: 100%; height: 100%; object-fit: cover; }
+	.more-from { margin-left: calc(-0.5 * var(--rem)); }
+
+	.item .post { margin: calc(-0.5 * var(--rem)) calc(-0.75 * var(--rem)); padding: calc(0.5 * var(--rem)) calc(0.75 * var(--rem)); }
+	.title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(1.125 * var(--rem)); font-weight: 500; line-height: 1.45; }
+	.meta { display: flex; min-width: 0; align-items: center; gap: calc(0.625 * var(--rem)); margin-top: calc(0.5 * var(--rem)); font-size: calc(0.8889 * var(--rem)); line-height: 1.4; color: var(--subtle-foreground); }
+
+	.more { display: inline-flex; flex-shrink: 0; align-items: center; gap: calc(0.25 * var(--rem)); margin-block: calc(-0.25 * var(--rem)); padding: calc(0.25 * var(--rem)) calc(0.5 * var(--rem)); border-radius: 999px; font-size: calc(0.8889 * var(--rem)); font-weight: 500; line-height: 1.4; font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
+	.more svg { width: calc(0.875 * var(--rem)); height: calc(0.875 * var(--rem)); flex-shrink: 0; }
+
+	.empty { display: flex; min-height: calc(13 * var(--rem)); flex-direction: column; align-items: center; justify-content: center; gap: calc(0.75 * var(--rem)); padding: calc(2.5 * var(--rem)) calc(1.5 * var(--rem)); text-align: center; }
+	.empty svg { width: calc(1.5 * var(--rem)); height: calc(1.5 * var(--rem)); color: var(--muted-foreground); }
+	.empty p { max-width: calc(24 * var(--rem)); margin: 0; }
+	.empty-title { font-weight: 500; }
+	.empty .empty-copy { margin-top: calc(0.25 * var(--rem)); font-size: calc(0.8889 * var(--rem)); line-height: 1.4; color: var(--muted-foreground); text-wrap: pretty; }
+
+	/* The site shows a phone below 640px, so the copy switches to the app's layout for a 390px-wide screen, below its sm breakpoint. */
+	@media (max-width: 640px) {
+		.screen { --rem: calc(100cqw / 24.375); height: calc(52.75 * var(--rem)); }
+		.bar { grid-template-columns: 1fr auto; padding: calc(1.5 * var(--rem)) calc(1.25 * var(--rem)) 0; }
+		.dates { display: none; }
+		.actions { grid-column: 2; }
+		.day { display: grid; grid-column: 1 / -1; grid-row: 2; grid-template-columns: calc(2.75 * var(--rem)) 1fr calc(2.75 * var(--rem)); min-height: calc(2.75 * var(--rem)); align-items: center; gap: calc(0.25 * var(--rem)); font-size: calc(0.8889 * var(--rem)); line-height: 1.4; text-align: center; }
+		.day-arrow { display: grid; place-items: center; width: calc(2.75 * var(--rem)); height: calc(2.75 * var(--rem)); color: var(--muted-foreground); }
+		.day-arrow svg { width: var(--rem); height: var(--rem); }
+		.day-arrow .back { rotate: 180deg; }
+		.day-arrow.disabled { color: var(--subtle-foreground); opacity: 0.4; }
+
+		.modes { top: auto; right: var(--rem); bottom: var(--rem); left: var(--rem); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: calc(22 * var(--rem)); margin-inline: auto; padding: calc(0.5 * var(--rem)) calc(0.25 * var(--rem)); gap: 0;
+			border: calc(var(--rem) / 16) solid color-mix(in oklab, var(--popover) 65%, transparent); border-radius: 999px; background: color-mix(in oklab, var(--background) 85%, transparent);
+			-webkit-backdrop-filter: blur(var(--rem)); backdrop-filter: blur(var(--rem)); box-shadow: 0 calc(0.25 * var(--rem)) calc(1.25 * var(--rem)) color-mix(in oklab, var(--foreground) 8%, transparent); transform: none; }
+		.mode { min-height: calc(3 * var(--rem)); align-items: center; font-size: calc(0.7901 * var(--rem)); }
+		.artwork { display: flex; }
+
+		.page { width: auto; padding: calc(2 * var(--rem)) calc(1.25 * var(--rem)) calc(8 * var(--rem)); }
+		.primary .post.with-image { display: flex; }
+		h2 { font-size: calc(1.4238 * var(--rem)); line-height: 1.35; }
+		.image { order: -1; width: 100%; margin-bottom: calc(0.25 * var(--rem)); aspect-ratio: 2 / 1; }
+	}
+</style>
