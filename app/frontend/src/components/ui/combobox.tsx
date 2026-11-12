@@ -1,8 +1,12 @@
+import { Autocomplete as AutocompletePrimitive } from '@base-ui/react/autocomplete';
 import { Combobox as ComboboxPrimitive } from '@base-ui/react/combobox';
 
 import { cn } from '@/lib/utils';
 
 const Combobox = ComboboxPrimitive.Root;
+
+// Autocomplete keeps free-form input text as the value; its other parts are the combobox parts below.
+const Autocomplete = AutocompletePrimitive.Root;
 
 const ComboboxInput = ComboboxPrimitive.Input;
 
@@ -68,4 +72,4 @@ function ComboboxItem({ className, ...props }: ComboboxPrimitive.Item.Props) {
     );
 }
 
-export { Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList };
+export { Autocomplete, Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList };

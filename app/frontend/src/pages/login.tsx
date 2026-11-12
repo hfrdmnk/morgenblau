@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { useSearch } from 'wouter/use-browser-location';
 
 import { AlertIcon } from '@/components/icons';
+import { PersonAvatar } from '@/components/person-avatar';
 import { Button } from '@/components/ui/button';
+import { Autocomplete, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { api } from '@/lib/api';
@@ -12,6 +14,8 @@ const LOGIN_ERRORS: Record<string, string> = {
     handle: 'Couldn’t start sign-in with that handle. Check the spelling and try again.',
     callback: 'Sign-in didn’t finish. Try again.',
 };
+
+const TYPEAHEAD_SEARCH = 'https://typeahead.waow.tech/xrpc/tech.waow.typeahead.searchActors';
 
 export function Login() {
     const [pending, setPending] = useState(false);
@@ -58,26 +62,67 @@ export function Login() {
 function HandleField() {
     const { error: code = '', handle = '' } = Object.fromEntries(new URLSearchParams(useSearch()));
     const error = LOGIN_ERRORS[code];
+    const [value, setValue] = useState(handle);
+    // Only typing searches, so a prefilled handle or a picked suggestion costs no request.
+    const [search, setSearch] = useState('');
+    const [open, setOpen] = useState(false);
+    const actors = useActorSuggestions(search);
+    // An open popup hides the rest of the page from assistive tech, Continue included, so it stays closed without suggestions.
+    const shown = open && actors.length > 0;
     return (
         <div className="space-y-2">
             <label htmlFor="handle" className="text-sm font-medium">
                 Handle
             </label>
-            <Input
-                id="handle"
-                name="handle"
-                type="text"
-                autoComplete="username"
-                autoCapitalize="none"
-                autoFocus={!window.matchMedia('(pointer: coarse)').matches}
-                aria-describedby={error && 'handle-error'}
-                aria-invalid={Boolean(error)}
-                defaultValue={handle}
-                inputMode="text"
-                placeholder="you.example"
-                required
-                spellCheck={false}
-            />
+            <Autocomplete
+                filter={null}
+                items={actors}
+                itemToStringValue={(actor: Actor) => actor.handle}
+                onOpenChange={setOpen}
+                onValueChange={(next, details) => {
+                    setValue(next);
+                    if (details.reason === 'input-change') setSearch(next);
+                }}
+                open={shown}
+                value={value}
+            >
+                <ComboboxInput
+                    id="handle"
+                    name="handle"
+                    type="text"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    autoFocus={!window.matchMedia('(pointer: coarse)').matches}
+                    aria-describedby={error && 'handle-error'}
+                    aria-invalid={Boolean(error)}
+                    // Base UI only reports closing while the popup is mounted, so leaving the field closes it here, before late results can open it.
+                    onBlur={() => setOpen(false)}
+                    onKeyDown={(event) => {
+                        if (event.key !== 'Escape' || shown) return;
+                        // Base UI clears the input on Escape when the popup is closed, which would wipe a typed or prefilled handle.
+                        event.preventBaseUIHandler();
+                        setOpen(false);
+                    }}
+                    inputMode="text"
+                    placeholder="you.example"
+                    render={<Input />}
+                    required
+                    spellCheck={false}
+                />
+                <ComboboxContent>
+                    <ComboboxList>
+                        {(actor: Actor) => (
+                            <ComboboxItem key={actor.did} value={actor} className="py-1.5">
+                                <PersonAvatar className="size-7" seed={actor.did} src={actor.avatar} />
+                                <span className="min-w-0">
+                                    <span className="block truncate font-medium">{actor.displayName || actor.handle}</span>
+                                    <span className="block truncate text-subtle-foreground">@{actor.handle}</span>
+                                </span>
+                            </ComboboxItem>
+                        )}
+                    </ComboboxList>
+                </ComboboxContent>
+            </Autocomplete>
             {error ? (
                 <p id="handle-error" role="alert" className="flex items-start gap-2 text-sm text-destructive">
                     <AlertIcon className="mt-0.5 size-4 shrink-0" />
@@ -86,6 +131,34 @@ function HandleField() {
             ) : null}
         </div>
     );
+}
+
+type Actor = { did: string; handle: string; displayName?: string; avatar?: string };
+
+// Typeahead allows 60 requests a minute per IP, so searches wait for a pause in typing.
+const SUGGESTION_DELAY_MS = 350;
+
+// Suggestions are optional: a failed search leaves the field working as a plain handle input.
+function useActorSuggestions(input: string) {
+    const [actors, setActors] = useState<Actor[]>([]);
+    const query = input.trim().replace(/^@/, '');
+    useEffect(() => {
+        if (!query) return;
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => {
+            const params = new URLSearchParams({ q: query, limit: '5' });
+            void api<{ actors?: Actor[] }>(`${TYPEAHEAD_SEARCH}?${params}`, { signal: controller.signal })
+                .then((result) => setActors(result.actors ?? []))
+                .catch(() => {
+                    if (!controller.signal.aborted) setActors([]);
+                });
+        }, SUGGESTION_DELAY_MS);
+        return () => {
+            window.clearTimeout(timer);
+            controller.abort();
+        };
+    }, [query]);
+    return query ? actors : [];
 }
 
 function DevelopmentLogin() {
