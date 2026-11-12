@@ -5,7 +5,7 @@ A personal daily newspaper powered by RSS and ATProto. [SPEC.md](SPEC.md) define
 | Folder | What | Stack | Hosting |
 | --- | --- | --- | --- |
 | [`app/`](app/README.md) | The product at `app.morgen.blue` | Go + React/Vite | Fly (`morgenblau`), from CI once it passes on `main` |
-| [`site/`](site/README.md) | Landing page at `morgen.blue` | Astro | Fly (`morgenblau-site`), from CI once it passes on `main` |
+| [`site/`](site/README.md) | Landing page at `morgen.blue` | Astro | Cloudflare Workers (`morgenblau-site`), from Workers Builds on pushes to `main` and hourly |
 | [`brand/`](brand/README.md) | Abstract Studio, the brand artwork generator | Vite/React | Vercel, with Root Directory `brand` |
 
 Each folder is its own project with its own `bun.lock`; run commands from inside it. Bun is the only package manager.

@@ -7,7 +7,7 @@ A calm content platform powered by RSS and ATProto — daily digests instead of 
 This is a monorepo. Each project builds and deploys on its own; nothing is shared between them yet.
 
 - [`app/`](app/AGENTS.md): the product, a Go backend and React frontend. Deploys to Fly.
-- `site/`: the Astro landing page for `morgen.blue`. Deploys to Fly.
+- `site/`: the Astro landing page for `morgen.blue`. Deploys to Cloudflare Workers.
 - `brand/`: Abstract Studio, the Vite/React tool that generates brand artwork. Deploys to Vercel.
 
 Bun owns every JavaScript install; each project keeps its own `bun.lock`.

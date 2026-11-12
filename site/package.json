@@ -21,5 +21,8 @@
     "entities": "^9.0.0",
     "fast-xml-parser": "^5.12.0",
     "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "wrangler": "^4.161.0"
   }
 }

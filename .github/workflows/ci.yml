@@ -188,8 +188,6 @@ jobs:
         include:
           - project: app
             token: FLY_API_TOKEN_APP
-          - project: site
-            token: FLY_API_TOKEN_SITE
     defaults:
       run:
         working-directory: ${{ matrix.project }}
