@@ -258,6 +258,37 @@ func TestYouTubeHandleURL_ReadsTheChannelsOwnHandle(t *testing.T) {
 	}
 }
 
+func TestYouTubeChannelGone_ReadsTheChannelPagesOwnVerdict(t *testing.T) {
+	// YouTube answers 200 for a channel that does not exist, with an error alert in place of the channel's metadata.
+	const gone = `<script>{"alerts":[{"alertRenderer":{"type":"ERROR","text":{"simpleText":"This channel does not exist."}}}]}</script>`
+	const live = `<script>{"alerts":[{"alertRenderer":{"type":"ERROR","text":{"simpleText":"Something went wrong."}}}]}{"channelMetadataRenderer":{"vanityChannelUrl":"http://www.youtube.com/@example"}}</script>`
+	for name, tc := range map[string]struct {
+		status int
+		body   string
+		want   bool
+	}{
+		"channel does not exist":        {200, gone, true},
+		"channel page with metadata":    {200, live, false},
+		"error status says nothing":     {404, gone, false},
+		"page without alert or channel": {200, `<html></html>`, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := &http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
+				if r.URL.String() != "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv" {
+					t.Fatalf("unexpected request: %s", r.URL)
+				}
+				res := resp(tc.body, "text/html")
+				res.StatusCode = tc.status
+				return res
+			})}
+			got, err := YouTubeChannelGone(context.Background(), client, "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")
+			if err != nil || got != tc.want {
+				t.Errorf("YouTubeChannelGone = %v, %v, want %v", got, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestResolve_YouTube_HandlePath_ConsentBypass(t *testing.T) {
 	// YouTube's consent-bypass page (no cookies) embeds the channel ID only in canonical/og:url/feed-link attrs, not the JS blob.
 	const channelHTML = `<html><head>
@@ -427,5 +458,20 @@ func TestResolve_NoFeedsFound_EmptyList(t *testing.T) {
 	}
 	if len(cands) != 0 {
 		t.Errorf("expected empty, got %+v", cands)
+	}
+}
+
+func TestIsYouTubeFeedURL_MatchesTheOutageCount(t *testing.T) {
+	for raw, want := range map[string]bool{
+		"https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv":   true,
+		"https://YouTube.com/feeds/videos.xml?playlist_id=UULFabcdefghijklmnopqrstuv":    true,
+		"http://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv":    false,
+		"https://www.youtube.com/feeds/videos.xml":                                       false,
+		"https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv":                       false,
+		"https://publication.example.com/www.youtube.com/feeds/videos.xml?channel_id=UC": false,
+	} {
+		if got := IsYouTubeFeedURL(raw); got != want {
+			t.Errorf("IsYouTubeFeedURL(%q) = %v, want %v", raw, got, want)
+		}
 	}
 }

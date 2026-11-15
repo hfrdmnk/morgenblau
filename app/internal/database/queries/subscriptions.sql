@@ -25,7 +25,7 @@ ON CONFLICT (feed_url) DO UPDATE SET
 -- name: GetFeed :one
 -- Column order matches the table's physical layout so sqlc reuses the Feed
 -- model instead of minting a one-off row type.
-SELECT feed_url, kind, site_url, title, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at, consecutive_failures, next_fetch_at, orphaned_at
+SELECT feed_url, kind, site_url, title, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at, consecutive_failures, next_fetch_at, orphaned_at, lone_failures, channel_gone_at
 FROM feeds WHERE feed_url = ?;
 
 -- name: GetFeedIconURL :one
@@ -39,24 +39,26 @@ SET icon_url = ?, icon_fetched_at = ?, updated_at = ?
 WHERE feed_url = ?;
 
 -- name: UpdateFeedFetchState :exec
--- SPEC <feed-sources> failure handling: success resets the backoff counter and clears the skip stamp.
+-- SPEC <feed-sources> failure handling: success resets the backoff counters and clears the skip stamp and a gone channel.
 UPDATE feeds
-SET etag = ?, last_modified = ?, last_fetched_at = ?, updated_at = ?, consecutive_failures = 0, next_fetch_at = NULL
+SET etag = ?, last_modified = ?, last_fetched_at = ?, updated_at = ?, consecutive_failures = 0, next_fetch_at = NULL,
+    lone_failures = 0, channel_gone_at = NULL
 WHERE feed_url = ?;
 
 -- name: UpdateFeedFetchFailure :exec
 -- SPEC <feed-sources> failure handling; success (UpdateFeedFetchState) resets both.
 UPDATE feeds
-SET consecutive_failures = ?, next_fetch_at = ?, updated_at = ?
+SET consecutive_failures = ?, lone_failures = ?, channel_gone_at = ?, next_fetch_at = ?, updated_at = ?
 WHERE feed_url = ?;
 
 -- name: CountYouTubeFeedFailures :one
--- YouTube's feed server fails every channel at once; the share failing together tells that outage from a dead channel. Orphans are no longer fetched, so their failures are stale.
+-- YouTube's feed server fails every channel at once; the share failing together tells that outage from a dead channel. Orphans are no longer fetched, so their failures are stale; a gone channel, or one failing since before failing_since, has outlasted any outage and is no evidence either way.
 SELECT
     COUNT(*) AS total,
     CAST(COALESCE(SUM(consecutive_failures > 0), 0) AS INTEGER) AS failing
 FROM feeds
-WHERE orphaned_at IS NULL
+WHERE orphaned_at IS NULL AND channel_gone_at IS NULL
+  AND NOT (consecutive_failures > 0 AND COALESCE(last_fetched_at, created_at) < CAST(sqlc.arg(failing_since) AS TEXT))
   AND (feed_url LIKE 'https://www.youtube.com/feeds/videos.xml?%' OR feed_url LIKE 'https://youtube.com/feeds/videos.xml?%');
 
 -- name: UpsertUserSubscription :exec
@@ -118,6 +120,8 @@ SELECT
     f.last_fetched_at,
     f.next_fetch_at,
     COALESCE(f.consecutive_failures, 0) AS consecutive_failures,
+    COALESCE(f.lone_failures, 0) AS lone_failures,
+    f.channel_gone_at,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
     COALESCE((SELECT MIN(NULLIF(published_at, '')) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_7d) AND fe.published_at < sqlc.arg(now)) AS count_7d,
@@ -152,6 +156,8 @@ SELECT
     f.last_fetched_at,
     f.next_fetch_at,
     COALESCE(f.consecutive_failures, 0) AS consecutive_failures,
+    COALESCE(f.lone_failures, 0) AS lone_failures,
+    f.channel_gone_at,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
     COALESCE((SELECT MIN(NULLIF(published_at, '')) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= sqlc.arg(cutoff_7d) AND fe.published_at < sqlc.arg(now)) AS count_7d,

@@ -107,7 +107,7 @@ func (f *fakeIndex) ListUserSourcesWithStats(_ context.Context, arg db.ListUserS
 	return out, nil
 }
 
-func (f *fakeIndex) CountYouTubeFeedFailures(context.Context) (db.CountYouTubeFeedFailuresRow, error) {
+func (f *fakeIndex) CountYouTubeFeedFailures(context.Context, string) (db.CountYouTubeFeedFailuresRow, error) {
 	return f.youtubeFeeds, nil
 }
 

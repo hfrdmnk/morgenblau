@@ -26,7 +26,9 @@ CREATE TABLE feeds (
     updated_at       TEXT NOT NULL,
     consecutive_failures INTEGER NOT NULL DEFAULT 0,
     next_fetch_at    TEXT,
-    orphaned_at      TEXT
+    orphaned_at      TEXT,
+    lone_failures    INTEGER NOT NULL DEFAULT 0,
+    channel_gone_at  TEXT
 );`
 
 func openTestDB(t *testing.T) *DB {

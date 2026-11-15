@@ -12,6 +12,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/feedfinder"
 	"morgenblau/internal/tags"
 )
 
@@ -97,7 +98,7 @@ func toPublicSource(row db.ListPublicFollowingSourcesRow) publicSource {
 		s.Kind, s.Publication = "standardfeed", row.FeedUrl
 	} else {
 		s.FeedURL = row.FeedUrl
-		if isYouTubeFeed(row.FeedUrl) {
+		if feedfinder.IsYouTubeFeedURL(row.FeedUrl) {
 			s.Kind = "youtube"
 		}
 	}
@@ -108,11 +109,6 @@ func toPublicSource(row db.ListPublicFollowingSourcesRow) publicSource {
 		}
 	}
 	return s
-}
-
-func isYouTubeFeed(feedURL string) bool {
-	u, err := url.Parse(feedURL)
-	return err == nil && (u.Host == "www.youtube.com" || u.Host == "youtube.com") && u.Path == "/feeds/videos.xml"
 }
 
 // publicOutlines links a publication through its site, since it has no feed URL; one whose site is not known yet has nothing to link.

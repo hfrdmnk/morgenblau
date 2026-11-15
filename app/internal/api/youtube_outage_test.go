@@ -114,3 +114,37 @@ func TestSubscriptionsPreview_NamesTheYouTubeOutage(t *testing.T) {
 		})
 	}
 }
+
+func TestSubscriptionGet_MutesAYouTubeChannelOnlyForFailingAlone(t *testing.T) {
+	gone := "2026-11-15T07:00:00Z"
+	for _, tc := range []struct {
+		name   string
+		row    db.GetUserSourceWithStatsRow
+		muted  bool
+		outage bool
+	}{
+		{"a long outage alone", db.GetUserSourceWithStatsRow{FeedUrl: testYouTubeFeed, ConsecutiveFailures: 60, LoneFailures: 1}, false, true},
+		{"a day of failing alone", db.GetUserSourceWithStatsRow{FeedUrl: testYouTubeFeed, ConsecutiveFailures: 60, LoneFailures: 48}, true, false},
+		{"just under a day alone", db.GetUserSourceWithStatsRow{FeedUrl: testYouTubeFeed, ConsecutiveFailures: 60, LoneFailures: 47}, false, true},
+		{"channel page says gone", db.GetUserSourceWithStatsRow{FeedUrl: testYouTubeFeed, ConsecutiveFailures: 1, LoneFailures: 1, ChannelGoneAt: &gone}, true, false},
+		{"a blog still mutes on its own failures", db.GetUserSourceWithStatsRow{FeedUrl: testBlogFeed, ConsecutiveFailures: 20}, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := newFakeSourceDetail()
+			fake.youtubeFeeds = db.CountYouTubeFeedFailuresRow{Total: 4, Failing: 4}
+			tc.row.Rkey = "1"
+			fake.rows["did:plc:alice"] = map[string]db.GetUserSourceWithStatsRow{"1": tc.row}
+			mux := http.NewServeMux()
+			mux.Handle("GET /api/subscriptions/{rkey}", SubscriptionGetHandler(fake, websource.FeedPrefixes{}))
+			rr := httptest.NewRecorder()
+			mux.ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodGet, "/api/subscriptions/1", nil), "did:plc:alice", "sid-1"))
+			var got SubscriptionWire
+			if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+				t.Fatalf("status = %d, body = %s: %v", rr.Code, rr.Body.String(), err)
+			}
+			if got.Muted != tc.muted || got.YouTubeOutage != tc.outage || got.FetchStatus != "unavailable" {
+				t.Errorf("muted = %v, outage = %v, status = %q; want muted %v, outage %v, unavailable", got.Muted, got.YouTubeOutage, got.FetchStatus, tc.muted, tc.outage)
+			}
+		})
+	}
+}

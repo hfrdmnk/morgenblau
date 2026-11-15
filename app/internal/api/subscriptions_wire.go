@@ -9,6 +9,7 @@ import (
 	"morgenblau/internal/session"
 
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/feedfinder"
 	"morgenblau/internal/lexicon"
 	"morgenblau/internal/oauth/scopes"
 	"morgenblau/internal/tags"
@@ -139,6 +140,8 @@ type subscriptionStatsFields struct {
 	CatalogTitle        *string
 	LastFetchedAt       *string
 	ConsecutiveFailures int64
+	LoneFailures        int64
+	ChannelGoneAt       *string
 	LastPublishedAt     any
 	FirstPublishedAt    any
 	Count7d             int64
@@ -161,6 +164,8 @@ func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time, youtubeD
 		CatalogTitle:        row.CatalogTitle,
 		LastFetchedAt:       row.LastFetchedAt,
 		ConsecutiveFailures: row.ConsecutiveFailures,
+		LoneFailures:        row.LoneFailures,
+		ChannelGoneAt:       row.ChannelGoneAt,
 		LastPublishedAt:     row.LastPublishedAt,
 		FirstPublishedAt:    row.FirstPublishedAt,
 		Count7d:             row.Count7d,
@@ -179,7 +184,7 @@ func withSourceHealth(wire SubscriptionWire, failures int64, nextFetchAt, webHea
 	if failures > 0 {
 		wire.FetchStatus = "unavailable"
 		wire.NextFetchAt = derefStr(nextFetchAt)
-		wire.YouTubeOutage = youtubeDown && isYouTubeFeed(wire.FeedURL)
+		wire.YouTubeOutage = youtubeDown && feedfinder.IsYouTubeFeedURL(wire.FeedURL) && !wire.Muted
 	}
 	if webHealth != nil {
 		wire.Generated = &GeneratedHealthWire{Health: *webHealth, HealthReason: derefStr(webHealthReason)}
@@ -229,7 +234,7 @@ func subscriptionStatsRowToWire(f subscriptionStatsFields, now time.Time) Subscr
 		Frequency:       frequencyBucket(firstPublished, f.Count7d, f.Count28d, f.Count56d, f.Count84d, now),
 		LastPublishedAt: lastPublished,
 		LastFetchedAt:   derefStr(f.LastFetchedAt),
-		Muted:           f.ConsecutiveFailures >= mutedAfterConsecutiveFailures,
+		Muted:           muted(f),
 		Primary:         primary,
 		Tags:            tagList,
 	}
@@ -237,6 +242,14 @@ func subscriptionStatsRowToWire(f subscriptionStatsFields, now time.Time) Subscr
 		wire.Publication = f.FeedUrl
 	}
 	return wire
+}
+
+// muted counts a YouTube feed's failures only when it failed alone, since YouTube's outages fail every channel for hours; a channel page saying the channel is gone mutes it at once.
+func muted(f subscriptionStatsFields) bool {
+	if feedfinder.IsYouTubeFeedURL(f.FeedUrl) {
+		return f.ChannelGoneAt != nil || f.LoneFailures >= feedfinder.YouTubeMutedAfterLoneFailures
+	}
+	return f.ConsecutiveFailures >= mutedAfterConsecutiveFailures
 }
 
 // frequencyBucket: cadence outranks "new" (a daily feed reads daily even if ingestion just started).

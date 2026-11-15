@@ -70,7 +70,7 @@ func SubscriptionGetHandler(reader SourceDetailReader, webFeeds websource.FeedPr
 			return
 		}
 
-		down, err := youtubeDown(r.Context(), reader)
+		down, err := youtubeDown(r.Context(), reader, now)
 		if err != nil {
 			slog.Warn("/api/subscriptions/{rkey}: youtube health failed", "err", err)
 			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
@@ -140,6 +140,8 @@ func sourceDetailRowToWire(row db.GetUserSourceWithStatsRow, now time.Time, yout
 		CatalogTitle:        row.CatalogTitle,
 		LastFetchedAt:       row.LastFetchedAt,
 		ConsecutiveFailures: row.ConsecutiveFailures,
+		LoneFailures:        row.LoneFailures,
+		ChannelGoneAt:       row.ChannelGoneAt,
 		LastPublishedAt:     row.LastPublishedAt,
 		FirstPublishedAt:    row.FirstPublishedAt,
 		Count7d:             row.Count7d,

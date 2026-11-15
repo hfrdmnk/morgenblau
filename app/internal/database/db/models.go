@@ -19,6 +19,8 @@ type Feed struct {
 	ConsecutiveFailures int64   `json:"consecutive_failures"`
 	NextFetchAt         *string `json:"next_fetch_at"`
 	OrphanedAt          *string `json:"orphaned_at"`
+	LoneFailures        int64   `json:"lone_failures"`
+	ChannelGoneAt       *string `json:"channel_gone_at"`
 }
 
 type FeedEntry struct {

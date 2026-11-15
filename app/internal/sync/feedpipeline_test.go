@@ -22,6 +22,8 @@ type fakePipelineQueries struct {
 	entries        []db.UpsertFeedEntryParams
 	iconUpdates    []db.SetFeedIconURLParams
 	failures       []db.UpdateFeedFetchFailureParams
+	youtubeFeeds   db.CountYouTubeFeedFailuresRow
+	failingSince   string
 	upsertFeedErr  error
 	upsertEntryErr error
 }
@@ -56,6 +58,11 @@ func (f *fakePipelineQueries) SetFeedIconURL(_ context.Context, arg db.SetFeedIc
 func (f *fakePipelineQueries) UpdateFeedFetchFailure(_ context.Context, arg db.UpdateFeedFetchFailureParams) error {
 	f.failures = append(f.failures, arg)
 	return nil
+}
+
+func (f *fakePipelineQueries) CountYouTubeFeedFailures(_ context.Context, failingSince string) (db.CountYouTubeFeedFailuresRow, error) {
+	f.failingSince = failingSince
+	return f.youtubeFeeds, nil
 }
 
 type fakeFaviconDiscoverer struct {
@@ -356,6 +363,67 @@ func TestFeedPipeline_FetchAndStore_LadderBeatsShortRetryAfter(t *testing.T) {
 	}
 }
 
+func TestFeedPipeline_FetchAndStore_YouTubeFailureRetriesOnTheNextSweep(t *testing.T) {
+	const (
+		feedURL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv"
+		channel = "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv"
+	)
+	now := time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC)
+	earlier := "2026-05-16T10:00:00Z"
+	nowStr := now.Format(time.RFC3339)
+	outage := db.CountYouTubeFeedFailuresRow{Total: 4, Failing: 4}
+	alone := db.CountYouTubeFeedFailuresRow{Total: 4, Failing: 1}
+	for name, tc := range map[string]struct {
+		prior      db.Feed
+		youtube    db.CountYouTubeFeedFailuresRow
+		pageGone   bool
+		wantLone   int64
+		wantGone   *string
+		wantChecks int
+		wantNext   time.Duration
+	}{
+		// Six failures would wait a day on the ladder.
+		"during an outage":                   {db.Feed{ConsecutiveFailures: 6, LoneFailures: 1}, outage, false, 1, nil, 0, 15 * time.Minute},
+		"first lone failure":                 {db.Feed{ConsecutiveFailures: 6}, alone, true, 1, nil, 0, 15 * time.Minute},
+		"second lone failure, channel there": {db.Feed{ConsecutiveFailures: 6, LoneFailures: 1}, alone, false, 2, nil, 1, 15 * time.Minute},
+		"second lone failure, channel gone":  {db.Feed{ConsecutiveFailures: 6, LoneFailures: 1}, alone, true, 2, &nowStr, 1, 24 * time.Hour},
+		"between checks":                     {db.Feed{ConsecutiveFailures: 6, LoneFailures: 2}, alone, true, 3, nil, 0, 15 * time.Minute},
+		"a day of lone failures mutes":       {db.Feed{ConsecutiveFailures: 6, LoneFailures: 47}, alone, false, 48, nil, 1, 24 * time.Hour},
+		"gone and still gone":                {db.Feed{ConsecutiveFailures: 6, LoneFailures: 3, ChannelGoneAt: &earlier}, alone, true, 4, &earlier, 1, 24 * time.Hour},
+		"gone, but the channel is back":      {db.Feed{ConsecutiveFailures: 6, LoneFailures: 3, ChannelGoneAt: &earlier}, alone, false, 4, nil, 1, 15 * time.Minute},
+		"gone, during an outage":             {db.Feed{ConsecutiveFailures: 6, LoneFailures: 3, ChannelGoneAt: &earlier}, outage, false, 3, &earlier, 0, 24 * time.Hour},
+	} {
+		t.Run(name, func(t *testing.T) {
+			q := &fakePipelineQueries{existing: tc.prior, youtubeFeeds: tc.youtube}
+			p := NewFeedPipeline(fetcher.New(fetcher.WithTransport(roundTrip(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusInternalServerError, Body: http.NoBody, Header: http.Header{}}, nil
+			}))), q).WithFaviconDiscoverer(&fakeFaviconDiscoverer{})
+			p.now = func() time.Time { return now }
+			var checked []string
+			p.youtubeGone = func(_ context.Context, page string) (bool, error) {
+				checked = append(checked, page)
+				return tc.pageGone, nil
+			}
+			if err := p.FetchAndStore(context.Background(), feedURL); err == nil {
+				t.Fatal("FetchAndStore: want error for a 500 response")
+			}
+			got := q.failures[0]
+			if got.ConsecutiveFailures != 7 || got.LoneFailures != tc.wantLone || derefTestString(got.ChannelGoneAt) != derefTestString(tc.wantGone) {
+				t.Errorf("failures = %d, lone = %d, gone = %q; want 7, %d, %q", got.ConsecutiveFailures, got.LoneFailures, derefTestString(got.ChannelGoneAt), tc.wantLone, derefTestString(tc.wantGone))
+			}
+			if want := now.Add(tc.wantNext).Format(time.RFC3339); derefTestString(got.NextFetchAt) != want {
+				t.Errorf("NextFetchAt = %q, want %s", derefTestString(got.NextFetchAt), want)
+			}
+			if len(checked) != tc.wantChecks || (tc.wantChecks > 0 && checked[0] != channel) {
+				t.Errorf("channel page checks = %v, want %d of %s", checked, tc.wantChecks, channel)
+			}
+			if q.failingSince != "2026-05-15T10:00:00Z" {
+				t.Errorf("outage count left out feeds failing since before %q, want two days back", q.failingSince)
+			}
+		})
+	}
+}
+
 func TestFeedPipeline_FetchAndStore_SkipsWhenInBackoff(t *testing.T) {
 	hits := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -522,6 +590,10 @@ func TestFeedPipeline_FetchAndStore_LooksUpNoHandleForOtherFeeds(t *testing.T) {
 		t.Errorf("SiteUrl = %q", got)
 	}
 }
+
+type roundTrip func(*http.Request) (*http.Response, error)
+
+func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func derefTestString(s *string) string {
 	if s == nil {

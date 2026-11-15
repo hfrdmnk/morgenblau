@@ -12,6 +12,7 @@ import (
 
 	"github.com/microcosm-cc/bluemonday"
 
+	"morgenblau/internal/feedfinder"
 	"morgenblau/internal/fetcher"
 	"morgenblau/internal/socialspec"
 	"morgenblau/internal/standardfeed"
@@ -68,8 +69,8 @@ func SubscriptionsPreviewHandler(feeds FeedFetcher, docs DocumentLister, youtube
 		items, err := previewItems(r.Context(), feeds, docs, feedURL, pub)
 		if err != nil {
 			slog.Warn("/api/subscriptions/preview: upstream failed", "feed", feedURL+pub, "err", err)
-			if isYouTubeFeed(feedURL) {
-				down, healthErr := youtubeDown(r.Context(), youtube)
+			if feedfinder.IsYouTubeFeedURL(feedURL) {
+				down, healthErr := youtubeDown(r.Context(), youtube, time.Now())
 				if healthErr != nil {
 					slog.Warn("/api/subscriptions/preview: youtube health failed", "err", healthErr)
 				}

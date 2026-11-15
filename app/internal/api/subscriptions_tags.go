@@ -44,7 +44,7 @@ func SubscriptionsListHandler(reader SourcesReader, webFeeds websource.FeedPrefi
 			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
-		down, err := youtubeDown(r.Context(), reader)
+		down, err := youtubeDown(r.Context(), reader, now)
 		if err != nil {
 			slog.Warn("/api/subscriptions: youtube health failed", "err", err)
 			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")

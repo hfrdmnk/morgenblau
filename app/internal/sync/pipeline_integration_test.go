@@ -35,7 +35,9 @@ CREATE TABLE feeds (
     updated_at       TEXT NOT NULL,
     consecutive_failures INTEGER NOT NULL DEFAULT 0,
     next_fetch_at    TEXT,
-    orphaned_at      TEXT
+    orphaned_at      TEXT,
+    lone_failures    INTEGER NOT NULL DEFAULT 0,
+    channel_gone_at  TEXT
 );
 CREATE TABLE feed_entries (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -321,6 +323,9 @@ func (q *failingEntryQueries) UpdateFeedFetchState(context.Context, db.UpdateFee
 }
 func (q *failingEntryQueries) UpdateFeedFetchFailure(context.Context, db.UpdateFeedFetchFailureParams) error {
 	return nil
+}
+func (q *failingEntryQueries) CountYouTubeFeedFailures(context.Context, string) (db.CountYouTubeFeedFailuresRow, error) {
+	return db.CountYouTubeFeedFailuresRow{}, nil
 }
 func (q *failingEntryQueries) UpsertFeed(context.Context, db.UpsertFeedParams) error { return nil }
 func (q *failingEntryQueries) SetFeedIconURL(context.Context, db.SetFeedIconURLParams) error {

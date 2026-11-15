@@ -30,6 +30,9 @@ const iconRefreshAfter = 30 * 24 * time.Hour
 // feedBackoff implements SPEC <feed-sources> failure handling; the 24h cap also serves as the muted feeds' once-daily retry.
 var feedBackoff = backoff.Policy{Steps: []time.Duration{5 * time.Minute, 15 * time.Minute, time.Hour, 6 * time.Hour, 24 * time.Hour}}
 
+// youtubeRetry sits well under the default 30-minute sweep, so every sweep retries even when it reaches the feed later than the last one: YouTube's feed server goes down for hours at a time, and a ladder that grows to a day can keep landing a channel in the next outage.
+const youtubeRetry = 15 * time.Minute
+
 // FaviconDiscoverer lets tests stub favicon discovery.
 type FaviconDiscoverer interface {
 	Discover(ctx context.Context, siteURL string) (string, error)
@@ -54,7 +57,9 @@ type FeedPipeline struct {
 	favicon   FaviconDiscoverer
 	// youtubeHandle reads a YouTube channel page for its @handle page.
 	youtubeHandle func(ctx context.Context, channelURL string) (string, error)
-	runTx         func(ctx context.Context, fn func(pipelineQueries) error) error
+	// youtubeGone reads a YouTube channel page for whether the channel still exists.
+	youtubeGone func(ctx context.Context, channelURL string) (bool, error)
+	runTx       func(ctx context.Context, fn func(pipelineQueries) error) error
 	// undatedHistory reports feeds whose undated items are history rather than news, so they keep no date.
 	undatedHistory func(feedURL string) bool
 }
@@ -63,6 +68,7 @@ type pipelineQueries interface {
 	GetFeed(ctx context.Context, feedURL string) (db.Feed, error)
 	UpdateFeedFetchState(ctx context.Context, arg db.UpdateFeedFetchStateParams) error
 	UpdateFeedFetchFailure(ctx context.Context, arg db.UpdateFeedFetchFailureParams) error
+	CountYouTubeFeedFailures(ctx context.Context, failingSince string) (db.CountYouTubeFeedFailuresRow, error)
 	UpsertFeed(ctx context.Context, arg db.UpsertFeedParams) error
 	UpsertFeedEntry(ctx context.Context, arg db.UpsertFeedEntryParams) error
 	SetFeedIconURL(ctx context.Context, arg db.SetFeedIconURLParams) error
@@ -79,6 +85,9 @@ func NewFeedPipeline(f *fetcher.Fetcher, q pipelineQueries) *FeedPipeline {
 	handleClient := safehttp.NewClient(10*time.Second, 5)
 	p.youtubeHandle = func(ctx context.Context, channelURL string) (string, error) {
 		return feedfinder.YouTubeHandleURL(ctx, handleClient, channelURL)
+	}
+	p.youtubeGone = func(ctx context.Context, channelURL string) (bool, error) {
+		return feedfinder.YouTubeChannelGone(ctx, handleClient, channelURL)
 	}
 	// No transaction by default so fake-based tests work; production installs a real runner via WithTxRunner.
 	p.runTx = func(ctx context.Context, fn func(pipelineQueries) error) error {
@@ -383,7 +392,28 @@ func inBackoff(f db.Feed, now time.Time) bool {
 // recordFetchFailure persists SPEC <feed-sources> backoff state; write errors are logged, never returned, so they don't mask the fetch error that triggered them.
 func (p *FeedPipeline) recordFetchFailure(ctx context.Context, feedURL string, prior db.Feed, fetchErr error) {
 	failures := prior.ConsecutiveFailures + 1
+	lone, goneAt := prior.LoneFailures, prior.ChannelGoneAt
 	delay := feedBackoff.Delay(int(failures))
+	if feedfinder.IsYouTubeFeedURL(feedURL) {
+		if p.youtubeUp(ctx) {
+			lone++
+			// Not the first lone failure: an outage's first failures read as lone before the rest are recorded. After that, once a day while muted or gone.
+			if channel := feedfinder.YouTubeChannelURL(feedURL); channel != "" && (lone == 2 || lone >= feedfinder.YouTubeMutedAfterLoneFailures || goneAt != nil) {
+				if gone, err := p.youtubeGone(ctx, channel); err != nil {
+					slog.Warn("feedpipeline: YouTube channel check failed", "channel", channel, "err", err)
+				} else if !gone {
+					goneAt = nil
+				} else if goneAt == nil {
+					at := p.now().UTC().Format(time.RFC3339)
+					goneAt = &at
+				}
+			}
+		}
+		delay = youtubeRetry
+		if goneAt != nil || lone >= feedfinder.YouTubeMutedAfterLoneFailures {
+			delay = feedBackoff.Cap()
+		}
+	}
 
 	var httpErr *fetcher.HTTPError
 	if errors.As(fetchErr, &httpErr) && httpErr.RetryAfter > 0 {
@@ -394,12 +424,24 @@ func (p *FeedPipeline) recordFetchFailure(ctx context.Context, feedURL string, p
 	nextFetchAt := p.now().UTC().Add(delay).Format(time.RFC3339)
 	if err := p.queries.UpdateFeedFetchFailure(ctx, db.UpdateFeedFetchFailureParams{
 		ConsecutiveFailures: failures,
+		LoneFailures:        lone,
+		ChannelGoneAt:       goneAt,
 		NextFetchAt:         &nextFetchAt,
 		UpdatedAt:           p.now().UTC().Format(time.RFC3339),
 		FeedUrl:             feedURL,
 	}); err != nil {
 		slog.Warn("feedpipeline: failure state update failed", "url", feedURL, "err", err)
 	}
+}
+
+// youtubeUp tells a feed failing alone from one caught in an outage; when the catalog can't say, the failure is not counted against the channel.
+func (p *FeedPipeline) youtubeUp(ctx context.Context) bool {
+	feeds, err := p.queries.CountYouTubeFeedFailures(ctx, feedfinder.YouTubeOutageCutoff(p.now()))
+	if err != nil {
+		slog.Warn("feedpipeline: YouTube feed health read failed", "err", err)
+		return false
+	}
+	return !feedfinder.YouTubeFeedsDown(feeds.Total, feeds.Failing)
 }
 
 // shouldDiscoverIcon treats a missing or unparseable icon_fetched_at as stale so partial state always re-resolves.

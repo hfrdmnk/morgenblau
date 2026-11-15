@@ -16,8 +16,8 @@ type Querier interface {
 	// Admin usage only: counts per reader, never which feeds; own generated feeds are web_feed_prefix || id or legacy_web_feed_prefix || id.
 	CountSubscriptionsByReader(ctx context.Context, arg CountSubscriptionsByReaderParams) ([]CountSubscriptionsByReaderRow, error)
 	CountWebSourceItems(ctx context.Context, sourceID string) (int64, error)
-	// YouTube's feed server fails every channel at once; the share failing together tells that outage from a dead channel. Orphans are no longer fetched, so their failures are stale.
-	CountYouTubeFeedFailures(ctx context.Context) (CountYouTubeFeedFailuresRow, error)
+	// YouTube's feed server fails every channel at once; the share failing together tells that outage from a dead channel. Orphans are no longer fetched, so their failures are stale; a gone channel, or one failing since before failing_since, has outlasted any outage and is no evidence either way.
+	CountYouTubeFeedFailures(ctx context.Context, failingSince string) (CountYouTubeFeedFailuresRow, error)
 	CreateManualNewsletterSource(ctx context.Context, arg CreateManualNewsletterSourceParams) error
 	CreateNewsletterAddress(ctx context.Context, arg CreateNewsletterAddressParams) error
 	CreateNewsletterInlineAsset(ctx context.Context, arg CreateNewsletterInlineAssetParams) error
@@ -169,7 +169,7 @@ type Querier interface {
 	UpdateFeedEntryExtractedBody(ctx context.Context, arg UpdateFeedEntryExtractedBodyParams) error
 	// SPEC <feed-sources> failure handling; success (UpdateFeedFetchState) resets both.
 	UpdateFeedFetchFailure(ctx context.Context, arg UpdateFeedFetchFailureParams) error
-	// SPEC <feed-sources> failure handling: success resets the backoff counter and clears the skip stamp.
+	// SPEC <feed-sources> failure handling: success resets the backoff counters and clears the skip stamp and a gone channel.
 	UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchStateParams) error
 	UpdateNewsletterSaveTags(ctx context.Context, arg UpdateNewsletterSaveTagsParams) (int64, error)
 	// Matches nothing when a setup replaced the source while the poll ran, so the poll's writes are dropped.

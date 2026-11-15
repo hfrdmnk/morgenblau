@@ -44,7 +44,7 @@ func (f *fakeSourceDetail) GetUserSourceWithStats(_ context.Context, arg db.GetU
 	return db.GetUserSourceWithStatsRow{}, sql.ErrNoRows
 }
 
-func (f *fakeSourceDetail) CountYouTubeFeedFailures(context.Context) (db.CountYouTubeFeedFailuresRow, error) {
+func (f *fakeSourceDetail) CountYouTubeFeedFailures(context.Context, string) (db.CountYouTubeFeedFailuresRow, error) {
 	return f.youtubeFeeds, nil
 }
 

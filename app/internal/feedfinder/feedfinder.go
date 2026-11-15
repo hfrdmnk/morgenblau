@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -436,20 +437,7 @@ var ytVanityURL = regexp.MustCompile(`"vanityChannelUrl":"https?://(?:www\.)?you
 
 // YouTubeHandleURL reads a channel page for the channel's @handle page; "" when it has none or the page is an error.
 func YouTubeHandleURL(ctx context.Context, client HTTPDoer, channelURL string) (string, error) {
-	req, err := newGET(ctx, channelURL)
-	if err != nil {
-		return "", err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, resp.Body)
-		return "", nil
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedSniffBytes))
+	body, err := youTubeChannelPage(ctx, client, channelURL)
 	if err != nil {
 		return "", err
 	}
@@ -457,6 +445,63 @@ func YouTubeHandleURL(ctx context.Context, client HTTPDoer, channelURL string) (
 		return "https://www.youtube.com/" + string(m[1]), nil
 	}
 	return "", nil
+}
+
+var (
+	ytErrorAlert      = []byte(`"alertRenderer":{"type":"ERROR"`)
+	ytChannelMetadata = []byte(`"channelMetadataRenderer"`)
+)
+
+// YouTubeChannelGone reports a channel page that says the channel does not exist: YouTube answers it with 200, an error alert and no channel metadata. An error status proves nothing.
+func YouTubeChannelGone(ctx context.Context, client HTTPDoer, channelURL string) (bool, error) {
+	body, err := youTubeChannelPage(ctx, client, channelURL)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Contains(body, ytErrorAlert) && !bytes.Contains(body, ytChannelMetadata), nil
+}
+
+// youTubeChannelPage is nil for an error status.
+func youTubeChannelPage(ctx context.Context, client HTTPDoer, channelURL string) ([]byte, error) {
+	req, err := newGET(ctx, channelURL)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil, nil
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, maxFeedSniffBytes))
+}
+
+// IsYouTubeFeedURL reports any feed from YouTube's feed server, the one an outage takes down for every channel at once. It matches what the CountYouTubeFeedFailures query counts.
+func IsYouTubeFeedURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && u.Scheme == "https" && isYouTubeHost(u.Host) && u.Path == "/feeds/videos.xml" && u.RawQuery != ""
+}
+
+const (
+	// youtubeOutageMinFailing keeps a few dead channels on a small server from reading as an outage.
+	youtubeOutageMinFailing = 3
+	// youtubeOutageLongest is longer than YouTube's feed outages last; a feed failing for longer is failing on its own.
+	youtubeOutageLongest = 48 * time.Hour
+	// YouTubeMutedAfterLoneFailures is about a day of retries on every sweep while YouTube's other feeds fetch; an outage's failures never count toward it.
+	YouTubeMutedAfterLoneFailures = 48
+)
+
+// YouTubeOutageCutoff is the CountYouTubeFeedFailures failing_since: feeds failing since before it are left out of the outage count.
+func YouTubeOutageCutoff(now time.Time) string {
+	return now.Add(-youtubeOutageLongest).UTC().Format(time.RFC3339)
+}
+
+// YouTubeFeedsDown reports an outage of YouTube's feed server, which fails every channel at once for hours: at least half of the followed YouTube feeds failing together.
+func YouTubeFeedsDown(total, failing int64) bool {
+	return failing >= youtubeOutageMinFailing && failing*2 >= total
 }
 
 // IsYouTubeHandleURL reports a channel's @handle page, the address readers know it by; neither of its feeds names it.

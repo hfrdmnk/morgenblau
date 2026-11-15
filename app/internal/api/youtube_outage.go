@@ -2,23 +2,21 @@ package api
 
 import (
 	"context"
+	"time"
 
 	"morgenblau/internal/database/db"
+	"morgenblau/internal/feedfinder"
 )
 
 // YouTubeFeedHealth is the shared feed-catalog read behind youtubeDown.
 type YouTubeFeedHealth interface {
-	CountYouTubeFeedFailures(ctx context.Context) (db.CountYouTubeFeedFailuresRow, error)
+	CountYouTubeFeedFailures(ctx context.Context, failingSince string) (db.CountYouTubeFeedFailuresRow, error)
 }
 
-// youtubeOutageMinFailing keeps a few dead channels on a small server from reading as an outage.
-const youtubeOutageMinFailing = 3
-
-// youtubeDown reports an outage of YouTube's feed server, which fails every channel at once for hours: at least half of the followed YouTube feeds failing together.
-func youtubeDown(ctx context.Context, health YouTubeFeedHealth) (bool, error) {
-	feeds, err := health.CountYouTubeFeedFailures(ctx)
+func youtubeDown(ctx context.Context, health YouTubeFeedHealth, now time.Time) (bool, error) {
+	feeds, err := health.CountYouTubeFeedFailures(ctx, feedfinder.YouTubeOutageCutoff(now))
 	if err != nil {
 		return false, err
 	}
-	return feeds.Failing >= youtubeOutageMinFailing && feeds.Failing*2 >= feeds.Total, nil
+	return feedfinder.YouTubeFeedsDown(feeds.Total, feeds.Failing), nil
 }

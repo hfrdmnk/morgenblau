@@ -63,7 +63,8 @@ SELECT
     COUNT(*) AS total,
     CAST(COALESCE(SUM(consecutive_failures > 0), 0) AS INTEGER) AS failing
 FROM feeds
-WHERE orphaned_at IS NULL
+WHERE orphaned_at IS NULL AND channel_gone_at IS NULL
+  AND NOT (consecutive_failures > 0 AND COALESCE(last_fetched_at, created_at) < CAST(?1 AS TEXT))
   AND (feed_url LIKE 'https://www.youtube.com/feeds/videos.xml?%' OR feed_url LIKE 'https://youtube.com/feeds/videos.xml?%')
 `
 
@@ -72,9 +73,9 @@ type CountYouTubeFeedFailuresRow struct {
 	Failing int64 `json:"failing"`
 }
 
-// YouTube's feed server fails every channel at once; the share failing together tells that outage from a dead channel. Orphans are no longer fetched, so their failures are stale.
-func (q *Queries) CountYouTubeFeedFailures(ctx context.Context) (CountYouTubeFeedFailuresRow, error) {
-	row := q.db.QueryRowContext(ctx, countYouTubeFeedFailures)
+// YouTube's feed server fails every channel at once; the share failing together tells that outage from a dead channel. Orphans are no longer fetched, so their failures are stale; a gone channel, or one failing since before failing_since, has outlasted any outage and is no evidence either way.
+func (q *Queries) CountYouTubeFeedFailures(ctx context.Context, failingSince string) (CountYouTubeFeedFailuresRow, error) {
+	row := q.db.QueryRowContext(ctx, countYouTubeFeedFailures, failingSince)
 	var i CountYouTubeFeedFailuresRow
 	err := row.Scan(&i.Total, &i.Failing)
 	return i, err
@@ -95,7 +96,7 @@ func (q *Queries) DeleteUserSubscription(ctx context.Context, arg DeleteUserSubs
 }
 
 const getFeed = `-- name: GetFeed :one
-SELECT feed_url, kind, site_url, title, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at, consecutive_failures, next_fetch_at, orphaned_at
+SELECT feed_url, kind, site_url, title, etag, last_modified, last_fetched_at, icon_url, icon_fetched_at, created_at, updated_at, consecutive_failures, next_fetch_at, orphaned_at, lone_failures, channel_gone_at
 FROM feeds WHERE feed_url = ?
 `
 
@@ -119,6 +120,8 @@ func (q *Queries) GetFeed(ctx context.Context, feedUrl string) (Feed, error) {
 		&i.ConsecutiveFailures,
 		&i.NextFetchAt,
 		&i.OrphanedAt,
+		&i.LoneFailures,
+		&i.ChannelGoneAt,
 	)
 	return i, err
 }
@@ -146,6 +149,8 @@ SELECT
     f.last_fetched_at,
     f.next_fetch_at,
     COALESCE(f.consecutive_failures, 0) AS consecutive_failures,
+    COALESCE(f.lone_failures, 0) AS lone_failures,
+    f.channel_gone_at,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
     COALESCE((SELECT MIN(NULLIF(published_at, '')) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?1 AND fe.published_at < ?2) AS count_7d,
@@ -198,6 +203,8 @@ type GetUserSourceWithStatsRow struct {
 	LastFetchedAt       *string     `json:"last_fetched_at"`
 	NextFetchAt         *string     `json:"next_fetch_at"`
 	ConsecutiveFailures int64       `json:"consecutive_failures"`
+	LoneFailures        int64       `json:"lone_failures"`
+	ChannelGoneAt       *string     `json:"channel_gone_at"`
 	LastPublishedAt     interface{} `json:"last_published_at"`
 	FirstPublishedAt    interface{} `json:"first_published_at"`
 	Count7d             int64       `json:"count_7d"`
@@ -244,6 +251,8 @@ func (q *Queries) GetUserSourceWithStats(ctx context.Context, arg GetUserSourceW
 		&i.LastFetchedAt,
 		&i.NextFetchAt,
 		&i.ConsecutiveFailures,
+		&i.LoneFailures,
+		&i.ChannelGoneAt,
 		&i.LastPublishedAt,
 		&i.FirstPublishedAt,
 		&i.Count7d,
@@ -326,6 +335,8 @@ SELECT
     f.last_fetched_at,
     f.next_fetch_at,
     COALESCE(f.consecutive_failures, 0) AS consecutive_failures,
+    COALESCE(f.lone_failures, 0) AS lone_failures,
+    f.channel_gone_at,
     COALESCE((SELECT MAX(published_at) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS last_published_at,
     COALESCE((SELECT MIN(NULLIF(published_at, '')) FROM feed_entries fe WHERE fe.feed_url = us.feed_url), '') AS first_published_at,
     (SELECT COUNT(*) FROM feed_entries fe WHERE fe.feed_url = us.feed_url AND fe.published_at >= ?1 AND fe.published_at < ?2) AS count_7d,
@@ -376,6 +387,8 @@ type ListUserSourcesWithStatsRow struct {
 	LastFetchedAt       *string     `json:"last_fetched_at"`
 	NextFetchAt         *string     `json:"next_fetch_at"`
 	ConsecutiveFailures int64       `json:"consecutive_failures"`
+	LoneFailures        int64       `json:"lone_failures"`
+	ChannelGoneAt       *string     `json:"channel_gone_at"`
 	LastPublishedAt     interface{} `json:"last_published_at"`
 	FirstPublishedAt    interface{} `json:"first_published_at"`
 	Count7d             int64       `json:"count_7d"`
@@ -426,6 +439,8 @@ func (q *Queries) ListUserSourcesWithStats(ctx context.Context, arg ListUserSour
 			&i.LastFetchedAt,
 			&i.NextFetchAt,
 			&i.ConsecutiveFailures,
+			&i.LoneFailures,
+			&i.ChannelGoneAt,
 			&i.LastPublishedAt,
 			&i.FirstPublishedAt,
 			&i.Count7d,
@@ -593,12 +608,14 @@ func (q *Queries) SetFeedIconURL(ctx context.Context, arg SetFeedIconURLParams) 
 
 const updateFeedFetchFailure = `-- name: UpdateFeedFetchFailure :exec
 UPDATE feeds
-SET consecutive_failures = ?, next_fetch_at = ?, updated_at = ?
+SET consecutive_failures = ?, lone_failures = ?, channel_gone_at = ?, next_fetch_at = ?, updated_at = ?
 WHERE feed_url = ?
 `
 
 type UpdateFeedFetchFailureParams struct {
 	ConsecutiveFailures int64   `json:"consecutive_failures"`
+	LoneFailures        int64   `json:"lone_failures"`
+	ChannelGoneAt       *string `json:"channel_gone_at"`
 	NextFetchAt         *string `json:"next_fetch_at"`
 	UpdatedAt           string  `json:"updated_at"`
 	FeedUrl             string  `json:"feed_url"`
@@ -608,6 +625,8 @@ type UpdateFeedFetchFailureParams struct {
 func (q *Queries) UpdateFeedFetchFailure(ctx context.Context, arg UpdateFeedFetchFailureParams) error {
 	_, err := q.db.ExecContext(ctx, updateFeedFetchFailure,
 		arg.ConsecutiveFailures,
+		arg.LoneFailures,
+		arg.ChannelGoneAt,
 		arg.NextFetchAt,
 		arg.UpdatedAt,
 		arg.FeedUrl,
@@ -617,7 +636,8 @@ func (q *Queries) UpdateFeedFetchFailure(ctx context.Context, arg UpdateFeedFetc
 
 const updateFeedFetchState = `-- name: UpdateFeedFetchState :exec
 UPDATE feeds
-SET etag = ?, last_modified = ?, last_fetched_at = ?, updated_at = ?, consecutive_failures = 0, next_fetch_at = NULL
+SET etag = ?, last_modified = ?, last_fetched_at = ?, updated_at = ?, consecutive_failures = 0, next_fetch_at = NULL,
+    lone_failures = 0, channel_gone_at = NULL
 WHERE feed_url = ?
 `
 
@@ -629,7 +649,7 @@ type UpdateFeedFetchStateParams struct {
 	FeedUrl       string  `json:"feed_url"`
 }
 
-// SPEC <feed-sources> failure handling: success resets the backoff counter and clears the skip stamp.
+// SPEC <feed-sources> failure handling: success resets the backoff counters and clears the skip stamp and a gone channel.
 func (q *Queries) UpdateFeedFetchState(ctx context.Context, arg UpdateFeedFetchStateParams) error {
 	_, err := q.db.ExecContext(ctx, updateFeedFetchState,
 		arg.Etag,
