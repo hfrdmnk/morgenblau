@@ -208,6 +208,30 @@ test('a YouTube channel added without Shorts follows its long-form feed and read
     await waitFor('In your sources');
 });
 
+test('during a YouTube outage the sheet says why there is no preview and still adds the channel', async () => {
+    const feed = 'https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv';
+    let added = '';
+    respond((url, body) => {
+        if (url.endsWith('/resolve')) return Response.json({ candidates: [{ feedUrl: feed, title: 'Example Channel' }], existingSubscriptions: [] });
+        if (url.endsWith('/profile')) return Response.json({ profile: null });
+        if (url.endsWith('/preview')) return Response.json({ code: 'youtube_down', message: 'YouTube’s feeds are down right now' }, { status: 502 });
+        if (url.endsWith('/tags')) return Response.json({ tags: [] });
+        if (url.endsWith('/api/subscriptions')) {
+            added = JSON.parse(body).feedUrl;
+            return Response.json({ rkey: 'channel-rkey' });
+        }
+        throw new Error(`unexpected ${url}`);
+    });
+    await findFeeds('https://www.youtube.com/@example');
+    await press('Example Channel');
+    await waitFor('YouTube’s feeds are down right now');
+    expect(screen().textContent).not.toContain('Recent posts couldn’t be loaded.');
+
+    await press('Add to sources');
+    expect(added).toBe(feed);
+    await waitFor('In your sources');
+});
+
 test('editing a channel followed without Shorts renames it and brings Shorts back in one change', async () => {
     const all = 'https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv';
     const longForm = 'https://www.youtube.com/feeds/videos.xml?playlist_id=UULFabcdefghijklmnopqrstuv';

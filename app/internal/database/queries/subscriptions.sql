@@ -50,6 +50,15 @@ UPDATE feeds
 SET consecutive_failures = ?, next_fetch_at = ?, updated_at = ?
 WHERE feed_url = ?;
 
+-- name: CountYouTubeFeedFailures :one
+-- YouTube's feed server fails every channel at once; the share failing together tells that outage from a dead channel. Orphans are no longer fetched, so their failures are stale.
+SELECT
+    COUNT(*) AS total,
+    CAST(COALESCE(SUM(consecutive_failures > 0), 0) AS INTEGER) AS failing
+FROM feeds
+WHERE orphaned_at IS NULL
+  AND (feed_url LIKE 'https://www.youtube.com/feeds/videos.xml?%' OR feed_url LIKE 'https://youtube.com/feeds/videos.xml?%');
+
 -- name: UpsertUserSubscription :exec
 -- Fully named params (see UpsertFeed): avoids the mixed named/positional
 -- numbering that breaks binding under modernc.org/sqlite.

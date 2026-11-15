@@ -66,7 +66,7 @@ func (s *Server) routes() *http.ServeMux {
 	}
 	mux.Handle("GET /api/subscriptions", api.SubscriptionsListHandler(s.qr, webFeeds))
 	mux.Handle("POST /api/subscriptions/resolve", api.SubscriptionsResolveHandler(s.qr, s.feedfinder, feedAliases))
-	mux.Handle("POST /api/subscriptions/preview", api.SubscriptionsPreviewHandler(s.fetcher, s.standard))
+	mux.Handle("POST /api/subscriptions/preview", api.SubscriptionsPreviewHandler(s.fetcher, s.standard, s.qr))
 	mux.Handle("POST /api/subscriptions/preview/article", api.SubscriptionsPreviewArticleHandler(s.safeClient))
 	mux.Handle("POST /api/subscriptions/profile", api.SubscriptionsProfileHandler(s.qr, func(ctx context.Context, origin string) (*socialspec.Profile, error) {
 		return socialspec.Fetch(ctx, s.safeClient, origin)

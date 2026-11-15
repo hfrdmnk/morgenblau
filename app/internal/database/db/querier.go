@@ -16,6 +16,8 @@ type Querier interface {
 	// Admin usage only: counts per reader, never which feeds; own generated feeds are web_feed_prefix || id or legacy_web_feed_prefix || id.
 	CountSubscriptionsByReader(ctx context.Context, arg CountSubscriptionsByReaderParams) ([]CountSubscriptionsByReaderRow, error)
 	CountWebSourceItems(ctx context.Context, sourceID string) (int64, error)
+	// YouTube's feed server fails every channel at once; the share failing together tells that outage from a dead channel. Orphans are no longer fetched, so their failures are stale.
+	CountYouTubeFeedFailures(ctx context.Context) (CountYouTubeFeedFailuresRow, error)
 	CreateManualNewsletterSource(ctx context.Context, arg CreateManualNewsletterSourceParams) error
 	CreateNewsletterAddress(ctx context.Context, arg CreateNewsletterAddressParams) error
 	CreateNewsletterInlineAsset(ctx context.Context, arg CreateNewsletterInlineAssetParams) error

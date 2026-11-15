@@ -48,7 +48,7 @@ function FeedList({ removedFocus }: { removedFocus: RemovedFocus }) {
                         row={(source) => (
                             <SourceRow key={source.rkey} href={sourceHref(source.rkey)} title={source.title}
                                 identity={source.siteUrl || source.feedUrl} favicon={source.faviconUrl}
-                                primary={source.primary} health={<FeedHealth labelled source={source} />}
+                                primary={source.primary} health={<FeedHealth labelled source={source} waitingChannels={waitingOnYouTube(feeds)} />}
                                 note={<GeneratedNote source={source} />}
                                 menu={<EditSourceSheet onChanged={state.refresh} removedFocus={removedFocus} source={source} />} />
                         )} />
@@ -121,6 +121,10 @@ function LetterGroups<T>({ sources, label, row }: { sources: T[]; label: (source
             ))}
         </div>
     );
+}
+
+function waitingOnYouTube(feeds: FeedSource[]) {
+    return feeds.filter((feed) => feed.youtubeOutage).length;
 }
 
 function sourceLabel(title: string | undefined, identity: string): string {

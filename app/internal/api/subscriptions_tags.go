@@ -15,6 +15,7 @@ import (
 
 // SourcesReader is the narrow read used by the list endpoint; it carries the per-feed entry stats the sources card renders.
 type SourcesReader interface {
+	YouTubeFeedHealth
 	ListUserSourcesWithStats(ctx context.Context, arg db.ListUserSourcesWithStatsParams) ([]db.ListUserSourcesWithStatsRow, error)
 }
 
@@ -43,9 +44,15 @@ func SubscriptionsListHandler(reader SourcesReader, webFeeds websource.FeedPrefi
 			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 			return
 		}
+		down, err := youtubeDown(r.Context(), reader)
+		if err != nil {
+			slog.Warn("/api/subscriptions: youtube health failed", "err", err)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
+			return
+		}
 		out := make([]SubscriptionWire, 0, len(rows))
 		for _, row := range rows {
-			out = append(out, sourceRowToWire(row, now))
+			out = append(out, sourceRowToWire(row, now, down))
 		}
 		writeJSON(w, out)
 	})

@@ -69,7 +69,7 @@ func TestSubscriptionsPreview_NewestThreeFeedItems(t *testing.T) {
 		{Title: "Newest", UpdatedParsed: day(27), Description: "<p>Only a summary</p>"},
 		{Title: "Third", PublishedParsed: day(9)},
 	}}}
-	code, got := preview(t, SubscriptionsPreviewHandler(feeds, fakeDocLister{}), `{"feedUrl":"https://blog.example.com/feed.xml"}`)
+	code, got := preview(t, SubscriptionsPreviewHandler(feeds, fakeDocLister{}, newFakeIndex()), `{"feedUrl":"https://blog.example.com/feed.xml"}`)
 	if code != http.StatusOK {
 		t.Fatalf("status = %d", code)
 	}
@@ -93,7 +93,7 @@ func TestSubscriptionsPreview_NewestThreePublicationDocuments(t *testing.T) {
 		{Title: "Mid", PublishedAt: "2026-10-01T00:00:00Z"},
 		{Title: "Older", PublishedAt: "2026-08-01T00:00:00Z"},
 	}}
-	code, got := preview(t, SubscriptionsPreviewHandler(&fakeFeedFetcher{}, docs), `{"publication":"at://did:plc:example/site.standard.publication/self"}`)
+	code, got := preview(t, SubscriptionsPreviewHandler(&fakeFeedFetcher{}, docs, newFakeIndex()), `{"publication":"at://did:plc:example/site.standard.publication/self"}`)
 	if code != http.StatusOK {
 		t.Fatalf("status = %d", code)
 	}
@@ -113,14 +113,14 @@ func TestSubscriptionsPreview_NewestThreePublicationDocuments(t *testing.T) {
 }
 
 func TestSubscriptionsPreview_EmptyFeedIsAnEmptyList(t *testing.T) {
-	code, got := preview(t, SubscriptionsPreviewHandler(&fakeFeedFetcher{feed: &gofeed.Feed{}}, fakeDocLister{}), `{"feedUrl":"https://quiet.example.com/feed.xml"}`)
+	code, got := preview(t, SubscriptionsPreviewHandler(&fakeFeedFetcher{feed: &gofeed.Feed{}}, fakeDocLister{}, newFakeIndex()), `{"feedUrl":"https://quiet.example.com/feed.xml"}`)
 	if code != http.StatusOK || got.Items == nil || len(got.Items) != 0 {
 		t.Fatalf("status = %d, items = %#v; want 200 with []", code, got.Items)
 	}
 }
 
 func TestSubscriptionsPreview_Rejects(t *testing.T) {
-	h := SubscriptionsPreviewHandler(&fakeFeedFetcher{err: errors.New("down")}, fakeDocLister{})
+	h := SubscriptionsPreviewHandler(&fakeFeedFetcher{err: errors.New("down")}, fakeDocLister{}, newFakeIndex())
 	for body, want := range map[string]int{
 		`{}`: http.StatusBadRequest,
 		`{"feedUrl":"https://a.example.com/f","publication":"at://did:plc:x/site.standard.publication/y"}`: http.StatusBadRequest,

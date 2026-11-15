@@ -58,6 +58,28 @@ func (q *Queries) CountSubscriptionsByReader(ctx context.Context, arg CountSubsc
 	return items, nil
 }
 
+const countYouTubeFeedFailures = `-- name: CountYouTubeFeedFailures :one
+SELECT
+    COUNT(*) AS total,
+    CAST(COALESCE(SUM(consecutive_failures > 0), 0) AS INTEGER) AS failing
+FROM feeds
+WHERE orphaned_at IS NULL
+  AND (feed_url LIKE 'https://www.youtube.com/feeds/videos.xml?%' OR feed_url LIKE 'https://youtube.com/feeds/videos.xml?%')
+`
+
+type CountYouTubeFeedFailuresRow struct {
+	Total   int64 `json:"total"`
+	Failing int64 `json:"failing"`
+}
+
+// YouTube's feed server fails every channel at once; the share failing together tells that outage from a dead channel. Orphans are no longer fetched, so their failures are stale.
+func (q *Queries) CountYouTubeFeedFailures(ctx context.Context) (CountYouTubeFeedFailuresRow, error) {
+	row := q.db.QueryRowContext(ctx, countYouTubeFeedFailures)
+	var i CountYouTubeFeedFailuresRow
+	err := row.Scan(&i.Total, &i.Failing)
+	return i, err
+}
+
 const deleteUserSubscription = `-- name: DeleteUserSubscription :exec
 DELETE FROM user_subscriptions WHERE did = ? AND rkey = ?
 `

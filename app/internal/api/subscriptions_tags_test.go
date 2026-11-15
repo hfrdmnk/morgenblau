@@ -130,7 +130,7 @@ func TestSourceFetchHealth_FirstFailureAndRecovery(t *testing.T) {
 		if failures == 0 {
 			row.NextFetchAt = nil
 		}
-		body, err := json.Marshal(sourceRowToWire(row, time.Now()))
+		body, err := json.Marshal(sourceRowToWire(row, time.Now(), false))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -155,7 +155,7 @@ func TestSourceFetchHealth_FirstFailureAndRecovery(t *testing.T) {
 		}
 	}
 	row.LastFetchedAt = nil
-	body, err := json.Marshal(sourceRowToWire(row, time.Now()))
+	body, err := json.Marshal(sourceRowToWire(row, time.Now(), false))
 	if err != nil {
 		t.Fatal(err)
 	}

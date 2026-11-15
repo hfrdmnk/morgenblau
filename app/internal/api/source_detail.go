@@ -24,6 +24,7 @@ type SubscriptionDetailWire struct {
 
 // SourceDetailReader is the narrow read used by SubscriptionGetHandler.
 type SourceDetailReader interface {
+	YouTubeFeedHealth
 	GetUserSourceWithStats(ctx context.Context, arg db.GetUserSourceWithStatsParams) (db.GetUserSourceWithStatsRow, error)
 }
 
@@ -69,7 +70,13 @@ func SubscriptionGetHandler(reader SourceDetailReader, webFeeds websource.FeedPr
 			return
 		}
 
-		writeJSON(w, sourceDetailRowToWire(row, now))
+		down, err := youtubeDown(r.Context(), reader)
+		if err != nil {
+			slog.Warn("/api/subscriptions/{rkey}: youtube health failed", "err", err)
+			writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
+			return
+		}
+		writeJSON(w, sourceDetailRowToWire(row, now, down))
 	})
 }
 
@@ -119,7 +126,7 @@ func SubscriptionEntriesHandler(reader SourceEntriesReader) http.Handler {
 	})
 }
 
-func sourceDetailRowToWire(row db.GetUserSourceWithStatsRow, now time.Time) SubscriptionDetailWire {
+func sourceDetailRowToWire(row db.GetUserSourceWithStatsRow, now time.Time, youtubeDown bool) SubscriptionDetailWire {
 	wire := subscriptionStatsRowToWire(subscriptionStatsFields{
 		Rkey:                row.Rkey,
 		AtUri:               row.AtUri,
@@ -140,7 +147,7 @@ func sourceDetailRowToWire(row db.GetUserSourceWithStatsRow, now time.Time) Subs
 		Count56d:            row.Count56d,
 		Count84d:            row.Count84d,
 	}, now)
-	wire = withSourceHealth(wire, row.ConsecutiveFailures, row.NextFetchAt, row.WebHealth, row.WebHealthReason)
+	wire = withSourceHealth(wire, row.ConsecutiveFailures, row.NextFetchAt, row.WebHealth, row.WebHealthReason, youtubeDown)
 	return SubscriptionDetailWire{
 		SubscriptionWire: wire,
 		TotalEntries:     row.TotalEntries,

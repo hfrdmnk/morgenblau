@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { FeedSource } from '@/hooks/use-sources';
 
-import { FeedHealth, GeneratedNote } from './feed-health';
+import { FeedHealth, GeneratedNote, SourceHealth } from './feed-health';
 
 const source: FeedSource = {
     rkey: 'example', feedUrl: 'https://publication.example.com/feed.xml', primary: false,
@@ -25,6 +25,18 @@ test('recovery removes the dot, and an unchecked feed never shows one', () => {
     expect(ready).toBe('');
     const waiting = renderToStaticMarkup(<FeedHealth source={{ ...source, fetchStatus: 'waiting', lastFetchedAt: undefined }} />);
     expect(waiting).toBe('');
+});
+
+test('a YouTube outage reads as waiting on YouTube, never as a broken feed', () => {
+    const waiting = { ...source, feedUrl: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv', youtubeOutage: true };
+    const row = renderToStaticMarkup(<FeedHealth labelled source={waiting} waitingChannels={4} />);
+    expect(row).toContain('Waiting on YouTube');
+    expect(row).toContain('bg-warning');
+    expect(row).not.toContain('bg-destructive');
+    expect(row).not.toContain('Not fetching');
+    const detail = renderToStaticMarkup(<SourceHealth source={waiting} />);
+    expect(detail).toContain('YouTube’s feeds are down right now');
+    expect(detail).not.toContain('Posts aren’t fetching');
 });
 
 test('a generated feed is marked quietly and says when it needs attention', () => {

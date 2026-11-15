@@ -68,3 +68,44 @@ func TestSourceListReadsPersistentFetchHealthAndRecovery(t *testing.T) {
 		t.Fatalf("other reader can see source health: %v, %v", rows, err)
 	}
 }
+
+func TestCountYouTubeFeedFailuresCountsLiveYouTubeFeedsOnly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "youtube.db")
+	runGoose(t, path, "up")
+	q := db.New(openMigrationDB(t, path))
+	ctx := context.Background()
+	now := "2026-11-15T08:00:00Z"
+	next := "2026-11-15T08:05:00Z"
+	feeds := []struct {
+		url    string
+		failed bool
+	}{
+		{"https://www.youtube.com/feeds/videos.xml?channel_id=UCaaaaaaaaaaaaaaaaaaaaaa", true},
+		{"https://www.youtube.com/feeds/videos.xml?playlist_id=UULFbbbbbbbbbbbbbbbbbbbbbb", true},
+		{"https://youtube.com/feeds/videos.xml?channel_id=UCcccccccccccccccccccccc", true},
+		{"https://www.youtube.com/feeds/videos.xml?channel_id=UCdddddddddddddddddddddd", false},
+		{"https://www.youtube.com/feeds/videos.xml?channel_id=UCorphanorphanorphanorph", true},
+		{"https://publication.example.com/feed.xml", true},
+		{"https://publication.example.com/www.youtube.com/feeds/videos.xml", true},
+	}
+	for _, f := range feeds {
+		if err := q.UpsertFeed(ctx, db.UpsertFeedParams{FeedUrl: f.url, CreatedAt: now, UpdatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+		if f.failed {
+			if err := q.UpdateFeedFetchFailure(ctx, db.UpdateFeedFetchFailureParams{FeedUrl: f.url, ConsecutiveFailures: 2, NextFetchAt: &next, UpdatedAt: now}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if _, err := openMigrationDB(t, path).ExecContext(ctx, `UPDATE feeds SET orphaned_at = ? WHERE feed_url LIKE '%orphan%'`, now); err != nil {
+		t.Fatal(err)
+	}
+	got, err := q.CountYouTubeFeedFailures(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Total != 4 || got.Failing != 3 {
+		t.Fatalf("got total %d failing %d, want 4 and 3: counted the orphan, a non-YouTube feed, or missed the bare host", got.Total, got.Failing)
+	}
+}

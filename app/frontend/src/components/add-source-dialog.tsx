@@ -3,6 +3,7 @@ import { Switch } from '@base-ui/react/switch';
 import { motion, useReducedMotion } from 'motion/react';
 import {
     useEffect,
+    useEffectEvent,
     useId,
     useMemo,
     useRef,
@@ -54,7 +55,7 @@ import {
     type SiteResult,
     type SourceCandidate,
 } from '@/lib/add-source';
-import { classifyMutationError, describeMutationError } from '@/lib/api';
+import { ApiError, classifyMutationError, describeMutationError } from '@/lib/api';
 import { PATHS } from '@/lib/paths';
 import { hasNewReaderContent, httpURL, readerBody } from '@/lib/reader';
 import { announceSourceAdded } from '@/lib/source-toast';
@@ -805,12 +806,13 @@ function FeedScreen({ candidate, site, known, form, name, nameTooLong, sheet }: 
     );
     const { run, errorLine } = useSheetMutation(sheet);
     const renamed = name.trim() !== sourceTitle(candidate);
+    const [youtubeDown, setYouTubeDown] = useState(false);
 
     function save(options: SourceOptions) {
         void run(async () => {
             const { rkey } = await addSource(source, { ...options, title: renamed ? name.trim() || undefined : undefined });
             sheet.record(sourceKey(candidate), rkey);
-            sheet.announce(rkey);
+            sheet.announce(rkey, youtubeDown ? 'Waiting on YouTube. Its videos arrive once YouTube is back.' : undefined);
             sheet.pop();
         }, 'The save couldn’t be confirmed.');
     }
@@ -826,7 +828,7 @@ function FeedScreen({ candidate, site, known, form, name, nameTooLong, sheet }: 
     return (
         <div className="space-y-8">
             <p className="truncate text-xs text-subtle-foreground" title={sourceLocation(source)}>{feedMeta(source)}</p>
-            <PostPreview candidate={source} disabled={sheet.saving} onOpen={(post) => sheet.push({ kind: 'post', candidate: source, post })} />
+            <PostPreview candidate={source} disabled={sheet.saving} onOpen={(post) => sheet.push({ kind: 'post', candidate: source, post })} onYouTubeDown={() => setYouTubeDown(true)} />
             {status.rkey ? (
                 <>
                     <p className="flex items-center gap-2 rounded-lg bg-background p-4 text-sm text-muted-foreground">
@@ -1179,15 +1181,24 @@ const SAMPLE_POSTS: PreviewPost[] = ['A sample post title of typical length', 'A
 ));
 
 // A save pops its feed screen when it lands, so nothing may open on top of it meanwhile.
-function PostPreview({ candidate, disabled, onOpen }: { candidate: SourceCandidate; disabled: boolean; onOpen: (post: PreviewPost) => void }) {
+function PostPreview({ candidate, disabled, onOpen, onYouTubeDown }: {
+    candidate: SourceCandidate;
+    disabled: boolean;
+    onOpen: (post: PreviewPost) => void;
+    onYouTubeDown?: () => void;
+}) {
     const label = useId();
-    const [posts, setPosts] = useState<PreviewPost[] | 'loading' | 'failed'>('loading');
+    const [posts, setPosts] = useState<PreviewPost[] | 'loading' | 'failed' | 'youtubeDown'>('loading');
+    const reportYouTubeDown = useEffectEvent(() => onYouTubeDown?.());
     useEffect(() => {
         const controller = new AbortController();
         previewSource(candidate, controller.signal).then(
             (items) => setPosts(items),
-            () => {
-                if (!controller.signal.aborted) setPosts('failed');
+            (error) => {
+                if (controller.signal.aborted) return;
+                const youtubeDown = error instanceof ApiError && error.code === 'youtube_down';
+                setPosts(youtubeDown ? 'youtubeDown' : 'failed');
+                if (youtubeDown) reportYouTubeDown();
             },
         );
         return () => controller.abort();
@@ -1195,10 +1206,16 @@ function PostPreview({ candidate, disabled, onOpen }: { candidate: SourceCandida
     return (
         <section aria-labelledby={label}>
             <h3 className="text-xs text-muted-foreground" id={label}>Latest posts</h3>
-            <div className="mt-2 min-h-27 pointer-coarse:min-h-33">
+            {/* Room for three posts while they load; an error is one line and needs none. */}
+            <div className={cn('mt-2', (posts === 'loading' || Array.isArray(posts)) && 'min-h-27 pointer-coarse:min-h-33')}>
                 <Skeleton
-                    data={posts === 'loading' || posts === 'failed' ? null : posts}
-                    error={posts === 'failed' ? <p className="pt-3 text-sm text-muted-foreground">Recent posts couldn’t be loaded.</p> : undefined}
+                    data={Array.isArray(posts) ? posts : null}
+                    error={posts === 'failed' ? <p className="pt-3 text-sm text-muted-foreground">Recent posts couldn’t be loaded.</p>
+                        : posts === 'youtubeDown' ? (
+                            <p className="pt-3 text-sm text-pretty text-muted-foreground italic">
+                                YouTube’s feeds are down right now, so videos can’t be previewed. Following the channel still works: its videos arrive once YouTube is back.
+                            </p>
+                        ) : undefined}
                     label="Loading latest posts"
                     sample={SAMPLE_POSTS}
                 >

@@ -33,6 +33,7 @@ type fakeIndex struct {
 	lastFetchedAt       map[string]*string    // feedURL → feeds.last_fetched_at for the stats join
 	consecutiveFailures map[string]int64      // feedURL → feeds.consecutive_failures for the stats join
 	webHealth           map[string][2]string  // feedURL → web_sources (health, health_reason) for own generated feeds
+	youtubeFeeds        db.CountYouTubeFeedFailuresRow
 	lastWebFeedPrefixes websource.FeedPrefixes
 }
 
@@ -104,6 +105,10 @@ func (f *fakeIndex) ListUserSourcesWithStats(_ context.Context, arg db.ListUserS
 		})
 	}
 	return out, nil
+}
+
+func (f *fakeIndex) CountYouTubeFeedFailures(context.Context) (db.CountYouTubeFeedFailuresRow, error) {
+	return f.youtubeFeeds, nil
 }
 
 func (f *fakeIndex) ListUserSubscriptionTags(_ context.Context, did string) ([]*string, error) {

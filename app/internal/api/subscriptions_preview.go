@@ -49,7 +49,8 @@ type DocumentLister interface {
 }
 
 // SubscriptionsPreviewHandler returns a candidate's newest posts before the reader follows it; nothing is stored.
-func SubscriptionsPreviewHandler(feeds FeedFetcher, docs DocumentLister) http.Handler {
+// A YouTube feed that fails during a YouTube outage answers codeYouTubeDown, since following the channel still works.
+func SubscriptionsPreviewHandler(feeds FeedFetcher, docs DocumentLister, youtube YouTubeFeedHealth) http.Handler {
 	sanitizer := bluemonday.UGCPolicy()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := requireSession(w, r); !ok {
@@ -67,6 +68,16 @@ func SubscriptionsPreviewHandler(feeds FeedFetcher, docs DocumentLister) http.Ha
 		items, err := previewItems(r.Context(), feeds, docs, feedURL, pub)
 		if err != nil {
 			slog.Warn("/api/subscriptions/preview: upstream failed", "feed", feedURL+pub, "err", err)
+			if isYouTubeFeed(feedURL) {
+				down, healthErr := youtubeDown(r.Context(), youtube)
+				if healthErr != nil {
+					slog.Warn("/api/subscriptions/preview: youtube health failed", "err", healthErr)
+				}
+				if down {
+					writeError(w, http.StatusBadGateway, codeYouTubeDown, "YouTube's feeds are down right now")
+					return
+				}
+			}
 			writeError(w, http.StatusBadGateway, codeUpstreamError, "Couldn't load recent posts")
 			return
 		}

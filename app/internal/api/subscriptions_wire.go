@@ -65,21 +65,23 @@ type SubscriptionWire struct {
 	CID   string         `json:"cid,omitempty"`
 	Value map[string]any `json:"value"`
 	// Embedded sugar for the frontend so callers don't dig into Value.
-	Rkey            string   `json:"rkey"`
-	Kind            string   `json:"kind"`
-	FeedURL         string   `json:"feedUrl"`
-	Publication     string   `json:"publication,omitempty"`
-	Title           string   `json:"title,omitempty"`
-	SiteURL         string   `json:"siteUrl,omitempty"`
-	FaviconURL      string   `json:"faviconUrl,omitempty"`
-	Frequency       string   `json:"frequency,omitempty"`
-	LastPublishedAt string   `json:"lastPublishedAt,omitempty"`
-	LastFetchedAt   string   `json:"lastFetchedAt,omitempty"`
-	FetchStatus     string   `json:"fetchStatus,omitempty"`
-	NextFetchAt     string   `json:"nextFetchAt,omitempty"`
-	Muted           bool     `json:"muted,omitempty"`
-	Primary         bool     `json:"primary"`
-	Tags            []string `json:"tags,omitempty"`
+	Rkey            string `json:"rkey"`
+	Kind            string `json:"kind"`
+	FeedURL         string `json:"feedUrl"`
+	Publication     string `json:"publication,omitempty"`
+	Title           string `json:"title,omitempty"`
+	SiteURL         string `json:"siteUrl,omitempty"`
+	FaviconURL      string `json:"faviconUrl,omitempty"`
+	Frequency       string `json:"frequency,omitempty"`
+	LastPublishedAt string `json:"lastPublishedAt,omitempty"`
+	LastFetchedAt   string `json:"lastFetchedAt,omitempty"`
+	FetchStatus     string `json:"fetchStatus,omitempty"`
+	NextFetchAt     string `json:"nextFetchAt,omitempty"`
+	// YouTubeOutage marks an unavailable YouTube feed while YouTube's feed server is down for everyone, so the reader knows nothing is wrong with the channel.
+	YouTubeOutage bool     `json:"youtubeOutage,omitempty"`
+	Muted         bool     `json:"muted,omitempty"`
+	Primary       bool     `json:"primary"`
+	Tags          []string `json:"tags,omitempty"`
 	// Generated is set only for this server's own generated feeds, at /feed/ or the legacy /web/; their health is the generator's, not the fetch's.
 	Generated *GeneratedHealthWire `json:"generated,omitempty"`
 }
@@ -145,7 +147,7 @@ type subscriptionStatsFields struct {
 	Count84d            int64
 }
 
-func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) SubscriptionWire {
+func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time, youtubeDown bool) SubscriptionWire {
 	wire := subscriptionStatsRowToWire(subscriptionStatsFields{
 		Rkey:                row.Rkey,
 		AtUri:               row.AtUri,
@@ -166,10 +168,10 @@ func sourceRowToWire(row db.ListUserSourcesWithStatsRow, now time.Time) Subscrip
 		Count56d:            row.Count56d,
 		Count84d:            row.Count84d,
 	}, now)
-	return withSourceHealth(wire, row.ConsecutiveFailures, row.NextFetchAt, row.WebHealth, row.WebHealthReason)
+	return withSourceHealth(wire, row.ConsecutiveFailures, row.NextFetchAt, row.WebHealth, row.WebHealthReason, youtubeDown)
 }
 
-func withSourceHealth(wire SubscriptionWire, failures int64, nextFetchAt, webHealth, webHealthReason *string) SubscriptionWire {
+func withSourceHealth(wire SubscriptionWire, failures int64, nextFetchAt, webHealth, webHealthReason *string, youtubeDown bool) SubscriptionWire {
 	wire.FetchStatus = "waiting"
 	if wire.LastFetchedAt != "" {
 		wire.FetchStatus = "ready"
@@ -177,6 +179,7 @@ func withSourceHealth(wire SubscriptionWire, failures int64, nextFetchAt, webHea
 	if failures > 0 {
 		wire.FetchStatus = "unavailable"
 		wire.NextFetchAt = derefStr(nextFetchAt)
+		wire.YouTubeOutage = youtubeDown && isYouTubeFeed(wire.FeedURL)
 	}
 	if webHealth != nil {
 		wire.Generated = &GeneratedHealthWire{Health: *webHealth, HealthReason: derefStr(webHealthReason)}

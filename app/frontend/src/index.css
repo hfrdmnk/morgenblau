@@ -2,6 +2,7 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist/wght-italic.css';
 @import '@fontsource-variable/newsreader/standard.css';
 @import '@fontsource-variable/newsreader/standard-italic.css';
 
@@ -63,6 +64,7 @@
     --color-subtle-foreground: var(--subtle-foreground);
     --color-border: var(--border);
     --color-input: var(--input);
+    --color-outline: var(--outline);
     --color-ring: var(--ring);
     --color-chart-1: var(--chart-1);
     --color-chart-2: var(--chart-2);
@@ -114,7 +116,8 @@
     --neutral: oklch(62.3% 0.214 259.815);
     --border: oklch(0.869 0.005 56.366);
     --input: oklch(0.955 0.002 77);
-    --ring: var(--muted-foreground);
+    --outline: oklch(from var(--foreground) l c h / 0.3);
+    --ring: var(--outline);
     --chart-1: oklch(0.869 0.005 56.366);
     --chart-2: oklch(0.553 0.013 58.071);
     --chart-3: oklch(0.444 0.011 73.639);
@@ -166,7 +169,8 @@
     --success-foreground: oklch(0.147 0.004 49.25);
     --border: oklch(0.374 0.01 67.558);
     --input: oklch(0.25 0.007 45);
-    --ring: var(--muted-foreground);
+    --outline: oklch(from var(--foreground) l c h / 0.25);
+    --ring: var(--outline);
     --sidebar: oklch(0.147 0.004 49.25);
     --sidebar-foreground: oklch(0.97 0.001 106.424);
     --sidebar-primary: oklch(0.923 0.003 48.717);
@@ -209,9 +213,17 @@
         color: var(--selection-foreground);
     }
 
+    /* --outline is the foreground at an alpha, so it takes the tone of any surface; it sits near 2:1 everywhere, deliberately below WCAG's 3:1 for focus indicators. */
     :focus-visible {
-        outline: 2px solid var(--ring);
+        outline: 1px solid var(--outline);
         outline-offset: 2px;
+    }
+
+    /* Base UI focuses the popup itself when it holds no control; the open popup already marks where focus is. */
+    [data-slot='popover-content']:focus-visible,
+    [data-slot='dialog-popup']:focus-visible,
+    [data-slot='drawer-popup']:focus-visible {
+        outline: none;
     }
 
     [data-slot='input']:focus-visible,

@@ -17,6 +17,7 @@ export type FeedSource = {
     fetchStatus: 'waiting' | 'ready' | 'unavailable';
     lastFetchedAt?: string;
     nextFetchAt?: string;
+    youtubeOutage?: boolean;
     generated?: { health: GeneratedHealth; healthReason: string };
 };
 

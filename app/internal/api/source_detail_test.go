@@ -15,11 +15,12 @@ import (
 // --- Source detail (GET /api/subscriptions/{rkey}) ---
 
 type fakeSourceDetail struct {
-	rows    map[string]map[string]db.GetUserSourceWithStatsRow // did → rkey → row
-	subRows map[string]map[string]db.UserSubscription          // did → rkey → row
-	entries map[string][]db.ListEntriesForSourceRow            // feed_url → rows
-	err     error
-	params  db.GetUserSourceWithStatsParams
+	rows         map[string]map[string]db.GetUserSourceWithStatsRow // did → rkey → row
+	subRows      map[string]map[string]db.UserSubscription          // did → rkey → row
+	entries      map[string][]db.ListEntriesForSourceRow            // feed_url → rows
+	err          error
+	params       db.GetUserSourceWithStatsParams
+	youtubeFeeds db.CountYouTubeFeedFailuresRow
 }
 
 func newFakeSourceDetail() *fakeSourceDetail {
@@ -41,6 +42,10 @@ func (f *fakeSourceDetail) GetUserSourceWithStats(_ context.Context, arg db.GetU
 		}
 	}
 	return db.GetUserSourceWithStatsRow{}, sql.ErrNoRows
+}
+
+func (f *fakeSourceDetail) CountYouTubeFeedFailures(context.Context) (db.CountYouTubeFeedFailuresRow, error) {
+	return f.youtubeFeeds, nil
 }
 
 func (f *fakeSourceDetail) GetUserSubscription(_ context.Context, arg db.GetUserSubscriptionParams) (db.UserSubscription, error) {
