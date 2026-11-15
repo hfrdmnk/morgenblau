@@ -18,6 +18,8 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
+    "@central-icons-react/round-filled-radius-2-stroke-1.5": "^1.2.41",
+    "@central-icons-react/round-outlined-radius-2-stroke-1.5": "^1.2.41",
     "boring-avatars": "2.0.4",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",

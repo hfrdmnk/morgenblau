@@ -84,12 +84,22 @@ export default defineConfig([
           paths: [
             {
               name: 'lucide-react',
-              message: 'Replace Lucide icons with local Basicons SVGs so the interface uses one consistent icon style.',
+              message: 'Use the Central icons from src/components/icons.tsx so the interface uses one consistent icon style.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['@central-icons-react/*'],
+              message: 'Import icons from src/components/icons.tsx, which owns the Central style variant.',
             },
           ],
         },
       ],
     },
+  },
+  {
+    files: ['src/components/icons.tsx'],
+    rules: { 'no-restricted-imports': 'off' },
   },
   {
     // api() itself, and tests that stub fetch beneath it.

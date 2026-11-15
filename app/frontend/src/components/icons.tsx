@@ -1,377 +1,56 @@
+import { IconSunrise as IconSunriseFilled } from '@central-icons-react/round-filled-radius-2-stroke-1.5/IconSunrise';
+import { IconSunset as IconSunsetFilled } from '@central-icons-react/round-filled-radius-2-stroke-1.5/IconSunset';
+import { IconSunrise } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconSunrise';
+import { IconSunset } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconSunset';
 import type { ComponentProps } from 'react';
 
-type IconProps = ComponentProps<'svg'>;
+import { cn } from '@/lib/utils';
 
-const iconProps = {
-    'aria-hidden': true,
-    fill: 'none',
-    focusable: false,
-    viewBox: '0 0 24 24',
-} as const;
+export { IconBooks as LibraryActiveIcon } from '@central-icons-react/round-filled-radius-2-stroke-1.5/IconBooks';
+export { IconLayersThree as SourcesActiveIcon } from '@central-icons-react/round-filled-radius-2-stroke-1.5/IconLayersThree';
+export { IconArrowCornerDownLeft as EnterIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconArrowCornerDownLeft';
+export { IconArrowDownWall as DownloadIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconArrowDownWall';
+export { IconArrowRight as ArrowRightIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconArrowRight';
+export { IconArrowUpWall as UploadIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconArrowUpWall';
+export { IconBookmark as BookmarkIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconBookmark';
+export { IconBooks as LibraryIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconBooks';
+export { IconCheckmark1 as CheckIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconCheckmark1';
+export { IconChevronDownMedium as ChevronDownIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconChevronDownMedium';
+export { IconCircleInfo as InfoIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconCircleInfo';
+export { IconCrossLarge as CloseIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconCrossLarge';
+export { IconDotGrid1x3Horizontal as MoreIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconDotGrid1x3Horizontal';
+export { IconExclamationTriangle as AlertIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconExclamationTriangle';
+export { IconLayersThree as SourcesIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLayersThree';
+export { IconInboxEmpty as InboxIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconInboxEmpty';
+export { IconLoader as LoadingIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLoader';
+export { IconPencil as PenIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconPencil';
+export { IconPlusMedium as PlusIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconPlusMedium';
+export { IconSettingsGear1 as SettingsIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconSettingsGear1';
+export { IconShield as ShieldIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconShield';
+export { IconSquareArrowTopRight as ExternalLinkIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconSquareArrowTopRight';
+export { IconSquareBehindSquare1 as CopyIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconSquareBehindSquare1';
 
-function ArrowRightIcon(props: IconProps) {
+type CentralIconProps = ComponentProps<typeof IconSunrise>;
+
+export function DigestIcon({ className, ...props }: CentralIconProps) {
     return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M3 12H21M21 12L14 5M21 12L14 19"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-        </svg>
+        <>
+            <IconSunrise className={cn(className, 'dark:hidden')} {...props} />
+            <IconSunset className={cn(className, 'hidden dark:block')} {...props} />
+        </>
     );
 }
 
-function EnterIcon(props: IconProps) {
+export function DigestActiveIcon({ className, ...props }: CentralIconProps) {
     return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M8 11L4 15M4 15L8 19M4 15H17C18.6569 15 20 13.6569 20 12V5"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-        </svg>
+        <>
+            <IconSunriseFilled className={cn(className, 'dark:hidden')} {...props} />
+            <IconSunsetFilled className={cn(className, 'hidden dark:block')} {...props} />
+        </>
     );
 }
 
-function ExternalLinkIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M17 2H22V7"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-            <path
-                d="M21 13V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V5C3 3.89543 3.89543 3 5 3H11"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-            <path
-                d="M13 11L21.5 2.5"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-        </svg>
-    );
-}
-
-function LoadingIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M16 16L19 19M18 12H22M8 8L5 5M16 8L19 5M8 16L5 19M2 12H6M12 2V6M12 18V22"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-        </svg>
-    );
-}
-
-function InboxIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M3.04819 12H8.44444L10.2222 14H13.7778L15.5556 12H20.9361M6.70951 5.4902L3.27942 11.2785C3.09651 11.5871 3 11.9393 3 12.2981V17C3 18.1046 3.89543 19 5 19H19C20.1046 19 21 18.1046 21 17V12.2981C21 11.9393 20.9035 11.5871 20.7206 11.2785L17.2905 5.4902C17.1104 5.18633 16.7834 5 16.4302 5H7.5698C7.21659 5 6.88958 5.18633 6.70951 5.4902Z"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-        </svg>
-    );
-}
-
-function AlertIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M2.20164 18.4695L10.1643 4.00506C10.9021 2.66498 13.0979 2.66498 13.8357 4.00506L21.7984 18.4695C22.4443 19.6428 21.4598 21 19.9627 21H4.0373C2.54022 21 1.55571 19.6428 2.20164 18.4695Z"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-            <path
-                d="M12 9V13"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-            <path
-                d="M12 17.0195V17"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-        </svg>
-    );
-}
-
-function InfoIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-            <path
-                d="M12 10V18"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-            <path
-                d="M12 6.01953V6"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-        </svg>
-    );
-}
-
-function BookmarkIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M5 22V3C5 2.44772 5.44772 2 6 2H18C18.5523 2 19 2.44772 19 3V22L12 15.8889L5 22Z"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-        </svg>
-    );
-}
-
-function CheckIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M3 12L9 18L21 6"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-        </svg>
-    );
-}
-
-function ChevronDownIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M5 9L12 16L19 9"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-            />
-        </svg>
-    );
-}
-
-function DigestIcon(props: IconProps) {
-    return (
-        <svg
-            aria-hidden="true"
-            focusable="false"
-            viewBox="-8.68 -10 52 52"
-            {...props}
-        >
-            <path
-                d="M29.914 38.75C26.183 40.82 21.889 42 17.32 42 12.75 42 8.459 40.82 4.726 38.75H29.914ZM39.841 29C38.425 31.447 36.622 33.641 34.516 35.5H0.124C-1.982 33.641-3.784 31.447-5.199 29H39.841ZM17.32-10C31.68-10 43.32 1.64 43.32 16 43.32 18.244 43.036 20.422 42.501 22.5H-7.861C-8.396 20.422-8.68 18.244-8.68 16-8.68 1.64 2.961-10 17.32-10Z"
-                fill="currentColor"
-            />
-        </svg>
-    );
-}
-
-function SourcesIcon(props: IconProps) {
-    return (
-        <svg
-            aria-hidden="true"
-            focusable="false"
-            viewBox="-9.811 76.475 18.504 16.025"
-            {...props}
-        >
-            <path
-                d="M4.756 85.727L0.865 92.418H-9.768L-0.56 76.588 4.756 85.727ZM7.212 89.948L5.776 92.418H3.32L5.984 87.838 7.212 89.948ZM8.649 92.418H7.004L7.826 91.004 8.649 92.418Z"
-                fill="currentColor"
-            />
-        </svg>
-    );
-}
-
-function LibraryIcon(props: IconProps) {
-    return (
-        <svg
-            aria-hidden="true"
-            focusable="false"
-            viewBox="-4.68 106 48 48"
-            {...props}
-        >
-            <path
-                d="M22.784 154.25H-4.93V105.75H22.784V154.25ZM36.641 154.25H29.713V105.75H36.641V154.25ZM43.57 154.25H40.106V105.75H43.57V154.25Z"
-                fill="currentColor"
-            />
-        </svg>
-    );
-}
-
-function SettingsIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M4.08923 6.24364L11.4377 2.26004C12.1113 1.89488 12.935 1.91558 13.5885 2.31409L20.0047 6.22711C20.6239 6.60472 21 7.26692 21 7.97938V16.0206C21 16.7331 20.6239 17.3953 20.0047 17.7729L13.5885 21.6859C12.935 22.0844 12.1113 22.1051 11.4377 21.74L4.08923 17.7564C3.41695 17.3919 3 16.7005 3 15.95V8.04996C3 7.29953 3.41695 6.60808 4.08923 6.24364Z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-            <path
-                d="M15 12.0002C15 13.657 13.6569 15.0002 12 15.0002C10.3431 15.0002 9 13.657 9 12.0002C9 10.3433 10.3431 9.00016 12 9.00016C13.6569 9.00016 15 10.3433 15 12.0002Z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </svg>
-    );
-}
-
-function ShieldIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M12 2L4 5V11C4 16 7.4 20.4 12 22C16.6 20.4 20 16 20 11V5L12 2Z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </svg>
-    );
-}
-
-function PlusIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M12 5V19M5 12H19"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeWidth="1.5"
-            />
-        </svg>
-    );
-}
-
-function CloseIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M5 5L19 19M5 19L19 5"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </svg>
-    );
-}
-
-function CopyIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M5 15H4C2.89543 15 2 14.1046 2 13V4C2 2.89543 2.89543 2 4 2H13C14.1046 2 15 2.89543 15 4V5M11 22H20C21.1046 22 22 21.1046 22 20V11C22 9.89543 21.1046 9 20 9H11C9.89543 9 9 9.89543 9 11V20C9 21.1046 9.89543 22 11 22Z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </svg>
-    );
-}
-
-function UploadIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M12 21V7M12 7L6 13M12 7L18 13M3 3H21"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </svg>
-    );
-}
-
-function DownloadIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M12 3V17M12 17L6 11M12 17L18 11M3 21H21"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </svg>
-    );
-}
-
-function MoreIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M7 12C7 12.5523 6.55228 13 6 13C5.44772 13 5 12.5523 5 12C5 11.4477 5.44772 11 6 11C6.55228 11 7 11.4477 7 12Z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-            <path
-                d="M13 12C13 12.5523 12.5523 13 12 13C11.4477 13 11 12.5523 11 12C11 11.4477 11.4477 11 12 11C12.5523 11 13 11.4477 13 12Z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-            <path
-                d="M19 12C19 12.5523 18.5523 13 18 13C17.4477 13 17 12.5523 17 12C17 11.4477 17.4477 11 18 11C18.5523 11 19 11.4477 19 12Z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </svg>
-    );
-}
-
-function MorgenblauMark(props: IconProps) {
+export function MorgenblauMark(props: ComponentProps<'svg'>) {
     return (
         <svg aria-hidden focusable={false} viewBox="0 0 224 144" {...props}>
             <path
@@ -381,43 +60,3 @@ function MorgenblauMark(props: IconProps) {
         </svg>
     );
 }
-
-function PenIcon(props: IconProps) {
-    return (
-        <svg {...iconProps} {...props}>
-            <path
-                d="M3.9933 17.0268L17.4029 3.61716C18.2258 2.79428 19.56 2.79428 20.3828 3.61716C21.2057 4.44004 21.2057 5.7742 20.3828 6.59708L6.97322 20.0067L3 21L3.9933 17.0268Z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </svg>
-    );
-}
-
-export {
-    AlertIcon,
-    ArrowRightIcon,
-    BookmarkIcon,
-    CheckIcon,
-    ChevronDownIcon,
-    CloseIcon,
-    CopyIcon,
-    DigestIcon,
-    DownloadIcon,
-    EnterIcon,
-    ExternalLinkIcon,
-    InboxIcon,
-    InfoIcon,
-    LibraryIcon,
-    LoadingIcon,
-    MoreIcon,
-    MorgenblauMark,
-    PenIcon,
-    PlusIcon,
-    SettingsIcon,
-    ShieldIcon,
-    SourcesIcon,
-    UploadIcon,
-};

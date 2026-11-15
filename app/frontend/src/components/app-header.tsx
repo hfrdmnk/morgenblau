@@ -7,9 +7,12 @@ import { AccountMenu } from '@/components/account-menu';
 import { AddSourceDialog } from '@/components/add-source-dialog';
 import {
     ArrowRightIcon,
+    DigestActiveIcon,
     DigestIcon,
+    LibraryActiveIcon,
     LibraryIcon,
     MorgenblauMark,
+    SourcesActiveIcon,
     SourcesIcon,
 } from '@/components/icons';
 import type { AppNavigationState } from '@/hooks/use-app-location';
@@ -22,18 +25,18 @@ import { cn } from '@/lib/utils';
 const artwork = {
     [PATHS.digest]: {
         Icon: DigestIcon,
+        ActiveIcon: DigestActiveIcon,
         color: 'text-atmosphere-blue',
-        tabSize: 'size-5.5',
     },
     [PATHS.sources]: {
         Icon: SourcesIcon,
+        ActiveIcon: SourcesActiveIcon,
         color: 'text-sunrise-orange',
-        tabSize: 'h-5 w-6 -translate-y-px',
     },
     [PATHS.library]: {
         Icon: LibraryIcon,
+        ActiveIcon: LibraryActiveIcon,
         color: 'text-aurora-violet',
-        tabSize: 'size-5',
     },
 };
 
@@ -99,7 +102,7 @@ export function AppHeader() {
             <nav ref={modeNavRef} aria-label="Modes" className="app-mode-nav select-none">
                 {APP_MODES.map((mode) => {
                     const active = current === mode;
-                    const { Icon, color, tabSize } = artwork[mode.href];
+                    const { Icon, ActiveIcon, color } = artwork[mode.href];
                     return (
                         <Link
                             key={mode.href}
@@ -112,7 +115,7 @@ export function AppHeader() {
                             )}
                         >
                             <span className="app-mode-artwork">
-                                <Icon className={cn(tabSize, active && color)} />
+                                {active ? <ActiveIcon className={cn('size-6', color)} /> : <Icon className="size-6" />}
                             </span>
                             {mode.label}
                         </Link>
