@@ -4,6 +4,7 @@ import { Link as RouterLink } from 'wouter';
 
 import { IconCrossfade } from '@/components/icon-crossfade';
 import { CheckIcon, CopyIcon } from '@/components/icons';
+import { PdsLink } from '@/components/public-data-hint';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 import { useAppProfile } from '@/hooks/use-app-profile';
@@ -70,10 +71,10 @@ export function NewsletterAddress({
                 settings={settings}
                 onNavigate={onNavigate}
             />
-            <p className="mt-3 text-xs text-muted-foreground">
-                {settings &&
-                    'This address is generated for you and is never published on your PDS. '}
-                Newsletters appear after their first email arrives.
+            <p className="mt-3 text-xs text-pretty text-subtle-foreground">
+                {settings && 'This address is generated for you. '}
+                Newsletters are always private and not saved to your <PdsLink />.
+                They appear after their first email arrives.
             </p>
         </section>
     );

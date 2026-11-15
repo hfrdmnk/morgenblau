@@ -3,6 +3,7 @@ import { useRef } from 'react';
 import { Link } from 'wouter';
 
 import { UploadIcon } from '@/components/icons';
+import { PublicDataHint } from '@/components/public-data-hint';
 import {
     Accordion,
     AccordionContent,
@@ -362,6 +363,7 @@ function ImportConfirmation({
                     </AccordionItem>
                 </Accordion>
             )}
+            <PublicDataHint className="mt-4" />
             <div className="mt-6 flex justify-end gap-2">
                 <Dialog.Close render={<Button variant="ghost" />}>
                     Cancel

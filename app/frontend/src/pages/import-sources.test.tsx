@@ -12,6 +12,7 @@ const { createRoot } = await import('react-dom/client');
 const { Router } = await import('wouter');
 const { memoryLocation } = await import('wouter/memory-location');
 const { ImportSources } = await import('./import-sources');
+const { AppProfileContext } = await import('@/lib/app-profile-context');
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const realFetch = globalThis.fetch;
@@ -69,7 +70,11 @@ async function importReceipt(sources: ImportSource[], feeds: FeedSource[], faile
     document.body.append(container);
     const root = createRoot(container);
     cleanup = () => { root.unmount(); container.remove(); };
-    await act(async () => root.render(<Router hook={location.hook}><ImportSources /></Router>));
+    await act(async () => root.render(
+        <AppProfileContext.Provider value={{ kind: 'loading' }}>
+            <Router hook={location.hook}><ImportSources /></Router>
+        </AppProfileContext.Provider>,
+    ));
     await click('Import from Skyreader');
     await click('Import sources');
     expect(document.querySelector('[role="dialog"]')).not.toBeNull();

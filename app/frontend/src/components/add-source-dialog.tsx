@@ -21,6 +21,7 @@ import { GenerateFeed, GenerateOffer } from '@/components/generate-feed';
 import { CheckIcon, ChevronDownIcon, CloseIcon, EnterIcon, ExternalLinkIcon, LoadingIcon, MoreIcon, PenIcon, PlusIcon } from '@/components/icons';
 import { NewsletterAddress } from '@/components/newsletter-address';
 import { PersonAvatar } from '@/components/person-avatar';
+import { PublicDataHint } from '@/components/public-data-hint';
 import { DeleteNewsletterDialog, RemoveDialog } from '@/components/source-removal';
 import { TagChips, TagInput } from '@/components/tag-input';
 import { Button } from '@/components/ui/button';
@@ -840,7 +841,7 @@ function FeedScreen({ candidate, site, known, form, name, nameTooLong, sheet }: 
             ) : status.note ? (
                 <p className="rounded-lg bg-background p-4 text-sm text-muted-foreground">{status.note}</p>
             ) : (
-                <SourceForm action="Add to sources" busyLabel="Adding source" errorLine={errorLine} id={form} nameTooLong={nameTooLong} onSave={save} saving={sheet.saving}>
+                <SourceForm action="Add to sources" busyLabel="Adding source" errorLine={errorLine} id={form} nameTooLong={nameTooLong} onSave={save} saving={sheet.saving} secondary={<PublicDataHint className="pt-1 text-center text-balance" />}>
                     <ShortsSwitch choice={shorts} disabled={sheet.saving} />
                 </SourceForm>
             )}
@@ -878,6 +879,7 @@ function GeneratedScreen({ screen, form, name, nameTooLong, sheet }: {
                     nameTooLong={nameTooLong}
                     onSave={(options) => save(generatedCandidate(source), options)}
                     saving={sheet.saving}
+                    secondary={<PublicDataHint className="pt-1 text-center text-balance" />}
                 />
             )}
             instant={sheet.instant}
