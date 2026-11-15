@@ -9,6 +9,10 @@
     font-family: var(--font-serif);
 }
 
+.reader-body[data-font='mono'] {
+    font-family: var(--font-duo);
+}
+
 .reader-body :where(p, ul, ol, blockquote, pre, figure, table, dl) {
     margin-block: 1.4em;
 }
@@ -86,6 +90,7 @@
 }
 
 .reader-transcript[data-font='serif'] { font-family: var(--font-serif); }
+.reader-transcript[data-font='mono'] { font-family: var(--font-duo); }
 
 .reader-transcript li {
     display: grid;

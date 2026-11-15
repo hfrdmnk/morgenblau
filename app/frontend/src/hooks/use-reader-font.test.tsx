@@ -14,7 +14,7 @@ function FontChoice() {
     return <><button onClick={() => setFont(font === 'sans' ? 'serif' : 'sans')}>{font}</button>{error ? <p role="alert">{error}</p> : null}</>;
 }
 
-test('reader font defaults to sans, persists both choices, and rejects unknown stored values', async () => {
+test('reader font defaults to sans, persists choices, and rejects unknown stored values', async () => {
     localStorage.clear();
     const container = document.createElement('div');
     document.body.append(container);
@@ -31,6 +31,11 @@ test('reader font defaults to sans, persists both choices, and rejects unknown s
         expect(container.textContent).toBe('serif');
         await act(async () => container.querySelector('button')!.click());
         expect(localStorage.getItem('morgenblau-reader-font')).toBe('sans');
+        act(() => root.unmount());
+        localStorage.setItem('morgenblau-reader-font', 'mono');
+        root = createRoot(container);
+        await act(async () => root.render(<FontChoice />));
+        expect(container.textContent).toBe('mono');
         act(() => root.unmount());
         localStorage.setItem('morgenblau-reader-font', 'unknown');
         root = createRoot(container);

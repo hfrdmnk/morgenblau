@@ -10,7 +10,7 @@ import { CheckIcon, ChevronDownIcon, EnterIcon, LoadingIcon, PlusIcon } from '@/
 import { SourceIcon } from '@/components/item-list';
 import { DialogBackdrop, DialogPopup } from '@/components/ui/dialog';
 import { usePublicFollowing } from '@/hooks/use-public-following';
-import { useReaderFont } from '@/hooks/use-reader-font';
+import { parseReaderFont, readerFontLabels, readerFonts, useReaderFont } from '@/hooks/use-reader-font';
 import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-sources';
 import { subscriptionChanges } from '@/lib/add-source';
 import { api, describeMutationError } from '@/lib/api';
@@ -660,15 +660,15 @@ function useGlobalCommands(onAddSource: (url: string) => void): Command[] {
             id: 'reader-font',
             group: ACTIONS,
             label: 'Reader font',
-            detail: font === 'serif' ? 'Serif' : 'Sans',
-            keywords: ['typeface', 'serif', 'sans'],
+            detail: readerFontLabels[font],
+            keywords: ['typeface', 'serif', 'sans', 'mono'],
             step: {
                 kind: 'choice',
                 title: 'Reader font',
                 placeholder: 'Choose a font',
                 current: font,
-                options: [{ value: 'sans', label: 'Sans' }, { value: 'serif', label: 'Serif' }],
-                submit: (value) => setFont(value === 'serif' ? 'serif' : 'sans'),
+                options: readerFonts.map((value) => ({ value, label: readerFontLabels[value] })),
+                submit: (value) => setFont(parseReaderFont(value)),
             },
         },
         {
