@@ -2,6 +2,10 @@
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
   // Runtime dependencies for shadcn-generated components are intentional before the first component is added.
   "ignoreDependencies": ["react-grab", "@base-ui/react", "class-variance-authority", "lucide-react", "shadcn"],
+  "duplicates": {
+    // CSS declares one @font-face per font subset, so blocks sharing family, style and weight can't be deduplicated.
+    "ignore": ["src/assets/fonts/fonts.css"]
+  },
   "overrides": [
     {
       // shadcn base-nova components ship their full API surface; unwired subcomponents are intentional
