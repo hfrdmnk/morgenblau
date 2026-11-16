@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Skeleton } from 'skullet/react';
 import { Link, useLocation, useParams } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
@@ -9,6 +8,7 @@ import { ReaderNotice } from '@/components/reader-notice';
 import { ReaderRail } from '@/components/reader-rail';
 import { ReaderYouTube } from '@/components/reader-youtube';
 import { SaveFiling } from '@/components/save-filing';
+import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useCommands } from '@/hooks/use-commands';
@@ -101,7 +101,7 @@ function EntryLoader({ slug, navigation }: { slug: string; navigation: Command[]
         />
     ) : undefined;
     return (
-        <Skeleton data={state.status === 'loaded' ? state : null} error={error} id="entry" label="Loading entry" sample={SAMPLE_ENTRY}>
+        <Skeleton data={state.status === 'loaded' ? state : null} error={error} label="Loading entry" sample={SAMPLE_ENTRY}>
             {(loaded) => <Reader initialEntry={loaded.entry} initiallyExtracted={loaded.extracted} extractionFailed={loaded.extractionFailed} live={loaded !== SAMPLE_ENTRY} navigation={navigation} />}
         </Skeleton>
     );

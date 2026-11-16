@@ -40,7 +40,7 @@ const pulseClass = String.raw`/\banimate-pulse\b/`
 const skeletonRules = [
   {
     selector: `:matches(Literal[value=${pulseClass}], TemplateElement[value.raw=${pulseClass}])`,
-    message: 'Wrap the content in skullet’s Skeleton instead: a hand-drawn placeholder drifts from the real layout and shifts the page when data arrives.',
+    message: 'Wrap the content in Skeleton from @/components/skeleton instead: a hand-drawn placeholder drifts from the real layout and shifts the page when data arrives.',
   },
 ]
 

@@ -129,7 +129,7 @@ function sourceLabel(source: HeroSource): string {
 	.actions { grid-column: 3; grid-row: 1; display: flex; min-height: calc(2.5 * var(--rem)); align-items: center; justify-content: flex-end; gap: var(--rem); }
 	.add { display: grid; place-items: center; width: calc(2 * var(--rem)); height: calc(2 * var(--rem)); color: var(--subtle-foreground); }
 	.add svg { width: calc(1.25 * var(--rem)); height: calc(1.25 * var(--rem)); }
-	/* In the app, skullet's Skeleton wraps the account button in a block, so the inline-flex button sits on a line box that is taller than the button. */
+	/* In the app, the profile Skeleton wraps the account button in a block, so the inline-flex button sits on a line box that is taller than the button. */
 	.account-slot { display: block; }
 	.account { display: inline-flex; align-items: center; justify-content: center; width: calc(2.5 * var(--rem)); height: calc(2.5 * var(--rem)); }
 	.avatar { display: flex; width: calc(2 * var(--rem)); height: calc(2 * var(--rem)); overflow: hidden; border-radius: 999px; background: var(--muted); }

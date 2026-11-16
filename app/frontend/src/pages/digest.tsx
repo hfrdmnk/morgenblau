@@ -1,12 +1,12 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useId, useMemo, useState } from 'react';
-import { Skeleton } from 'skullet/react';
 import { Link, useLocation } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
 import { AddSourceDialog } from '@/components/add-source-dialog';
 import { ChevronDownIcon } from '@/components/icons';
 import { ItemList, ListError, ListItem, PostList, SourceIcon } from '@/components/item-list';
+import { Skeleton } from '@/components/skeleton';
 import { EmptyState } from '@/components/status-state';
 import { Button } from '@/components/ui/button';
 import { useCommands } from '@/hooks/use-commands';
@@ -83,12 +83,9 @@ const SAMPLE_SOURCE = { title: 'Example Publication', siteUrl: 'https://example.
 const SAMPLE_DIGEST: DigestData = {
     date: '2026-01-01',
     hasActiveJob: false,
-    entries: [
-        { id: 1, entrySlug: 'a', title: 'A sample headline that runs about as long as most do', body: 'An opening sentence or two of the post, long enough to fill the two lines an excerpt shows here.', source: { ...SAMPLE_SOURCE, primary: true } },
-        ...['A shorter sample headline', 'Another sample headline of a typical length', 'A sample headline'].map((title, index) => (
-            { id: index + 2, entrySlug: `${index}`, title, body: null, source: SAMPLE_SOURCE }
-        )),
-    ],
+    entries: ['A sample headline that runs about as long as most do', 'A shorter sample headline', 'Another sample headline of a typical length', 'A sample headline'].map((title, index) => (
+        { id: index + 1, entrySlug: `${index}`, title, body: null, source: SAMPLE_SOURCE }
+    )),
 };
 
 function DigestContent({ date, state }: { date: string; state: ReturnType<typeof useDigest> }) {
@@ -98,7 +95,6 @@ function DigestContent({ date, state }: { date: string; state: ReturnType<typeof
         <Skeleton
             data={state.status === 'loaded' && !collecting ? state.data : null}
             error={state.status === 'error' ? <ListError label="this digest" retry={state.retry} /> : undefined}
-            id="digest"
             label="Loading digest"
             sample={SAMPLE_DIGEST}
         >

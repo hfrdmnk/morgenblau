@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { Skeleton } from 'skullet/react';
 
 import { BackLink } from '@/components/back-link';
 import { ItemList, ListError, ListItem, PostList, SourceIcon } from '@/components/item-list';
+import { Skeleton } from '@/components/skeleton';
 import { useSources, type SourceEntry } from '@/hooks/use-sources';
 import { entryHref, PATHS } from '@/lib/paths';
 import { formatDate } from '@/lib/source-display';
@@ -79,7 +79,6 @@ function EntriesBody({ label, from, state, empty }: {
         <Skeleton
             data={state.status === 'loaded' ? state.data : null}
             error={state.status === 'error' ? <ListError label={label} retry={state.retry} /> : undefined}
-            id="source-entries"
             label={`Loading ${label}`}
             sample={SAMPLE_ENTRIES}
         >

@@ -1,10 +1,10 @@
 import { useRef, type ReactNode, type RefObject } from 'react';
-import { Skeleton } from 'skullet/react';
 import { Link } from 'wouter';
 
 import { EditNewsletterSheet, EditSourceSheet } from '@/components/add-source-dialog';
 import { FeedHealth, GeneratedNote } from '@/components/feed-health';
 import { ItemList, ListError, ListItem } from '@/components/item-list';
+import { Skeleton } from '@/components/skeleton';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-sources';
 import { newsletterSourceHref, PATHS, sourceHref } from '@/lib/paths';
@@ -39,7 +39,6 @@ function FeedList({ removedFocus }: { removedFocus: RemovedFocus }) {
             <Skeleton
                 data={state.status === 'loaded' ? state.data : null}
                 error={state.status === 'error' ? <ListError label="feeds" retry={state.retry} /> : undefined}
-                id="feeds"
                 label="Loading feeds"
                 sample={SAMPLE_FEEDS}
             >
@@ -66,7 +65,6 @@ function NewsletterList({ removedFocus }: { removedFocus: RemovedFocus }) {
                 <Skeleton
                     data={state.status === 'loaded' ? state.data.active : null}
                     error={state.status === 'error' ? <ListError label="newsletters" retry={state.retry} /> : undefined}
-                    id="newsletters"
                     label="Loading newsletters"
                     sample={SAMPLE_NEWSLETTERS}
                 >

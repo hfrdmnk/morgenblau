@@ -1,5 +1,4 @@
 import { useRef } from 'react';
-import { Skeleton } from 'skullet/react';
 import { Link, useLocation } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
@@ -15,6 +14,7 @@ import {
     SourcesActiveIcon,
     SourcesIcon,
 } from '@/components/icons';
+import { Skeleton } from '@/components/skeleton';
 import type { AppNavigationState } from '@/hooks/use-app-location';
 import { useAppProfile } from '@/hooks/use-app-profile';
 import { useHeightProperty } from '@/hooks/use-height-property';

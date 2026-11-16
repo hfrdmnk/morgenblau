@@ -1,7 +1,7 @@
-import { Skeleton } from 'skullet/react';
 import { useLocation, useParams } from 'wouter';
 
 import { EditNewsletterSheet } from '@/components/add-source-dialog';
+import { Skeleton } from '@/components/skeleton';
 import { SourceDetailPage, SourceEntries, SourceHeader, SourceUnavailable } from '@/components/source-detail';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useNewsletterCommands } from '@/hooks/use-source-commands';
@@ -28,7 +28,6 @@ export function NewsletterSource() {
             <Skeleton
                 data={loaded}
                 error={source.status === 'error' ? <SourceUnavailable label="this newsletter" state={source} /> : undefined}
-                id="newsletter-source"
                 label="Loading this newsletter"
                 sample={SAMPLE_NEWSLETTER}
             >

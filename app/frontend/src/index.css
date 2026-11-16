@@ -256,6 +256,67 @@
     }
 }
 
+/* Unlayered, so it outranks the colour and decoration utilities on the sample it draws (src/components/skeleton.tsx). */
+.skeleton {
+    --skeleton-delay: calc(150ms - var(--skeleton-elapsed, 0ms));
+    user-select: none;
+    animation: skeleton-hold 0s var(--skeleton-delay) backwards;
+}
+
+.skeleton,
+.skeleton * {
+    color: transparent;
+    caret-color: transparent;
+    text-decoration-line: none;
+}
+
+.skeleton-text {
+    background-color: var(--muted);
+    border-radius: 0.3em;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+.skeleton ::placeholder {
+    color: transparent;
+}
+
+.skeleton :is(img, svg, input, textarea, select, button) {
+    background-color: var(--muted);
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.skeleton img {
+    object-position: 200vw;
+}
+
+.skeleton svg * {
+    fill: none;
+    stroke: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .skeleton {
+        animation:
+            skeleton-hold 0s var(--skeleton-delay) backwards,
+            skeleton-pulse 2.4s var(--skeleton-delay) ease-in-out infinite;
+    }
+}
+
+/* Hidden for its first 150ms, so a quick load never flashes a skeleton. */
+@keyframes skeleton-hold {
+    from {
+        visibility: hidden;
+    }
+}
+
+@keyframes skeleton-pulse {
+    50% {
+        opacity: 0.5;
+    }
+}
+
 .page-placeholder {
     display: grid;
     min-height: 100dvh;

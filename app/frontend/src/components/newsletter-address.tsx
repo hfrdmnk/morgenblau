@@ -1,10 +1,10 @@
 import { useEffect, useId, useState } from 'react';
-import { Skeleton } from 'skullet/react';
 import { Link as RouterLink } from 'wouter';
 
 import { IconCrossfade } from '@/components/icon-crossfade';
 import { CheckIcon, CopyIcon } from '@/components/icons';
 import { PdsLink } from '@/components/public-data-hint';
+import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 import { useAppProfile } from '@/hooks/use-app-profile';

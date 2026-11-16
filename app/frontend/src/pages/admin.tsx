@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { Skeleton } from 'skullet/react';
 
 import { ListError } from '@/components/item-list';
 import { PersonAvatar } from '@/components/person-avatar';
+import { Skeleton } from '@/components/skeleton';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useSources } from '@/hooks/use-sources';
 import { formatDate } from '@/lib/source-display';
@@ -50,7 +50,6 @@ export function Admin() {
                         </div>
                     ) : <ListError label="usage" retry={usage.retry} />
                 ) : undefined}
-                id="admin-usage"
                 label="Loading usage"
                 sample={SAMPLE_USAGE}
             >

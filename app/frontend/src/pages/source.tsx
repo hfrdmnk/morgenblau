@@ -1,8 +1,8 @@
-import { Skeleton } from 'skullet/react';
 import { useLocation, useParams } from 'wouter';
 
 import { EditSourceSheet } from '@/components/add-source-dialog';
 import { SourceHealth } from '@/components/feed-health';
+import { Skeleton } from '@/components/skeleton';
 import { SourceDetailPage, SourceEntries, SourceHeader, SourceUnavailable } from '@/components/source-detail';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useFeedSourceCommands } from '@/hooks/use-source-commands';
@@ -26,7 +26,6 @@ export function Source() {
             <Skeleton
                 data={loaded}
                 error={source.status === 'error' ? <SourceUnavailable label="this source" state={source} /> : undefined}
-                id="source"
                 label="Loading this source"
                 sample={SAMPLE_SOURCE}
             >

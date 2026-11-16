@@ -14,7 +14,6 @@ import {
     type ReactNode,
     type RefObject,
 } from 'react';
-import { Skeleton } from 'skullet/react';
 import { toast } from 'sonner';
 import { useLocation } from 'wouter';
 
@@ -23,6 +22,7 @@ import { CheckIcon, ChevronDownIcon, CloseIcon, EnterIcon, ExternalLinkIcon, Loa
 import { NewsletterAddress } from '@/components/newsletter-address';
 import { PersonAvatar } from '@/components/person-avatar';
 import { PublicDataHint } from '@/components/public-data-hint';
+import { Skeleton } from '@/components/skeleton';
 import { DeleteNewsletterDialog, RemoveDialog } from '@/components/source-removal';
 import { TagChips, TagInput } from '@/components/tag-input';
 import { Button } from '@/components/ui/button';
@@ -1343,7 +1343,7 @@ function ArticleBody({ body, url, original, pending, hasNotice }: {
         );
     if (pending)
         return (
-            <Skeleton label="Loading article" loading>
+            <Skeleton label="Loading article">
                 <div className="reader-body" data-font={font}>
                     <p>A paragraph of sample text that stands in for the article while it loads, running across a few lines.</p>
                 </div>

@@ -1,7 +1,6 @@
 import { Dialog } from '@base-ui/react/dialog';
 import { Command as Cmdk, defaultFilter } from 'cmdk';
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { forgetShapes } from 'skullet';
 import { toast } from 'sonner';
 import { useLocation } from 'wouter';
 
@@ -576,7 +575,6 @@ function ConfirmStep({ step, run, back }: StepProps<'confirm'>) {
 }
 
 function logOut() {
-    forgetShapes();
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = PATHS.oauthLogout;
