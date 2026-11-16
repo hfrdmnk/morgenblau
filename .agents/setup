@@ -75,12 +75,13 @@ install_bun() {
 
 install_dev_tools() {
 	local air_version=v1.67.4
-	local goose_version=v3.27.1
-	local sqlc_version=v1.31.1
 	local mprocs_version=v0.9.6
 	local flyctl_version=v0.5.7
-	local lint_version archive_dir
-	lint_version="$(sed -n 's/^[[:space:]]*version: \(v[0-9.]*\)$/\1/p' "$repo_root/.github/workflows/ci.yml")"
+	local ci="$repo_root/.github/workflows/ci.yml"
+	local goose_version sqlc_version lint_version archive_dir
+	goose_version="$(sed -n 's/^[[:space:]]*GOOSE_VERSION: \(v[0-9.]*\)$/\1/p' "$ci")"
+	sqlc_version="v$(sed -n 's/^[[:space:]]*SQLC_VERSION: \([0-9.]*\)$/\1/p' "$ci")"
+	lint_version="$(sed -n 's/^[[:space:]]*version: \(v[0-9.]*\)$/\1/p' "$ci")"
 	local archive air_arch goose_arch sqlc_arch mprocs_arch flyctl_arch
 	case "$(uname -m)" in
 		x86_64)
