@@ -428,7 +428,7 @@ func applyNewsletterTestMigrations(t *testing.T, databasePath string) {
 	t.Helper()
 	goosePath, err := exec.LookPath("goose")
 	if err != nil {
-		t.Fatal("goose CLI is required for newsletter storage tests; install github.com/pressly/goose/v3/cmd/goose@v3.27.1")
+		t.Fatal("goose CLI is required for newsletter storage tests; install github.com/pressly/goose/v3/cmd/goose at the GOOSE_VERSION .github/workflows/ci.yml pins")
 	}
 	migrationDir, err := filepath.Abs(filepath.Join("..", "database", "migrations"))
 	if err != nil {

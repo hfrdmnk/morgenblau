@@ -192,7 +192,7 @@ func openNewsletterIntegrationDB(t *testing.T) *database.DB {
 	t.Setenv("DB_PATH", databasePath)
 	goosePath, err := exec.LookPath("goose")
 	if err != nil {
-		t.Fatal("goose CLI is required for newsletter integration tests; install github.com/pressly/goose/v3/cmd/goose@v3.27.1")
+		t.Fatal("goose CLI is required for newsletter integration tests; install github.com/pressly/goose/v3/cmd/goose at the GOOSE_VERSION .github/workflows/ci.yml pins")
 	}
 	migrationDir, err := filepath.Abs(filepath.Join("..", "database", "migrations"))
 	if err != nil {

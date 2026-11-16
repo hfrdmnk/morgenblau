@@ -404,7 +404,7 @@ func openMigratedRouteDB(t *testing.T) *database.DB {
 	path := filepath.Join(t.TempDir(), "routes.db")
 	goosePath, err := exec.LookPath("goose")
 	if err != nil {
-		t.Fatal("goose CLI is required for route tests; install github.com/pressly/goose/v3/cmd/goose@v3.27.1")
+		t.Fatal("goose CLI is required for route tests; install github.com/pressly/goose/v3/cmd/goose at the GOOSE_VERSION .github/workflows/ci.yml pins")
 	}
 	if output, err := exec.Command(goosePath, "-dir", filepath.Join("..", "database", "migrations"), "sqlite3", path, "up").CombinedOutput(); err != nil {
 		t.Fatalf("goose migration: %v\n%s", err, output)

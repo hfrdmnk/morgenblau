@@ -120,7 +120,7 @@ func runGoose(t *testing.T, databasePath string, args ...string) {
 func runGooseCommand(databasePath string, args ...string) error {
 	goosePath, err := exec.LookPath("goose")
 	if err != nil {
-		return fmt.Errorf("goose CLI is required for migration tests; install github.com/pressly/goose/v3/cmd/goose@v3.27.1: %w", err)
+		return fmt.Errorf("goose CLI is required for migration tests; install github.com/pressly/goose/v3/cmd/goose at the GOOSE_VERSION .github/workflows/ci.yml pins: %w", err)
 	}
 	migrationDir, err := filepath.Abs("migrations")
 	if err != nil {
