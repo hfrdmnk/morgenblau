@@ -163,6 +163,31 @@ func TestFetch_WithoutADefaultFallsBackToTheSpokenLanguage(t *testing.T) {
 	}
 }
 
+func TestFetch_AutoDubbedVideoKeepsTheOriginalAudiosCaptions(t *testing.T) {
+	yt := newFakeYouTube(t)
+	yt.serveCaption("/ar-asr", manualJSON3)
+	yt.serveCaption("/en-asr", manualJSON3)
+	// Each auto-dub brings its own ASR track, listed alphabetically; the audio tracks name only their caption order, with no default index.
+	yt.player = func(origin string) (int, any) {
+		player := fakePlayer(origin, -1, 600, track{"ar", "asr", "/ar-asr?v=1"}, track{"bn", "asr", "/bn-asr?v=1"}, track{"en", "asr", "/en-asr?v=1"})
+		renderer := player["captions"].(map[string]any)["playerCaptionsTracklistRenderer"].(map[string]any)
+		renderer["audioTracks"] = []map[string]any{
+			{"captionTrackIndices": []int{0, 1, 2}},
+			{"captionTrackIndices": []int{2, 0, 1}},
+		}
+		renderer["defaultAudioTrackIndex"] = 1
+		return http.StatusOK, player
+	}
+
+	got, err := yt.client().Fetch(context.Background(), "abcdefghijk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Language != "en" || got.Kind != KindASR {
+		t.Fatalf("track = %s/%s, want en/asr", got.Language, got.Kind)
+	}
+}
+
 func TestFetch_ParsesWordLevelASRIntoLines(t *testing.T) {
 	yt := newFakeYouTube(t)
 	yt.serveCaption("/asr", `{"events":[

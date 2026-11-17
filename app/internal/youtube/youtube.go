@@ -124,7 +124,8 @@ type playerResponse struct {
 		Renderer struct {
 			CaptionTracks []captionTrack `json:"captionTracks"`
 			AudioTracks   []struct {
-				DefaultCaptionTrackIndex *int `json:"defaultCaptionTrackIndex"`
+				DefaultCaptionTrackIndex *int  `json:"defaultCaptionTrackIndex"`
+				CaptionTrackIndices      []int `json:"captionTrackIndices"`
 			} `json:"audioTracks"`
 			DefaultAudioTrackIndex int `json:"defaultAudioTrackIndex"`
 		} `json:"playerCaptionsTracklistRenderer"`
@@ -188,7 +189,7 @@ func (c *Client) player(ctx context.Context, videoID string) (playerResponse, er
 	return player, nil
 }
 
-// pickTrack follows the video, not the reader: the default caption language of the default audio track, else the spoken language that only ASR tracks name, else the first track. Within the language a manual track beats ASR.
+// pickTrack follows the video, not the reader: the default caption language of the default audio track, else that audio track's first-ranked caption, else the spoken language that only ASR tracks name, else the first track. Within the language a manual track beats ASR.
 func pickTrack(player playerResponse) (captionTrack, bool) {
 	renderer := player.Captions.Renderer
 	tracks := renderer.CaptionTracks
@@ -197,7 +198,13 @@ func pickTrack(player playerResponse) (captionTrack, bool) {
 	}
 	language := ""
 	if i := renderer.DefaultAudioTrackIndex; i >= 0 && i < len(renderer.AudioTracks) {
-		if d := renderer.AudioTracks[i].DefaultCaptionTrackIndex; d != nil && *d >= 0 && *d < len(tracks) {
+		audio := renderer.AudioTracks[i]
+		d := audio.DefaultCaptionTrackIndex
+		// Auto-dubbed videos carry no default index and one ASR track per dub, so the ranking is what points at the original audio's captions.
+		if d == nil && len(audio.CaptionTrackIndices) > 0 {
+			d = &audio.CaptionTrackIndices[0]
+		}
+		if d != nil && *d >= 0 && *d < len(tracks) {
 			language = tracks[*d].LanguageCode
 		}
 	}
