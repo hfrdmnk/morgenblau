@@ -51,6 +51,7 @@ test ! -e .env.production || { echo '.env.production already exists; preserve it
 {
   printf 'SESSION_COOKIE_KEY='; openssl rand -base64 32
   printf 'SESSION_STORE_KEYS='; openssl rand -base64 32
+  printf 'CLOUDFLARE_ORIGIN_SECRET='; openssl rand -hex 32
   printf 'BLUESKY_OAUTH_PRIVATE_KEY='
   openssl ecparam -name prime256v1 -genkey -noout \
     | openssl pkcs8 -topk8 -nocrypt | openssl base64 -A
@@ -99,6 +100,29 @@ Run `fly ips list --app "$FLY_APP"`. In Cloudflare's **DNS → Records** for `mo
 The app uses Cloudflare's proxy with SSL/TLS mode **Full (strict)**: Cloudflare connects over HTTPS to Fly and validates Fly's origin certificate. **Flexible** sends origin traffic over HTTP and causes the app's HTTPS redirect to loop. See [Fly's Cloudflare guidance](https://fly.io/docs/networking/understanding-cloudflare/).
 
 Keep **Bot Fight Mode off**: OAuth metadata and JWKS must be fetchable by authorization servers without browser challenges, and the callback must remain reachable. Free Bot Fight Mode is zone-wide and cannot be bypassed with a path-specific WAF Skip rule. Do not put Cloudflare Access or other challenge rules in front of OAuth endpoints. Do not add rules that cache authenticated API responses or OAuth callbacks; the DID gate, not the CDN, protects private app data.
+
+### Lock the origin to Cloudflare
+
+The WAF only protects requests that pass Cloudflare. Fly also answers on the app's own IPs and on `<app>.fly.dev`, so the app refuses any request without the `X-Morgenblau-Origin-Secret` header that Cloudflare adds (`internal/server/origin.go`); outside `APP_ENV=local`, startup refuses an empty `CLOUDFLARE_ORIGIN_SECRET`. Only `GET /api/health` (Fly's health check) and `/.well-known/acme-challenge/` (HTTP-01 for the SMTP certificate) skip the check, because neither passes Cloudflare. A direct request gets `403`.
+
+Create the rule in Cloudflare for `morgen.blue`:
+
+1. **Rules → Overview → Create rule → Request Header Transform Rule**.
+2. **Rule name**: `Morgenblau origin secret`.
+3. **If incoming requests match**: **Custom filter expression**, field **Hostname**, operator **equals**, value `app.morgen.blue`.
+4. **Then**: **Set static**, header name `X-Morgenblau-Origin-Secret`, value: the `CLOUDFLARE_ORIGIN_SECRET` from your `.env.production`.
+5. **Deploy**.
+
+The value is a credential: keep it only in the Cloudflare rule, Fly secrets and your password manager. An existing deployment adopts it in this order, so the app never runs requiring a header Cloudflare does not send yet:
+
+```sh
+umask 077
+printf 'CLOUDFLARE_ORIGIN_SECRET=%s\n' "$(openssl rand -hex 32)" >> .env.production
+# Create the Cloudflare rule with that value, then:
+grep '^CLOUDFLARE_ORIGIN_SECRET=' .env.production | fly secrets import --stage --app "$FLY_APP"
+```
+
+Then deploy the code that enforces it. To rotate, update the rule and the Fly secret together (`fly secrets import` without `--stage` restarts the Machine); requests in between get `403`.
 
 Cloudflare's normal proxy **does not proxy SMTP**. Keep the SMTP hostname DNS-only; MX records are not proxied. An MX target must resolve directly to address records, not a CNAME. Publish no SMTP AAAA record until you have tested that path. Leave the landing page's proxy setting and root email records alone.
 
@@ -156,9 +180,10 @@ curl -fsS https://app.morgen.blue/api/health
 curl -fsS https://app.morgen.blue/oauth-client-metadata.json
 curl -fsS https://app.morgen.blue/oauth-jwks.json
 curl -sS -o /dev/null -w '%{http_code}\n' https://app.morgen.blue/api/digest
+curl -sS -o /dev/null -w '%{http_code}\n' "https://$FLY_APP.fly.dev/oauth-client-metadata.json"
 ```
 
-Expect `{"status":"up"}`, public metadata/JWKS, and `401` for anonymous digest access. Open the app in your browser and sign in with an allowed account. An uninvited account must receive `403` after OAuth, with no admitted session. Do not put a blanket password/challenge in front of OAuth metadata or callbacks: the authorization server must be able to reach them. The DID gate protects app data; the sign-in page, assets, and public about page remain public.
+Expect `{"status":"up"}`, public metadata/JWKS, and `401` for anonymous digest access through Cloudflare, and `403` for the same metadata straight from Fly. Open the app in your browser and sign in with an allowed account. An uninvited account must receive `403` after OAuth, with no admitted session. Do not put a blanket password/challenge in front of OAuth metadata or callbacks: the authorization server must be able to reach them. The DID gate protects app data; the sign-in page, assets, and public about page remain public.
 
 For newsletters, create your private receiving address in the app, subscribe a test newsletter, and confirm its message appears. Use **OpenSSL 3** for the STARTTLS checks below (`openssl version` confirms which executable is in use). macOS's built-in LibreSSL may lack `-verify_hostname` and `-noservername`; do not drop these verification flags. With Homebrew:
 

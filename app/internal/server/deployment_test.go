@@ -43,6 +43,23 @@ func TestProductionHTTPRequiresCanonicalHTTPSBeforeOpeningDatabase(t *testing.T)
 	}
 }
 
+func TestProductionHTTPRequiresCloudflareOriginSecretBeforeOpeningDatabase(t *testing.T) {
+	clearNewsletterEnv(t)
+	path := filepath.Join(t.TempDir(), "app.db")
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("ALPHA_ENABLED", "false")
+	t.Setenv("BLUESKY_CLIENT_ID", "https://app.example.com/oauth-client-metadata.json")
+	t.Setenv("CLOUDFLARE_ORIGIN_SECRET", " ")
+	t.Setenv("DB_PATH", path)
+	_, _, err := NewServer()
+	if err == nil || !strings.Contains(err.Error(), "CLOUDFLARE_ORIGIN_SECRET") {
+		t.Fatalf("error = %v, want missing origin secret", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("missing origin secret opened the database")
+	}
+}
+
 func TestHealthReturnsUnavailableWhenDatabaseIsClosed(t *testing.T) {
 	t.Setenv("DB_PATH", filepath.Join(t.TempDir(), "app.db"))
 	db, err := database.Open()

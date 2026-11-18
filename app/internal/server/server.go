@@ -126,12 +126,17 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	}
 
 	appHost := ""
+	originSecret := ""
 	if os.Getenv("APP_ENV") != "local" {
 		appURL, err := url.Parse(strings.TrimSpace(os.Getenv("BLUESKY_CLIENT_ID")))
 		if err != nil || appURL.Scheme != "https" || appURL.Host == "" || appURL.User != nil {
 			return nil, nil, fmt.Errorf("BLUESKY_CLIENT_ID must be an HTTPS metadata URL outside APP_ENV=local")
 		}
 		appHost = appURL.Host
+		originSecret = strings.TrimSpace(os.Getenv("CLOUDFLARE_ORIGIN_SECRET"))
+		if originSecret == "" {
+			return nil, nil, fmt.Errorf("CLOUDFLARE_ORIGIN_SECRET is required outside APP_ENV=local (generate with: openssl rand -hex 32)")
+		}
 	}
 
 	db, err := database.Open()
@@ -310,7 +315,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		WriteTimeout: 30 * time.Second,
 	}
 	if appHost != "" {
-		server.Handler = redirectInsecureHTTP(server.Handler, appHost, os.Getenv("FLY_APP_NAME") != "")
+		server.Handler = requireCloudflareOrigin(redirectInsecureHTTP(server.Handler, appHost, os.Getenv("FLY_APP_NAME") != ""), originSecret)
 	}
 	certificateCtx, certificateCancel := context.WithCancel(context.Background())
 	certificateDone := make(chan struct{})
