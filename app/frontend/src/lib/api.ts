@@ -54,10 +54,13 @@ export async function api<T = undefined>(
         method,
         credentials: 'same-origin',
         signal,
-        ...(body !== undefined && {
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(body),
-        }),
+        // FormData sets its own multipart content type, boundary included.
+        ...(body instanceof FormData
+            ? { body }
+            : body !== undefined && {
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify(body),
+              }),
     });
     if (!response.ok) {
         const failure = (await response

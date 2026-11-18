@@ -9,6 +9,7 @@ export type AppProfile = {
     displayName: string | null;
     avatar: string | null;
     isAdmin?: boolean;
+    feedback?: boolean;
 };
 
 export type AppProfileState =

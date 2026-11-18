@@ -66,6 +66,16 @@ describe('api', () => {
         );
     });
 
+    test('sends FormData untouched so the browser sets the multipart boundary', async () => {
+        const capture: { url?: string; init?: RequestInit } = {};
+        stubFetch(204, undefined, capture);
+        const form = new FormData();
+        form.append('message', 'Hello');
+        await api('/api/feedback', { method: 'POST', body: form });
+        expect(capture.init?.body).toBe(form);
+        expect(capture.init?.headers).toBeUndefined();
+    });
+
     test('omits content-type header when there is no body', async () => {
         const capture: { url?: string; init?: RequestInit } = {};
         stubFetch(200, {}, capture);

@@ -103,7 +103,7 @@ func TestAvatar_RefusesCIDThatIsNotTheProfilesAvatar(t *testing.T) {
 
 func TestMeProfile_PointsAvatarAtThumbnail(t *testing.T) {
 	rr := httptest.NewRecorder()
-	MeProfileHandler(avatarProfiles("https://pds.example.com"), nil, nil, nil).ServeHTTP(rr,
+	MeProfileHandler(avatarProfiles("https://pds.example.com"), nil, nil, nil, false).ServeHTTP(rr,
 		withSession(httptest.NewRequest(http.MethodGet, "/api/profiles/me", nil), "did:plc:alice", "sid-1"))
 	var got meResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {

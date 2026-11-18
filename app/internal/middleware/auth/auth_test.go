@@ -257,6 +257,22 @@ func TestMiddleware_CapsAPIBodySize(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", rr.Code)
 	}
+
+	screenshots := &bodyReader{}
+	feedbackReq := httptest.NewRequest(http.MethodPost, "/api/feedback", strings.NewReader(strings.Repeat("a", 12<<20)))
+	feedbackReq.AddCookie(cookie)
+	m(screenshots).ServeHTTP(httptest.NewRecorder(), feedbackReq)
+	if screenshots.err != nil {
+		t.Errorf("12 MB of feedback images failed to read: %v", screenshots.err)
+	}
+
+	tooMany := &bodyReader{}
+	hugeReq := httptest.NewRequest(http.MethodPost, "/api/feedback", strings.NewReader(strings.Repeat("a", (13<<20)+1)))
+	hugeReq.AddCookie(cookie)
+	m(tooMany).ServeHTTP(httptest.NewRecorder(), hugeReq)
+	if !errors.As(tooMany.err, &maxErr) {
+		t.Errorf("feedback read error = %v, want *http.MaxBytesError past 13 MB", tooMany.err)
+	}
 }
 
 func TestMiddleware_InjectsSessionIntoContext(t *testing.T) {

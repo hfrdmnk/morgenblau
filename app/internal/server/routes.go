@@ -52,7 +52,7 @@ func (s *Server) routes() *http.ServeMux {
 		addresses = s.newsletters
 		newsletterUsage = s.newsletters
 	}
-	mux.Handle("GET /api/profiles/me", api.MeProfileHandler(s.profiles, s.sync, addresses, s.admins))
+	mux.Handle("GET /api/profiles/me", api.MeProfileHandler(s.profiles, s.sync, addresses, s.admins, s.feedback != nil))
 
 	// POST/PATCH/DELETE routes below reach the PDS (auth.holdsSessionLock must match); mutations commit once through gated, OPML import once per source.
 	gated := api.CommitGate{Repo: s.pds}
@@ -124,6 +124,9 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("DELETE /api/saves/{rkey}", api.OneCommitPerRequest(api.SavesDeleteHandler(s.qr, s.qw, gated, s.sync)))
 	mux.Handle("PATCH /api/saves/{rkey}", api.OneCommitPerRequest(api.SavesPatchHandler(s.qr, s.qw, gated, s.sync)))
 	mux.Handle("GET /api/saves/tags", saveTags)
+
+	// Each feedback mail goes through the owner's relay, so a reader gets a bounded number per hour.
+	mux.Handle("POST /api/feedback", api.FeedbackHandler(s.feedback, s.feedbackTo, s.profiles, ratelimit.New(10, time.Hour, nil)))
 
 	mux.Handle("GET /api/jobs/active", api.JobsActiveHandler(s.jobs))
 	mux.Handle("GET /api/jobs/latest", api.JobsLatestHandler(s.jobs))

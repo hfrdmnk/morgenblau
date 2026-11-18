@@ -46,14 +46,16 @@ function Page() {
     );
 }
 
-async function render(href: string) {
+type ProfileState = Parameters<typeof AppProfileContext.Provider>[0]['value'];
+
+async function render(href: string, profile: ProfileState = { kind: 'loading' }) {
     window.history.replaceState(null, '', href);
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
     await act(async () => root.render(
         <Router hook={useAppLocation}>
-            <AppProfileContext.Provider value={{ kind: 'loading' }}>
+            <AppProfileContext.Provider value={profile}>
                 <AppHeader />
                 <Page />
             </AppProfileContext.Provider>
@@ -217,5 +219,14 @@ test('the header and mode bar heights reach the page while the header is mounted
         expect(root.getPropertyValue('--app-mode-nav-height')).toBe('');
     } finally {
         globalThis.ResizeObserver = originalObserver;
+    }
+});
+
+test('the feedback button shows only when the server can send feedback', async () => {
+    const reader = { did: 'did:plc:reader', handle: 'reader.example', displayName: null, avatar: null };
+    for (const feedback of [true, false]) {
+        const container = await render('/', { kind: 'ready', profile: { ...reader, feedback } });
+        expect(container.querySelector('button[aria-label="Send feedback"]') !== null).toBe(feedback);
+        act(() => unmount());
     }
 });

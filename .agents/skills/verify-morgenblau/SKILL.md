@@ -102,7 +102,7 @@ static checks: <commands and results>
 
 - One instance, one DB, one PDS, one fixture server and one account per run, created by `up`, removed by `down`. Runs share no state, so any number can run in parallel. Every listener binds `127.0.0.1`, and the PDS's admin password and JWT secret are fresh per run.
 - Never drive the user's own server, database or personal account.
-- Newsletter mail goes only to the instance's `127.0.0.1` SMTP port. The app sends no outbound mail and has no payments. Its `/admin` pages admit only `ADMIN_DIDS`, which a run sets only with `up --admin`.
+- Newsletter mail goes only to the instance's `127.0.0.1` SMTP port. The app sends outbound mail only for feedback, and only with `FEEDBACK_EMAIL` set, which `up` leaves unset; it has no payments. Its `/admin` pages admit only `ADMIN_DIDS`, which a run sets only with `up --admin`.
 - Keep secrets out of evidence: never print or copy secret files under `run/`. Account files, cookie jars, service launch scripts and the browser secret map hold run credentials; `down` removes them. The harness's `state.json` output is safe metadata. The driver's secret map redacts literal account/app passwords in text output, snapshots and logs; it does not sanitize encoded values, other tokens or binary artifacts. Never reveal a password for a screenshot, and inspect evidence before retaining or sharing it.
 - Never kill processes by name; `down` stops only the services or process ids `up` recorded.
 - Cleanup never deletes evidence. Evidence never leaves the machine.

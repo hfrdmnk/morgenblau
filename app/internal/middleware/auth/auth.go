@@ -30,6 +30,9 @@ type Middleware func(http.Handler) http.Handler
 // maxAPIBodyBytes caps JSON bodies at 1 MB, clearing the largest legitimate payload (batch subscription create) with headroom.
 const maxAPIBodyBytes = 1 << 20
 
+// maxFeedbackBodyBytes clears the feedback route's 12 MB of images plus the message and multipart framing.
+const maxFeedbackBodyBytes = 13 << 20
+
 // New builds the gating middleware; every path is authed by default except the named public/infra routes, and admin paths admit only admins.
 func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, allowed Allowlist, admins Admins) Middleware {
 	return func(next http.Handler) http.Handler {
@@ -37,7 +40,9 @@ func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, allowed A
 			path := r.URL.Path
 
 			// Caps bodies before decode so a large payload can't exhaust memory; api.decodeJSON turns the overflow into a 413.
-			if strings.HasPrefix(path, "/api/") {
+			if path == "/api/feedback" {
+				r.Body = http.MaxBytesReader(w, r.Body, maxFeedbackBodyBytes)
+			} else if strings.HasPrefix(path, "/api/") {
 				r.Body = http.MaxBytesReader(w, r.Body, maxAPIBodyBytes)
 			}
 

@@ -4,6 +4,7 @@ import { useSearch } from 'wouter/use-browser-location';
 
 import { AccountMenu } from '@/components/account-menu';
 import { AddSourceDialog } from '@/components/add-source-dialog';
+import { FeedbackDialog } from '@/components/feedback-dialog';
 import {
     ArrowRightIcon,
     DigestActiveIcon,
@@ -88,6 +89,7 @@ export function AppHeader() {
                 {location === PATHS.digest ? <DigestDateNav /> : null}
                 {isSettingsPath(location) ? <SettingsNav location={location} /> : null}
                 <div className="col-start-2 row-start-1 flex min-h-10 items-center justify-end gap-4 md:col-start-3">
+                    {profile.kind === 'ready' && profile.profile.feedback ? <FeedbackDialog /> : null}
                     <AddSourceDialog />
                     <Skeleton
                         data={profile.kind === 'ready' ? profile.profile : null}

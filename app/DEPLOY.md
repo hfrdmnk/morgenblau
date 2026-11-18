@@ -74,6 +74,8 @@ Use your account's stable DID, not its handle. You still sign in with your handl
 
 `ADMIN_DIDS` lists the accounts that may open `/admin`. Unset or empty, nobody can; everyone else gets a 404 there. An admin must also be on the alpha allowlist to sign in at all.
 
+To receive readers' feedback, also set `FEEDBACK_EMAIL` to your inbox and point `MAIL_FROM` and `MAIL_SMTP_*` at an email provider's SMTP relay; `.env.example` lists them. Send from a domain the provider has verified. With PostShiba, verify `morgen.blue` (it adds DKIM and `rp.` records and leaves the root's MX alone), send as an address on it, and use `MAIL_SMTP_HOST=smtp.postshiba.com`, `MAIL_SMTP_PORT=587` and an SMTP credential issued on the cluster (`smtp_…` username and its password). Unset `FEEDBACK_EMAIL` hides the feedback button; partial relay settings refuse startup.
+
 The `endpoint=` URL parameter is intentional: setting only `AWS_ENDPOINT_URL_S3` bypasses Litestream's [Tigris-specific detection](https://litestream.io/guides/tigris/). `fly storage create` may set that extra variable, but our explicit URL supplies the correct endpoint.
 
 Back up the production encryption/signing keys separately from SQLite. Restoring the database without `SESSION_STORE_KEYS` cannot recover its encrypted sessions. Do not regenerate keys on each deploy.

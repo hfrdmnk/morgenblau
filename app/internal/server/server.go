@@ -31,6 +31,7 @@ import (
 	"morgenblau/internal/feedfinder"
 	"morgenblau/internal/fetcher"
 	"morgenblau/internal/jobs"
+	"morgenblau/internal/mail"
 	"morgenblau/internal/middleware/auth"
 	"morgenblau/internal/middleware/ratelimit"
 	"morgenblau/internal/newsletter"
@@ -86,6 +87,8 @@ type Server struct {
 	youtube     *youtube.Client
 	allowedDIDs auth.Allowlist
 	admins      auth.Admins
+	feedback    api.FeedbackSender
+	feedbackTo  string
 
 	gcCancel context.CancelFunc
 	gcWG     sync.WaitGroup
@@ -124,6 +127,15 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("load newsletter config: %w", err)
 	}
+	mailCfg, feedbackTo, err := mail.LoadFeedbackConfig(os.Getenv)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load feedback mail config: %w", err)
+	}
+	var feedback api.FeedbackSender
+	if feedbackTo != "" {
+		feedback = mail.NewSender(mailCfg)
+	}
+	slog.Info("feedback mail", "enabled", feedback != nil)
 
 	appHost := ""
 	originSecret := ""
@@ -286,6 +298,8 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		youtube:     youtube.New(safeClient, youtubeOrigin(localNet)),
 		allowedDIDs: allowedDIDs,
 		admins:      admins,
+		feedback:    feedback,
+		feedbackTo:  feedbackTo,
 		gcCancel:    gcCancel,
 	}
 
