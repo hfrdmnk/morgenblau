@@ -502,7 +502,7 @@ oauth() {
             -H 'sec-fetch-site: same-origin' -H 'sec-fetch-mode: same-origin' -H 'sec-fetch-dest: empty' \
             -H "origin: $iss" -H "referer: $authorize" -H "x-csrf-token: $csrf" --data @- "$iss/@atproto/oauth-provider/~api/$1"
     }
-    [ "$(jq '{locale: "en", username: .handle, password: .password, remember: true}' "$dir/run/account.json" | as_api sign-in)" = 200 ] \
+    [ "$(jq '{locale: "en", identifier: .handle, password: .password, remember: true}' "$dir/run/account.json" | as_api sign-in)" = 200 ] \
         || die "AS sign-in failed: $(jq -c '{error, error_description}' "$body")"
     [ "$(jq -n --arg did "$did" '{did: $did}' | as_api consent)" = 200 ] || die "AS consent failed: $(jq -c '{error, error_description}' "$body")"
     consent="$(jq -r '.url // empty' "$body")"

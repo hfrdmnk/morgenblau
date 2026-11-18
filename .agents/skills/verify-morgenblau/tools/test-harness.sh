@@ -189,7 +189,7 @@ test_live_browser_redacts_password() {
     dir="$(jq -r .dir "$tmp/live-state.json")"
     handle="$(jq -r .pds.handle "$tmp/live-state.json")"
     "$verify" browser "$slug" open /login >"$dir/browser-open.txt"
-    "$verify" browser "$slug" fill "getByRole('textbox', { name: 'Handle' })" "$handle" >"$dir/browser-handle.txt"
+    "$verify" browser "$slug" fill "getByRole('combobox', { name: 'Handle' })" "$handle" >"$dir/browser-handle.txt"
     "$verify" browser "$slug" click "getByRole('button', { name: 'Continue' })" >"$dir/browser-continue.txt"
     "$verify" browser "$slug" fill-password "getByRole('textbox', { name: 'Password' })"
     "$verify" browser "$slug" snapshot >"$dir/password-snapshot.txt"
@@ -229,6 +229,21 @@ for (const file of unsafeFiles) fs.unlinkSync(file);
 if (unsafeFiles.length) throw new Error('plaintext credentials found after cleanup; unsafe artifacts removed');
 console.log(`PASS live browser secret redaction and cleanup; evidence: ${dir}`);
 JS
+    rm -rf "$tmp"
+    trap - EXIT
+}
+
+# oauth drives the PDS's private sign-in API, whose body shape changes with @atproto/dev-env.
+test_live_oauth_signs_in() {
+    local verify="$ROOT/.agents/skills/verify-morgenblau/bin/verify" slug="sign-in-oauth-$(date +%s)-$RANDOM" dir
+    trap "$(printf %q "$verify") down $(printf %q "$slug") >/dev/null 2>&1; rm -rf $(printf %q "$tmp")" EXIT
+    "$verify" up "$slug" >"$tmp/live-state.json"
+    dir="$(jq -r .dir "$tmp/live-state.json")"
+    "$verify" oauth "$slug"
+    "$verify" api "$slug" GET /api/profiles/me --out oauth-profile-me >/dev/null
+    [[ "$(cat "$dir/oauth-profile-me.status")" == 200 ]]
+    jq -e --arg handle "$(jq -r .pds.handle "$tmp/live-state.json")" '.handle == $handle and .needsReauth == false' "$dir/oauth-profile-me.json" >/dev/null
+    "$verify" down "$slug"
     rm -rf "$tmp"
     trap - EXIT
 }

@@ -6,7 +6,7 @@ Help article: none
 
 ## Sub-features
 
-- `import-page` `/settings/import` (`frontend/src/pages/import-sources.tsx`), including a `From YouTube` section for a Takeout CSV (`provider` `youtube`, not driven here): preparing opens a confirmation dialog; successful imports keep a `Subscriptions saved` receipt open with counts. Subscription failures show `Import paused` with `Retry remaining sources`; feed availability is separate. `ImportCollection` polls health for confirmed sources and lists only unavailable feeds in a `Posts not fetching for <n> sources` accordion. `View sources` is a ghost button that closes the receipt and navigates to Sources.
+- `import-page` `/settings/import` (`frontend/src/pages/import-sources.tsx`), including a `From YouTube` section for a Takeout CSV (`provider` `youtube`; `parseYouTubeCSV` in `internal/api/subscriptions_youtube.go`): preparing opens a confirmation dialog; successful imports keep a `Subscriptions saved` receipt open with counts. Subscription failures show `Import paused` with `Retry remaining sources`; feed availability is separate. `ImportCollection` polls health for confirmed sources and lists only unavailable feeds in a `Posts not fetching for <n> sources` accordion. `View sources` is a ghost button that closes the receipt and navigates to Sources.
 - `prepare` `POST /api/subscriptions/import/prepare` with `{provider:"opml", opml}` parses the file; `skyreader` and `glean` list that app's records on the reader's PDS. Returns `{sources, warnings}`.
 - `import` `POST /api/subscriptions/import` with `{sources}` (1 to 5 per call; the page batches by 5, `frontend/src/lib/source-import.ts`) returns `{added, updated, unchanged, failures}`. A source the reader already follows at another URL of the same feed (a YouTube channel's `channel_id=UC…` and `playlist_id=UULF…` feeds, or a generated feed's two paths; `FeedAliases`) merges into that subscription instead of adding a second.
 - `export-page` `/settings/export`: `Download OPML` saves `morgenblau.opml` and toasts `Your OPML download is ready.`
@@ -32,13 +32,14 @@ Preconditions:
 - **Export in the UI.** `goto /settings/export`, click `Download OPML`: the driver reports `Downloaded file morgenblau.opml` into `$E/.playwright-cli/`; it holds an `Example Folder` outline with both fixture feeds. `screenshot --filename=export-done.png`.
 - **Export API.** `POST /api/subscriptions/export --out export`: `opml` contains both fixture URLs.
 - **Public list.** With the imported feeds and one newsletter address: `GET /user/<did>/following.json --anon` and `.opml` answer `404`. On `/settings/export` click `Publish list`: the button reads `Stop publishing` and both links show. Now both formats answer `200` with the CORS and cache headers above (`curl -sD -`); the JSON lists the feeds with their tags and no newsletter. Mark one feed `primary` first: `?tag=Example%20Folder` and `?excludeTag=Example%20Folder` split the list, `?primary=true` keeps only that feed, `?kind=rss` keeps all and `?excludeKind=rss` none; `?kind=bogus` answers `400` `kind must be one of rss, youtube, standardfeed`; `following.opml?folders=none` has no folder outlines. `GET` for an unknown DID: `404`. Click `Stop publishing`: both answer `404` again. `PUT /api/public-following --anon`: `401`.
+- **YouTube Takeout.** Write `$E/subscriptions.csv` with a header row, one row `UC` plus 22 invented characters with a `Example Channel` title, and one row whose channel ID is invalid. `prepare` with `{provider:"youtube", csv}` (`--out prepare-youtube`): one source on that channel's `channel_id` feed and the warning `Row 3: invalid YouTube channel ID`. On `/settings/import`, `click "getByRole('button', { name: 'Import YouTube subscriptions' })"`, `upload subscriptions.csv`: dialog `Import 1 source?` with `Import warnings (1)` (`youtube-import-confirm.png`). Click `Cancel`: no new `user_subscriptions` row.
 - **Other apps.** Click `Import from Skyreader`: either a toast `No sources to import` or a dialog listing the account's Skyreader feeds. Close it with `Cancel` or `press Escape`; never confirm, since those would be real subscriptions outside the fixture.
 - **Negative.** `prepare` with `{"provider":"other"}`: `400`; with `{"provider":"opml","opml":"not xml"}`: `400` `Choose a valid OPML file with a body element`. `import` with `{"sources":[]}`: `400` `Import between 1 and 5 sources per batch`. `export --anon`: `401`.
 
 ## Evidence
 
 - `sources.opml`, `prepare.json`, `reimport.json`, `export.json`, `.playwright-cli/morgenblau.opml`
-- `import-confirm.png`, `import-done.png`, `import-collection.png`, `export-done.png`
+- `import-confirm.png`, `import-done.png`, `import-collection.png`, `export-done.png`, `youtube-import-confirm.png`
 - `inspect-before.json`, `inspect-after.json`
 
 ## Gotchas

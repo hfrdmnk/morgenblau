@@ -9,6 +9,7 @@ Help article: none
 - `digest-today` `/` lists today's entries, or, when empty, `A quiet day.` (`None of your sources published anything on this day.`) for a reader with sources and `Good <morning|afternoon|evening>. Nothing to read yet.` with `Add your first source` for one without (`EmptyDigest` in `frontend/src/pages/digest.tsx`), or keeps its skeleton (`aria-busy`) while a sync runs on an empty day.
 - `digest-date` `/?date=YYYY-MM-DD` shows that day; the UI shows today for a future date.
 - `date-nav` the header's `Digest date` navigation (`DigestDateNav` in `frontend/src/components/app-header.tsx`, only on `/`) links three days before the selected day and up to three after it, never past today (`digestDateRange` in `frontend/src/lib/digest-dates.ts`); the selected one has `aria-current="date"`.
+- `fold` a source with several entries on one day shows its latest in place and folds the rest beneath it behind `Show <n> more from <source>` (`+<n> more`, `aria-expanded`); the open group stays open when the reader comes back from a folded post (SPEC.md, Digest and Reader; `MoreFromSource` in `frontend/src/pages/digest.tsx`).
 - `day-keys` on `/`, `ArrowLeft`/`ArrowRight` (or `h`/`l`) move one day and `Shift+T` goes to today; past today an info toast answers instead. `Shift+D`/`Shift+S`/`Shift+L` switch modes anywhere signed in (`APP_MODES` in `frontend/src/lib/paths.ts`); `shortcutKey` in `frontend/src/lib/shortcuts.ts` leaves keys alone in text fields and dialogs.
 - `post-keys` on `/` and the source pages, `ArrowDown`/`ArrowUp` (or `j`/`k`) select the next/previous post, hovering selects too, and `Enter` opens the selected one (`PostList` in `frontend/src/components/item-list.tsx`).
 - `digest-api` `GET /api/digest?date=&timezone=` returns `{date, entries, hasActiveJob}`. It does not clamp a future date (it answers that day, empty); a bad `date` or unknown `timezone` is `400`.
@@ -31,6 +32,7 @@ Preconditions:
 - **Entry appears.** After delivery, sign the browser in (`/login`, `Log me in`), `goto /`, `find "Morgenblau local newsletter sample"`: a link to `/entry/<entrySlug>?from=<today>` with the sender line `sample@sender.example`. `screenshot --filename=digest-today.png`.
 - **API agrees.** `$V api $S GET "/api/digest?timezone=Europe/Zurich" --out digest` holds an entry with `contentType` `newsletter`, `title` `Morgenblau local newsletter sample`, and an `entrySlug`.
 - **Entry detail.** `$V api $S GET /api/entries/<entrySlug> --out entry`: `200` with the same title.
+- **Folding.** Deliver a second issue from the same sender, `$V mail $S -to <address> -subject "Example folded issue"`, and reload `/`: link `Example folded issue` leads, the first issue is no link, and button `Show 1 more from sample@sender.example` follows. Click it: it reads `Hide 1 more from sample@sender.example` with `aria-expanded` `true` and link `Morgenblau local newsletter sample` appears beneath (`digest-fold-open.png`). Open that link and `go-back`: the group is still open.
 - **Date navigation.** `click "getByRole('link', { name: '<yesterday full date>' })"`, then `eval "() => location.search"`: `?date=<yesterday>`; the newsletter item is gone; `screenshot --filename=digest-yesterday.png`. `goto "/?date=2999-01-01"`: the heading shows today's weekday and `eval "() => document.querySelector('[aria-current=date]')?.getAttribute('aria-label')"` is today. `$V api $S GET "/api/digest?date=2999-01-01&timezone=Europe/Zurich" --out digest-future`: `200`, `date` `2999-01-01`, no entries.
 - **Primary sources.** `POST /api/subscriptions --data '{"feedUrl":"'$F'/feeds/valid.xml","primary":true}'` (`F` as in [subscriptions](./subscriptions.md)) and wait until `GET /api/jobs/active` is `null`. On `/`, list `Primary sources` comes first and holds `Fixture entry published just now`; the newsletter follows in the ordinary list (`digest-primary.png`).
 - **Collecting.** On a fresh account, add `$F/feeds/held.xml` through `Add your first source`, `curl -X POST $F/control/hold/on` once its preview shows, then click `Add to sources`: while `/api/jobs/active` is `running`, `main [aria-busy=true]` holds the skeleton and `eval "() => document.querySelector('main').innerText"` has no empty-state copy (read `innerText`, and expect the skeleton's sample headlines in it: the skeleton renders the sample digest, hidden only from screen readers); `curl -X POST $F/control/hold/off` and `Fixture entry that arrived after the hold` replaces it.
@@ -39,7 +41,7 @@ Preconditions:
 ## Evidence
 
 - `digest-empty.json`, `digest.json`, `digest-future.json`, `entry.json`
-- `digest-today.png`, `digest-yesterday.png`, `digest-primary.png`
+- `digest-today.png`, `digest-fold-open.png`, `digest-yesterday.png`, `digest-primary.png`
 - `inspect-before.json`, `inspect-after.json`
 
 ## Gotchas
