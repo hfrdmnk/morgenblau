@@ -158,6 +158,28 @@ SMTP TLS session resumption is disabled so every STARTTLS handshake checks the c
 
 Explicit static PEM files or base64 PEM secrets remain supported with `SMTP_ACME_ENABLED="false"`. These require your own renewal and an app restart to load replacements; production startup checks identity and validity. `scripts/update-fly-smtp-cert.sh` is an optional legacy static upload helper, not part of normal deployment. When migrating an existing deployment to automatic mode, remove its static certificate secrets in the same planned deployment window and retire the old external renewal hook/tokens so they cannot reintroduce conflicting settings.
 
+### Receive newsletters through PostShiba
+
+A [PostShiba](https://www.postshiba.com/docs/dashboard/receiving/introduction) catch-all inbox can take over receiving, so no mail path points at the Fly IP. `internal/newsletter/webhook.go` owns the endpoint: it checks the HMAC-SHA256 `X-Capsule-Signature` over `{timestamp}.{body}`, refuses timestamps more than five minutes off, and passes the raw message in the `email` field to the same ingest as SMTP. Unknown recipients are acknowledged and dropped, because a catch-all accepts every address; a storage failure answers `503`, so PostShiba retries. `SMTP_MAX_MESSAGE_BYTES` caps webhook messages too.
+
+| PostShiba setting | Value |
+| --- | --- |
+| Sending domain | `morgen.blue` (publish its DKIM `ps1._domainkey` and return-path `rp.` records) |
+| Inbox host and address | `newsletters.morgen.blue`, mailbox `*` |
+| Webhook URL | `https://app.morgen.blue/webhooks/postshiba` |
+| Webhook format | `sendgrid_parse` (the JSON format carries no raw message) |
+| Retention (Events → Retention) | 7 days or more, so a delivery that exhausts its retries can still be replayed |
+
+Import the inbox's signing secret as `POSTSHIBA_WEBHOOK_SECRET`; it is shown when the inbox is created and on its webhook dialog. The webhook goes through Cloudflare, so the origin lock above applies to it unchanged.
+
+```sh
+read -rs POSTSHIBA_WEBHOOK_SECRET  # paste the signing secret, then Enter
+printf 'POSTSHIBA_WEBHOOK_SECRET=%s\n' "$POSTSHIBA_WEBHOOK_SECRET" | fly secrets import --app "$FLY_APP"
+unset POSTSHIBA_WEBHOOK_SECRET
+```
+
+PostShiba refuses to create an inbox on a host that already has MX, so the switch deletes the `newsletters.morgen.blue` MX record, creates the inbox and publishes PostShiba's MX in one sitting; lower the old record's TTL a day ahead. Keep port 25, the SMTP certificate and the dedicated IPv4 until mail has arrived through PostShiba in production; removing them is a separate change.
+
 ## 4. Deploy one Machine
 
 ```sh

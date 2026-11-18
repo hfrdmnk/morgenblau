@@ -27,6 +27,7 @@ type newsletterRuntimeConfig struct {
 	ACME            *smtpACMEConfig
 	MaxMessageBytes int64
 	MaxConnections  int
+	WebhookSecret   string
 	certificates    *smtpCertificates
 }
 
@@ -35,7 +36,7 @@ func (c newsletterRuntimeConfig) smtpEnabled() bool {
 }
 
 func effectiveNewsletterDomain(c newsletterRuntimeConfig) string {
-	if !c.smtpEnabled() {
+	if !c.smtpEnabled() && c.WebhookSecret == "" {
 		return ""
 	}
 	return c.Domain
@@ -48,9 +49,13 @@ func loadNewsletterRuntimeConfig() (newsletterRuntimeConfig, error) {
 		ListenAddr:      strings.TrimSpace(os.Getenv("SMTP_LISTEN_ADDR")),
 		MaxMessageBytes: defaultSMTPMaxMessageBytes,
 		MaxConnections:  defaultSMTPMaxConnections,
+		WebhookSecret:   strings.TrimSpace(os.Getenv("POSTSHIBA_WEBHOOK_SECRET")),
 	}
 	if cfg.ListenAddr != "" && cfg.Domain == "" {
 		return newsletterRuntimeConfig{}, fmt.Errorf("NEWSLETTER_DOMAIN is required when SMTP_LISTEN_ADDR is set")
+	}
+	if cfg.WebhookSecret != "" && cfg.Domain == "" {
+		return newsletterRuntimeConfig{}, fmt.Errorf("NEWSLETTER_DOMAIN is required when POSTSHIBA_WEBHOOK_SECRET is set")
 	}
 	if cfg.Hostname == "" {
 		cfg.Hostname = cfg.Domain

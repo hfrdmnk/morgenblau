@@ -31,6 +31,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 	} else {
 		root.HandleFunc("/__dev/", http.NotFound)
 	}
+	if s.newsletterWebhook != nil {
+		// The inbox's signature authenticates the sender; no reader session ever comes with it.
+		root.Handle("POST /webhooks/postshiba", s.newsletterWebhook)
+	}
 	root.Handle("/", gate(mux))
 	return s.corsMiddleware(root)
 }

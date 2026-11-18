@@ -83,12 +83,14 @@ type Server struct {
 	safeClient  *http.Client
 	postClient  *http.Client
 	newsletters *newsletter.Service
-	webSources  *websource.Service
-	youtube     *youtube.Client
-	allowedDIDs auth.Allowlist
-	admins      auth.Admins
-	feedback    api.FeedbackSender
-	feedbackTo  string
+	// newsletterWebhook is nil unless POSTSHIBA_WEBHOOK_SECRET is set.
+	newsletterWebhook http.Handler
+	webSources        *websource.Service
+	youtube           *youtube.Client
+	allowedDIDs       auth.Allowlist
+	admins            auth.Admins
+	feedback          api.FeedbackSender
+	feedbackTo        string
 
 	gcCancel context.CancelFunc
 	gcWG     sync.WaitGroup
@@ -301,6 +303,11 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		feedback:    feedback,
 		feedbackTo:  feedbackTo,
 		gcCancel:    gcCancel,
+	}
+
+	if newsletterCfg.WebhookSecret != "" {
+		srv.newsletterWebhook = newsletter.NewPostShibaHandler(newsletterService, newsletterCfg.WebhookSecret, newsletterCfg.MaxMessageBytes)
+		slog.Info("newsletter webhook enabled", "path", "/webhooks/postshiba", "domain", newsletterCfg.Domain)
 	}
 
 	srv.gcWG.Go(func() { runAuthRequestGC(gcCtx, st) })

@@ -149,6 +149,25 @@ func TestNewsletterServiceDomainRequiresEnabledReceiver(t *testing.T) {
 	if got := effectiveNewsletterDomain(newsletterRuntimeConfig{Domain: "inbound.example.test", ListenAddr: ":2525"}); got != "inbound.example.test" {
 		t.Errorf("enabled receiver domain = %q", got)
 	}
+	if got := effectiveNewsletterDomain(newsletterRuntimeConfig{Domain: "inbound.example.test", WebhookSecret: "example-secret"}); got != "inbound.example.test" {
+		t.Errorf("webhook-only receiver domain = %q", got)
+	}
+}
+
+func TestLoadNewsletterRuntimeConfig_WebhookNeedsTheReceivingDomain(t *testing.T) {
+	clearNewsletterEnv(t)
+	t.Setenv("POSTSHIBA_WEBHOOK_SECRET", " example-secret ")
+	if _, err := loadNewsletterRuntimeConfig(); err == nil || !strings.Contains(err.Error(), "NEWSLETTER_DOMAIN") {
+		t.Fatalf("error = %v, want NEWSLETTER_DOMAIN validation", err)
+	}
+	t.Setenv("NEWSLETTER_DOMAIN", "inbound.example.test")
+	cfg, err := loadNewsletterRuntimeConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.WebhookSecret != "example-secret" || cfg.smtpEnabled() {
+		t.Fatalf("secret = %q, SMTP enabled = %v; want the trimmed secret without SMTP", cfg.WebhookSecret, cfg.smtpEnabled())
+	}
 }
 
 func TestStartNewsletterSMTPEnforcesConnectionLimitBeforeGreeting(t *testing.T) {
@@ -210,6 +229,7 @@ func clearNewsletterEnv(t *testing.T) {
 		"SMTP_TLS_KEY_FILE",
 		"SMTP_TLS_CERT_B64",
 		"SMTP_TLS_KEY_B64",
+		"POSTSHIBA_WEBHOOK_SECRET",
 		"SMTP_MAX_MESSAGE_BYTES",
 		"SMTP_MAX_CONNECTIONS",
 	} {

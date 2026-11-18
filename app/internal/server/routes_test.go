@@ -37,6 +37,15 @@ func TestDevLoginRouteRequiresLocalOptIn(t *testing.T) {
 	}
 }
 
+func TestPostShibaWebhookRouteSkipsTheSessionGate(t *testing.T) {
+	webhook := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusAccepted) })
+	rr := httptest.NewRecorder()
+	(&Server{newsletterWebhook: webhook}).RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/webhooks/postshiba", nil))
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want the webhook's 202 without a session", rr.Code)
+	}
+}
+
 func TestSignInRoutesAreRateLimitedPerClient(t *testing.T) {
 	h := (&Server{}).RegisterRoutes()
 	for i := range 10 {

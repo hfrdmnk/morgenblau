@@ -56,7 +56,7 @@ Development-only routes live under `/__dev/`, such as the style guide at `/__dev
 
 ### Inbound newsletters
 
-Inbound email stays disabled when `NEWSLETTER_DOMAIN` and `SMTP_LISTEN_ADDR` are empty. To exercise it locally, set a private test domain and an unprivileged listen address such as `:2525`. The HTTP server and SMTP receiver run in the same process and use the same SQLite database.
+Inbound email stays disabled when `NEWSLETTER_DOMAIN` and `SMTP_LISTEN_ADDR` are empty. To exercise it locally, set a private test domain and an unprivileged listen address such as `:2525`. The HTTP server and SMTP receiver run in the same process and use the same SQLite database. Production can also receive through a PostShiba catch-all inbox: with `NEWSLETTER_DOMAIN` and `POSTSHIBA_WEBHOOK_SECRET` set, `POST /webhooks/postshiba` takes its signed `sendgrid_parse` webhook into the same ingest (`internal/newsletter/webhook.go`).
 
 STARTTLS is configured with either `SMTP_TLS_CERT_FILE` plus `SMTP_TLS_KEY_FILE`, or the base64 PEM environment variables documented in `.env.example`. `SMTP_HOSTNAME` is the SMTP banner and MX target hostname; it defaults to `NEWSLETTER_DOMAIN`. Production startup verifies the certificate's validity period and SAN against that hostname.
 
