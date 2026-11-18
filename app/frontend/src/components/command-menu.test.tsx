@@ -6,7 +6,7 @@ GlobalRegistrator.register({ url: 'http://app.example.com/' });
 // The shared source event bus outlives this file's DOM window.
 Object.assign(globalThis, { EventTarget: nativeEventTarget });
 Reflect.deleteProperty(Element.prototype, 'animate');
-const { act } = await import('react');
+const { act, StrictMode } = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { Router } = await import('wouter');
 const { CommandMenu } = await import('./command-menu');
@@ -106,10 +106,12 @@ async function render() {
     document.body.append(container);
     const root = createRoot(container);
     await act(async () => root.render(
-        <Router hook={useAppLocation}>
-            <SourcePage />
-            <CommandMenu />
-        </Router>,
+        <StrictMode>
+            <Router hook={useAppLocation}>
+                <SourcePage />
+                <CommandMenu />
+            </Router>
+        </StrictMode>,
     ));
     unmount = () => {
         root.unmount();
@@ -204,6 +206,30 @@ test('Add a source opens the add sheet, newsletter address included, outside the
 
     const sheet = document.querySelector('[role="dialog"][data-open]');
     expect(sheet?.querySelector<HTMLInputElement>('input[value="reader@inbound.example.com"]')).not.toBeNull();
+});
+
+test('Add a source opened from a focused control leaves focus in the sheet, so Ctrl+K cannot stack the menu over it', async () => {
+    await render();
+    document.querySelector<HTMLInputElement>('input[aria-label="A field on the page"]')!.focus();
+    await press('k', { ctrlKey: true });
+    await type('add a source');
+    await press('Enter');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+
+    const sheet = document.querySelector('[role="dialog"][data-open]');
+    expect(sheet?.contains(document.activeElement)).toBe(true);
+    await press('k', { ctrlKey: true });
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+});
+
+test('Escape returns focus to the control that opened the menu', async () => {
+    await render();
+    const field = document.querySelector<HTMLInputElement>('input[aria-label="A field on the page"]')!;
+    field.focus();
+    await press('k', { ctrlKey: true });
+    await press('Escape');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(document.activeElement).toBe(field);
 });
 
 test('a failed tag save unchecks the tag and drops the edit queued behind it', async () => {

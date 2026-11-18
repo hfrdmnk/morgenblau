@@ -82,6 +82,8 @@ export function CommandMenu() {
                         <Dialog.Title className="sr-only">Command menu</Dialog.Title>
                         <MenuBody
                             onAddSource={(url) => {
+                                // The sheet takes focus. An explicit finalFocus target would be focused even after that, pulling focus out of the sheet.
+                                opener.current = null;
                                 setOpen(false);
                                 setAdding((previous) => ({ url, key: (previous?.key ?? 0) + 1 }));
                             }}
