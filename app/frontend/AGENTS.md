@@ -9,7 +9,7 @@ paths:
 
 - Bun only: `bun run <script>`, `bunx` for one-offs, never npm/npx/pnpm. CI rejects any other lockfile.
 - Shadcn uses Base UI primitives from `@base-ui/react`; `components.json` holds the style.
-- Central Icons is the only icon source: round, outlined, 2px radius, 1.5px stroke; the selected mobile tab uses the filled set. `src/components/icons.tsx` maps them to app names, and only it imports `@central-icons-react/*`, which `eslint.config.js` enforces. Never copy Central SVG markup into the repo: the license forbids redistributing it.
+- Central Icons is the only icon source: round, outlined, 2px radius, 1.5px stroke; the selected mobile tab and the primary and generated source marks use the filled set. `src/components/icons.tsx` maps them to app names, and only it imports `@central-icons-react/*`, which `eslint.config.js` enforces. Never copy Central SVG markup into the repo: the license forbids redistributing it.
 - Brand direction lives in the root `BRAND.md`; visual tokens live in `src/index.css`.
 
 ## Motion

@@ -53,13 +53,9 @@ function nextCheck(nextFetchAt: string | undefined, now: number) {
 
 export function GeneratedNote({ source }: { source: FeedSource }) {
     const generated = source.generated;
-    if (!generated) return null;
-    let note = 'Generated feed';
-    if (generated.health === 'blocked_by_site') note = 'This site blocks feed readers';
-    else if (generated.health !== 'ok') {
-        note += ' · Needs attention';
-        if (generated.healthReason) note += `: ${generated.healthReason}`;
-    }
+    if (!generated || generated.health === 'ok') return null;
+    let note = 'This site blocks feed readers';
+    if (generated.health !== 'blocked_by_site') note = generated.healthReason ? `Needs attention: ${generated.healthReason}` : 'Needs attention';
     return <p className="mt-1.5 text-xs text-muted-foreground">{note}</p>;
 }
 

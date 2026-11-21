@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import { BackLink } from '@/components/back-link';
 import { ItemList, ListError, ListItem, PostList, SourceIcon } from '@/components/item-list';
 import { Skeleton } from '@/components/skeleton';
+import { PrimaryMark } from '@/components/source-marks';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { useSources, type SourceEntry } from '@/hooks/use-sources';
 import { entryHref, PATHS } from '@/lib/paths';
 import { formatDate } from '@/lib/source-display';
@@ -20,8 +22,9 @@ export function SourceDetailPage({ children }: { children: ReactNode }) {
     );
 }
 
-export function SourceHeader({ title, icon, identity, facts, tags = [], health, menu }: {
+export function SourceHeader({ title, primary, icon, identity, facts, tags = [], health, menu }: {
     title: string;
+    primary: boolean;
     icon?: string | null;
     identity?: ReactNode;
     facts: string[];
@@ -30,17 +33,20 @@ export function SourceHeader({ title, icon, identity, facts, tags = [], health, 
     menu: ReactNode;
 }) {
     return (
-        <header className="mb-14">
-            <div className="flex min-w-0 items-center gap-3">
-                <SourceIcon className="size-6" src={icon} />
-                <h1 className="min-w-0 flex-1 text-3xl font-medium text-balance break-words">{title}</h1>
-                {menu}
-            </div>
-            {identity ? <div className="mt-3 min-w-0 text-sm text-muted-foreground">{identity}</div> : null}
-            <p className="mt-1 text-sm text-subtle-foreground">{facts.join(' · ')}</p>
-            {health}
-            <SourceTags tags={tags} />
-        </header>
+        <TooltipProvider>
+            <header className="mb-14">
+                <div className="flex min-w-0 items-center gap-3 sm:relative">
+                    {primary ? <span className="flex shrink-0 sm:absolute sm:top-1/2 sm:-left-8 sm:-translate-y-1/2"><PrimaryMark className="size-5" /></span> : null}
+                    <SourceIcon className="size-6" src={icon} />
+                    <h1 className="min-w-0 flex-1 text-3xl font-medium text-balance break-words">{title}</h1>
+                    {menu}
+                </div>
+                {identity ? <div className="mt-3 flex min-w-0 items-center gap-2 text-sm text-muted-foreground">{identity}</div> : null}
+                <p className="mt-1 text-sm text-subtle-foreground">{facts.join(' · ')}</p>
+                {health}
+                <SourceTags tags={tags} />
+            </header>
+        </TooltipProvider>
     );
 }
 

@@ -27,17 +27,14 @@ const artwork = {
     [PATHS.digest]: {
         Icon: DigestIcon,
         ActiveIcon: DigestActiveIcon,
-        color: 'text-atmosphere-blue',
     },
     [PATHS.sources]: {
         Icon: SourcesIcon,
         ActiveIcon: SourcesActiveIcon,
-        color: 'text-sunrise-orange',
     },
     [PATHS.library]: {
         Icon: LibraryIcon,
         ActiveIcon: LibraryActiveIcon,
-        color: 'text-aurora-violet',
     },
 };
 
@@ -104,7 +101,7 @@ export function AppHeader() {
             <nav ref={modeNavRef} aria-label="Modes" className="app-mode-nav select-none">
                 {APP_MODES.map((mode) => {
                     const active = current === mode;
-                    const { Icon, ActiveIcon, color } = artwork[mode.href];
+                    const { Icon, ActiveIcon } = artwork[mode.href];
                     return (
                         <Link
                             key={mode.href}
@@ -117,7 +114,7 @@ export function AppHeader() {
                             )}
                         >
                             <span className="app-mode-artwork">
-                                {active ? <ActiveIcon className={cn('size-6', color)} /> : <Icon className="size-6" />}
+                                {active ? <ActiveIcon className="size-6 text-atmosphere-blue" /> : <Icon className="size-6" />}
                             </span>
                             {mode.label}
                         </Link>

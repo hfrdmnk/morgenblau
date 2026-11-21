@@ -4,6 +4,7 @@ import { EditSourceSheet } from '@/components/add-source-dialog';
 import { SourceHealth } from '@/components/feed-health';
 import { Skeleton } from '@/components/skeleton';
 import { SourceDetailPage, SourceEntries, SourceHeader, SourceUnavailable } from '@/components/source-detail';
+import { GeneratedMark } from '@/components/source-marks';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useFeedSourceCommands } from '@/hooks/use-source-commands';
 import { useSources, type FeedSourceDetail, type SourceEntry } from '@/hooks/use-sources';
@@ -53,8 +54,9 @@ function FeedSourceHeader({ source, onChanged, onRemoved }: { source: FeedSource
             facts={feedFacts(source)}
             health={<SourceHealth source={source} />}
             icon={source.faviconUrl}
-            identity={<SiteLink url={site} />}
+            identity={<><SiteLink url={site} />{source.generated ? <GeneratedMark className="size-4" /> : null}</>}
             menu={<EditSourceSheet onChanged={onChanged} onRemoved={onRemoved} source={source} />}
+            primary={source.primary}
             tags={source.tags}
             title={title}
         />

@@ -14,8 +14,6 @@
 	--input: oklch(0.955 0.002 77);
 	--line: oklch(0.216 0.006 56.043 / 0.1);
 	--atmosphere-blue: oklch(57.2% 0.251 256.1);
-	--sunrise-orange: oklch(64% 0.22 38);
-	--aurora-violet: oklch(60% 0.22 300);
 	--radius: 0.45rem;
 	--radius-md: calc(var(--radius) * 0.8);
 	--radius-xl: calc(var(--radius) * 1.4);

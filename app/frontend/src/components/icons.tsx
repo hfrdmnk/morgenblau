@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils';
 
 export { IconBooks as LibraryActiveIcon } from '@central-icons-react/round-filled-radius-2-stroke-1.5/IconBooks';
 export { IconLayersThree as SourcesActiveIcon } from '@central-icons-react/round-filled-radius-2-stroke-1.5/IconLayersThree';
+export { IconMagicWand as GeneratedIcon } from '@central-icons-react/round-filled-radius-2-stroke-1.5/IconMagicWand';
+export { IconStar as PrimaryIcon } from '@central-icons-react/round-filled-radius-2-stroke-1.5/IconStar';
 export { IconArrowCornerDownLeft as EnterIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconArrowCornerDownLeft';
 export { IconArrowDownWall as DownloadIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconArrowDownWall';
 export { IconArrowRight as ArrowRightIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconArrowRight';

@@ -39,17 +39,16 @@ test('a YouTube outage reads as waiting on YouTube, never as a broken feed', () 
     expect(detail).not.toContain('Posts aren’t fetching');
 });
 
-test('a generated feed is marked quietly and says when it needs attention', () => {
+test('a generated feed note speaks up only when the feed needs attention', () => {
     const generated = { ...source, feedUrl: 'https://app.example.com/feed/abc', fetchStatus: 'ready' as const };
     expect(renderToStaticMarkup(<GeneratedNote source={source} />)).toBe('');
-    expect(renderToStaticMarkup(<GeneratedNote source={{ ...generated, generated: { health: 'ok', healthReason: '' } }} />))
-        .toContain('>Generated feed</p>');
+    expect(renderToStaticMarkup(<GeneratedNote source={{ ...generated, generated: { health: 'ok', healthReason: '' } }} />)).toBe('');
     const unsure = renderToStaticMarkup(
         <GeneratedNote source={{ ...generated, generated: { health: 'needs_attention', healthReason: 'fewer posts than before' } }} />,
     );
-    expect(unsure).toContain('Generated feed · Needs attention: fewer posts than before');
+    expect(unsure).toContain('>Needs attention: fewer posts than before</p>');
     expect(renderToStaticMarkup(<GeneratedNote source={{ ...generated, generated: { health: 'broken', healthReason: '' } }} />))
-        .toContain('Generated feed · Needs attention</p>');
+        .toContain('>Needs attention</p>');
     expect(renderToStaticMarkup(<GeneratedNote source={{ ...generated, generated: { health: 'blocked_by_site', healthReason: 'challenge page' } }} />))
         .toContain('>This site blocks feed readers</p>');
     expect(unsure).not.toContain('text-destructive');

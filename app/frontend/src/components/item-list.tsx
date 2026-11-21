@@ -115,10 +115,11 @@ export function ItemList({ children, label, ordered = false }: {
     return <List aria-label={label} className="space-y-8">{children}</List>;
 }
 
-export function ListItem({ title, href, aside, icon, meta, status, note, actions }: {
+// mark hangs in the gutter left of the title on wide screens, so marked and unmarked titles share one edge.
+export function ListItem({ title, href, mark, icon, meta, status, note, actions }: {
     title: string;
     href: string;
-    aside?: ReactNode;
+    mark?: ReactNode;
     icon?: string | null;
     meta?: ReactNode;
     status?: ReactNode;
@@ -129,7 +130,8 @@ export function ListItem({ title, href, aside, icon, meta, status, note, actions
         <li className="flex min-w-0 items-center gap-3">
             <div className="min-w-0 flex-1">
                 <div className="-mx-3 -my-2 px-3 py-2" data-post>
-                    <div className="flex min-w-0 items-baseline gap-3">
+                    <div className="flex min-w-0 items-center gap-2 sm:relative sm:block">
+                        {mark ? <span className="flex shrink-0 sm:absolute sm:top-1/2 sm:-left-7 sm:-translate-y-1/2">{mark}</span> : null}
                         <Link
                             className="block min-w-0 truncate rounded-sm text-lg font-medium text-foreground hover:text-foreground/75"
                             data-post-link
@@ -138,7 +140,6 @@ export function ListItem({ title, href, aside, icon, meta, status, note, actions
                         >
                             {title}
                         </Link>
-                        {aside ? <span className="shrink-0 text-xs text-muted-foreground">{aside}</span> : null}
                     </div>
                     {icon || meta ? (
                         <div className="mt-2 flex min-w-0 items-center gap-2.5 text-sm text-subtle-foreground">

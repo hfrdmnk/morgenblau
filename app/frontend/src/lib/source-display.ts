@@ -69,12 +69,12 @@ function facts(label: string | undefined, frequency: string | undefined, count: 
         .filter((fact): fact is string => Boolean(fact));
 }
 
-export function feedFacts(source: { primary: boolean; frequency?: string; totalEntries: number; lastPublishedAt?: string }): string[] {
-    return facts(source.primary ? 'Primary' : undefined, source.frequency, source.totalEntries, 'post', source.lastPublishedAt);
+export function feedFacts(source: { frequency?: string; totalEntries: number; lastPublishedAt?: string }): string[] {
+    return facts(undefined, source.frequency, source.totalEntries, 'post', source.lastPublishedAt);
 }
 
-// A stopped newsletter has no cadence to promise and its primary flag no longer applies.
-export function newsletterFacts(source: { primary: boolean; status: string; frequency: string; issueCount: number; lastReceivedAt: string | null }): string[] {
+// A stopped newsletter has no cadence to promise.
+export function newsletterFacts(source: { status: string; frequency: string; issueCount: number; lastReceivedAt: string | null }): string[] {
     if (source.status === 'stopped') return facts('Stopped', undefined, source.issueCount, 'issue', source.lastReceivedAt);
-    return facts(source.primary ? 'Primary' : undefined, source.frequency, source.issueCount, 'issue', source.lastReceivedAt);
+    return facts(undefined, source.frequency, source.issueCount, 'issue', source.lastReceivedAt);
 }

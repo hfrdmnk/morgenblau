@@ -5,6 +5,8 @@ import { EditNewsletterSheet, EditSourceSheet } from '@/components/add-source-di
 import { FeedHealth, GeneratedNote } from '@/components/feed-health';
 import { ItemList, ListError, ListItem } from '@/components/item-list';
 import { Skeleton } from '@/components/skeleton';
+import { GeneratedMark, PrimaryMark } from '@/components/source-marks';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-sources';
 import { newsletterSourceHref, PATHS, sourceHref } from '@/lib/paths';
@@ -18,8 +20,10 @@ export function Sources() {
     return (
         <main aria-label="Sources" className="mx-auto w-full max-w-3xl space-y-14 px-5 pb-20 pt-20 sm:px-8 md:pt-24" id="main">
             <h1 className="sr-only" ref={heading} tabIndex={-1}>Sources</h1>
-            <FeedList removedFocus={heading} />
-            <NewsletterList removedFocus={heading} />
+            <TooltipProvider>
+                <FeedList removedFocus={heading} />
+                <NewsletterList removedFocus={heading} />
+            </TooltipProvider>
         </main>
     );
 }
@@ -47,7 +51,8 @@ function FeedList({ removedFocus }: { removedFocus: RemovedFocus }) {
                         row={(source) => (
                             <SourceRow key={source.rkey} href={sourceHref(source.rkey)} title={source.title}
                                 identity={source.siteUrl || source.feedUrl} favicon={source.faviconUrl}
-                                primary={source.primary} health={<FeedHealth labelled source={source} waitingChannels={waitingOnYouTube(feeds)} />}
+                                primary={source.primary} generated={Boolean(source.generated)}
+                                health={<FeedHealth labelled source={source} waitingChannels={waitingOnYouTube(feeds)} />}
                                 note={<GeneratedNote source={source} />}
                                 menu={<EditSourceSheet onChanged={state.refresh} removedFocus={removedFocus} source={source} />} />
                         )} />
@@ -129,12 +134,12 @@ function sourceLabel(title: string | undefined, identity: string): string {
     return title || displayURL(identity);
 }
 
-function SourceRow({ href, title, identity, favicon, primary, health, note, menu }: {
-    href: string; title?: string; identity: string; favicon?: string; primary: boolean; health?: ReactNode; note?: ReactNode; menu: ReactNode;
+function SourceRow({ href, title, identity, favicon, primary, generated = false, health, note, menu }: {
+    href: string; title?: string; identity: string; favicon?: string; primary: boolean; generated?: boolean; health?: ReactNode; note?: ReactNode; menu: ReactNode;
 }) {
     return (
         <ListItem href={href} title={sourceLabel(title, identity)} icon={favicon}
-            aside={primary ? 'Primary' : undefined} note={note}
-            meta={displayURL(identity)} status={health} actions={menu} />
+            mark={primary ? <PrimaryMark className="size-3.5" /> : undefined} note={note}
+            meta={displayURL(identity)} status={<>{generated ? <GeneratedMark className="-ml-1 size-3.5" /> : null}{health}</>} actions={menu} />
     );
 }

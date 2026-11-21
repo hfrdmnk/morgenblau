@@ -54,6 +54,7 @@ function NewsletterHeader({ source, onChanged, onRemoved }: { source: Newsletter
             facts={newsletterFacts(source)}
             menu={<EditNewsletterSheet onChanged={onChanged} onRemoved={onRemoved} source={source} stopped={source.status === 'stopped'} />}
             identity={title === source.senderAddress ? null : <span className="break-all">{source.senderAddress}</span>}
+            primary={source.status === 'active' && source.primary}
             tags={source.tags}
             title={title}
         />

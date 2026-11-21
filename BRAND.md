@@ -10,7 +10,7 @@ Newspaper describes the product model, not a visual costume. Avoid paper texture
 
 ## Visual direction
 
-The interface is a quiet, tonal field built from Stone neutrals. It uses little elevation, few borders, and no decorative chrome. Ordinary actions remain neutral. The three vivid colors identify the primary product modes: atmosphere blue for Digest, sunrise orange for Sources, and aurora violet for Library. Their lighter companions exist only as gradient endpoints.
+The interface is a quiet, tonal field built from Stone neutrals. It uses little elevation, few borders, and no decorative chrome. Ordinary actions remain neutral. Atmosphere blue is the one vivid brand color; it marks the active mode, whichever mode that is. Its lighter companion exists only as a gradient endpoint. A few semantic colors carry meaning rather than brand, such as the yellow star on primary sources and the violet wand on generated feeds; they never mark a mode.
 
 Geist is the interface typeface and default reader font. Newsreader and iA Writer Duo (labelled Mono) are optional reader-body faces; titles and metadata remain Geist. The major-second scale and the visual tokens live in [`app/frontend/src/index.css`](app/frontend/src/index.css); components choose size and weight independently.
 

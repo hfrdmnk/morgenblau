@@ -86,10 +86,6 @@ const supportTokens = [
 const productColors = [
     { label: 'atmosphere-blue', variable: 'color-atmosphere-blue' },
     { label: 'atmosphere-blue-off', variable: 'atmosphere-blue-off' },
-    { label: 'sunrise-orange', variable: 'color-sunrise-orange' },
-    { label: 'sunrise-orange-off', variable: 'sunrise-orange-off' },
-    { label: 'aurora-violet', variable: 'color-aurora-violet' },
-    { label: 'aurora-violet-off', variable: 'aurora-violet-off' },
 ] as const;
 
 type SectionProps = {
