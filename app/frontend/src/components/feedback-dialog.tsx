@@ -252,7 +252,7 @@ function ComposerActions({ canSend, onFiles, sending }: { canSend: boolean; onFi
 function StatusLine({ status }: { status: string | null }) {
     return (
         <p className={cn('min-h-lh px-2 pt-2 pb-1 text-xs', status ? 'text-destructive' : 'text-subtle-foreground')} role={status ? 'alert' : undefined}>
-            {status ?? 'Sent with your account, this page and your browser details.'}
+            {status ?? 'Your handle, this page and your browser are automatically included to help track down problems.'}
         </p>
     );
 }
