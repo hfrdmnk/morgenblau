@@ -10,8 +10,8 @@ Use one always-on Fly Machine, a local SQLite volume, and Litestream backups in 
 | --- | --- |
 | `morgen.blue` | Landing page, hosted separately; existing human email stays untouched |
 | `app.morgen.blue` | App, OAuth metadata, and callback |
-| `newsletters.morgen.blue` | Private receiving addresses, e.g. `<random>@newsletters.morgen.blue` |
-| `mx.app.morgen.blue` | Product SMTP banner, STARTTLS certificate, and MX target |
+| `newsletters.morgen.blue` | Private receiving addresses, e.g. `<random>@newsletters.morgen.blue`; production receives them through PostShiba |
+| `mx.app.morgen.blue` | Only for the built-in SMTP receiver: banner, STARTTLS certificate, and MX target |
 
 The app subdomain keeps landing-page hosting independent and avoids routing OAuth and the PWA through a subpath. The SMTP hostname is infrastructure, not an address suffix; other receiving domains can point their MX records at it later, but the app must also be taught to accept them. Adding DNS alone does not enable another receiving domain.
 
@@ -35,7 +35,7 @@ Set `app` in `fly.toml` to that name. Leave the bucket **private**; it holds new
 
 The mount's `snapshot_retention` in `fly.toml` applies only to new volumes created by `fly deploy`; explicitly created volumes need the flag above. Check existing volumes separately. To change retention for future snapshots, use `fly volumes update <volume-id> --snapshot-retention 7 --app "$FLY_APP"`; existing snapshots keep their original retention. See [Fly's snapshot guidance](https://fly.io/docs/volumes/snapshots/).
 
-The dedicated IPv4 is needed for raw TCP port 25, not just HTTP. Start with the committed 512 MB size; watch memory usage and increase it to 1024 MB if necessary. Check [Fly pricing](https://fly.io/docs/about/pricing/) and [Tigris pricing](https://www.tigrisdata.com/docs/pricing/) for the selected organization/region. Budget for the always-on VM, volume, dedicated IPv4, snapshots, and object storage; this is not a free-tier deployment.
+The dedicated IPv4 is needed for the built-in SMTP receiver's raw TCP port 25; production receives through PostShiba instead and keeps it only because `app.morgen.blue` points at it. Start with the committed 512 MB size; watch memory usage and increase it to 1024 MB if necessary. Check [Fly pricing](https://fly.io/docs/about/pricing/) and [Tigris pricing](https://www.tigrisdata.com/docs/pricing/) for the selected organization/region. Budget for the always-on VM, volume, dedicated IPv4, snapshots, and object storage; this is not a free-tier deployment.
 
 Keep **exactly one Machine**. Volumes are local, not shared or automatically synchronized. Do not enable autoscaling, blue-green deploys, or a second independent writer using the same backup prefix.
 
@@ -178,7 +178,9 @@ printf 'POSTSHIBA_WEBHOOK_SECRET=%s\n' "$POSTSHIBA_WEBHOOK_SECRET" | fly secrets
 unset POSTSHIBA_WEBHOOK_SECRET
 ```
 
-PostShiba refuses to create an inbox on a host that already has MX, so the switch deletes the `newsletters.morgen.blue` MX record, creates the inbox and publishes PostShiba's MX in one sitting; lower the old record's TTL a day ahead. Keep port 25, the SMTP certificate and the dedicated IPv4 until mail has arrived through PostShiba in production; removing them is a separate change.
+PostShiba refuses to create an inbox on a host that already has MX, so the switch deletes the `newsletters.morgen.blue` MX record, creates the inbox and publishes PostShiba's MX in one sitting; lower the old record's TTL a day ahead.
+
+Production receives through PostShiba, so `fly.toml` leaves the built-in SMTP receiver off: no `SMTP_LISTEN_ADDR`, `SMTP_HOSTNAME` or `SMTP_ACME_*`, and no port 25 service. The `mx.app.morgen.blue` record and the SMTP certificate steps above, and the STARTTLS checks in step 5, apply only when you run that receiver instead. Turning it back on means restoring those settings and the port 25 service, then pointing the `newsletters.morgen.blue` MX at `mx.app.morgen.blue` again.
 
 ## 4. Deploy one Machine
 
