@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 
 import { CheckIcon } from '@/components/icons';
 import { SaveTagEditor } from '@/components/save-tags';
+import { Button } from '@/components/ui/button';
+import { Kbd } from '@/components/ui/kbd';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 import { useShortcuts } from '@/hooks/use-shortcuts';
 import type { EntrySave } from '@/lib/entry-save';
 
@@ -15,27 +19,26 @@ export function SaveToast({ save, onHold }: { save: EntrySave; onHold: (held: bo
     }, [open]);
 
     return (
-        <div
-            className="flex w-full min-w-0 flex-col gap-3"
+        <Frame
+            gap="m"
+            minWidth={0}
             onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) onHold(false); }}
             onFocus={() => onHold(true)}
+            width="full"
         >
-            <div className="flex items-center gap-3">
-                <CheckIcon className="size-4 shrink-0 text-success-icon" />
-                <span className="flex-1 font-medium">Saved to Library</span>
+            <Frame align="center" direction="row" gap="m">
+                <CheckIcon size="md" tone="success-icon" />
+                <Frame grow>
+                    <Text as="span" weight="medium">Saved to Library</Text>
+                </Frame>
                 {!open ? (
-                    <button
-                        aria-keyshortcuts="t"
-                        className="-my-1 inline-flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                        onClick={() => setOpen(true)}
-                        type="button"
-                    >
+                    <Button aria-keyshortcuts="t" onClick={() => setOpen(true)} size="inline" variant="quiet">
                         Add tags
-                        <kbd className="hidden rounded-sm px-1 font-sans text-xs text-subtle-foreground shadow-[inset_0_0_0_1px_var(--border)] [@media(pointer:fine)]:inline">T</kbd>
-                    </button>
+                        <Kbd hideOnTouch>T</Kbd>
+                    </Button>
                 ) : null}
-            </div>
-            {open ? <div><SaveTagEditor inputRef={input} save={save} /></div> : null}
-        </div>
+            </Frame>
+            {open ? <SaveTagEditor inputRef={input} save={save} /> : null}
+        </Frame>
     );
 }

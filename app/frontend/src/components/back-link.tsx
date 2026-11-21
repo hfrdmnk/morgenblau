@@ -1,12 +1,12 @@
-import { Link } from 'wouter';
-
 import { ArrowRightIcon } from '@/components/icons';
+import { Link } from '@/components/ui/link';
+import { Text } from '@/design/text';
 
 export function BackLink({ href, label, keyShortcut }: { href: string; label: string; keyShortcut?: string }) {
     return (
-        <Link aria-keyshortcuts={keyShortcut} className="inline-flex min-h-10 items-center gap-2 rounded-sm text-sm text-muted-foreground select-none hover:text-foreground" href={href}>
-            <ArrowRightIcon className="size-4 rotate-180" />
-            {label}
+        <Link aria-keyshortcuts={keyShortcut} href={href} variant="back">
+            <ArrowRightIcon rotate={180} size="md" />
+            <Text as="span">{label}</Text>
         </Link>
     );
 }

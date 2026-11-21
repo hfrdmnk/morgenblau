@@ -1,9 +1,16 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import 'shadcn/tailwind.css';
 @import './assets/fonts/fonts.css';
+@import './design/tokens.css';
 
 @custom-variant dark (&:is(.dark *):not(.light *));
+
+/* Base UI marks state with presence attributes. :where() keeps each variant at the class's own specificity, so a later
+   utility such as motion-reduce:animate-none still overrides it. */
+@custom-variant data-open (&:where([data-open]));
+@custom-variant data-closed (&:where([data-closed]));
+@custom-variant data-checked (&:where([data-checked]));
+@custom-variant data-disabled (&:where([data-disabled]));
 
 @theme static {
     --font-sans: 'Geist Variable', system-ui, sans-serif;
@@ -32,6 +39,9 @@
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
     --shadow-popover: var(--popover-shadow);
+    --shadow-thumb: 0 1px 2px oklch(0.216 0.006 56.043 / 0.2);
+    --color-atmosphere-blue-foreground: oklch(1 0 0);
+    --blur-veil: 3px;
 }
 
 @theme inline {
@@ -47,6 +57,7 @@
     --color-secondary-foreground: var(--secondary-foreground);
     --color-muted: var(--muted);
     --color-muted-foreground: var(--muted-foreground);
+    --color-muted-soft: var(--muted-soft);
     --color-accent: var(--accent);
     --color-accent-foreground: var(--accent-foreground);
     --color-destructive: var(--destructive);
@@ -84,6 +95,45 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+    --shadow-hairline: inset 0 0 0 1px var(--border);
+    --shadow-hairline-destructive: inset 0 0 0 1px var(--destructive);
+    --shadow-hairline-success: inset 0 0 0 1px var(--success);
+    --shadow-hairline-ring: inset 0 0 0 1px var(--ring);
+    --shadow-image-edge: 0 0 0 1px oklch(from var(--foreground) l c h / 0.08);
+    --shadow-raised: inset 0 2px 0 0 var(--btn-highlight);
+    --color-success-soft: var(--success-soft);
+    --color-destructive-soft: var(--destructive-soft);
+    --color-destructive-tint: var(--destructive-tint);
+    /* Translucent colours mix at the element that uses them, so they follow a nested .light or .dark. */
+    --color-scrim: color-mix(in oklab, var(--background) 40%, transparent);
+    --color-bar: color-mix(in oklab, var(--background) 95%, transparent);
+    --color-foreground-faint: color-mix(in oklab, var(--foreground) 5%, transparent);
+    --color-foreground-soft: color-mix(in oklab, var(--foreground) 75%, transparent);
+    --color-secondary-soft: color-mix(in oklab, var(--secondary) 60%, transparent);
+    --color-track: color-mix(in oklab, var(--secondary) 50%, transparent);
+    --color-input-soft: color-mix(in oklab, var(--input) 50%, transparent);
+    --color-input-veil: color-mix(in oklab, var(--input) 90%, transparent);
+    --color-subtle-line: color-mix(in oklab, var(--subtle-foreground) 40%, transparent);
+    --color-underline: color-mix(in oklab, currentColor 35%, transparent);
+    --color-system-highlight: Highlight;
+
+    @keyframes accordion-down {
+        from {
+            height: 0;
+        }
+        to {
+            height: var(--accordion-panel-height, auto);
+        }
+    }
+
+    @keyframes accordion-up {
+        from {
+            height: var(--accordion-panel-height, auto);
+        }
+        to {
+            height: 0;
+        }
+    }
 }
 
 :root,
@@ -100,13 +150,18 @@
     --secondary: oklch(0.923 0.003 48.717);
     --secondary-foreground: oklch(0.268 0.007 34.298);
     --muted: oklch(0.923 0.003 48.717);
+    /* A panel that sits quietly on the page, such as the reader's blocked-images notice. */
+    --muted-soft: color-mix(in oklab, var(--muted) 60%, transparent);
     --muted-foreground: oklch(0.444 0.011 73.639);
     --subtle-foreground: oklch(0.53 0.01 56.259);
     --accent: oklch(0.869 0.005 56.366);
     --accent-foreground: oklch(0.268 0.007 34.298);
     --destructive: oklch(0.5 0.245 27.325);
     --destructive-foreground: oklch(0.985 0.001 106.423);
+    --destructive-soft: color-mix(in oklab, var(--destructive) 10%, transparent);
+    --destructive-tint: color-mix(in oklab, var(--destructive) 12%, var(--background));
     --success: oklch(0.527 0.154 150.069);
+    --success-soft: color-mix(in oklab, var(--success) 10%, transparent);
     --success-foreground: oklch(0.985 0.001 106.423);
     --success-icon: oklch(72.3% 0.219 149.579);
     --error-icon: oklch(63.7% 0.237 25.331);
@@ -157,13 +212,17 @@
     --secondary: oklch(0.268 0.007 34.298);
     --secondary-foreground: oklch(0.97 0.001 106.424);
     --muted: oklch(0.216 0.006 56.043);
+    --muted-soft: color-mix(in oklab, var(--muted) 60%, transparent);
     --muted-foreground: oklch(0.869 0.005 56.366);
     --subtle-foreground: oklch(0.553 0.013 58.071);
     --accent: oklch(0.268 0.007 34.298);
     --accent-foreground: oklch(0.97 0.001 106.424);
     --destructive: oklch(0.704 0.191 22.216);
     --destructive-foreground: oklch(0.147 0.004 49.25);
+    --destructive-soft: color-mix(in oklab, var(--destructive) 15%, transparent);
+    --destructive-tint: color-mix(in oklab, var(--destructive) 18%, var(--background));
     --success: oklch(0.723 0.219 149.579);
+    --success-soft: color-mix(in oklab, var(--success) 15%, transparent);
     --success-foreground: oklch(0.147 0.004 49.25);
     --source-primary: oklch(0.84 0.15 88);
     --source-generated: oklch(0.7 0.16 300);
@@ -258,7 +317,7 @@
     }
 }
 
-/* Unlayered, so it outranks the colour and decoration utilities on the sample it draws (src/components/skeleton.tsx). */
+/* Unlayered, so it outranks the colour and decoration utilities on the sample it draws (src/components/ui/skeleton.tsx). */
 .skeleton {
     --skeleton-delay: calc(150ms - var(--skeleton-elapsed, 0ms));
     user-select: none;
@@ -319,6 +378,64 @@
     }
 }
 
+/* Widens a box by the negative margin it bleeds into, such as -mx-3 with w-bleed-3, since a button does not stretch to fill it. */
+@utility w-bleed-* {
+    width: calc(100% + var(--spacing) * --value(integer) * 2);
+}
+
+/* The raised button: a top highlight and a 1px gradient rim, drawn by an ::after masked down to its padding. Variants set the surface. */
+@utility raised {
+    --btn-from: color-mix(in oklch, var(--btn-surface), white 15%);
+    --btn-highlight: color-mix(in oklch, var(--btn-surface), white 30%);
+
+    &::after {
+        content: '';
+        pointer-events: none;
+        position: absolute;
+        inset: 0;
+        padding: 1px;
+        border-radius: inherit;
+        background-image: linear-gradient(
+            to bottom in oklab,
+            color-mix(in oklch, var(--btn-from), black 10%) 0%,
+            color-mix(in oklch, var(--btn-surface), black 10%) 100%
+        );
+        mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    }
+}
+
+@utility btn-surface-* {
+    --btn-surface: --value(--color-*);
+}
+
+/* Base UI's drawer sets the swipe variables: the backdrop fades as the popup follows the finger, and a release finishes at the swipe's speed. */
+@utility drawer-fade {
+    opacity: calc(1 - var(--drawer-swipe-progress));
+}
+
+@utility drawer-release {
+    --tw-duration: calc(var(--drawer-swipe-strength) * var(--motion-duration-overlay));
+    transition-duration: calc(var(--drawer-swipe-strength) * var(--motion-duration-overlay));
+}
+
+@utility drawer-slide-x {
+    transform: translateX(var(--drawer-swipe-movement-x));
+
+    &[data-starting-style],
+    &[data-ending-style] {
+        transform: translateX(calc(100% + 1rem));
+    }
+}
+
+@utility drawer-slide-y {
+    transform: translateY(var(--drawer-swipe-movement-y));
+
+    &[data-starting-style],
+    &[data-ending-style] {
+        transform: translateY(100%);
+    }
+}
+
 .page-placeholder {
     display: grid;
     min-height: 100dvh;
@@ -326,6 +443,25 @@
 }
 
 :root {
+    --grid-sidebar: 11rem minmax(0, 1fr);
+    --grid-specimen: 3rem minmax(0, 1fr);
+    --grid-trailing: 1fr auto;
+    --grid-stepper: 2.75rem 1fr 2.75rem;
+    --grid-feature-rows: auto auto 1fr;
+    --grid-usage: 1fr repeat(3, 5.5rem);
+    --grid-usage-row: 2rem 1fr;
+    --grid-usage-row-wide: 2rem 1fr repeat(3, 5.5rem);
+    --safe-bottom: env(safe-area-inset-bottom);
+    --admin-banner-top: calc(0.5rem + env(safe-area-inset-top));
+    --skip-link-top: calc(1rem + env(safe-area-inset-top));
+    --dialog-width: calc(100% - 2rem);
+    --dialog-max-height: calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    --dialog-short-max-height: 85dvh;
+    --sheet-max-height: 92dvh;
+    --palette-top: min(16dvh, 8rem);
+    --palette-max-height: min(26rem, 60dvh);
+    --excerpt-measure: 60ch;
+    --composer-max-height: 50dvh;
     --app-header-fade: 2rem;
     --app-mode-nav-inset: max(1rem, env(safe-area-inset-bottom));
 }

@@ -1,17 +1,18 @@
 import { useState, type KeyboardEvent } from 'react';
-import { Link } from 'wouter';
 
 import { DownloadIcon, SettingsIcon, ShieldIcon, UploadIcon } from '@/components/icons';
 import { PersonAvatar } from '@/components/person-avatar';
 import { Button } from '@/components/ui/button';
+import { MenuLink, MenuList, MenuPopup } from '@/components/ui/menu';
 import {
     Popover,
-    PopoverContent,
     PopoverDescription,
     PopoverHeader,
     PopoverTitle,
     PopoverTrigger,
 } from '@/components/ui/popover';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 import type { AppProfile } from '@/lib/app-profile-context';
 import { PATHS } from '@/lib/paths';
 
@@ -25,69 +26,48 @@ export function AccountMenu({ profile }: { profile: AppProfile }) {
                 render={
                     <Button
                         variant="ghost"
-                        size="icon"
-                        className="rounded-full p-1"
+                        size="avatar"
                         aria-label="Open account menu"
                     />
                 }
             >
                 <PersonAvatar seed={profile.did} src={profile.avatar} />
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-64" onKeyDown={moveThroughItems}>
+            <MenuPopup align="end" onKeyDown={moveThroughItems}>
                 <PopoverHeader>
-                    <PopoverTitle className="truncate">
-                        {accountName}
+                    <PopoverTitle>
+                        <Text as="span" display="block" truncate>{accountName}</Text>
                     </PopoverTitle>
-                    <PopoverDescription className="truncate">
-                        @{profile.handle}
+                    <PopoverDescription>
+                        <Text as="span" display="block" truncate>@{profile.handle}</Text>
                     </PopoverDescription>
                 </PopoverHeader>
-                <nav aria-label="Account" className="-mx-2 select-none">
-                    <Link
-                        href={PATHS.general}
-                        className="flex min-h-10 items-center gap-3 rounded-md px-2 text-sm hover:bg-secondary/50"
-                        onClick={() => setOpen(false)}
-                    >
-                        <SettingsIcon className="size-4" />
-                        General
-                    </Link>
-                    <Link
-                        href={PATHS.import}
-                        className="flex min-h-10 items-center gap-3 rounded-md px-2 text-sm hover:bg-secondary/50"
-                        onClick={() => setOpen(false)}
-                    >
-                        <UploadIcon className="size-4" />
-                        Import
-                    </Link>
-                    <Link
-                        href={PATHS.export}
-                        className="flex min-h-10 items-center gap-3 rounded-md px-2 text-sm hover:bg-secondary/50"
-                        onClick={() => setOpen(false)}
-                    >
-                        <DownloadIcon className="size-4" />
-                        Export
-                    </Link>
+                <MenuList aria-label="Account">
+                    <MenuLink href={PATHS.general} onClick={() => setOpen(false)}>
+                        <SettingsIcon size="md" />
+                        <Text as="span">General</Text>
+                    </MenuLink>
+                    <MenuLink href={PATHS.import} onClick={() => setOpen(false)}>
+                        <UploadIcon size="md" />
+                        <Text as="span">Import</Text>
+                    </MenuLink>
+                    <MenuLink href={PATHS.export} onClick={() => setOpen(false)}>
+                        <DownloadIcon size="md" />
+                        <Text as="span">Export</Text>
+                    </MenuLink>
                     {profile.isAdmin ? (
-                        <Link
-                            href={PATHS.admin}
-                            className="flex min-h-10 items-center gap-3 rounded-md px-2 text-sm hover:bg-secondary/50"
-                            onClick={() => setOpen(false)}
-                        >
-                            <ShieldIcon className="size-4" />
-                            Admin
-                        </Link>
+                        <MenuLink href={PATHS.admin} onClick={() => setOpen(false)}>
+                            <ShieldIcon size="md" />
+                            <Text as="span">Admin</Text>
+                        </MenuLink>
                     ) : null}
-                </nav>
-                <form method="POST" action={PATHS.oauthLogout}>
-                    <Button
-                        type="submit"
-                        variant="secondary"
-                        className="w-full"
-                    >
+                </MenuList>
+                <Frame as="form" method="POST" action={PATHS.oauthLogout}>
+                    <Button type="submit" variant="secondary">
                         Log out
                     </Button>
-                </form>
-            </PopoverContent>
+                </Frame>
+            </MenuPopup>
         </Popover>
     );
 }

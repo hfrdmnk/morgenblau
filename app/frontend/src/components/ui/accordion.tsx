@@ -1,13 +1,13 @@
 import { Accordion as AccordionPrimitive } from '@base-ui/react/accordion';
 
 import { ChevronDownIcon } from '@/components/icons';
-import { cn } from '@/lib/utils';
+import { cn } from 'cn';
 
-function Accordion({ className, ...props }: AccordionPrimitive.Root.Props) {
+function Accordion({ className, tone, ...props }: AccordionPrimitive.Root.Props & { tone?: 'muted' }) {
     return (
         <AccordionPrimitive.Root
             data-slot="accordion"
-            className={cn('flex w-full flex-col', className)}
+            className={cn('flex w-full flex-col', tone === 'muted' && 'text-muted-foreground', className)}
             {...props}
         />
     );
@@ -39,10 +39,12 @@ function AccordionTrigger({
                 {...props}
             >
                 {children}
-                <ChevronDownIcon
+                <span
                     data-slot="accordion-trigger-icon"
-                    className="pointer-events-none size-4 shrink-0 text-muted-foreground transition-transform duration-(--motion-duration-ui) ease-in-out group-aria-expanded/accordion-trigger:rotate-180 motion-reduce:transition-none"
-                />
+                    className="pointer-events-none flex shrink-0 transition-transform duration-(--motion-duration-ui) ease-in-out group-aria-expanded/accordion-trigger:rotate-180 motion-reduce:transition-none"
+                >
+                    <ChevronDownIcon size="md" tone="muted" />
+                </span>
             </AccordionPrimitive.Trigger>
         </AccordionPrimitive.Header>
     );

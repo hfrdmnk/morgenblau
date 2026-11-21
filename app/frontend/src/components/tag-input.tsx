@@ -2,7 +2,10 @@ import { useId, useRef, type ReactNode, type RefObject } from 'react';
 
 import { CloseIcon, EnterIcon } from '@/components/icons';
 import { Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
+import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 import { useSources } from '@/hooks/use-sources';
 import { MAX_TAG_LENGTH, MAX_TAGS } from '@/lib/source-edit';
 
@@ -18,23 +21,24 @@ export function TagChips({ tags, inputRef, onRemove }: {
         (buttons[index + 1] ?? buttons[index - 1] ?? inputRef.current)?.focus();
         onRemove(tag);
     }
-    if (!tags.length) return <p className="mt-3 text-sm text-subtle-foreground">No tags yet.</p>;
+    if (!tags.length) return <Text size="sm" tone="subtle">No tags yet.</Text>;
     return (
-        <ul aria-label="Tags" className="mt-3 flex flex-wrap gap-2">
+        <Frame aria-label="Tags" as="ul" direction="row" gap="s" wrap>
             {tags.map((tag) => (
-                <li className="flex items-center gap-1 rounded-full bg-muted py-0.5 pr-1 pl-2.5 text-sm text-muted-foreground" key={tag}>
-                    {tag}
-                    <button
+                <Frame align="center" as="li" background="muted" direction="row" gap="2xs" key={tag} paddingEnd="2xs" paddingStart="m" paddingY="3xs" radius="full">
+                    <Text as="span" size="sm" tone="muted">{tag}</Text>
+                    <Button
                         aria-label={`Remove tag ${tag}`}
-                        className="relative flex size-5 cursor-pointer items-center justify-center rounded-full before:absolute before:-inset-1 hover:bg-secondary hover:text-foreground"
                         onClick={(event) => remove(tag, event.currentTarget)}
+                        size="icon-xs"
                         type="button"
+                        variant="quiet"
                     >
-                        <CloseIcon className="size-3.5" />
-                    </button>
-                </li>
+                        <CloseIcon size="sm" />
+                    </Button>
+                </Frame>
             ))}
-        </ul>
+        </Frame>
     );
 }
 
@@ -57,8 +61,12 @@ export function TagInput({ tags, draft, canAdd, overlong, inputRef, onDraft, onA
     const suggestions = useTagSuggestions(suggestionsPath, tags);
     const full = tags.length >= MAX_TAGS;
     return (
-        <>
-            <label className={hiddenLabel ? 'sr-only' : 'text-sm font-medium'} htmlFor={inputId}>Add a tag</label>
+        <Frame gap="s">
+            {hiddenLabel ? (
+                <Text as="label" htmlFor={inputId} visuallyHidden>Add a tag</Text>
+            ) : (
+                <Text as="label" htmlFor={inputId} size="sm" weight="medium">Add a tag</Text>
+            )}
             <Combobox
                 inputValue={draft}
                 items={suggestions}
@@ -67,7 +75,7 @@ export function TagInput({ tags, draft, canAdd, overlong, inputRef, onDraft, onA
                 onValueChange={(tag: string | null) => { if (tag) onAdd(tag); }}
                 value={null}
             >
-                <InputGroup className={hiddenLabel ? undefined : 'mt-2'} ref={anchor}>
+                <InputGroup ref={anchor}>
                     <ComboboxInput
                         aria-describedby={hintId}
                         aria-invalid={overlong}
@@ -86,14 +94,14 @@ export function TagInput({ tags, draft, canAdd, overlong, inputRef, onDraft, onA
                         <EnterIcon />
                     </InputGroupButton>
                 </InputGroup>
-                <ComboboxContent anchor={anchor} className="data-empty:hidden">
+                <ComboboxContent anchor={anchor} hideEmpty>
                     <ComboboxList>
                         {(tag: string) => <ComboboxItem key={tag} value={tag}>{tag}</ComboboxItem>}
                     </ComboboxList>
                 </ComboboxContent>
             </Combobox>
             <LimitHint id={hintId} shown={overlong}>Tags can be up to {MAX_TAG_LENGTH} characters.</LimitHint>
-        </>
+        </Frame>
     );
 }
 
@@ -105,5 +113,5 @@ function useTagSuggestions(path: string, exclude: string[]) {
 
 function LimitHint({ id, shown, children }: { id: string; shown: boolean; children: ReactNode }) {
     if (!shown) return null;
-    return <p className="mt-2 text-sm text-destructive" id={id}>{children}</p>;
+    return <Text id={id} size="sm" tone="destructive">{children}</Text>;
 }

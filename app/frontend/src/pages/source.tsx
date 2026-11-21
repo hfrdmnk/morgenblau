@@ -2,9 +2,11 @@ import { useLocation, useParams } from 'wouter';
 
 import { EditSourceSheet } from '@/components/add-source-dialog';
 import { SourceHealth } from '@/components/feed-health';
-import { Skeleton } from '@/components/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import { SourceDetailPage, SourceEntries, SourceHeader, SourceUnavailable } from '@/components/source-detail';
-import { GeneratedMark } from '@/components/source-marks';
+import { Link } from '@/components/ui/link';
+import { Text } from '@/design/text';
+import { GeneratedMark } from '@/components/ui/source-mark';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useFeedSourceCommands } from '@/hooks/use-source-commands';
 import { useSources, type FeedSourceDetail, type SourceEntry } from '@/hooks/use-sources';
@@ -54,7 +56,7 @@ function FeedSourceHeader({ source, onChanged, onRemoved }: { source: FeedSource
             facts={feedFacts(source)}
             health={<SourceHealth source={source} />}
             icon={source.faviconUrl}
-            identity={<><SiteLink url={site} />{source.generated ? <GeneratedMark className="size-4" /> : null}</>}
+            identity={<><SiteLink url={site} />{source.generated ? <GeneratedMark size="md" /> : null}</>}
             menu={<EditSourceSheet onChanged={onChanged} onRemoved={onRemoved} source={source} />}
             primary={source.primary}
             tags={source.tags}
@@ -64,10 +66,12 @@ function FeedSourceHeader({ source, onChanged, onRemoved }: { source: FeedSource
 }
 
 function SiteLink({ url }: { url: string }) {
-    if (!httpURL(url)) return <span className="break-all">{displayURL(url)}</span>;
+    if (!httpURL(url)) return <Text as="span" break="all">{displayURL(url)}</Text>;
     return (
-        <a className="break-all underline decoration-border underline-offset-4 hover:text-foreground" href={url} rel="noopener noreferrer" target="_blank">
-            {displayURL(url)}
-        </a>
+        <Text as="span" break="all">
+            <Link href={url} rel="noopener noreferrer" target="_blank" variant="underline">
+                {displayURL(url)}
+            </Link>
+        </Text>
     );
 }

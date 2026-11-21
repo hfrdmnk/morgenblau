@@ -12,11 +12,11 @@ export function Toaster() {
             offset={{ top: 'calc(1.5rem + env(safe-area-inset-top))' }}
             mobileOffset={{ top: 'calc(1rem + env(safe-area-inset-top))' }}
             icons={{
-                success: <CheckIcon className="size-4 text-success-icon" />,
-                error: <AlertIcon className="size-4 text-error-icon" />,
-                warning: <AlertIcon className="size-4 text-warning" />,
-                info: <InfoIcon className="size-4 text-neutral" />,
-                loading: <LoadingIcon className="size-4 text-neutral" />,
+                success: <CheckIcon size="md" tone="success-icon" />,
+                error: <AlertIcon size="md" tone="error-icon" />,
+                warning: <AlertIcon size="md" tone="warning" />,
+                info: <InfoIcon size="md" tone="neutral" />,
+                loading: <LoadingIcon size="md" tone="neutral" />,
             }}
             toastOptions={{
                 unstyled: true,
@@ -36,17 +36,19 @@ export function LinkToast({ title, description, onClick }: { title: string; desc
     return (
         <button
             // Sonner draws the card around custom content; the button fills it, padding included, so the whole card is the target.
-            className="group -m-4 flex w-[calc(100%+2rem)] cursor-pointer items-start gap-3 rounded-lg p-4 text-left font-normal"
+            className="group -m-4 flex w-bleed-4 cursor-pointer items-start gap-3 rounded-lg p-4 text-left font-normal"
             onClick={onClick}
             type="button"
         >
             <span className="flex h-lh shrink-0 items-center">
-                <CheckIcon className="size-4 text-success-icon" />
+                <CheckIcon size="md" tone="success-icon" />
             </span>
             <span className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="flex items-center gap-1.5 font-medium">
                     {title}
-                    <ArrowRightIcon className="size-3.5 text-muted-foreground transition-transform duration-(--motion-duration-fast) ease-out group-hover:translate-x-0.5" />
+                    <span className="flex transition-transform duration-(--motion-duration-fast) ease-out group-hover:translate-x-0.5">
+                        <ArrowRightIcon size="sm" tone="muted" />
+                    </span>
                 </span>
                 <span className="text-muted-foreground">{description}</span>
             </span>

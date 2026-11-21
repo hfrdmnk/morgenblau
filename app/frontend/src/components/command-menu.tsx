@@ -6,8 +6,11 @@ import { useLocation } from 'wouter';
 
 import { AddSourceDialog } from '@/components/add-source-dialog';
 import { CheckIcon, ChevronDownIcon, EnterIcon, LoadingIcon, PlusIcon } from '@/components/icons';
-import { SourceIcon } from '@/components/item-list';
-import { DialogBackdrop, DialogPopup } from '@/components/ui/dialog';
+import { CommandCheck, CommandDialog, CommandGroup, CommandItem, CommandList, CommandSearch, CommandToggle } from '@/components/ui/command';
+import { Kbd } from '@/components/ui/kbd';
+import { SourceIcon } from '@/components/ui/source-icon';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 import { usePublicFollowing } from '@/hooks/use-public-following';
 import { parseReaderFont, readerFontLabels, readerFonts, useReaderFont } from '@/hooks/use-reader-font';
 import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-sources';
@@ -21,7 +24,6 @@ import { APP_MODES, digestHref, newsletterSourceHref, PATHS, sourceHref } from '
 import { isCommandMenuKey, SHORTCUTS } from '@/lib/shortcuts';
 import { displayURL } from '@/lib/source-display';
 import { addTags, GONE, hasOverlongTag, isGone, MAX_TAG_LENGTH, MAX_TAGS } from '@/lib/source-edit';
-import { cn } from '@/lib/utils';
 
 const FAILED = 'That didn’t work. Try again.';
 
@@ -71,29 +73,24 @@ export function CommandMenu() {
                 }}
                 open={open && enabled}
             >
-                <Dialog.Portal>
-                    {/* A keyboard palette opened many times a day appears at once, without the dialogs' entrance. */}
-                    <DialogBackdrop className="transition-none" />
-                    <DialogPopup
-                        className="top-[min(16dvh,8rem)] max-w-xl translate-y-0 overflow-hidden p-0 transition-none"
-                        finalFocus={() => (opener.current?.isConnected && opener.current !== document.body ? opener.current : false)}
-                        ref={popup}
-                    >
-                        <Dialog.Title className="sr-only">Command menu</Dialog.Title>
-                        <MenuBody
-                            onAddSource={(url) => {
-                                // The sheet takes focus. An explicit finalFocus target would be focused even after that, pulling focus out of the sheet.
-                                opener.current = null;
-                                setOpen(false);
-                                setAdding((previous) => ({ url, key: (previous?.key ?? 0) + 1 }));
-                            }}
-                            onClose={() => setOpen(false)}
-                            onPending={setPending}
-                            onStep={setStep}
-                            step={step}
-                        />
-                    </DialogPopup>
-                </Dialog.Portal>
+                <CommandDialog
+                    finalFocus={() => (opener.current?.isConnected && opener.current !== document.body ? opener.current : false)}
+                    ref={popup}
+                    title="Command menu"
+                >
+                    <MenuBody
+                        onAddSource={(url) => {
+                            // The sheet takes focus. An explicit finalFocus target would be focused even after that, pulling focus out of the sheet.
+                            opener.current = null;
+                            setOpen(false);
+                            setAdding((previous) => ({ url, key: (previous?.key ?? 0) + 1 }));
+                        }}
+                        onClose={() => setOpen(false)}
+                        onPending={setPending}
+                        onStep={setStep}
+                        step={step}
+                    />
+                </CommandDialog>
             </Dialog.Root>
             {adding ? <AddSourceSheet initialUrl={adding.url} key={adding.key} /> : null}
         </>
@@ -227,69 +224,37 @@ function Shell({ query, onQuery, chip, placeholder, shouldFilter = true, error, 
     }, [query]);
     return (
         <Cmdk filter={filter} label="Command menu" loop shouldFilter={shouldFilter}>
-            <div className="flex h-14 items-center gap-2 border-b border-border px-5">
-                {chip ? (
-                    <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-1 motion-safe:duration-(--motion-duration-ui)">
-                        {chip}
-                        <ChevronDownIcon aria-hidden="true" className="size-3.5 -rotate-90 text-subtle-foreground" />
-                    </span>
-                ) : null}
-                <Cmdk.Input
-                    aria-label={chip ?? 'Search commands'}
-                    autoFocus
-                    className="h-full min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-subtle-foreground"
-                    onKeyDown={(event) => {
-                        if (event.key === 'Backspace' && !query && onBackspace) {
-                            event.preventDefault();
-                            onBackspace();
-                        }
-                    }}
-                    onValueChange={onQuery}
-                    placeholder={placeholder}
-                    ref={input}
-                    value={query}
-                />
-            </div>
-            {error ? <p className="px-5 pt-3 text-sm text-destructive" role="alert">{error}</p> : null}
-            <Cmdk.List className="max-h-[min(26rem,60dvh)] scroll-py-2 overflow-y-auto overscroll-contain p-2" ref={list}>
-                {children}
-            </Cmdk.List>
+            <CommandSearch
+                aria-label={chip ?? 'Search commands'}
+                autoFocus
+                chip={chip}
+                onKeyDown={(event) => {
+                    if (event.key === 'Backspace' && !query && onBackspace) {
+                        event.preventDefault();
+                        onBackspace();
+                    }
+                }}
+                onValueChange={onQuery}
+                placeholder={placeholder}
+                ref={input}
+                value={query}
+            />
+            {error ? (
+                <Frame paddingTop="m" paddingX="xl">
+                    <Text role="alert" size="sm" tone="destructive">{error}</Text>
+                </Frame>
+            ) : null}
+            <CommandList ref={list}>{children}</CommandList>
         </Cmdk>
-    );
-}
-
-const GROUP = 'px-0 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:pb-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-subtle-foreground';
-
-function Row({ id, keywords, onSelect, disabled, destructive, children }: {
-    id: string;
-    keywords?: string[];
-    onSelect: () => void;
-    disabled?: boolean;
-    destructive?: boolean;
-    children: ReactNode;
-}) {
-    return (
-        <Cmdk.Item
-            className={cn(
-                'flex min-h-10 cursor-default items-center gap-3 rounded-md px-3 text-sm select-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-secondary',
-                destructive && 'text-destructive',
-            )}
-            disabled={disabled}
-            keywords={keywords}
-            onSelect={onSelect}
-            value={id}
-        >
-            {children}
-        </Cmdk.Item>
     );
 }
 
 function Label({ children, detail }: { children: ReactNode; detail?: string }) {
     return (
-        <span className="flex min-w-0 flex-1 items-baseline gap-2">
-            <span className="truncate">{children}</span>
-            {detail ? <span className="min-w-0 truncate text-xs text-subtle-foreground">{detail}</span> : null}
-        </span>
+        <Frame align="baseline" as="span" direction="row" gap="s" grow minWidth={0}>
+            <Text as="span" truncate>{children}</Text>
+            {detail ? <Text as="span" size="xs" tone="subtle" truncate>{detail}</Text> : null}
+        </Frame>
     );
 }
 
@@ -307,25 +272,24 @@ const KEY_NAMES: Record<string, string> = {
 
 function Keys({ keys }: { keys: string }) {
     return (
-        <span className="flex shrink-0 gap-1">
+        <Frame as="span" direction="row" gap="2xs" shrink={false}>
             {keys.split(' ').map((combo) => (
-                <kbd className="rounded-sm px-1.5 font-sans text-xs text-subtle-foreground shadow-[inset_0_0_0_1px_var(--border)]" key={combo}>
-                    {combo.split('+').map((key) => KEY_NAMES[key] ?? key.toUpperCase()).join(APPLE ? '' : ' ')}
-                </kbd>
+                <Kbd key={combo}>{combo.split('+').map((key) => KEY_NAMES[key] ?? key.toUpperCase()).join(APPLE ? '' : ' ')}</Kbd>
             ))}
-        </span>
+        </Frame>
     );
 }
 
-function Toggle({ on }: { on: boolean }) {
+// What the list says in place of rows, when there are none to show.
+function ListNote({ children }: { children: ReactNode }) {
     return (
-        <span aria-hidden="true" className={cn('flex h-4 w-7 shrink-0 rounded-full p-0.5 transition-[background-color] duration-(--motion-duration-ui) ease-out', on ? 'bg-primary' : 'bg-accent')}>
-            <span className={cn('size-3 rounded-full bg-popover transition-transform duration-(--motion-duration-ui) ease-(--ease-out)', on && 'translate-x-3')} />
-        </span>
+        <Frame paddingX="m" paddingY="2xl">
+            <Text align="center" size="sm" tone="muted">{children}</Text>
+        </Frame>
     );
 }
 
-const Busy = () => <LoadingIcon aria-label="Working" className="size-4 shrink-0 text-subtle-foreground motion-safe:animate-spin" />;
+const Busy = () => <LoadingIcon aria-label="Working" size="md" spin tone="subtle" />;
 
 const dayLabel = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 const dayWithYear = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -384,33 +348,35 @@ function RootView({ commands, flipped, onFlip, run, onStep, onAddSource }: MenuP
     return (
         <Shell error={run.error} onQuery={setQuery} placeholder="Type a command, source or day" query={query} shouldFilter={false}>
             {day ? (
-                <Row id="typed-day" onSelect={() => void run.run(() => navigate(digestHref(toDateKey(day) === toDateKey(today) ? undefined : toDateKey(day))))}>
+                <CommandItem value="typed-day" onSelect={() => void run.run(() => navigate(digestHref(toDateKey(day) === toDateKey(today) ? undefined : toDateKey(day))))}>
                     <Label detail="Digest">Go to {formatDay(day, today)}</Label>
-                </Row>
+                </CommandItem>
             ) : null}
             {site ? (
-                <Row id="pasted-site" onSelect={() => onAddSource(query.trim())}>
-                    <PlusIcon aria-hidden="true" className="size-4 shrink-0 text-subtle-foreground" />
+                <CommandItem value="pasted-site" onSelect={() => onAddSource(query.trim())}>
+                    <PlusIcon aria-hidden="true" size="md" tone="subtle" />
                     <Label>Add {site} as a source</Label>
-                </Row>
+                </CommandItem>
             ) : null}
             {groups.map(({ group, commands: listed }) => (
-                <Cmdk.Group className={GROUP} heading={group} key={group}>
+                <CommandGroup heading={group} key={group}>
                     {listed.map((command) => (
-                        <Row
+                        <CommandItem
                             disabled={run.pending && busy !== command.id}
-                            id={command.id}
+                            value={command.id}
                             key={command.id}
                             onSelect={() => choose(command)}
                         >
                             {command.icon ? <SourceIcon src={command.icon} /> : null}
                             <Label detail={command.detail}>{command.label}</Label>
                             {busy === command.id && run.pending ? <Busy /> : <RowEnd command={command} on={flipped.get(command.id)} />}
-                        </Row>
+                        </CommandItem>
                     ))}
-                </Cmdk.Group>
+                </CommandGroup>
             ))}
-            <Cmdk.Empty className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches “{query.trim()}”.</Cmdk.Empty>
+            <Cmdk.Empty>
+                <ListNote>Nothing matches “{query.trim()}”.</ListNote>
+            </Cmdk.Empty>
         </Shell>
     );
 }
@@ -437,8 +403,8 @@ function rankedGroups(commands: Command[], query: string) {
 }
 
 function RowEnd({ command, on }: { command: Command; on?: boolean }) {
-    if ('toggle' in command) return <><span className="sr-only">{(on ?? command.toggle.on) ? 'On' : 'Off'}</span><Toggle on={on ?? command.toggle.on} /></>;
-    return 'step' in command ? <ChevronDownIcon aria-hidden="true" className="size-3.5 shrink-0 -rotate-90 text-subtle-foreground" /> : null;
+    if ('toggle' in command) return <><Text as="span" visuallyHidden>{(on ?? command.toggle.on) ? 'On' : 'Off'}</Text><CommandToggle on={on ?? command.toggle.on} /></>;
+    return 'step' in command ? <ChevronDownIcon aria-hidden="true" rotate={270} size="sm" tone="subtle" /> : null;
 }
 
 function StepView({ step, run, onStep }: MenuProps & { step: CommandStep; run: Run }) {
@@ -456,10 +422,10 @@ function TextStep({ step, run, back }: StepProps<'text'>) {
     const problem = step.problem?.(value) ?? null;
     return (
         <Shell chip={step.title} error={run.error || problem || ''} onBackspace={back} onQuery={setValue} placeholder={step.placeholder} query={value} shouldFilter={false}>
-            <Row disabled={Boolean(problem) || run.pending} id="submit" onSelect={() => void run.run(() => step.submit(value))}>
+            <CommandItem disabled={Boolean(problem) || run.pending} value="submit" onSelect={() => void run.run(() => step.submit(value))}>
                 <Label>{step.action(value)}</Label>
-                {run.pending ? <Busy /> : <EnterIcon aria-hidden="true" className="size-4 shrink-0 text-subtle-foreground" />}
-            </Row>
+                {run.pending ? <Busy /> : <EnterIcon aria-hidden="true" size="md" tone="subtle" />}
+            </CommandItem>
         </Shell>
     );
 }
@@ -470,9 +436,9 @@ function ChoiceStep({ step, run, back }: StepProps<'choice'>) {
     return (
         <Shell chip={step.title} error={run.error} onBackspace={back} onQuery={setQuery} placeholder={step.placeholder} query={query}>
             {step.options.map((option) => (
-                <Row
+                <CommandItem
                     disabled={run.pending}
-                    id={option.value}
+                    value={option.value}
                     key={option.value}
                     keywords={[option.label, option.detail ?? '']}
                     onSelect={() => {
@@ -482,10 +448,12 @@ function ChoiceStep({ step, run, back }: StepProps<'choice'>) {
                 >
                     <Label detail={option.detail}>{option.label}</Label>
                     {option.shortcut ? <Keys keys={option.shortcut} /> : null}
-                    {busy === option.value && run.pending ? <Busy /> : option.value === step.current ? <CheckIcon aria-label="Current" className="size-4 shrink-0 text-primary" /> : null}
-                </Row>
+                    {busy === option.value && run.pending ? <Busy /> : option.value === step.current ? <CheckIcon aria-label="Current" size="md" tone="primary" /> : null}
+                </CommandItem>
             ))}
-            <Cmdk.Empty className="px-3 py-6 text-center text-sm text-muted-foreground">Nothing matches “{query.trim()}”.</Cmdk.Empty>
+            <Cmdk.Empty>
+                <ListNote>Nothing matches “{query.trim()}”.</ListNote>
+            </Cmdk.Empty>
         </Shell>
     );
 }
@@ -505,13 +473,13 @@ function TagsStep({ step, run, back }: StepProps<'tags'>) {
     return (
         <Shell chip={step.title} error={run.error || tagHint(draft, creatable, full)} onBackspace={back} onQuery={setQuery} placeholder={full ? 'Remove a tag' : 'Find or create a tag'} query={query}>
             {creatable ? (
-                <Row disabled={full || hasOverlongTag(draft)} id="create-tag" onSelect={() => choose(addTags(tags, draft))}>
-                    <PlusIcon aria-hidden="true" className="size-4 shrink-0 text-subtle-foreground" />
+                <CommandItem disabled={full || hasOverlongTag(draft)} value="create-tag" onSelect={() => choose(addTags(tags, draft))}>
+                    <PlusIcon aria-hidden="true" size="md" tone="subtle" />
                     <Label>Create tag “{draft}”</Label>
-                </Row>
+                </CommandItem>
             ) : null}
             {offered.map((tag) => <TagRow full={full} key={tag} onChange={choose} tag={tag} tags={tags} />)}
-            {!creatable && !offered.length ? <p className="px-3 py-6 text-center text-sm text-muted-foreground">Type a tag to create it.</p> : null}
+            {!creatable && !offered.length ? <ListNote>Type a tag to create it.</ListNote> : null}
         </Shell>
     );
 }
@@ -556,22 +524,24 @@ function tagHint(draft: string, creatable: boolean, full: boolean): string {
 function TagRow({ tag, tags, full, onChange }: { tag: string; tags: string[]; full: boolean; onChange: (tags: string[]) => void }) {
     const on = tags.some((other) => other.toLowerCase() === tag.toLowerCase());
     return (
-        <Row disabled={!on && full} id={`tag:${tag}`} keywords={[tag]} onSelect={() => onChange(on ? tags.filter((other) => other !== tag) : [...tags, tag])}>
-            <span className="flex size-4 shrink-0 items-center justify-center">{on ? <CheckIcon aria-hidden="true" className="size-4 text-primary" /> : null}</span>
+        <CommandItem disabled={!on && full} value={`tag:${tag}`} keywords={[tag]} onSelect={() => onChange(on ? tags.filter((other) => other !== tag) : [...tags, tag])}>
+            <CommandCheck checked={on} />
             <Label>{tag}</Label>
-            <span className="sr-only">{on ? 'Tagged' : 'Not tagged'}</span>
-        </Row>
+            <Text as="span" visuallyHidden>{on ? 'Tagged' : 'Not tagged'}</Text>
+        </CommandItem>
     );
 }
 
 function ConfirmStep({ step, run, back }: StepProps<'confirm'>) {
     return (
         <Shell chip={step.title} error={run.error} onBackspace={back} onQuery={() => {}} placeholder="Press Enter to confirm, Esc to go back" query="" shouldFilter={false}>
-            <p className="px-3 pt-2 pb-3 text-sm text-muted-foreground">{step.description}</p>
-            <Row destructive disabled={run.pending} id="confirm" onSelect={() => void run.run(step.submit)}>
+            <Frame paddingBottom="m" paddingTop="s" paddingX="m">
+                <Text size="sm" tone="muted">{step.description}</Text>
+            </Frame>
+            <CommandItem destructive disabled={run.pending} value="confirm" onSelect={() => void run.run(step.submit)}>
                 <Label>{step.action}</Label>
-                {run.pending ? <Busy /> : <EnterIcon aria-hidden="true" className="size-4 shrink-0" />}
-            </Row>
+                {run.pending ? <Busy /> : <EnterIcon aria-hidden="true" size="md" />}
+            </CommandItem>
         </Shell>
     );
 }

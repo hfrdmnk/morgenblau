@@ -6,6 +6,8 @@ import { PersonAvatar } from '@/components/person-avatar';
 import { Button } from '@/components/ui/button';
 import { Autocomplete, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { api } from '@/lib/api';
 import { PATHS } from '@/lib/paths';
@@ -29,32 +31,32 @@ export function Login() {
     }, []);
 
     return (
-        <main className="grid min-h-dvh place-items-center px-6 py-12">
-            <div className="w-full max-w-sm space-y-10">
-                <header className="space-y-5">
-                    <img src="/favicon.svg" alt="" className="size-10" />
-                    <div className="space-y-2">
-                        <p className="text-sm font-medium text-muted-foreground">
+        <Frame as="main" minHeight="screen" align="center" justify="center" paddingX="2xl" paddingY="5xl">
+            <Frame width="full" maxWidth="sm" gap="4xl">
+                <Frame as="header" gap="xl">
+                    <img src="/favicon.svg" alt="" width={40} height={40} />
+                    <Frame gap="s">
+                        <Text size="sm" weight="medium" tone="muted">
                             Morgenblau
-                        </p>
-                        <h1 className="text-3xl font-medium tracking-tight">
+                        </Text>
+                        <Text as="h1" size="3xl" weight="medium" tracking="tight">
                             Sign in with your Atmosphere account
-                        </h1>
-                        <p className="text-sm text-muted-foreground">
+                        </Text>
+                        <Text size="sm" tone="muted">
                             Your account is your identity across AT Protocol apps.
-                        </p>
-                    </div>
-                </header>
+                        </Text>
+                    </Frame>
+                </Frame>
 
-                <form method="POST" action={PATHS.oauthLogin} className="space-y-4" onSubmit={() => setPending(true)}>
+                <Frame as="form" method="POST" action={PATHS.oauthLogin} gap="l" onSubmit={() => setPending(true)}>
                     <HandleField />
-                    <Button type="submit" className="w-full" disabled={pending}>
+                    <Button type="submit" disabled={pending}>
                         {pending ? 'Signing in…' : 'Continue'}
                     </Button>
-                </form>
+                </Frame>
                 {import.meta.env.DEV && <DevelopmentLogin />}
-            </div>
-        </main>
+            </Frame>
+        </Frame>
     );
 }
 
@@ -70,10 +72,10 @@ function HandleField() {
     // An open popup hides the rest of the page from assistive tech, Continue included, so it stays closed without suggestions.
     const shown = open && actors.length > 0;
     return (
-        <div className="space-y-2">
-            <label htmlFor="handle" className="text-sm font-medium">
+        <Frame gap="s">
+            <Text as="label" htmlFor="handle" size="sm" weight="medium">
                 Handle
-            </label>
+            </Text>
             <Autocomplete
                 filter={null}
                 items={actors}
@@ -112,24 +114,26 @@ function HandleField() {
                 <ComboboxContent>
                     <ComboboxList>
                         {(actor: Actor) => (
-                            <ComboboxItem key={actor.did} value={actor} className="py-1.5">
-                                <PersonAvatar className="size-7" seed={actor.did} src={actor.avatar} />
-                                <span className="min-w-0">
-                                    <span className="block truncate font-medium">{actor.displayName || actor.handle}</span>
-                                    <span className="block truncate text-subtle-foreground">@{actor.handle}</span>
-                                </span>
+                            <ComboboxItem key={actor.did} value={actor} padded>
+                                <PersonAvatar size="sm" seed={actor.did} src={actor.avatar} />
+                                <Frame as="span" minWidth={0}>
+                                    <Text as="span" truncate weight="medium">{actor.displayName || actor.handle}</Text>
+                                    <Text as="span" truncate tone="subtle">@{actor.handle}</Text>
+                                </Frame>
                             </ComboboxItem>
                         )}
                     </ComboboxList>
                 </ComboboxContent>
             </Autocomplete>
             {error ? (
-                <p id="handle-error" role="alert" className="flex items-start gap-2 text-sm text-destructive">
-                    <AlertIcon className="mt-0.5 size-4 shrink-0" />
-                    {error}
-                </p>
+                <Frame id="handle-error" role="alert" direction="row" align="start" gap="s">
+                    <Frame paddingTop="3xs">
+                        <AlertIcon size="md" tone="destructive" />
+                    </Frame>
+                    <Text size="sm" tone="destructive">{error}</Text>
+                </Frame>
             ) : null}
-        </div>
+        </Frame>
     );
 }
 
@@ -189,19 +193,19 @@ function DevelopmentLogin() {
     if (!enabled) return null;
 
     return (
-        <aside className="space-y-3 rounded-xl bg-muted p-4" aria-label="Development login">
-            <p className="text-sm font-medium">Development account</p>
-            <p className="text-sm text-muted-foreground">
+        <Frame as="aside" gap="m" radius="xl" background="muted" padding="l" aria-label="Development login">
+            <Text size="sm" weight="medium">Development account</Text>
+            <Text size="sm" tone="muted">
                 Uses the server’s configured account. Changes write to its real PDS.
-            </p>
-            <Button className="w-full" disabled={pending} onClick={login}>
+            </Text>
+            <Button disabled={pending} onClick={login}>
                 {pending ? 'Signing in…' : 'Log me in'}
             </Button>
             {error && (
-                <p role="alert" className="text-sm text-destructive">
+                <Text role="alert" size="sm" tone="destructive">
                     Could not sign in. Check the server credentials and try again.
-                </p>
+                </Text>
             )}
-        </aside>
+        </Frame>
     );
 }

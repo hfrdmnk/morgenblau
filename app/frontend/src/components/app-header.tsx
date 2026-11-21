@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Link, useLocation } from 'wouter';
+import { useLocation } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
 import { AccountMenu } from '@/components/account-menu';
@@ -15,28 +15,24 @@ import {
     SourcesActiveIcon,
     SourcesIcon,
 } from '@/components/icons';
-import { Skeleton } from '@/components/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
+import { AppHeaderBar, DateStrip, DateStripDay, DateStripSpacer, DayStepper, ModeLink, ModeNav, SettingsTab } from '@/components/ui/app-chrome';
+import { Avatar } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { Link } from '@/components/ui/link';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 import type { AppNavigationState } from '@/hooks/use-app-location';
 import { useAppProfile } from '@/hooks/use-app-profile';
 import { useHeightProperty } from '@/hooks/use-height-property';
 import { addCalendarDays, digestDateRange, selectedDigestDate, startOfToday, toDateKey } from '@/lib/digest-dates';
 import { APP_MODES, appMode, digestHref, isSettingsPath, PATHS } from '@/lib/paths';
-import { cn } from '@/lib/utils';
 
 const artwork = {
-    [PATHS.digest]: {
-        Icon: DigestIcon,
-        ActiveIcon: DigestActiveIcon,
-    },
-    [PATHS.sources]: {
-        Icon: SourcesIcon,
-        ActiveIcon: SourcesActiveIcon,
-    },
-    [PATHS.library]: {
-        Icon: LibraryIcon,
-        ActiveIcon: LibraryActiveIcon,
-    },
-};
+    [PATHS.digest]: { Icon: DigestIcon, ActiveIcon: DigestActiveIcon },
+    [PATHS.sources]: { Icon: SourcesIcon, ActiveIcon: SourcesActiveIcon },
+    [PATHS.library]: { Icon: LibraryIcon, ActiveIcon: LibraryActiveIcon },
+} as const;
 
 const settingsTabs = [
     { label: 'General', href: PATHS.general },
@@ -71,56 +67,54 @@ export function AppHeader() {
 
     return (
         <>
-            <header ref={headerRef} className="app-header grid grid-cols-[1fr_auto] select-none items-start gap-y-6 px-5 sm:px-8 md:grid-cols-3 md:px-14">
+            <AppHeaderBar ref={headerRef}>
                 {current ? (
-                    <Link
-                        href={PATHS.digest}
-                        aria-label="Morgenblau"
-                        className="flex min-h-10 items-center justify-self-start text-subtle-foreground hover:text-muted-foreground"
-                    >
-                        <MorgenblauMark className="h-6" />
+                    <Link aria-label="Morgenblau" href={PATHS.digest} variant="brand">
+                        <MorgenblauMark size="2xl" />
                     </Link>
                 ) : (
                     <SettingsReturnLink />
                 )}
                 {location === PATHS.digest ? <DigestDateNav /> : null}
                 {isSettingsPath(location) ? <SettingsNav location={location} /> : null}
-                <div className="col-start-2 row-start-1 flex min-h-10 items-center justify-end gap-4 md:col-start-3">
+                <Frame
+                    align="center"
+                    colStart={{ base: 2, md: 3 }}
+                    direction="row"
+                    gap="l"
+                    justify="end"
+                    minHeight="control"
+                    rowStart={1}
+                >
                     {profile.kind === 'ready' && profile.profile.feedback ? <FeedbackDialog /> : null}
                     <AddSourceDialog />
                     <Skeleton
                         data={profile.kind === 'ready' ? profile.profile : null}
-                        error={profile.kind === 'error' ? <span aria-label="Profile unavailable" role="img" className="block size-8 rounded-full bg-muted" /> : undefined}
+                        error={profile.kind === 'error' ? <Avatar aria-label="Profile unavailable" blank role="img" /> : undefined}
                         label="Loading profile"
                         sample={SAMPLE_PROFILE}
                     >
                         {(ready) => <AccountMenu profile={ready} />}
                     </Skeleton>
-                </div>
-            </header>
-            <nav ref={modeNavRef} aria-label="Modes" className="app-mode-nav select-none">
+                </Frame>
+            </AppHeaderBar>
+            <ModeNav aria-label="Modes" ref={modeNavRef}>
                 {APP_MODES.map((mode) => {
                     const active = current === mode;
                     const { Icon, ActiveIcon } = artwork[mode.href];
                     return (
-                        <Link
-                            key={mode.href}
-                            href={mode.href}
-                            aria-current={active ? 'page' : undefined}
+                        <ModeLink
                             aria-keyshortcuts={mode.shortcut}
-                            className={cn(
-                                'app-mode-link',
-                                active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
-                            )}
+                            artwork={active ? <ActiveIcon size="2xl" /> : <Icon size="2xl" />}
+                            current={active}
+                            href={mode.href}
+                            key={mode.href}
                         >
-                            <span className="app-mode-artwork">
-                                {active ? <ActiveIcon className="size-6 text-atmosphere-blue" /> : <Icon className="size-6" />}
-                            </span>
                             {mode.label}
-                        </Link>
+                        </ModeLink>
                     );
                 })}
-            </nav>
+            </ModeNav>
         </>
     );
 }
@@ -130,13 +124,9 @@ function SettingsReturnLink() {
     const returnTo = state?.settingsReturn ?? { href: PATHS.digest, scrollY: 0 };
     const label = appMode(returnTo.href.split('?')[0])?.label ?? 'Digest';
     return (
-        <Link
-            href={returnTo.href}
-            state={{ scrollY: returnTo.scrollY }}
-            className="inline-flex min-h-10 items-center gap-2 justify-self-start md:min-h-11 text-sm text-muted-foreground hover:text-foreground"
-        >
-            <ArrowRightIcon className="size-4 rotate-180" />
-            Back to {label}
+        <Link href={returnTo.href} state={{ scrollY: returnTo.scrollY }} variant="back">
+            <ArrowRightIcon rotate={180} size="md" />
+            <Text as="span">Back to {label}</Text>
         </Link>
     );
 }
@@ -144,24 +134,23 @@ function SettingsReturnLink() {
 function SettingsNav({ location }: { location: string }) {
     const selected = location === PATHS.settings ? PATHS.general : location;
     return (
-        <nav
+        <Frame
+            align="center"
             aria-label="Settings"
-            className="col-span-2 row-start-2 flex items-center gap-2 text-sm md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-center md:gap-6"
+            as="nav"
+            colSpan={{ base: 2, md: 1 }}
+            colStart={{ md: 2 }}
+            direction="row"
+            gap={{ base: 's', md: '2xl' }}
+            justifySelf={{ md: 'center' }}
+            rowStart={{ base: 2, md: 1 }}
         >
             {settingsTabs.map(({ label, href }) => (
-                <Link
-                    key={href}
-                    href={href}
-                    aria-current={selected === href ? 'page' : undefined}
-                    className={cn(
-                        'inline-flex min-h-11 items-center px-3.5 md:px-0',
-                        selected === href ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
-                    )}
-                >
+                <SettingsTab current={selected === href} href={href} key={href}>
                     {label}
-                </Link>
+                </SettingsTab>
             ))}
-        </nav>
+        </Frame>
     );
 }
 
@@ -177,72 +166,42 @@ function DigestDateNav() {
     const nextDate = toDateKey(addCalendarDays(selectedDate, 1));
 
     return (
-        <div className="col-span-2 row-start-2 md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-center">
-            <nav
-                aria-label="Digest day"
-                className="grid min-h-11 grid-cols-[2.75rem_1fr_2.75rem] items-center gap-1 text-sm md:hidden"
-            >
-                <Link
-                    aria-label="Previous day"
-                    href={digestHref(toDateKey(addCalendarDays(selectedDate, -1)))}
-                    className="flex size-11 items-center justify-center text-muted-foreground hover:text-foreground"
-                >
-                    <ArrowRightIcon className="size-4 rotate-180" />
+        <Frame colSpan={{ base: 2, md: 1 }} colStart={{ md: 2 }} justifySelf={{ md: 'center' }} rowStart={{ base: 2, md: 1 }}>
+            <DayStepper aria-label="Digest day">
+                <Link aria-label="Previous day" href={digestHref(toDateKey(addCalendarDays(selectedDate, -1)))} variant="step">
+                    <ArrowRightIcon rotate={180} size="md" />
                 </Link>
-                <span aria-label={fullDate.format(selectedDate)} className="text-center">
+                <Text align="center" aria-label={fullDate.format(selectedDate)} as="span">
                     {shortDate.format(selectedDate)}
-                </span>
+                </Text>
                 {isToday ? (
-                    <button
-                        aria-label="Next day"
-                        disabled
-                        type="button"
-                        className="flex size-11 items-center justify-center text-subtle-foreground opacity-40"
-                    >
-                        <ArrowRightIcon className="size-4" />
-                    </button>
+                    <Button aria-label="Next day" disabled size="icon-lg" variant="nav">
+                        <ArrowRightIcon size="md" />
+                    </Button>
                 ) : (
-                    <Link
-                        aria-label="Next day"
-                        href={digestHref(nextDate === todayKey ? undefined : nextDate)}
-                        className="flex size-11 items-center justify-center text-muted-foreground hover:text-foreground"
-                    >
-                        <ArrowRightIcon className="size-4" />
+                    <Link aria-label="Next day" href={digestHref(nextDate === todayKey ? undefined : nextDate)} variant="step">
+                        <ArrowRightIcon size="md" />
                     </Link>
                 )}
-            </nav>
-            <nav aria-label="Digest date" className="digest-date-nav hidden grid-cols-7 items-start gap-3.5 font-book md:grid md:mt-2.25">
-                {dates.map((date) => (
-                    <DateOption date={date} key={toDateKey(date)} selectedKey={selectedKey} todayKey={todayKey} />
-                ))}
+            </DayStepper>
+            <DateStrip aria-label="Digest date">
+                {dates.map((date) => {
+                    const key = toDateKey(date);
+                    return (
+                        <DateStripDay
+                            aria-label={fullDate.format(date)}
+                            day={dayNumber.format(date)}
+                            href={digestHref(key === todayKey ? undefined : key)}
+                            key={key}
+                            month={monthName.format(date)}
+                            selected={key === selectedKey}
+                        />
+                    );
+                })}
                 {Array.from({ length: emptyDateSlots }, (_, index) => (
-                    <span aria-hidden="true" className="invisible w-5 text-center text-sm" key={index}>
-                        <span className="block">00</span>
-                        <span className="block">Mon</span>
-                    </span>
+                    <DateStripSpacer key={index} />
                 ))}
-            </nav>
-        </div>
-    );
-}
-
-function DateOption({ date, selectedKey, todayKey }: {
-    date: Date;
-    selectedKey: string;
-    todayKey: string;
-}) {
-    const key = toDateKey(date);
-    const selected = key === selectedKey;
-    return (
-        <Link
-            aria-current={selected ? 'date' : undefined}
-            aria-label={fullDate.format(date)}
-            className={cn('flex w-5 flex-col items-center text-sm hover:text-foreground', selected ? 'text-primary' : 'text-muted-foreground')}
-            href={digestHref(key === todayKey ? undefined : key)}
-        >
-            <span className="tabular-nums">{dayNumber.format(date)}</span>
-            {/* A flex column centres the month even where it is wider than the w-5 day column. */}
-            <span className={cn('whitespace-nowrap', { invisible: !selected })}>{monthName.format(date)}</span>
-        </Link>
+            </DateStrip>
+        </Frame>
     );
 }

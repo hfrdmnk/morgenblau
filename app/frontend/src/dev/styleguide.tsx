@@ -29,17 +29,30 @@ import {
     PopoverTitle,
     PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+    SpecimenAside,
+    SpecimenStrip,
+    StateSpecimen,
+    Swatch,
+    ThemeScope,
+} from '@/components/ui/specimen';
 import { Textarea } from '@/components/ui/textarea';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
+import { frame, spacing, text, type Spacing } from '@/design/tokens';
 
 const sections = [
     ['foundations', 'Foundations'],
     ['typography', 'Typography'],
     ['color', 'Color'],
+    ['spacing', 'Spacing'],
+    ['shape', 'Radius and shadow'],
     ['controls', 'Controls'],
     ['forms', 'Forms'],
     ['surfaces', 'Surfaces'],
     ['states', 'States'],
     ['motion', 'Motion'],
+    ['primitives', 'Frame and Text'],
 ] as const;
 
 const semanticTokens = [
@@ -88,6 +101,24 @@ const productColors = [
     { label: 'atmosphere-blue-off', variable: 'atmosphere-blue-off' },
 ] as const;
 
+type TextSize = keyof typeof text.size;
+
+const typeSamples: Record<TextSize, string> = {
+    '3xl': 'A calm daily newspaper',
+    '2xl': 'Today’s digest',
+    xl: 'Long-form reading',
+    lg: 'A considered introduction',
+    base: 'Comfortable body text for sustained reading.',
+    sm: 'Supporting information and controls',
+    xs: 'Metadata and quiet labels',
+};
+
+const typeScale = (Object.keys(text.size) as TextSize[]).reverse();
+
+const weightValues: Record<keyof typeof text.weight, number> = { normal: 400, book: 450, medium: 500 };
+
+const keys = <T extends object>(map: T) => Object.keys(map) as (keyof T)[];
+
 type SectionProps = {
     id: string;
     title: string;
@@ -97,43 +128,45 @@ type SectionProps = {
 
 function Section({ children, description, id, title }: SectionProps) {
     return (
-        <section id={id} className="scroll-mt-8 space-y-6">
-            <header className="max-w-2xl space-y-2">
-                <h2 className="text-2xl font-medium">{title}</h2>
-                <p className="text-sm text-muted-foreground">{description}</p>
-            </header>
+        <Frame as="section" id={id} gap="2xl">
+            <Frame as="header" maxWidth="2xl" gap="s">
+                <Text as="h2" size="2xl" weight="medium">{title}</Text>
+                <Text size="sm" tone="muted">{description}</Text>
+            </Frame>
             {children}
-        </section>
+        </Frame>
     );
 }
 
-type ThemePanelProps = {
-    label: string;
-    dark?: boolean;
-    children: ReactNode;
-};
+function Eyebrow({ children }: { children: ReactNode }) {
+    return <Text size="xs" weight="medium" tone="subtle" caps>{children}</Text>;
+}
 
-function ThemePanel({ children, dark = false, label }: ThemePanelProps) {
+function ThemePanel({ children, theme }: { theme: 'light' | 'dark'; children: ReactNode }) {
     return (
-        <div className={dark ? 'dark' : 'light'}>
-            <div className="min-h-full rounded-xl bg-background p-5 text-foreground ring-1 ring-border sm:p-6">
-                <p className="mb-5 text-xs font-medium tracking-wide text-subtle-foreground uppercase">
-                    {label}
-                </p>
+        <ThemeScope theme={theme}>
+            <Frame minHeight="full" radius="xl" background="background" shadow="hairline" padding={{ base: 'xl', sm: '2xl' }} gap="xl">
+                <Eyebrow>{theme === 'light' ? 'Light' : 'Dark'}</Eyebrow>
                 {children}
-            </div>
-        </div>
+            </Frame>
+        </ThemeScope>
     );
 }
 
 function ThemePair({ children }: { children: ReactNode }) {
     return (
-        <div className="grid gap-4 lg:grid-cols-2">
-            <ThemePanel label="Light">{children}</ThemePanel>
-            <ThemePanel label="Dark" dark>
-                {children}
-            </ThemePanel>
-        </div>
+        <Frame display="grid" columns={{ lg: 2 }} gap="l">
+            <ThemePanel theme="light">{children}</ThemePanel>
+            <ThemePanel theme="dark">{children}</ThemePanel>
+        </Frame>
+    );
+}
+
+function Tinted({ children }: { children: ReactNode }) {
+    return (
+        <Frame radius="xl" background="muted" padding={{ base: 'xl', sm: '2xl' }} gap="l">
+            {children}
+        </Frame>
     );
 }
 
@@ -141,93 +174,124 @@ type Token = string | { label: string; variable: string };
 
 function TokenGrid({ tokens }: { tokens: readonly Token[] }) {
     return (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
-            {tokens.map((token) => (
-                <div
-                    key={typeof token === 'string' ? token : token.label}
-                    className="min-w-0"
-                >
-                    <div
-                        className="mb-1.5 h-10 rounded-md ring-1 ring-foreground/10"
-                        style={{
-                            backgroundColor: `var(--${typeof token === 'string' ? token : token.variable})`,
-                        }}
-                    />
-                    <code className="block break-words text-xs leading-tight text-muted-foreground">
-                        {typeof token === 'string' ? token : token.label}
-                    </code>
-                </div>
-            ))}
-        </div>
+        <Frame display="grid" columns={{ base: 2, sm: 3 }} gapX="l" gapY="m">
+            {tokens.map((token) => {
+                const label = typeof token === 'string' ? token : token.label;
+                return (
+                    <Frame key={label} minWidth={0} gap="xs">
+                        <Swatch variable={typeof token === 'string' ? token : token.variable} />
+                        <Text as="code" size="xs" tone="muted" break="words">{label}</Text>
+                    </Frame>
+                );
+            })}
+        </Frame>
     );
 }
 
-function Field({
-    children,
-    label,
-}: {
-    children: ReactNode;
-    label: string;
-}) {
+function Field({ children, label }: { children: ReactNode; label: string }) {
     return (
-        <label className="grid gap-2 text-sm font-medium">
-            {label}
+        <Frame as="label" gap="s">
+            <Text as="span" size="sm" weight="medium">{label}</Text>
             {children}
-        </label>
+        </Frame>
+    );
+}
+
+function Caption({ children }: { children: ReactNode }) {
+    return <Text size="xs" tone="subtle">{children}</Text>;
+}
+
+function TypeSpecimens() {
+    return (
+        <Frame gap="xl">
+            {typeScale.map((size) => (
+                <Frame key={size} display="grid" columns="specimen" align="baseline" gap="l">
+                    <Text as="code" size="xs" tone="subtle">{size}</Text>
+                    <Text size={size}>{typeSamples[size]}</Text>
+                </Frame>
+            ))}
+            <Frame display="grid" columns={{ sm: 3 }} gap="s" border="top" paddingTop="xl">
+                {keys(text.weight).map((weight) => (
+                    <Text key={weight} weight={weight}>
+                        {weight[0].toUpperCase() + weight.slice(1)} {weightValues[weight]}
+                    </Text>
+                ))}
+            </Frame>
+            <Frame direction="row" wrap gapX="xl" gapY="s" border="top" paddingTop="xl">
+                {keys(text.tone).map((tone) => (
+                    <Text key={tone} size="sm" tone={tone}>{tone}</Text>
+                ))}
+            </Frame>
+        </Frame>
+    );
+}
+
+function SpacingSpecimens() {
+    return (
+        <Frame gap="m">
+            {keys(spacing).map((name: Spacing) => (
+                <Frame key={name} display="grid" columns="specimen" align="center" gap="l">
+                    <Text as="code" size="xs" tone="subtle">{name}</Text>
+                    <Frame direction="row" align="center" gap="m">
+                        <Frame background="primary" radius="sm" paddingStart={name} paddingY="xs" shrink={false} />
+                        <Text as="code" size="xs" tone="muted">{Number(spacing[name]) * 4}px</Text>
+                    </Frame>
+                </Frame>
+            ))}
+        </Frame>
+    );
+}
+
+function ShapeSpecimens() {
+    return (
+        <Frame gap="2xl">
+            <Frame direction="row" wrap gap="2xl">
+                {keys(frame.radius).map((radius) => (
+                    <Frame key={radius} align="center" gap="s">
+                        <Frame background="muted" radius={radius} padding="3xl" />
+                        <Text as="code" size="xs" tone="muted">{radius}</Text>
+                    </Frame>
+                ))}
+            </Frame>
+            <Frame direction="row" wrap gap="2xl" border="top" paddingTop="xl">
+                {keys(frame.shadow).map((shadow) => (
+                    <Frame key={shadow} align="center" gap="s">
+                        <Frame background="popover" radius="lg" padding="3xl" shadow={shadow} />
+                        <Text as="code" size="xs" tone="muted">{shadow}</Text>
+                    </Frame>
+                ))}
+            </Frame>
+        </Frame>
     );
 }
 
 function ButtonSpecimens() {
     return (
-        <div className="space-y-6">
-            <div className="flex flex-wrap items-center gap-3">
+        <Frame gap="2xl">
+            <Frame direction="row" wrap align="center" gap="m">
                 <Button>Primary</Button>
                 <Button variant="secondary">Secondary</Button>
                 <Button variant="ghost">Ghost</Button>
                 <Button variant="destructive">Destructive</Button>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-3">
-                    <p className="text-xs text-subtle-foreground">Primary states</p>
-                    <div className="flex flex-wrap gap-3">
-                        <Button size="sm">Rest</Button>
-                        <Button size="sm" className="from-(--btn-highlight)">
-                            Hover
-                        </Button>
-                        <Button
-                            size="sm"
-                            className="outline-1 outline-offset-1 outline-ring"
-                        >
-                            Focus
-                        </Button>
-                        <Button size="sm" disabled>
-                            Disabled
-                        </Button>
-                    </div>
-                </div>
-                <div className="space-y-3">
-                    <p className="text-xs text-subtle-foreground">Secondary states</p>
-                    <div className="flex flex-wrap gap-3">
-                        <Button size="sm" variant="secondary">
-                            Rest
-                        </Button>
-                        <Button size="sm" variant="secondary" className="from-(--btn-highlight)">
-                            Hover
-                        </Button>
-                        <Button
-                            size="sm"
-                            variant="secondary"
-                            className="outline-1 outline-offset-1 outline-ring"
-                        >
-                            Focus
-                        </Button>
-                        <Button size="sm" variant="secondary" disabled>
-                            Disabled
-                        </Button>
-                    </div>
-                </div>
-            </div>
-        </div>
+            </Frame>
+            <Frame display="grid" columns={{ sm: 2 }} gap="l">
+                {(['default', 'secondary'] as const).map((variant) => (
+                    <Frame key={variant} gap="m">
+                        <Caption>{variant === 'default' ? 'Primary' : 'Secondary'} states</Caption>
+                        <Frame direction="row" wrap gap="m">
+                            <Button size="sm" variant={variant}>Rest</Button>
+                            <StateSpecimen state="hover">
+                                <Button size="sm" variant={variant}>Hover</Button>
+                            </StateSpecimen>
+                            <StateSpecimen state="focus">
+                                <Button size="sm" variant={variant}>Focus</Button>
+                            </StateSpecimen>
+                            <Button size="sm" variant={variant} disabled>Disabled</Button>
+                        </Frame>
+                    </Frame>
+                ))}
+            </Frame>
+        </Frame>
     );
 }
 
@@ -236,56 +300,47 @@ function FormSpecimens() {
     const successId = useId();
 
     return (
-        <div className="grid gap-5 sm:grid-cols-2">
+        <Frame display="grid" columns={{ sm: 2 }} gap="xl">
             <Field label="Default">
                 <Input placeholder="Search your sources" />
             </Field>
             <Field label="Focus demonstration">
-                <Input
-                    defaultValue="Selected field"
-                    className="-outline-offset-1 outline-1 outline-ring"
-                />
+                <StateSpecimen state="field-focus">
+                    <Input defaultValue="Selected field" />
+                </StateSpecimen>
             </Field>
             <Field label="Disabled">
                 <Input defaultValue="Unavailable" disabled />
             </Field>
             <Field label="Error">
-                <span className="grid gap-1.5">
-                    <Input
-                        defaultValue="Incomplete value"
-                        aria-describedby={errorId}
-                        aria-invalid
-                    />
-                    <span id={errorId} className="text-xs text-destructive">
+                <Frame as="span" gap="xs">
+                    <Input defaultValue="Incomplete value" aria-describedby={errorId} aria-invalid />
+                    <Text as="span" id={errorId} size="xs" tone="destructive">
                         Enter a complete source address.
-                    </span>
-                </span>
+                    </Text>
+                </Frame>
             </Field>
             <Field label="Success">
-                <span className="grid gap-1.5">
-                    <Input
-                        defaultValue="https://feed.example.com"
-                        className="shadow-[inset_0_0_0_1px_var(--success)]"
-                        aria-describedby={successId}
-                    />
-                    <span
-                        id={successId}
-                        className="inline-flex items-center gap-1 text-xs text-success"
-                    >
-                        <CheckIcon className="size-3" /> Source found
-                    </span>
-                </span>
+                <Frame as="span" gap="xs">
+                    <StateSpecimen state="field-success">
+                        <Input defaultValue="https://feed.example.com" aria-describedby={successId} />
+                    </StateSpecimen>
+                    <Frame as="span" id={successId} direction="row" align="center" gap="2xs">
+                        <CheckIcon size="xs" tone="success" />
+                        <Text as="span" size="xs" tone="success">Source found</Text>
+                    </Frame>
+                </Frame>
             </Field>
             <Field label="Note">
                 <Textarea placeholder="Add a short note" />
             </Field>
-        </div>
+        </Frame>
     );
 }
 
 function SurfaceSpecimens() {
     return (
-        <div className="grid gap-5 sm:grid-cols-2">
+        <Frame display="grid" columns={{ sm: 2 }} gap="xl">
             <Card>
                 <CardHeader>
                     <CardTitle>Canvas card</CardTitle>
@@ -297,96 +352,109 @@ function SurfaceSpecimens() {
                     </CardAction>
                 </CardHeader>
                 <CardContent>
-                    <p className="text-sm">
-                        A finite collection with room for the content to lead.
-                    </p>
+                    <Text size="sm">A finite collection with room for the content to lead.</Text>
                 </CardContent>
                 <CardFooter>
                     <Link href="#states">
-                        View states <ArrowRightIcon className="size-4" />
+                        View states <ArrowRightIcon size="md" />
                     </Link>
                 </CardFooter>
             </Card>
-            <div className="flex items-start justify-center rounded-xl bg-muted p-8">
-                <div className="w-full max-w-72 rounded-lg bg-popover p-4 text-popover-foreground shadow-popover">
-                    <p className="font-medium">Popover plane</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
+            <Frame direction="row" align="start" justify="center" radius="xl" background="muted" padding="3xl">
+                <Frame width="full" maxWidth="popover" radius="lg" background="popover" padding="l" shadow="popover" gap="2xs">
+                    <Text weight="medium">Popover plane</Text>
+                    <Text size="sm" tone="muted">
                         A distinct elevated surface reserved for temporary context.
-                    </p>
-                </div>
-            </div>
-        </div>
+                    </Text>
+                </Frame>
+            </Frame>
+        </Frame>
+    );
+}
+
+function PrimitiveReference({ name, description, maps }: {
+    name: string;
+    description: string;
+    maps: Record<string, Record<string | number, string>>;
+}) {
+    return (
+        <Frame gap="l">
+            <Frame gap="2xs">
+                <Text as="h3" weight="medium">{name}</Text>
+                <Text size="sm" tone="muted">{description}</Text>
+            </Frame>
+            <Frame as="ul" gap="s">
+                {Object.entries(maps).map(([prop, map]) => (
+                    <Frame as="li" key={prop} display="grid" columns={{ sm: 'sidebar' }} gapX="l" gapY="3xs">
+                        <Text as="code" size="xs">{prop}</Text>
+                        <Text as="code" size="xs" tone="muted" break="words">
+                            {Object.keys(map).join(' · ')}
+                        </Text>
+                    </Frame>
+                ))}
+            </Frame>
+        </Frame>
     );
 }
 
 export function Styleguide() {
     return (
-        <main className="min-h-dvh bg-background text-foreground">
-            <div className="mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)] gap-12 px-5 py-10 sm:px-8 lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-16 lg:py-16">
-                <aside className="min-w-0 lg:sticky lg:top-8 lg:h-fit">
-                    <p className="text-xs font-medium tracking-wide text-subtle-foreground uppercase">
-                        Development only
-                    </p>
-                    <nav className="mt-5 flex gap-x-4 gap-y-2 overflow-x-auto pb-2 text-sm lg:flex-col lg:overflow-visible">
+        <Frame as="main" minHeight="screen" background="background" align="center">
+            <Frame
+                display="grid"
+                columns={{ base: 1, lg: 'sidebar' }}
+                width="full"
+                maxWidth="7xl"
+                gap={{ base: '5xl', lg: '6xl' }}
+                paddingX={{ base: 'xl', sm: '3xl' }}
+                paddingY={{ base: '4xl', lg: '6xl' }}
+            >
+                <SpecimenAside>
+                    <Eyebrow>Development only</Eyebrow>
+                    <Frame
+                        as="nav"
+                        direction={{ base: 'row', lg: 'column' }}
+                        gapX="l"
+                        gapY="s"
+                        overflow="auto"
+                        paddingBottom="s"
+                    >
                         {sections.map(([id, label]) => (
-                            <a
-                                key={id}
-                                href={`#${id}`}
-                                className="shrink-0 text-muted-foreground hover:text-foreground"
-                            >
-                                {label}
-                            </a>
+                            <Link key={id} href={`#${id}`} variant="muted">
+                                <Text as="span" size="sm" wrap="nowrap">{label}</Text>
+                            </Link>
                         ))}
-                    </nav>
-                </aside>
+                    </Frame>
+                </SpecimenAside>
 
-                <div className="min-w-0 space-y-20">
-                    <header id="foundations" className="scroll-mt-8 space-y-4">
+                <Frame minWidth={0} gap="7xl">
+                    <Frame as="header" id="foundations" gap="l">
                         <Badge>Phase two</Badge>
-                        <div className="max-w-3xl space-y-3">
-                            <h1 className="text-3xl font-medium">Morgenblau style guide</h1>
-                            <p className="max-w-2xl text-lg text-muted-foreground">
-                                A working index of the visual foundations and the first reusable
-                                primitives. Product pages should compose these directly.
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap gap-3 pt-2">
+                        <Frame maxWidth="3xl" gap="m">
+                            <Text as="h1" size="3xl" weight="medium">Morgenblau style guide</Text>
+                            <Frame maxWidth="2xl">
+                                <Text size="lg" tone="muted">
+                                    A working index of the design tokens and the primitives built on them.
+                                    Product pages compose Frame, Text and these components; lint rejects
+                                    raw elements and class strings.
+                                </Text>
+                            </Frame>
+                        </Frame>
+                        <Frame direction="row" wrap gap="m" paddingTop="s">
                             <Button>
                                 Start reading <ArrowRightIcon />
                             </Button>
                             <Button variant="secondary">Manage sources</Button>
-                        </div>
-                    </header>
+                        </Frame>
+                    </Frame>
 
                     <Section
                         id="typography"
                         title="Typography"
-                        description="Geist uses a major-second size scale. Size and weight remain independent choices."
+                        description="Geist uses a major-second size scale. Size, weight and tone remain independent choices."
                     >
                         <ThemePair>
-                            <div className="space-y-5">
-                                {[
-                                    ['text-3xl', '3xl', 'A calm daily newspaper'],
-                                    ['text-2xl', '2xl', 'Today’s digest'],
-                                    ['text-xl', 'xl', 'Long-form reading'],
-                                    ['text-lg', 'lg', 'A considered introduction'],
-                                    ['text-base', 'base', 'Comfortable body text for sustained reading.'],
-                                    ['text-sm', 'sm', 'Supporting information and controls'],
-                                    ['text-xs', 'xs', 'Metadata and quiet labels'],
-                                ].map(([className, name, sample]) => (
-                                    <div
-                                        key={name}
-                                        className="grid grid-cols-[3rem_minmax(0,1fr)] items-baseline gap-4"
-                                    >
-                                        <code className="text-xs text-subtle-foreground">{name}</code>
-                                        <p className={className}>{sample}</p>
-                                    </div>
-                                ))}
-                                <div className="grid gap-2 border-t border-border pt-5 sm:grid-cols-2">
-                                    <p className="font-normal">Normal 400</p>
-                                    <p className="font-medium">Medium 500</p>
-                                </div>
-                            </div>
+                            <TypeSpecimens />
                         </ThemePair>
                     </Section>
 
@@ -396,21 +464,41 @@ export function Styleguide() {
                         description="Stone neutrals carry the interface. Product colors identify Digest, Sources, and Library rather than ordinary actions."
                     >
                         <ThemePair>
-                            <div className="space-y-6">
-                                <div className="space-y-3">
-                                    <p className="text-sm font-medium">Core</p>
+                            <Frame gap="2xl">
+                                <Frame gap="m">
+                                    <Text size="sm" weight="medium">Core</Text>
                                     <TokenGrid tokens={semanticTokens} />
-                                </div>
-                                <div className="space-y-3 border-t border-border pt-6">
-                                    <p className="text-sm font-medium">Charts and shell</p>
+                                </Frame>
+                                <Frame gap="m" border="top" paddingTop="2xl">
+                                    <Text size="sm" weight="medium">Charts and shell</Text>
                                     <TokenGrid tokens={supportTokens} />
-                                </div>
-                            </div>
+                                </Frame>
+                            </Frame>
                         </ThemePair>
-                        <div className="rounded-xl bg-muted p-5 sm:p-6">
-                            <p className="mb-4 text-sm font-medium">Product modes</p>
+                        <Tinted>
+                            <Text size="sm" weight="medium">Product modes</Text>
                             <TokenGrid tokens={productColors} />
-                        </div>
+                        </Tinted>
+                    </Section>
+
+                    <Section
+                        id="spacing"
+                        title="Spacing"
+                        description="Gap and padding take a step on this scale. There are no margins: siblings are spaced by their parent's gap."
+                    >
+                        <Tinted>
+                            <SpacingSpecimens />
+                        </Tinted>
+                    </Section>
+
+                    <Section
+                        id="shape"
+                        title="Radius and shadow"
+                        description="Corners soften surfaces; the popover shadow is reserved for temporary planes, and the hairline outlines a surface without raising it."
+                    >
+                        <ThemePair>
+                            <ShapeSpecimens />
+                        </ThemePair>
                     </Section>
 
                     <Section
@@ -421,10 +509,10 @@ export function Styleguide() {
                         <ThemePair>
                             <ButtonSpecimens />
                         </ThemePair>
-                        <div className="grid gap-6 rounded-xl bg-muted p-5 sm:grid-cols-3 sm:p-6">
-                            <div className="space-y-3">
-                                <p className="text-xs text-subtle-foreground">Icon buttons</p>
-                                <div className="flex gap-3">
+                        <Frame display="grid" columns={{ sm: 3 }} gap="2xl" radius="xl" background="muted" padding={{ base: 'xl', sm: '2xl' }}>
+                            <Frame gap="m">
+                                <Caption>Icon buttons</Caption>
+                                <Frame direction="row" gap="m">
                                     <Button size="icon" aria-label="Continue">
                                         <ArrowRightIcon />
                                     </Button>
@@ -432,30 +520,32 @@ export function Styleguide() {
                                         <ExternalLinkIcon />
                                     </Button>
                                     <Button size="icon" variant="ghost" aria-label="Loading" disabled>
-                                        <LoadingIcon className="motion-safe:animate-spin" />
+                                        <LoadingIcon spin />
                                     </Button>
-                                </div>
-                            </div>
-                            <div className="space-y-3">
-                                <p className="text-xs text-subtle-foreground">Links</p>
-                                <div className="flex flex-col items-start gap-2 text-sm">
-                                    <Link href="#forms">Internal link</Link>
-                                    <Link href="https://example.com">
-                                        External link <ExternalLinkIcon className="size-4" />
-                                    </Link>
-                                </div>
-                            </div>
-                            <div className="space-y-3">
-                                <p className="text-xs text-subtle-foreground">Badges</p>
-                                <div className="flex flex-wrap gap-2">
+                                </Frame>
+                            </Frame>
+                            <Frame gap="m">
+                                <Caption>Links</Caption>
+                                <Text as="span" display="block" size="sm">
+                                    <Frame as="span" align="start" gap="s">
+                                        <Link href="#forms">Internal link</Link>
+                                        <Link href="https://example.com">
+                                            External link <ExternalLinkIcon size="md" />
+                                        </Link>
+                                    </Frame>
+                                </Text>
+                            </Frame>
+                            <Frame gap="m">
+                                <Caption>Badges</Caption>
+                                <Frame direction="row" wrap gap="s">
                                     <Badge>Neutral</Badge>
                                     <Badge variant="success">
                                         <CheckIcon /> Healthy
                                     </Badge>
                                     <Badge variant="destructive">Needs attention</Badge>
-                                </div>
-                            </div>
-                        </div>
+                                </Frame>
+                            </Frame>
+                        </Frame>
                     </Section>
 
                     <Section
@@ -476,7 +566,7 @@ export function Styleguide() {
                         <ThemePair>
                             <SurfaceSpecimens />
                         </ThemePair>
-                        <div className="flex items-center gap-4 rounded-xl bg-muted p-5 sm:p-6">
+                        <Frame direction="row" align="center" gap="l" radius="xl" background="muted" padding={{ base: 'xl', sm: '2xl' }}>
                             <Popover>
                                 <PopoverTrigger render={<Button variant="secondary" />}>
                                     Open interactive popover
@@ -491,11 +581,11 @@ export function Styleguide() {
                                     <Button size="sm">Done</Button>
                                 </PopoverContent>
                             </Popover>
-                            <p className="text-sm text-muted-foreground">
+                            <Text size="sm" tone="muted">
                                 Uses Base UI positioning and focus management.
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap gap-3">
+                            </Text>
+                        </Frame>
+                        <Frame direction="row" wrap gap="m">
                             <Button variant="secondary" onClick={() => toast.success('Import complete', { description: '16 added, 0 updated, 0 already up to date.' })}>
                                 Show success toast
                             </Button>
@@ -505,7 +595,7 @@ export function Styleguide() {
                             <Button variant="secondary" onClick={() => toast.info('No next article in this digest')}>
                                 Show info toast
                             </Button>
-                        </div>
+                        </Frame>
                     </Section>
 
                     <Section
@@ -513,7 +603,7 @@ export function Styleguide() {
                         title="Loading, empty, and error"
                         description="Page states use concise copy, one clear recovery action where useful, and no decorative containers."
                     >
-                        <div className="grid divide-y divide-border rounded-xl bg-muted lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+                        <SpecimenStrip>
                             <LoadingState
                                 title="Gathering today’s entries"
                                 description="This should only take a moment."
@@ -528,7 +618,7 @@ export function Styleguide() {
                                 description="Your saved sources are unchanged."
                                 action={<Button variant="secondary">Try again</Button>}
                             />
-                        </div>
+                        </SpecimenStrip>
                     </Section>
 
                     <Section
@@ -536,31 +626,45 @@ export function Styleguide() {
                         title="Motion and reduced motion"
                         description="Motion is reserved for feedback and temporary context. Reduced-motion preferences remove the loading rotation and collapse interface durations."
                     >
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <div className="rounded-xl bg-muted p-6">
-                                <p className="text-xs text-subtle-foreground">Default</p>
-                                <div className="mt-5 flex items-center gap-3">
-                                    <LoadingIcon className="size-6 motion-safe:animate-spin" />
-                                    <span className="text-sm">Loading feedback</span>
-                                </div>
-                                <code className="mt-5 block text-xs text-muted-foreground">
-                                    120ms · 160ms · 240ms
-                                </code>
-                            </div>
-                            <div className="rounded-xl bg-muted p-6">
-                                <p className="text-xs text-subtle-foreground">Reduced motion</p>
-                                <div className="mt-5 flex items-center gap-3">
-                                    <LoadingIcon className="size-6" />
-                                    <span className="text-sm">Static status indicator</span>
-                                </div>
-                                <code className="mt-5 block text-xs text-muted-foreground">
-                                    1ms interface durations · no rotation
-                                </code>
-                            </div>
-                        </div>
+                        <Frame display="grid" columns={{ sm: 2 }} gap="l">
+                            {[
+                                { label: 'Default', spin: true, sample: 'Loading feedback', note: '120ms · 160ms · 240ms' },
+                                { label: 'Reduced motion', spin: false, sample: 'Static status indicator', note: '1ms interface durations · no rotation' },
+                            ].map(({ label, spin, sample, note }) => (
+                                <Frame key={label} radius="xl" background="muted" padding="2xl" gap="xl">
+                                    <Caption>{label}</Caption>
+                                    <Frame direction="row" align="center" gap="m">
+                                        <LoadingIcon size="2xl" spin={spin} />
+                                        <Text as="span" size="sm">{sample}</Text>
+                                    </Frame>
+                                    <Text as="code" size="xs" tone="muted">{note}</Text>
+                                </Frame>
+                            ))}
+                        </Frame>
                     </Section>
-                </div>
-            </div>
-        </main>
+
+                    <Section
+                        id="primitives"
+                        title="Frame and Text"
+                        description="Every container is a Frame and every run of text is a Text. Each prop takes one of these tokens, or one per breakpoint as { base, sm, md, lg }."
+                    >
+                        <Tinted>
+                            <Frame display="grid" columns={{ lg: 2 }} gap="3xl">
+                                <PrimitiveReference
+                                    name="Frame"
+                                    description="A flex column unless display or direction says otherwise."
+                                    maps={frame}
+                                />
+                                <PrimitiveReference
+                                    name="Text"
+                                    description="A paragraph by default; anything left out inherits."
+                                    maps={text}
+                                />
+                            </Frame>
+                        </Tinted>
+                    </Section>
+                </Frame>
+            </Frame>
+        </Frame>
     );
 }

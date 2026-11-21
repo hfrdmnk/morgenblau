@@ -1,9 +1,12 @@
-import { motion } from 'motion/react';
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 
 import { EnterIcon, LoadingIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
+import { FieldMessage } from '@/components/ui/field-message';
 import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
+import { Frame, type FrameProps } from '@/design/frame';
+import { MotionFrame } from '@/design/motion';
+import { Text } from '@/design/text';
 import type { GenerationStep } from '@/hooks/use-generation';
 import {
     anchorError,
@@ -11,7 +14,6 @@ import {
     generatedVerdict,
     type GeneratedSource,
 } from '@/lib/add-source';
-import { cn } from '@/lib/utils';
 
 // A sample is enough to recognize the site's posts, with the post field still in view when unsure.
 const PREVIEW_POSTS = { sure: 5, unsure: 3 };
@@ -46,11 +48,11 @@ export function GenerateFeed({
         settleFocus(root.current, focusOrder(step));
     }, [step]);
     return (
-        <div className="outline-none" ref={root} tabIndex={-1}>
-            <p className="sr-only" role="status">
+        <Frame outline="none" ref={root} tabIndex={-1}>
+            <Text role="status" visuallyHidden>
                 {resultStatus(step)}
-            </p>
-            <motion.div
+            </Text>
+            <MotionFrame
                 key={step.step}
                 initial={{ opacity: instant ? 1 : 0 }}
                 animate={{ opacity: 1 }}
@@ -71,8 +73,8 @@ export function GenerateFeed({
                 {step.step === 'preview' && (
                     <GeneratedPreview source={step.source} {...preview} />
                 )}
-            </motion.div>
-        </div>
+            </MotionFrame>
+        </Frame>
     );
 }
 
@@ -115,34 +117,38 @@ function settleFocus(root: HTMLElement | null, order: string[]) {
     (target ?? root).focus();
 }
 
+// The sheet's inset panel; start alignment keeps a button in it at its own width.
+function Panel(props: FrameProps) {
+    return <Frame align="start" background="background" gap="m" padding="l" radius="lg" {...props} />;
+}
+
 export function GenerateOffer({ onGenerate }: { onGenerate: () => void }) {
     return (
-        <div className="rounded-lg bg-background p-4">
-            <p className="text-sm text-muted-foreground">
+        <Panel>
+            <Text size="sm" tone="muted">
                 No feed found on this page. Morgenblau can generate one from the
                 posts it lists.
-            </p>
-            <Button
-                className="mt-3"
-                onClick={onGenerate}
-                size="sm"
-                variant="secondary"
-            >
+            </Text>
+            <Button onClick={onGenerate} size="sm" variant="secondary">
                 Generate a feed
             </Button>
-        </div>
+        </Panel>
     );
 }
 
 function Pending({ children }: { children: string }) {
     return (
-        <div
-            className="flex h-36 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground"
+        <Frame
+            align="center"
+            gap="m"
+            height="status"
+            justify="center"
+            paddingX="2xl"
             role="status"
         >
-            <LoadingIcon className="size-5 motion-safe:animate-spin" />
-            <p>{children}</p>
-        </div>
+            <LoadingIcon size="xl" spin tone="muted" />
+            <Text align="center" size="sm" tone="muted">{children}</Text>
+        </Frame>
     );
 }
 
@@ -154,13 +160,12 @@ function GenerationFailed({
     onRetry?: () => void;
 }) {
     return (
-        <div className="rounded-lg bg-background p-4">
-            <p className="text-sm text-muted-foreground" role="alert">
+        <Panel>
+            <Text role="alert" size="sm" tone="muted">
                 {message}
-            </p>
+            </Text>
             {onRetry && (
                 <Button
-                    className="mt-3"
                     data-focus="retry"
                     onClick={onRetry}
                     size="sm"
@@ -169,7 +174,7 @@ function GenerationFailed({
                     Try again
                 </Button>
             )}
-        </div>
+        </Panel>
     );
 }
 
@@ -193,14 +198,16 @@ function GeneratedPreview({
 
     if (verdict.blocked)
         return (
-            <p className="rounded-lg bg-background p-4 text-sm text-muted-foreground">
-                This site blocks feed readers.
-            </p>
+            <Panel>
+                <Text size="sm" tone="muted">This site blocks feed readers.</Text>
+            </Panel>
         );
     const unsure = verdict.askAnchor && verdict.subscribable;
+    const previewed = source.items.length > 0;
     return (
-        <>
-            {source.items.length > 0 && (
+        // Without the post list, the form still sits as far below the sheet's header as it would below the list.
+        <Frame gap="l" paddingTop={previewed ? undefined : 'l'}>
+            {previewed && (
                 <PostPreview
                     source={source}
                     limit={unsure ? PREVIEW_POSTS.unsure : PREVIEW_POSTS.sure}
@@ -218,11 +225,11 @@ function GeneratedPreview({
             )}
             {verdict.subscribable && (
                 // A post being looked up may still change the feed, so its form waits.
-                <fieldset className="mt-8 min-w-0" data-focus="add" disabled={anchoring}>
+                <Frame as="fieldset" data-focus="add" disabled={anchoring} minWidth={0} paddingTop="l">
                     {add(source)}
-                </fieldset>
+                </Frame>
             )}
-        </>
+        </Frame>
     );
 }
 
@@ -236,52 +243,52 @@ function PostPreview({
     const headingId = useId();
     const host = source.siteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
     return (
-        <section aria-labelledby={headingId}>
-            <p className="mb-2 text-xs text-muted-foreground">Generated feed</p>
-            <div className="rounded-lg bg-background p-4">
-                <h3
-                    className="truncate text-sm font-medium outline-none"
-                    data-focus="heading"
-                    id={headingId}
-                    tabIndex={-1}
-                    title={source.title}
-                >
-                    {source.title}
-                </h3>
-                <p
-                    className="mt-1 truncate text-xs text-subtle-foreground"
-                    title={source.siteUrl}
-                >
-                    {host}
-                </p>
-                <ul className="mt-4 space-y-2.5">
+        <Frame as="section" aria-labelledby={headingId} gap="s">
+            <Text size="xs" tone="muted">Generated feed</Text>
+            <Frame background="background" gap="l" padding="l" radius="lg">
+                <Frame gap="2xs">
+                    <Text
+                        as="h3"
+                        data-focus="heading"
+                        id={headingId}
+                        outline="none"
+                        size="sm"
+                        tabIndex={-1}
+                        title={source.title}
+                        truncate
+                        weight="medium"
+                    >
+                        {source.title}
+                    </Text>
+                    <Text size="xs" title={source.siteUrl} tone="subtle" truncate>
+                        {host}
+                    </Text>
+                </Frame>
+                <Frame as="ul" gap="s">
                     {source.items.slice(0, limit).map((item) => (
                         <PostRow item={item} key={item.url} />
                     ))}
-                </ul>
-                <p className="mt-4 text-xs text-muted-foreground">
+                </Frame>
+                <Text size="xs" tone="muted">
                     {postCount(source.itemCount)} found
-                </p>
-            </div>
-        </section>
+                </Text>
+            </Frame>
+        </Frame>
     );
 }
 
 function PostRow({ item }: { item: GeneratedSource['items'][number] }) {
     return (
-        <li className="flex items-baseline justify-between gap-4">
-            <span className="min-w-0 truncate text-sm" title={item.title}>
+        <Frame as="li" align="baseline" direction="row" gap="l" justify="between">
+            <Text as="span" size="sm" title={item.title} truncate>
                 {item.title}
-            </span>
+            </Text>
             {item.date && (
-                <time
-                    className="shrink-0 text-xs text-subtle-foreground tabular-nums"
-                    dateTime={item.date}
-                >
+                <Text as="time" dateTime={item.date} numeric="tabular" size="xs" tone="subtle" wrap="nowrap">
                     {postDate.format(new Date(item.date))}
-                </time>
+                </Text>
             )}
-        </li>
+        </Frame>
     );
 }
 
@@ -355,14 +362,11 @@ function AnchorForm({
     const field = useAnchorField(rejected, anchoring, onSubmit);
 
     return (
-        <form className="mt-4" onSubmit={field.submit}>
-            <label
-                className="block text-sm text-muted-foreground"
-                htmlFor={inputId}
-            >
+        <Frame as="form" gap="m" onSubmit={field.submit}>
+            <Text as="label" htmlFor={inputId} size="sm" tone="muted">
                 {prompt}
-            </label>
-            <InputGroup className="mt-3">
+            </Text>
+            <InputGroup>
                 <InputGroupInput
                     aria-describedby={
                         field.described ? `${inputId}-message` : undefined
@@ -391,7 +395,7 @@ function AnchorForm({
                 notice={field.notice}
                 id={`${inputId}-message`}
             />
-        </form>
+        </Frame>
     );
 }
 
@@ -411,7 +415,7 @@ function UsePostButton({
             type="submit"
         >
             {anchoring ? (
-                <LoadingIcon className="motion-safe:animate-spin" />
+                <LoadingIcon spin />
             ) : (
                 <EnterIcon />
             )}
@@ -452,16 +456,13 @@ function AnchorMessage({
     }, [message?.text]);
     if (!message) return null;
     return (
-        <p
-            className={cn(
-                'mt-3 scroll-mb-6 text-sm sm:scroll-mb-8',
-                message.invalid ? 'text-destructive' : 'text-muted-foreground',
-            )}
+        <FieldMessage
             id={anchoring ? undefined : id}
+            invalid={message.invalid}
             ref={line}
             role={message.role}
         >
             {message.text}
-        </p>
+        </FieldMessage>
     );
 }

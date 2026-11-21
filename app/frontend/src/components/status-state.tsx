@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react';
 
 import { AlertIcon, InboxIcon, LoadingIcon } from '@/components/icons';
-import { cn } from '@/lib/utils';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 
 type StatusStateProps = {
     title: string;
     description?: string;
     action?: ReactNode;
-    className?: string;
 };
 
 type StateFrameProps = StatusStateProps & {
@@ -18,7 +18,6 @@ type StateFrameProps = StatusStateProps & {
 
 function StateFrame({
     action,
-    className,
     description,
     icon,
     role,
@@ -26,29 +25,16 @@ function StateFrame({
     tone = 'default',
 }: StateFrameProps) {
     return (
-        <div
-            className={cn(
-                'flex min-h-52 flex-col items-center justify-center gap-3 px-6 py-10 text-center',
-                className,
-            )}
-            role={role}
-        >
-            <span
-                className={cn(
-                    'text-muted-foreground [&>svg]:size-6',
-                    tone === 'error' && 'text-destructive',
-                )}
-            >
-                {icon}
-            </span>
-            <div className="max-w-sm space-y-1">
-                <p className="font-medium">{title}</p>
+        <Frame align="center" gap="m" justify="center" minHeight="state" paddingX="2xl" paddingY="4xl" role={role}>
+            <Text as="span" tone={tone === 'error' ? 'destructive' : 'muted'}>{icon}</Text>
+            <Frame gap="2xs" maxWidth="sm">
+                <Text align="center" weight="medium">{title}</Text>
                 {description ? (
-                    <p className="text-sm text-pretty text-muted-foreground">{description}</p>
+                    <Text align="center" size="sm" tone="muted" wrap="pretty">{description}</Text>
                 ) : null}
-            </div>
-            {action ? <div className="pt-1">{action}</div> : null}
-        </div>
+            </Frame>
+            {action ? <Frame paddingTop="2xs">{action}</Frame> : null}
+        </Frame>
     );
 }
 
@@ -56,7 +42,7 @@ function LoadingState({ title, ...props }: Omit<StatusStateProps, 'action'>) {
     return (
         <StateFrame
             title={title}
-            icon={<LoadingIcon className="motion-safe:animate-spin" />}
+            icon={<LoadingIcon size="2xl" spin />}
             role="status"
             {...props}
         />
@@ -64,13 +50,13 @@ function LoadingState({ title, ...props }: Omit<StatusStateProps, 'action'>) {
 }
 
 function EmptyState(props: StatusStateProps) {
-    return <StateFrame icon={<InboxIcon />} {...props} />;
+    return <StateFrame icon={<InboxIcon size="2xl" />} {...props} />;
 }
 
 function ErrorState(props: StatusStateProps) {
     return (
         <StateFrame
-            icon={<AlertIcon />}
+            icon={<AlertIcon size="2xl" />}
             role="alert"
             tone="error"
             {...props}

@@ -5,7 +5,10 @@ import { useLocation } from 'wouter';
 import { AppHeader } from '@/components/app-header';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ErrorState } from '@/components/status-state';
+import { AdminBanner, AppShellLayout } from '@/components/ui/app-chrome';
 import { Button } from '@/components/ui/button';
+import { Link } from '@/components/ui/link';
+import { Frame } from '@/design/frame';
 import { useNavigationScrollRestoration } from '@/hooks/use-app-location';
 import { useCommands } from '@/hooks/use-commands';
 import { useModeShortcuts } from '@/hooks/use-shortcuts';
@@ -35,7 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     if (state.kind === 'error') {
         return (
-            <main className="grid min-h-dvh place-items-center">
+            <Frame align="center" as="main" justify="center" minHeight="screen">
                 <ErrorState
                     title="Couldn’t load your account"
                     description="Try again in a moment."
@@ -51,23 +54,20 @@ export function AppShell({ children }: { children: ReactNode }) {
                         </Button>
                     }
                 />
-            </main>
+            </Frame>
         );
     }
 
     return (
         <AppProfileContext.Provider value={state}>
-            <div className="app-shell min-h-dvh bg-background">
-                <a
-                    className="sr-only rounded-md bg-popover px-4 py-2 text-sm font-medium shadow-popover select-none focus:not-sr-only focus:fixed focus:top-[calc(1rem+env(safe-area-inset-top))] focus:left-4 focus:z-50"
-                    href="#main"
-                >
+            <AppShellLayout>
+                <Link href="#main" variant="skip">
                     Skip to content
-                </a>
-                {isAdminPath(location) ? <AdminBanner /> : null}
+                </Link>
+                {isAdminPath(location) ? <AdminBanner>Admin only</AdminBanner> : null}
                 <AppHeader />
                 <ErrorBoundary key={location}>{children}</ErrorBoundary>
-            </div>
+            </AppShellLayout>
         </AppProfileContext.Provider>
     );
 }
@@ -75,12 +75,4 @@ export function AppShell({ children }: { children: ReactNode }) {
 function adminCommands(state: AppProfileState, navigate: (to: string) => void): Command[] {
     if (state.kind !== 'ready' || !state.profile.isAdmin) return [];
     return [{ id: 'go:admin', group: GO_TO, label: 'Admin', keywords: ['usage'], run: () => navigate(PATHS.admin) }];
-}
-
-function AdminBanner() {
-    return (
-        <div className="admin-banner bg-atmosphere-blue px-5 pb-2 pt-[calc(0.5rem+env(safe-area-inset-top))] text-center text-sm font-medium text-white sm:px-8">
-            Admin only
-        </div>
-    );
 }

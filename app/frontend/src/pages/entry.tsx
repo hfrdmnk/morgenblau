@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation, useParams } from 'wouter';
+import { useLocation, useParams } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
 import { BackLink } from '@/components/back-link';
@@ -8,8 +8,13 @@ import { ReaderNotice } from '@/components/reader-notice';
 import { ReaderRail } from '@/components/reader-rail';
 import { ReaderYouTube } from '@/components/reader-youtube';
 import { SaveFiling } from '@/components/save-filing';
-import { Skeleton } from '@/components/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { Link } from '@/components/ui/link';
+import { ReaderBody as ArticleBody } from '@/components/ui/reader-body';
+import { VideoPlayer } from '@/components/ui/video';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useCommands } from '@/hooks/use-commands';
 import { useEntrySave, useSaveState } from '@/hooks/use-entry-save';
@@ -23,7 +28,6 @@ import { digestHref, PATHS, readerSourceHref, sourceOrigin } from '@/lib/paths';
 import type { EntrySave } from '@/lib/entry-save';
 import { allowRemoteImages, hasNewReaderContent, httpURL, readerBody, readerMetadata, sourceActionLabel, youtubeID, type ReaderEntry } from '@/lib/reader';
 import { announceRemove, announceSave } from '@/lib/save-announce';
-import './reader.css';
 
 export function Entry() {
     const { slug = '' } = useParams<{ slug: string }>();
@@ -44,14 +48,14 @@ export function Entry() {
     ];
 
     return (
-        <div className="min-h-dvh bg-background">
-            <nav aria-label="Reader" className="mx-auto max-w-3xl px-5 pt-6 sm:px-8 sm:pt-10">
+        <Frame align="center" background="background" minHeight="screen">
+            <Frame align="start" aria-label="Reader" as="nav" maxWidth="3xl" paddingTop={{ base: '2xl', sm: '4xl' }} paddingX={{ base: 'xl', sm: '3xl' }} width="full">
                 <BackLink href={back} keyShortcut="Escape" label={backLabel} />
-            </nav>
-            <main className="mx-auto max-w-3xl px-5 pb-24 pt-12 sm:px-8 sm:pt-16" id="reader">
+            </Frame>
+            <Frame as="main" id="reader" maxWidth="3xl" paddingBottom="8xl" paddingTop={{ base: '5xl', sm: '6xl' }} paddingX={{ base: 'xl', sm: '3xl' }} width="full">
                 <EntryLoader key={slug} navigation={navigation} slug={slug} />
-            </main>
-        </div>
+            </Frame>
+        </Frame>
     );
 }
 
@@ -130,11 +134,11 @@ function EntryError({ status, retry }: { status: number; retry: () => void }) {
     };
     const [title, description] = messages[status] ?? ['This entry could not be loaded', 'Please try again in a moment.'];
     return (
-        <div className="space-y-4" role="alert">
-            <h1 className="text-2xl font-medium">{title}</h1>
-            <p className="text-muted-foreground">{description}</p>
-            {status === 401 ? <Link href={PATHS.login} className="underline">Sign in</Link> : status !== 404 ? <Button variant="secondary" onClick={retry}>Try again</Button> : null}
-        </div>
+        <Frame align="start" gap="l" role="alert">
+            <Text as="h1" size="3xl" tracking="tight" weight="medium">{title}</Text>
+            <Text tone="muted">{description}</Text>
+            {status === 401 ? <Text><Link href={PATHS.login} variant="underline">Sign in</Link></Text> : status !== 404 ? <Button variant="secondary" onClick={retry}>Try again</Button> : null}
+        </Frame>
     );
 }
 
@@ -149,7 +153,7 @@ function Reader({ initialEntry, initiallyExtracted, extractionFailed, live, navi
     const [entry, setEntry] = useState(initialEntry);
     const save = useEntrySave(initialEntry);
     return (
-        <article aria-labelledby="entry-title">
+        <Frame aria-labelledby="entry-title" as="article">
             <ReaderHeader entry={entry} />
             <ReaderMedia entry={entry} onChange={setEntry} />
             <ReaderBody entry={entry} />
@@ -157,7 +161,7 @@ function Reader({ initialEntry, initiallyExtracted, extractionFailed, live, navi
             {save ? <SaveFiling save={save} /> : null}
             <ReaderRail entry={entry} save={save} />
             {live ? <ReaderCommands entry={entry} navigation={navigation} onChange={setEntry} save={save} /> : null}
-        </article>
+        </Frame>
     );
 }
 
@@ -271,23 +275,27 @@ function ArticleExtraction({ entry, onChange, initiallyExtracted, extractionFail
     }
 
     return (
-        <>
-            {!extracted ? (
-                <div className="mt-12 space-y-3 text-sm text-muted-foreground">
-                    <p>Only seeing part of the article?</p>
-                    <Button disabled={pending} onClick={() => void extract()} variant="secondary">{pending ? 'Loading full article…' : 'Load full article'}</Button>
-                </div>
-            ) : null}
+        <Frame gap="xl">
+            {extracted ? null : <ExtractPrompt onExtract={() => void extract()} pending={pending} />}
             <ReaderNotice notice={notice} />
-        </>
+        </Frame>
+    );
+}
+
+function ExtractPrompt({ pending, onExtract }: { pending: boolean; onExtract: () => void }) {
+    return (
+        <Frame align="start" gap="m" paddingTop="5xl">
+            <Text size="sm" tone="muted">Only seeing part of the article?</Text>
+            <Button disabled={pending} onClick={onExtract} variant="secondary">{pending ? 'Loading full article…' : 'Load full article'}</Button>
+        </Frame>
     );
 }
 
 function ReaderBody({ entry }: { entry: ReaderEntry }) {
     const [font] = useReaderFont();
-    if (entry.body?.trim()) return <div className="reader-body" data-font={font} dangerouslySetInnerHTML={{ __html: readerBody(entry) }} />;
+    if (entry.body?.trim()) return <ArticleBody data-font={font} dangerouslySetInnerHTML={{ __html: readerBody(entry) }} />;
     if (entry.contentType === 'video') return null;
-    return <p className="text-muted-foreground">{httpURL(entry.url) ? 'There is no readable content here. Open the original to continue.' : 'No content is available for this entry.'}</p>;
+    return <Text tone="muted">{httpURL(entry.url) ? 'There is no readable content here. Open the original to continue.' : 'No content is available for this entry.'}</Text>;
 }
 
 function sourceTitle(entry: ReaderEntry): string {
@@ -309,27 +317,33 @@ function ReaderHeader({ entry }: { entry: ReaderEntry }) {
     const date = new Date(entry.publishedAt);
     const labels: Record<string, string> = { newsletter: ' · Newsletter', video: ' · Video', microblog: ' · Post' };
     return (
-        <header className="mb-10">
-            <p className="mb-4 text-sm text-muted-foreground"><SourceLink entry={entry}>{source}</SourceLink>{labels[entry.contentType]}</p>
-            <h1 className="text-3xl font-medium text-balance break-words" id="entry-title">{entryTitle(entry)}</h1>
-            <div className="mt-4 flex flex-wrap gap-x-3 gap-y-1 text-sm text-subtle-foreground">
-                {author ? <span>{author}</span> : null}
-                {!Number.isNaN(date.getTime()) ? <time dateTime={entry.publishedAt}>{date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</time> : null}
-            </div>
-        </header>
+        <Frame as="header" gap="l" paddingBottom="4xl">
+            <Text size="sm" tone="muted"><SourceLink entry={entry}>{source}</SourceLink>{labels[entry.contentType]}</Text>
+            <Text as="h1" break="words" id="entry-title" size="3xl" tracking="tight" weight="medium" wrap="balance">{entryTitle(entry)}</Text>
+            <Frame direction="row" gapX="m" gapY="2xs" wrap>
+                {author ? <Text as="span" size="sm" tone="subtle">{author}</Text> : null}
+                {!Number.isNaN(date.getTime()) ? <Text as="time" dateTime={entry.publishedAt} size="sm" tone="subtle">{date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</Text> : null}
+            </Frame>
+        </Frame>
     );
 }
 
 function SourceLink({ entry, children }: { entry: ReaderEntry; children: string }) {
     const href = readerSourceHref(entry.source);
     if (!href) return children;
-    return <Link className="rounded-sm hover:text-foreground" href={href}>{children}</Link>;
+    return <Link href={href} variant="quiet">{children}</Link>;
 }
 
 function ReaderVideo({ video, title }: {
     video?: { url: string; type: string };
     title: string;
 }) {
-    if (video) return <video aria-label={title} className="mb-10 aspect-video w-full rounded-lg bg-muted" controls preload="none"><source src={video.url} type={video.type} /><p>Your browser cannot play this video. Open it at the source.</p></video>;
-    return <p className="mb-8 text-muted-foreground">This video is available at its original source.</p>;
+    if (video) {
+        return (
+            <Frame paddingBottom="4xl">
+                <VideoPlayer aria-label={title} controls preload="none"><source src={video.url} type={video.type} /><Text>Your browser cannot play this video. Open it at the source.</Text></VideoPlayer>
+            </Frame>
+        );
+    }
+    return <Frame paddingBottom="4xl"><Text tone="muted">This video is available at its original source.</Text></Frame>;
 }

@@ -400,7 +400,7 @@ up() {
         start_pds "$dir" "$plc" "$pds"
         start_fixtures "$dir" "$fixtures" "$decoy"
     fi
-    start_process "$dir" vite "$APP/frontend" -- ./node_modules/.bin/vite --port "$vite" --strictPort
+    start_process "$dir" vite "$APP/frontend" -- bun --bun ./node_modules/.bin/vite --port "$vite" --strictPort
 
     goose -dir internal/database/migrations sqlite3 "$run/morgenblau.db" up >"$run/migrate.log" 2>&1 \
         || die "migrations failed; see $run/migrate.log"

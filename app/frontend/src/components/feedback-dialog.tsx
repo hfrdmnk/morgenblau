@@ -1,14 +1,25 @@
 import { Dialog } from '@base-ui/react/dialog';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, useReducedMotion } from 'motion/react';
 import { useEffect, useId, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import { toast } from 'sonner';
 
-import { ArrowUpIcon, CloseIcon, FeedbackIcon, ImageIcon, LoadingIcon } from '@/components/icons';
+import { ArrowUpIcon, FeedbackIcon, ImageIcon, LoadingIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
-import { DialogBackdrop, DialogPopup } from '@/components/ui/dialog';
+import {
+    AttachmentThumb,
+    Composer,
+    ComposerDialog,
+    ComposerDropOverlay,
+    ComposerField,
+    ComposerHint,
+    ComposerStatus,
+} from '@/components/ui/composer';
+import { Kbd } from '@/components/ui/kbd';
+import { Frame } from '@/design/frame';
+import { MotionFrame } from '@/design/motion';
+import { Text } from '@/design/text';
 import { describeMutationError } from '@/lib/api';
 import { FEEDBACK_IMAGE_TYPES, MAX_FEEDBACK_IMAGE_BYTES, MAX_FEEDBACK_IMAGES, sendFeedback } from '@/lib/feedback';
-import { cn } from '@/lib/utils';
 
 const THUMB = { duration: 0.16, ease: [0.16, 1, 0.3, 1] as const };
 const SEND_SHORTCUT = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ Enter' : 'Ctrl Enter';
@@ -84,58 +95,48 @@ export function FeedbackDialog() {
         >
             <Dialog.Trigger
                 render={
-                    <Button aria-label="Send feedback" className="text-subtle-foreground" size="icon-sm" variant="ghost">
-                        <FeedbackIcon className="size-5" />
+                    <Button aria-label="Send feedback" size="icon-sm" variant="subtle">
+                        <FeedbackIcon size="xl" />
                     </Button>
                 }
             />
-            <Dialog.Portal>
-                <DialogBackdrop />
-                <DialogPopup className="max-w-xl p-2" initialFocus={textareaRef} {...intakeHandlers}>
-                    <Dialog.Title className="sr-only">Send feedback</Dialog.Title>
-                    <form
-                        className={cn(
-                            'relative rounded-lg bg-input transition-[box-shadow] duration-(--motion-duration-fast) has-[textarea:focus-visible]:shadow-[inset_0_0_0_1px_var(--ring)]',
-                            dragging && 'shadow-[inset_0_0_0_1px_var(--ring)]',
-                        )}
-                        onSubmit={(event) => {
-                            event.preventDefault();
-                            void send();
+            <ComposerDialog initialFocus={textareaRef} title="Send feedback" {...intakeHandlers}>
+                <Composer
+                    dragging={dragging}
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        void send();
+                    }}
+                >
+                    <AttachmentList attachments={attachments} disabled={sending} onRemove={remove} />
+                    <Text as="label" htmlFor={fieldId} visuallyHidden>
+                        Feedback
+                    </Text>
+                    <ComposerField
+                        ref={textareaRef}
+                        disabled={sending}
+                        id={fieldId}
+                        onChange={(event) => {
+                            setMessage(event.target.value);
+                            setError(null);
                         }}
-                    >
-                        <AttachmentList attachments={attachments} disabled={sending} onRemove={remove} />
-                        <label className="sr-only" htmlFor={fieldId}>
-                            Feedback
-                        </label>
-                        <textarea
-                            ref={textareaRef}
-                            className="field-sizing-content block max-h-[50dvh] min-h-32 w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-base outline-none placeholder:text-subtle-foreground md:text-sm"
-                            disabled={sending}
-                            id={fieldId}
-                            onChange={(event) => {
-                                setMessage(event.target.value);
-                                setError(null);
-                            }}
-                            onKeyDown={(event) => {
-                                if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                                    event.preventDefault();
-                                    void send();
-                                }
-                            }}
-                            placeholder="What’s working, what isn’t, what you’d like to see…"
-                            value={message}
-                        />
-                        <ComposerActions canSend={canSend} onFiles={add} sending={sending} />
-                        {dragging ? (
-                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-lg bg-input/90 text-sm text-muted-foreground outline-1 outline-ring outline-dashed -outline-offset-4">
-                                <ImageIcon className="size-5" />
-                                Drop images to attach
-                            </div>
-                        ) : null}
-                    </form>
-                    <StatusLine status={error ?? notice} />
-                </DialogPopup>
-            </Dialog.Portal>
+                        onKeyDown={(event) => {
+                            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                                event.preventDefault();
+                                void send();
+                            }
+                        }}
+                        placeholder="What’s working, what isn’t, what you’d like to see…"
+                        value={message}
+                    />
+                    <ComposerActions canSend={canSend} onFiles={add} sending={sending} />
+                    {dragging ? <ComposerDropOverlay>Drop images to attach</ComposerDropOverlay> : null}
+                </Composer>
+                <ComposerStatus
+                    fallback="Your handle, this page and your browser are automatically included to help track down problems."
+                    status={error ?? notice}
+                />
+            </ComposerDialog>
         </Dialog.Root>
     );
 }
@@ -164,10 +165,15 @@ function AttachmentList({ attachments, disabled, onRemove }: { attachments: Atta
     return (
         <AnimatePresence initial={false}>
             {attachments.length > 0 ? (
-                <motion.ul
+                <MotionFrame
                     key="thumbs"
                     aria-label="Attached images"
-                    className="flex flex-wrap gap-2 px-3 pt-3"
+                    as="ul"
+                    direction="row"
+                    gap="s"
+                    paddingTop="m"
+                    paddingX="m"
+                    wrap
                     initial={reduceMotion ? false : { opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={reduceMotion ? undefined : { opacity: 0 }}
@@ -175,35 +181,20 @@ function AttachmentList({ attachments, disabled, onRemove }: { attachments: Atta
                 >
                     <AnimatePresence initial={false} mode="popLayout">
                         {attachments.map((a) => (
-                            <motion.li
+                            <MotionFrame
                                 key={a.id}
+                                as="li"
                                 layout={!reduceMotion}
-                                className="group relative"
                                 initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={reduceMotion ? undefined : { opacity: 0, scale: 0.96 }}
                                 transition={THUMB}
                             >
-                                <img
-                                    alt={a.file.name}
-                                    className="size-16 rounded-md object-cover shadow-[0_0_0_1px_oklch(from_var(--foreground)_l_c_h/0.08)]"
-                                    height={64}
-                                    src={a.url}
-                                    width={64}
-                                />
-                                <button
-                                    aria-label={`Remove ${a.file.name}`}
-                                    className="absolute -top-1.5 -right-1.5 flex size-5 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground opacity-0 shadow-popover transition-opacity duration-(--motion-duration-fast) group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 before:absolute before:-inset-2.5 focus-visible:opacity-100"
-                                    disabled={disabled}
-                                    onClick={() => onRemove(a)}
-                                    type="button"
-                                >
-                                    <CloseIcon className="size-3" />
-                                </button>
-                            </motion.li>
+                                <AttachmentThumb disabled={disabled} name={a.file.name} onRemove={() => onRemove(a)} src={a.url} />
+                            </MotionFrame>
                         ))}
                     </AnimatePresence>
-                </motion.ul>
+                </MotionFrame>
             ) : null}
         </AnimatePresence>
     );
@@ -212,20 +203,19 @@ function AttachmentList({ attachments, disabled, onRemove }: { attachments: Atta
 function ComposerActions({ canSend, onFiles, sending }: { canSend: boolean; onFiles: (files: Iterable<File>) => void; sending: boolean }) {
     const fileRef = useRef<HTMLInputElement>(null);
     return (
-        <div className="flex items-center justify-between gap-2 px-2 pb-2">
-            <div className="flex items-center gap-1.5">
+        <Frame align="center" direction="row" gap="s" justify="between" paddingBottom="s" paddingX="s">
+            <Frame align="center" direction="row" gap="xs">
                 <Button
                     aria-label="Attach images"
-                    className="text-subtle-foreground hover:text-foreground"
                     disabled={sending}
                     onClick={() => fileRef.current?.click()}
                     size="icon-sm"
                     type="button"
-                    variant="ghost"
+                    variant="subtle"
                 >
-                    <ImageIcon className="size-5" />
+                    <ImageIcon size="xl" />
                 </Button>
-                <span className="hidden text-xs text-subtle-foreground pointer-fine:inline">Paste or drop images</span>
+                <ComposerHint>Paste or drop images</ComposerHint>
                 <input
                     ref={fileRef}
                     accept={FEEDBACK_IMAGE_TYPES.join(',')}
@@ -237,23 +227,14 @@ function ComposerActions({ canSend, onFiles, sending }: { canSend: boolean; onFi
                     }}
                     type="file"
                 />
-            </div>
-            <div className="flex items-center gap-3">
-                <kbd className="hidden font-sans text-xs text-subtle-foreground pointer-fine:inline">{SEND_SHORTCUT}</kbd>
-                <Button aria-label="Send feedback" className="rounded-full" disabled={!canSend} size="icon-sm" type="submit">
-                    {sending ? <LoadingIcon className="size-4 motion-safe:animate-spin" /> : <ArrowUpIcon className="size-4" />}
+            </Frame>
+            <Frame align="center" direction="row" gap="m">
+                <Kbd hideOnTouch>{SEND_SHORTCUT}</Kbd>
+                <Button aria-label="Send feedback" disabled={!canSend} size="icon-sm-round" type="submit">
+                    {sending ? <LoadingIcon size="md" spin /> : <ArrowUpIcon size="md" />}
                 </Button>
-            </div>
-        </div>
-    );
-}
-
-// Says what gets sent along until there is a refusal or a failure to report.
-function StatusLine({ status }: { status: string | null }) {
-    return (
-        <p className={cn('min-h-lh px-2 pt-2 pb-1 text-xs', status ? 'text-destructive' : 'text-subtle-foreground')} role={status ? 'alert' : undefined}>
-            {status ?? 'Your handle, this page and your browser are automatically included to help track down problems.'}
-        </p>
+            </Frame>
+        </Frame>
     );
 }
 

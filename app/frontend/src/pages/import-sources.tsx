@@ -1,6 +1,5 @@
 import { Dialog } from '@base-ui/react/dialog';
 import { useRef } from 'react';
-import { Link } from 'wouter';
 
 import { UploadIcon } from '@/components/icons';
 import { PublicDataHint } from '@/components/public-data-hint';
@@ -10,8 +9,13 @@ import {
     AccordionItem,
     AccordionTrigger,
 } from '@/components/ui/accordion';
+import { BulletItem, BulletList } from '@/components/ui/bullet-list';
 import { Button } from '@/components/ui/button';
 import { DialogBackdrop, DialogPopup } from '@/components/ui/dialog';
+import { Link } from '@/components/ui/link';
+import { ProgressBar } from '@/components/ui/progress-bar';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useSourceImport, type ImportState } from '@/hooks/use-source-import';
 import { useSources, type FeedSource } from '@/hooks/use-sources';
@@ -31,113 +35,129 @@ export function ImportSources() {
 
     return (
         <DataSettings>
-            <h1 className="text-2xl font-medium">Import sources</h1>
-            <p className="mt-3 max-w-xl text-muted-foreground">
-                Bring your feeds with you. Folders become tags, and sources you
-                already follow are kept.
-            </p>
+            <Frame gap="5xl">
+                <Frame gap="m">
+                    <Text as="h1" size="2xl" weight="medium">Import sources</Text>
+                    <Frame maxWidth="xl">
+                        <Text tone="muted">
+                            Bring your feeds with you. Folders become tags, and sources you
+                            already follow are kept.
+                        </Text>
+                    </Frame>
+                </Frame>
 
-            <div className="mt-12 space-y-10">
-                <section aria-labelledby="opml-title">
-                    <h2 id="opml-title" className="text-lg font-medium">
-                        From an OPML file
-                    </h2>
-                    <p className="mt-2 max-w-lg text-sm text-muted-foreground">
-                        Upload an export from Reeder, NetNewsWire, or another
-                        RSS reader. A feed in several folders gets each folder’s
-                        tag.
-                    </p>
-                    <input
-                        ref={input}
-                        type="file"
-                        accept=".opml,.xml,text/xml,application/xml,text/x-opml"
-                        className="hidden"
-                        aria-label="OPML file"
-                        onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            event.target.value = '';
-                            if (file) void prepare('opml', file);
-                        }}
-                    />
-                    <Button
-                        variant="secondary"
-                        className="mt-4"
-                        disabled={busy}
-                        onClick={() => input.current?.click()}
-                    >
-                        <UploadIcon />
-                        {preparingProvider === 'opml'
-                            ? 'Loading'
-                            : 'Choose OPML file'}
-                    </Button>
-                    <ImportError message={failure('opml')} />
-                </section>
-
-                <YouTubeImport
-                    busy={busy}
-                    error={failure('youtube')}
-                    loading={preparingProvider === 'youtube'}
-                    onFile={(file) => void prepare('youtube', file)}
-                />
-
-                <section aria-labelledby="apps-title">
-                    <h2 id="apps-title" className="text-lg font-medium">
-                        From another app
-                    </h2>
-                    <p className="mt-2 max-w-lg text-sm text-muted-foreground">
-                        Read the subscriptions on your current ATProto account.
-                        Your sources in the other app stay unchanged.
-                    </p>
-                    <div className="mt-5 space-y-5">
-                        {(
-                            [
-                                {
-                                    provider: 'skyreader',
-                                    name: 'Skyreader',
-                                    description:
-                                        'RSS feeds, categories, and tags',
-                                },
-                                {
-                                    provider: 'glean',
-                                    name: 'Glean',
-                                    description: 'RSS feeds and categories',
-                                },
-                            ] as const
-                        ).map(({ provider, name, description }) => (
-                            <div
-                                key={provider}
-                                className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"
+                <Frame gap="4xl">
+                    <Frame as="section" aria-labelledby="opml-title" gap="l">
+                        <Frame gap="2xs" maxWidth="lg">
+                            <Text as="h2" id="opml-title" size="lg" weight="medium">
+                                From an OPML file
+                            </Text>
+                            <Text size="sm" tone="muted">
+                                Upload an export from Reeder, NetNewsWire, or another
+                                RSS reader. A feed in several folders gets each folder’s
+                                tag.
+                            </Text>
+                        </Frame>
+                        <input
+                            ref={input}
+                            type="file"
+                            accept=".opml,.xml,text/xml,application/xml,text/x-opml"
+                            hidden
+                            aria-label="OPML file"
+                            onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                event.target.value = '';
+                                if (file) void prepare('opml', file);
+                            }}
+                        />
+                        <Frame align="start" gap="s">
+                            <Button
+                                variant="secondary"
+                                disabled={busy}
+                                onClick={() => input.current?.click()}
                             >
-                                <div>
-                                    <h3 className="text-sm font-medium">
-                                        {name}
-                                    </h3>
-                                    <p className="mt-1 text-sm text-subtle-foreground">
-                                        {description}
-                                    </p>
-                                </div>
-                                <div className="sm:text-right">
-                                    <Button
-                                        variant="secondary"
-                                        disabled={busy}
-                                        onClick={() => void prepare(provider)}
-                                    >
-                                        {preparingProvider === provider
-                                            ? 'Loading'
-                                            : `Import from ${name}`}
-                                    </Button>
-                                    <ImportError message={failure(provider)} />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-            </div>
-            <p className="mt-12 max-w-lg text-xs text-subtle-foreground">
-                Imported feed subscriptions are public records on your PDS, like
-                sources you add in Morgenblau. Newsletters and native
-                Standardfeed subscriptions are not imported here.
-            </p>
+                                <UploadIcon />
+                                {preparingProvider === 'opml'
+                                    ? 'Loading'
+                                    : 'Choose OPML file'}
+                            </Button>
+                            <ImportError message={failure('opml')} />
+                        </Frame>
+                    </Frame>
+
+                    <YouTubeImport
+                        busy={busy}
+                        error={failure('youtube')}
+                        loading={preparingProvider === 'youtube'}
+                        onFile={(file) => void prepare('youtube', file)}
+                    />
+
+                    <Frame as="section" aria-labelledby="apps-title" gap="xl">
+                        <Frame gap="2xs" maxWidth="lg">
+                            <Text as="h2" id="apps-title" size="lg" weight="medium">
+                                From another app
+                            </Text>
+                            <Text size="sm" tone="muted">
+                                Read the subscriptions on your current ATProto account.
+                                Your sources in the other app stay unchanged.
+                            </Text>
+                        </Frame>
+                        <Frame gap="xl">
+                            {(
+                                [
+                                    {
+                                        provider: 'skyreader',
+                                        name: 'Skyreader',
+                                        description:
+                                            'RSS feeds, categories, and tags',
+                                    },
+                                    {
+                                        provider: 'glean',
+                                        name: 'Glean',
+                                        description: 'RSS feeds and categories',
+                                    },
+                                ] as const
+                            ).map(({ provider, name, description }) => (
+                                <Frame
+                                    key={provider}
+                                    direction={{ base: 'column', sm: 'row' }}
+                                    align={{ base: 'start', sm: 'center' }}
+                                    justify={{ sm: 'between' }}
+                                    gap="m"
+                                >
+                                    <Frame gap="2xs">
+                                        <Text as="h3" size="sm" weight="medium">
+                                            {name}
+                                        </Text>
+                                        <Text size="sm" tone="subtle">
+                                            {description}
+                                        </Text>
+                                    </Frame>
+                                    <Frame align={{ base: 'start', sm: 'end' }} gap="s">
+                                        <Button
+                                            variant="secondary"
+                                            disabled={busy}
+                                            onClick={() => void prepare(provider)}
+                                        >
+                                            {preparingProvider === provider
+                                                ? 'Loading'
+                                                : `Import from ${name}`}
+                                        </Button>
+                                        <ImportError message={failure(provider)} end />
+                                    </Frame>
+                                </Frame>
+                            ))}
+                        </Frame>
+                    </Frame>
+                </Frame>
+                <Frame maxWidth="lg">
+                    <Text size="xs" tone="subtle">
+                        Imported feed subscriptions are public records on your PDS, like
+                        sources you add in Morgenblau. Newsletters and native
+                        Standardfeed subscriptions are not imported here.
+                    </Text>
+                </Frame>
+            </Frame>
 
             <ImportDialog
                 state={state}
@@ -154,12 +174,15 @@ export function ImportSources() {
     );
 }
 
-function ImportError({ message }: { message: string | null }) {
+// end: in a row whose action sits at the far edge from sm up, the message lines up with it.
+function ImportError({ message, end = false }: { message: string | null; end?: boolean }) {
     if (!message) return null;
     return (
-        <p role="alert" className="mt-2 max-w-lg text-sm text-destructive">
-            {message}
-        </p>
+        <Frame alignSelf="stretch" maxWidth="lg">
+            <Text role="alert" size="sm" tone="destructive" align={end ? { sm: 'end' } : undefined}>
+                {message}
+            </Text>
+        </Frame>
     );
 }
 
@@ -176,15 +199,15 @@ function YouTubeImport({
 }) {
     const input = useRef<HTMLInputElement>(null);
     return (
-        <section aria-labelledby="youtube-title">
-            <h2 id="youtube-title" className="text-lg font-medium">
+        <Frame as="section" aria-labelledby="youtube-title" gap="l">
+            <Text as="h2" id="youtube-title" size="lg" weight="medium">
                 From YouTube
-            </h2>
+            </Text>
             <input
                 ref={input}
                 type="file"
                 accept=".csv,text/csv"
-                className="hidden"
+                hidden
                 aria-label="YouTube subscriptions CSV"
                 onChange={(event) => {
                     const file = event.target.files?.[0];
@@ -192,33 +215,33 @@ function YouTubeImport({
                     if (file) onFile(file);
                 }}
             />
-            <Button
-                variant="secondary"
-                className="mt-4"
-                disabled={busy}
-                aria-describedby="youtube-help"
-                onClick={() => input.current?.click()}
-            >
-                <UploadIcon />
-                {loading ? 'Loading' : 'Import YouTube subscriptions'}
-            </Button>
-            <ImportError message={error} />
-            <p
-                id="youtube-help"
-                className="mt-2 max-w-lg text-sm text-muted-foreground"
-            >
-                Export your YouTube subscriptions from{' '}
-                <a
-                    href="https://takeout.google.com/takeout/custom/youtube"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline underline-offset-4"
+            <Frame align="start" gap="s">
+                <Button
+                    variant="secondary"
+                    disabled={busy}
+                    aria-describedby="youtube-help"
+                    onClick={() => input.current?.click()}
                 >
-                    Google Takeout
-                </a>
-                , then extract and upload the subscriptions CSV file.
-            </p>
-        </section>
+                    <UploadIcon />
+                    {loading ? 'Loading' : 'Import YouTube subscriptions'}
+                </Button>
+                <ImportError message={error} />
+                <Frame alignSelf="stretch" maxWidth="lg">
+                    <Text id="youtube-help" size="sm" tone="muted">
+                        Export your YouTube subscriptions from{' '}
+                        <Link
+                            href="https://takeout.google.com/takeout/custom/youtube"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            variant="underline"
+                        >
+                            Google Takeout
+                        </Link>
+                        , then extract and upload the subscriptions CSV file.
+                    </Text>
+                </Frame>
+            </Frame>
+        </Frame>
     );
 }
 
@@ -244,7 +267,7 @@ function ImportDialog({
         >
             <Dialog.Portal>
                 <DialogBackdrop />
-                <DialogPopup className="max-h-[85dvh] max-w-md">
+                <DialogPopup size="md" short>
                     <ImportDialogContent
                         state={state}
                         onConfirm={onConfirm}
@@ -272,59 +295,57 @@ function ImportDialogContent({
         return <ImportReceipt outcome={state.outcome} onRetry={() => onRetry(state.outcome)} />;
     }
     return (
-        <>
-            <Dialog.Title className="text-xl font-medium">
-                Importing sources
-            </Dialog.Title>
-            <Dialog.Description
-                className="mt-3 text-sm text-muted-foreground"
-                role="status"
-            >
-                {state.completed} of {state.total} processed. Keep this
-                page open.
-            </Dialog.Description>
-            <div
-                className="mt-6 h-1.5 overflow-hidden rounded-sm bg-secondary/50"
-                role="progressbar"
-                aria-valuenow={state.completed}
-                aria-valuemin={0}
-                aria-valuemax={state.total}
+        <Frame gap="2xl">
+            <Frame gap="m">
+                <Dialog.Title render={<Text as="h2" size="lg" weight="medium" />}>
+                    Importing sources
+                </Dialog.Title>
+                <Dialog.Description
+                    render={<Text size="sm" tone="muted" />}
+                    role="status"
+                >
+                    {state.completed} of {state.total} processed. Keep this
+                    page open.
+                </Dialog.Description>
+            </Frame>
+            <ProgressBar
+                value={state.completed}
+                max={state.total}
                 aria-label="Sources processed"
-            >
-                <div
-                    className="h-full w-full rounded-sm bg-neutral transition-transform duration-(--motion-duration-overlay) ease-in-out motion-reduce:transition-none"
-                    style={{ transform: `translateX(${(state.completed / state.total - 1) * 100}%)` }}
-                />
-            </div>
-        </>
+            />
+        </Frame>
     );
 }
 
 function ImportReceipt({ outcome, onRetry }: { outcome: ImportOutcome; onRetry: () => void }) {
     const paused = outcome.remaining.length > 0;
     return (
-        <>
-            <Dialog.Title className="mb-3 text-xl font-medium">
-                {paused ? 'Import paused' : 'Subscriptions saved'}
-            </Dialog.Title>
-            {outcome.imported.length > 0 && (
-                <Dialog.Description className="mb-4 text-sm text-muted-foreground">
-                    {paused
-                        ? 'Successfully imported subscriptions are saved.'
-                        : 'Your subscriptions are saved.'} Their posts are checked separately.
-                    You can close this window; collection continues automatically.
-                </Dialog.Description>
-            )}
-            <ImportResult outcome={outcome} onRetry={onRetry} />
-            <div className="mt-6 flex justify-end gap-2">
-                <Dialog.Close nativeButton={false} render={<Button variant="ghost" nativeButton={false} render={<Link href={PATHS.sources} />} />}>
+        <Frame gap="2xl">
+            <Frame gap="m">
+                <Dialog.Title render={<Text as="h2" size="lg" weight="medium" />}>
+                    {paused ? 'Import paused' : 'Subscriptions saved'}
+                </Dialog.Title>
+                {outcome.imported.length > 0 && (
+                    <Frame paddingBottom="2xs">
+                        <Dialog.Description render={<Text size="sm" tone="muted" />}>
+                            {paused
+                                ? 'Successfully imported subscriptions are saved.'
+                                : 'Your subscriptions are saved.'} Their posts are checked separately.
+                            You can close this window; collection continues automatically.
+                        </Dialog.Description>
+                    </Frame>
+                )}
+                <ImportResult outcome={outcome} onRetry={onRetry} />
+            </Frame>
+            <Frame direction="row" justify="end" gap="s">
+                <Dialog.Close nativeButton={false} render={<Button variant="ghost" nativeButton={false} render={<Link href={PATHS.sources} variant="plain" />} />}>
                     View sources
                 </Dialog.Close>
                 <Dialog.Close render={<Button variant="secondary" />}>
                     Done
                 </Dialog.Close>
-            </div>
-        </>
+            </Frame>
+        </Frame>
     );
 }
 
@@ -337,40 +358,44 @@ function ImportConfirmation({
 }) {
     const count = plan.sources.length;
     return (
-        <>
-            <Dialog.Title className="text-xl font-medium">
-                Import {count} {count === 1 ? 'source' : 'sources'}?
-            </Dialog.Title>
-            <Dialog.Description className="mt-3 text-sm text-muted-foreground">
-                New sources will be added. Existing sources keep their titles
-                and primary status; incoming tags are merged with yours.
-            </Dialog.Description>
-            {plan.warnings.length > 0 && (
-                <Accordion className="mt-4 text-muted-foreground">
-                    <AccordionItem value="warnings">
-                        <AccordionTrigger>
-                            Import warnings ({plan.warnings.length})
-                        </AccordionTrigger>
-                        <AccordionContent>
-                            <ul className="list-disc space-y-2 pl-5">
-                                {plan.warnings.map((warning, index) => (
-                                    <li key={index} className="break-words">
-                                        {warning}
-                                    </li>
-                                ))}
-                            </ul>
-                        </AccordionContent>
-                    </AccordionItem>
-                </Accordion>
-            )}
-            <PublicDataHint className="mt-4" />
-            <div className="mt-6 flex justify-end gap-2">
+        <Frame gap="2xl">
+            <Frame gap="l">
+                <Frame gap="m">
+                    <Dialog.Title render={<Text as="h2" size="lg" weight="medium" />}>
+                        Import {count} {count === 1 ? 'source' : 'sources'}?
+                    </Dialog.Title>
+                    <Dialog.Description render={<Text size="sm" tone="muted" />}>
+                        New sources will be added. Existing sources keep their titles
+                        and primary status; incoming tags are merged with yours.
+                    </Dialog.Description>
+                </Frame>
+                {plan.warnings.length > 0 && (
+                    <Accordion tone="muted">
+                        <AccordionItem value="warnings">
+                            <AccordionTrigger>
+                                Import warnings ({plan.warnings.length})
+                            </AccordionTrigger>
+                            <AccordionContent>
+                                <BulletList>
+                                    {plan.warnings.map((warning, index) => (
+                                        <BulletItem key={index}>
+                                            {warning}
+                                        </BulletItem>
+                                    ))}
+                                </BulletList>
+                            </AccordionContent>
+                        </AccordionItem>
+                    </Accordion>
+                )}
+                <PublicDataHint />
+            </Frame>
+            <Frame direction="row" justify="end" gap="s">
                 <Dialog.Close render={<Button variant="ghost" />}>
                     Cancel
                 </Dialog.Close>
                 <Button onClick={onConfirm}>Import sources</Button>
-            </div>
-        </>
+            </Frame>
+        </Frame>
     );
 }
 
@@ -382,29 +407,31 @@ function ImportResult({
     onRetry: () => void;
 }) {
     return (
-        <div className="space-y-3 text-sm">
-            <p className="text-muted-foreground">
+        <Frame gap="m">
+            <Text size="sm" tone="muted">
                 {outcome.added} added, {outcome.updated} updated,{' '}
                 {outcome.unchanged} already up to date.
-            </p>
+            </Text>
             {outcome.error && (
-                <p className="text-destructive">{outcome.error}</p>
+                <Text size="sm" tone="destructive">{outcome.error}</Text>
             )}
             <ImportFailures failures={outcome.failures} />
             {outcome.imported.length > 0 && <ImportCollection sources={outcome.imported} />}
             {outcome.remaining.length > 0 && (
                 <>
-                    <p className="text-muted-foreground">
+                    <Text size="sm" tone="muted">
                         Sources still to check: {outcome.remaining.length}.
                         Successful imports are kept; retrying will not duplicate
                         them.
-                    </p>
-                    <Button variant="secondary" onClick={onRetry}>
-                        Retry remaining sources
-                    </Button>
+                    </Text>
+                    <Frame direction="row">
+                        <Button variant="secondary" onClick={onRetry}>
+                            Retry remaining sources
+                        </Button>
+                    </Frame>
                 </>
             )}
-        </div>
+        </Frame>
     );
 }
 
@@ -415,25 +442,25 @@ function ImportCollection({ sources }: { sources: ImportSource[] }) {
             loading: 'Checking posts…',
             error: 'Couldn’t check post availability. Your subscriptions are saved.',
         };
-        return <p role="status" className="text-muted-foreground">{messages[state.status]}</p>;
+        return <Text role="status" size="sm" tone="muted">{messages[state.status]}</Text>;
     }
     const byURL = new Map(state.data.map((source) => [source.feedUrl, source]));
     const unavailable = sources.filter((source) => byURL.get(source.feedUrl)?.fetchStatus === 'unavailable');
     if (unavailable.length === 0) return null;
     return (
-        <Accordion className="text-muted-foreground">
+        <Accordion tone="muted">
             <AccordionItem value="collection">
                 <AccordionTrigger>
                     Posts not fetching for {unavailable.length} {unavailable.length === 1 ? 'source' : 'sources'}
                 </AccordionTrigger>
                 <AccordionContent>
-                    <ul className="list-disc space-y-2 pl-5">
+                    <BulletList>
                         {unavailable.map((source) => (
-                            <li key={source.feedUrl} className="break-words">
+                            <BulletItem key={source.feedUrl}>
                                 {source.title || source.feedUrl}
-                            </li>
+                            </BulletItem>
                         ))}
-                    </ul>
+                    </BulletList>
                 </AccordionContent>
             </AccordionItem>
         </Accordion>
@@ -443,12 +470,14 @@ function ImportCollection({ sources }: { sources: ImportSource[] }) {
 function ImportFailures({ failures }: { failures: ImportOutcome['failures'] }) {
     if (failures.length === 0) return null;
     return (
-        <ul className="space-y-2 text-destructive">
+        <Frame as="ul" gap="s">
             {failures.map((failure) => (
-                <li key={failure.feedUrl} className="break-words">
-                    {failure.feedUrl}: {failure.message}
-                </li>
+                <Frame as="li" key={failure.feedUrl}>
+                    <Text size="sm" tone="destructive" break="words">
+                        {failure.feedUrl}: {failure.message}
+                    </Text>
+                </Frame>
             ))}
-        </ul>
+        </Frame>
     );
 }

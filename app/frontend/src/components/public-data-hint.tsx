@@ -1,13 +1,16 @@
 import { Link } from '@/components/ui/link';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 import { useAppProfile } from '@/hooks/use-app-profile';
-import { cn } from '@/lib/utils';
 
-export function PublicDataHint({ className }: { className?: string }) {
-    return (
-        <p className={cn('text-xs text-pretty text-subtle-foreground', className)}>
+// centered: the hint under a sheet's add button, set a little apart from it.
+export function PublicDataHint({ centered = false }: { centered?: boolean }) {
+    const hint = (
+        <Text align={centered ? 'center' : undefined} size="xs" tone="subtle" wrap={centered ? 'balance' : 'pretty'}>
             Your data will be saved to your <PdsLink /> and be public (private data coming soon).
-        </p>
+        </Text>
     );
+    return centered ? <Frame paddingTop="2xs">{hint}</Frame> : hint;
 }
 
 export function PdsLink() {

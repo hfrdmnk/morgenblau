@@ -4,7 +4,7 @@ import { afterAll, expect, test } from 'bun:test';
 GlobalRegistrator.register({ url: 'http://app.example.com/' });
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');
-const { PostList } = await import('./item-list');
+const { PostList } = await import('./post-list');
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 afterAll(() => GlobalRegistrator.unregister());

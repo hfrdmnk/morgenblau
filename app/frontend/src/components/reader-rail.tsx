@@ -2,16 +2,14 @@ import { useEffect, useState, type ReactElement } from 'react';
 
 import { IconCrossfade } from '@/components/icon-crossfade';
 import { BookmarkIcon, CheckIcon, CopyIcon, ExternalLinkIcon } from '@/components/icons';
+import { RailBar, RailButton, RailColumn, RailLink } from '@/components/ui/reading-rail';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Text } from '@/design/text';
 import { announceRemove, announceSave, dismissSaveToasts } from '@/lib/save-announce';
 import { useCopy } from '@/hooks/use-copy';
 import { useSaveState } from '@/hooks/use-entry-save';
 import type { EntrySave } from '@/lib/entry-save';
 import { httpURL, sourceActionLabel, type ReaderEntry } from '@/lib/reader';
-import { cn } from '@/lib/utils';
-
-const RAIL_BUTTON =
-    'inline-flex size-11 cursor-pointer items-center justify-center rounded-md sm:size-10 transition-[color,transform] duration-(--motion-duration-fast) ease-out motion-safe:active:scale-[0.96]';
 
 export function ReaderRail({ entry, save }: { entry: ReaderEntry; save: EntrySave | null }) {
     const progress = useScrollProgress();
@@ -19,18 +17,12 @@ export function ReaderRail({ entry, save }: { entry: ReaderEntry; save: EntrySav
 
     return (
         <TooltipProvider>
-            <aside aria-label="Reader actions" className="pointer-events-none fixed top-1/2 right-4 z-10 hidden -translate-y-1/2 sm:right-6 sm:block">
-                <div className="pointer-events-auto flex flex-col items-center gap-2">
-                    <RailActions entry={entry} save={save} side="left" />
-                    <ProgressRing progress={progress} />
-                </div>
-            </aside>
-            <aside aria-label="Reader actions" className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
-                <ProgressBar progress={progress} />
-                <div className="flex items-center justify-around px-4 py-1">
-                    <RailActions entry={entry} save={save} side="top" />
-                </div>
-            </aside>
+            <RailColumn label="Reader actions" progress={progress}>
+                <RailActions entry={entry} save={save} side="left" />
+            </RailColumn>
+            <RailBar label="Reader actions" progress={progress}>
+                <RailActions entry={entry} save={save} side="top" />
+            </RailBar>
         </TooltipProvider>
     );
 }
@@ -45,9 +37,9 @@ function RailActions({ entry, save, side }: { entry: ReaderEntry; save: EntrySav
             {save ? <SaveButton save={save} side={side} /> : null}
             {original ? (
                 <RailTooltip label={label} side={side}>
-                    <a aria-label={label} className={cn(RAIL_BUTTON, 'text-muted-foreground hover:text-foreground')} href={original} rel="noopener noreferrer" target="_blank">
-                        <ExternalLinkIcon className="size-[1.125rem]" />
-                    </a>
+                    <RailLink aria-label={label} href={original} rel="noopener noreferrer" target="_blank">
+                        <ExternalLinkIcon size="lg" />
+                    </RailLink>
                 </RailTooltip>
             ) : null}
             {original ? <CopyLinkButton side={side} url={original} /> : null}
@@ -79,15 +71,9 @@ function SaveButton({ save, side }: { save: EntrySave; side: TooltipSide }) {
 
     return (
         <RailTooltip label={label} side={side}>
-            <button
-                aria-label={label}
-                aria-pressed={saved}
-                className={cn(RAIL_BUTTON, saved ? 'text-primary' : 'text-muted-foreground hover:text-foreground')}
-                onClick={toggle}
-                type="button"
-            >
-                <BookmarkIcon className={cn('size-[1.125rem]', saved && '[&_path]:fill-current')} />
-            </button>
+            <RailButton aria-label={label} aria-pressed={saved} onClick={toggle} tone={saved ? 'on' : 'idle'}>
+                <BookmarkIcon size="lg" />
+            </RailButton>
         </RailTooltip>
     );
 }
@@ -95,9 +81,9 @@ function SaveButton({ save, side }: { save: EntrySave; side: TooltipSide }) {
 const COPY_LINK_FAILURE = { title: 'Couldn’t copy the link', description: 'Open the original and copy its address instead.' };
 
 const COPY_LINK = {
-    idle: { label: 'Copy link', icon: CopyIcon, tone: 'text-muted-foreground hover:text-foreground', announcement: '' },
-    copied: { label: 'Link copied', icon: CheckIcon, tone: 'text-success', announcement: 'Link copied.' },
-};
+    idle: { label: 'Copy link', icon: CopyIcon, tone: 'idle', announcement: '' },
+    copied: { label: 'Link copied', icon: CheckIcon, tone: 'success', announcement: 'Link copied.' },
+} as const;
 
 function CopyLinkButton({ url, side }: { url: string; side: TooltipSide }) {
     const { copied, copy, instant } = useCopy(url, COPY_LINK_FAILURE);
@@ -105,45 +91,13 @@ function CopyLinkButton({ url, side }: { url: string; side: TooltipSide }) {
 
     return (
         <RailTooltip label={state.label} side={side}>
-            <button aria-label={state.label} className={cn(RAIL_BUTTON, 'relative', state.tone)} onClick={copy} type="button">
-                <IconCrossfade className="size-[1.125rem]" icon={state.icon} instant={instant} name={state.label} />
-                <span aria-live="polite" className="sr-only">
+            <RailButton aria-label={state.label} onClick={copy} tone={state.tone}>
+                <IconCrossfade size="lg" icon={state.icon} instant={instant} name={state.label} />
+                <Text aria-live="polite" as="span" visuallyHidden>
                     {state.announcement}
-                </span>
-            </button>
+                </Text>
+            </RailButton>
         </RailTooltip>
-    );
-}
-
-const RING_RADIUS = 8.25;
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
-
-function ProgressRing({ progress }: { progress: number }) {
-    return (
-        <div aria-label="Reading progress" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(progress * 100)} className="mt-2 size-[1.125rem]" role="progressbar">
-            <svg aria-hidden="true" className="size-full -rotate-90" viewBox="0 0 18 18">
-                <circle className="stroke-border" cx="9" cy="9" fill="none" r={RING_RADIUS} strokeWidth="1.5" />
-                <circle
-                    className="stroke-primary"
-                    cx="9"
-                    cy="9"
-                    fill="none"
-                    r={RING_RADIUS}
-                    strokeDasharray={RING_CIRCUMFERENCE}
-                    strokeDashoffset={RING_CIRCUMFERENCE * (1 - progress)}
-                    strokeLinecap="round"
-                    strokeWidth="1.5"
-                />
-            </svg>
-        </div>
-    );
-}
-
-function ProgressBar({ progress }: { progress: number }) {
-    return (
-        <div aria-label="Reading progress" aria-valuemax={100} aria-valuemin={0} aria-valuenow={Math.round(progress * 100)} className="h-px w-full overflow-hidden bg-border" role="progressbar">
-            <div className="h-full w-full origin-left bg-primary" style={{ transform: `scaleX(${progress})` }} />
-        </div>
     );
 }
 

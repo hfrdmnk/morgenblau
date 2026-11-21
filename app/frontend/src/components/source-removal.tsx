@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { DialogBackdrop, DialogPopup } from '@/components/ui/dialog';
 import { Link } from '@/components/ui/link';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 import { ApiError, classifyMutationError, describeMutationError } from '@/lib/api';
 import { ExternalLinkIcon } from '@/components/icons';
 import { entryHref, newsletterSourceHref, PATHS } from '@/lib/paths';
@@ -66,8 +68,12 @@ function RemovalDialog({ copy, failed, confirm, onRemoved, removedFocus, childre
             pending={mutation.pending}
             title={copy.title(source.title)}
         >
-            {children}
-            <ErrorLine error={mutation.error} />
+            {children || mutation.error ? (
+                <Frame gap="m">
+                    {children}
+                    <ErrorLine error={mutation.error} />
+                </Frame>
+            ) : null}
             <DialogActions destructive label={copy.action} onCancel={onClose} onConfirm={() => void mutation.run(confirm)} pending={mutation.pending} />
         </SourceDialog>
     );
@@ -107,10 +113,14 @@ export function DeleteNewsletterDialog(props: Omit<DialogProps, 'source'> & {
     return (
         <RemovalDialog {...props} confirm={confirm} copy={DELETION[manual ? 'manual' : 'automatic']} failed="Couldn’t delete this newsletter.">
             {manual && source.latestEntrySlug ? (
-                <Link className="text-sm" href={entryHref(source.latestEntrySlug, newsletterSourceHref(source.id))} rel="noopener noreferrer" target="_blank">
-                    Open latest issue in a new tab
-                    <ExternalLinkIcon aria-hidden="true" className="size-3.5" />
-                </Link>
+                <Text>
+                    <Text as="span" size="sm">
+                        <Link href={entryHref(source.latestEntrySlug, newsletterSourceHref(source.id))} rel="noopener noreferrer" target="_blank">
+                            Open latest issue in a new tab
+                            <ExternalLinkIcon aria-hidden="true" size="sm" />
+                        </Link>
+                    </Text>
+                </Text>
             ) : null}
         </RemovalDialog>
     );
@@ -136,10 +146,14 @@ function SourceDialog({ title, description, initialFocus, finalFocus, open, pend
         >
             <Dialog.Portal>
                 <DialogBackdrop />
-                <DialogPopup finalFocus={finalFocus} initialFocus={initialFocus} className="max-w-md">
-                    <Dialog.Title className="pr-8 text-lg font-medium break-words">{title}</Dialog.Title>
-                    {description ? <Dialog.Description className="mt-1 text-sm text-muted-foreground">{description}</Dialog.Description> : null}
-                    <div className="mt-6">{children}</div>
+                <DialogPopup finalFocus={finalFocus} initialFocus={initialFocus} size="md">
+                    <Frame gap="2xl">
+                        <Frame gap="2xs">
+                            <Dialog.Title render={<Text as="h2" break="words" size="lg" weight="medium" />}>{title}</Dialog.Title>
+                            {description ? <Dialog.Description render={<Text size="sm" tone="muted" />}>{description}</Dialog.Description> : null}
+                        </Frame>
+                        {children}
+                    </Frame>
                 </DialogPopup>
             </Dialog.Portal>
         </Dialog.Root>
@@ -149,10 +163,10 @@ function SourceDialog({ title, description, initialFocus, finalFocus, open, pend
 function ErrorLine({ error }: { error: MutationError | null }) {
     if (!error) return null;
     return (
-        <p className="mt-3 text-sm text-destructive" role="alert">
+        <Text role="alert" size="sm" tone="destructive">
             {error.message}{' '}
             {error.reauth ? <Link href={PATHS.login}>Sign in again</Link> : null}
-        </p>
+        </Text>
     );
 }
 
@@ -165,7 +179,7 @@ function DialogActions({ label, pending, disabled = false, destructive = false, 
     onConfirm?: () => void;
 }) {
     return (
-        <div className="mt-6 flex justify-end gap-2">
+        <Frame direction="row" gap="s" justify="end">
             <Button disabled={pending} onClick={onCancel} type="button" variant="ghost">Cancel</Button>
             <Button
                 disabled={pending || disabled}
@@ -175,6 +189,6 @@ function DialogActions({ label, pending, disabled = false, destructive = false, 
             >
                 {label}
             </Button>
-        </div>
+        </Frame>
     );
 }

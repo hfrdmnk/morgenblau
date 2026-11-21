@@ -1,8 +1,9 @@
 import { useLocation, useParams } from 'wouter';
 
 import { EditNewsletterSheet } from '@/components/add-source-dialog';
-import { Skeleton } from '@/components/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import { SourceDetailPage, SourceEntries, SourceHeader, SourceUnavailable } from '@/components/source-detail';
+import { Text } from '@/design/text';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useNewsletterCommands } from '@/hooks/use-source-commands';
 import { useSources, type NewsletterSourceDetail, type SourceEntry } from '@/hooks/use-sources';
@@ -53,7 +54,7 @@ function NewsletterHeader({ source, onChanged, onRemoved }: { source: Newsletter
         <SourceHeader
             facts={newsletterFacts(source)}
             menu={<EditNewsletterSheet onChanged={onChanged} onRemoved={onRemoved} source={source} stopped={source.status === 'stopped'} />}
-            identity={title === source.senderAddress ? null : <span className="break-all">{source.senderAddress}</span>}
+            identity={title === source.senderAddress ? null : <Text as="span" break="all">{source.senderAddress}</Text>}
             primary={source.status === 'active' && source.primary}
             tags={source.tags}
             title={title}

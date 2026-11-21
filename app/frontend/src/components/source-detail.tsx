@@ -1,9 +1,15 @@
 import type { ReactNode } from 'react';
 
 import { BackLink } from '@/components/back-link';
-import { ItemList, ListError, ListItem, PostList, SourceIcon } from '@/components/item-list';
-import { Skeleton } from '@/components/skeleton';
-import { PrimaryMark } from '@/components/source-marks';
+import { ItemList, ListError, ListItem } from '@/components/item-list';
+import { PostList } from '@/components/ui/post-list';
+import { SourceIcon } from '@/components/ui/source-icon';
+import { Skeleton } from '@/components/ui/skeleton';
+import { PageSection } from '@/components/page-section';
+import { Badge } from '@/components/ui/badge';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
+import { GutterMark, PrimaryMark } from '@/components/ui/source-mark';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useSources, type SourceEntry } from '@/hooks/use-sources';
 import { entryHref, PATHS } from '@/lib/paths';
@@ -13,12 +19,19 @@ type Loadable<T> = ReturnType<typeof useSources<T>>;
 
 export function SourceDetailPage({ children }: { children: ReactNode }) {
     return (
-        <main className="mx-auto w-full max-w-3xl px-5 pb-20 pt-6 sm:px-8 md:pt-10" id="main">
-            <nav aria-label="Source">
+        <Frame
+            as="main"
+            gap={{ base: '4xl', md: '5xl' }}
+            id="main"
+            maxWidth="3xl"
+            paddingX={{ base: 'xl', sm: '3xl' }}
+            width="full"
+        >
+            <Frame as="nav" align="start" aria-label="Source">
                 <BackLink href={PATHS.sources} label="Sources" />
-            </nav>
-            <div className="pt-10 md:pt-12">{children}</div>
-        </main>
+            </Frame>
+            <Frame>{children}</Frame>
+        </Frame>
     );
 }
 
@@ -33,19 +46,38 @@ export function SourceHeader({ title, primary, icon, identity, facts, tags = [],
     menu: ReactNode;
 }) {
     return (
+        // Each line keeps its own distance from the one above: identity and health stand apart, facts tuck under.
         <TooltipProvider>
-            <header className="mb-14">
-                <div className="flex min-w-0 items-center gap-3 sm:relative">
-                    {primary ? <span className="flex shrink-0 sm:absolute sm:top-1/2 sm:-left-8 sm:-translate-y-1/2"><PrimaryMark className="size-5" /></span> : null}
-                    <SourceIcon className="size-6" src={icon} />
-                    <h1 className="min-w-0 flex-1 text-3xl font-medium text-balance break-words">{title}</h1>
+        <Frame as="header" gap="l" paddingBottom="5xl">
+            <Frame>
+                <Frame align="center" direction="row" gap="m" minWidth={0} position={{ sm: 'relative' }}>
+                    {primary ? (
+                        <GutterMark offset="title">
+                            <PrimaryMark size="xl" />
+                        </GutterMark>
+                    ) : null}
+                    <SourceIcon size="2xl" src={icon} />
+                    <Frame grow minWidth={0}>
+                        <Text as="h1" break="words" size="3xl" tracking="tight" weight="medium" wrap="balance">{title}</Text>
+                    </Frame>
                     {menu}
-                </div>
-                {identity ? <div className="mt-3 flex min-w-0 items-center gap-2 text-sm text-muted-foreground">{identity}</div> : null}
-                <p className="mt-1 text-sm text-subtle-foreground">{facts.join(' · ')}</p>
+                </Frame>
+                {identity ? (
+                    <Frame minWidth={0} paddingTop="m">
+                        <Text as="span" size="sm" tone="muted">
+                            <Frame align="center" as="span" direction="row" gap="s" minWidth={0}>
+                                {identity}
+                            </Frame>
+                        </Text>
+                    </Frame>
+                ) : null}
+                <Frame paddingTop="2xs">
+                    <Text size="sm" tone="subtle">{facts.join(' · ')}</Text>
+                </Frame>
                 {health}
-                <SourceTags tags={tags} />
-            </header>
+            </Frame>
+            <SourceTags tags={tags} />
+        </Frame>
         </TooltipProvider>
     );
 }
@@ -53,9 +85,11 @@ export function SourceHeader({ title, primary, icon, identity, facts, tags = [],
 function SourceTags({ tags }: { tags: string[] }) {
     if (!tags.length) return null;
     return (
-        <ul aria-label="Tags" className="mt-4 flex flex-wrap gap-2">
-            {tags.map((tag) => <li className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground" key={tag}>{tag}</li>)}
-        </ul>
+        <Frame as="ul" aria-label="Tags" direction="row" gap="s" wrap>
+            {tags.map((tag) => (
+                <Frame as="li" key={tag}><Badge variant="tag">{tag}</Badge></Frame>
+            ))}
+        </Frame>
     );
 }
 
@@ -66,12 +100,9 @@ export function SourceEntries({ title, ...props }: {
     empty: string;
 }) {
     return (
-        <section aria-label={title}>
-            <h2 className="text-base font-medium text-muted-foreground">{title}</h2>
-            <div className="mt-7">
-                <EntriesBody label={title.toLowerCase()} {...props} />
-            </div>
-        </section>
+        <PageSection title={title}>
+            <EntriesBody label={title.toLowerCase()} {...props} />
+        </PageSection>
     );
 }
 
@@ -101,7 +132,7 @@ function EntriesBody({ label, from, state, empty }: {
                         ))}
                     </ItemList>
                 </PostList>
-            ) : <p className="text-sm text-muted-foreground">{empty}</p>}
+            ) : <Text size="sm" tone="muted">{empty}</Text>}
         </Skeleton>
     );
 }
@@ -113,10 +144,10 @@ const SAMPLE_ENTRIES: SourceEntry[] = ['A sample headline of a typical length', 
 export function SourceUnavailable({ state, label }: { state: Extract<Loadable<unknown>, { status: 'error' }>; label: string }) {
     if (state.notFound) {
         return (
-            <div className="space-y-3" role="alert">
-                <h1 className="text-2xl font-medium">Source unavailable</h1>
-                <p className="text-muted-foreground">It may have been removed from your sources.</p>
-            </div>
+            <Frame gap="m" role="alert">
+                <Text as="h1" size="3xl" tracking="tight" weight="medium">Source unavailable</Text>
+                <Text tone="muted">It may have been removed from your sources.</Text>
+            </Frame>
         );
     }
     return <ListError label={label} retry={state.retry} />;

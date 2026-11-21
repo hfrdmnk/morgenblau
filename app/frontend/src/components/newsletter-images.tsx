@@ -2,6 +2,8 @@ import { useState } from 'react';
 
 import { ReaderNotice } from '@/components/reader-notice';
 import { Button } from '@/components/ui/button';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 import { allowRemoteImages, type ReaderEntry } from '@/lib/reader';
 
 export function NewsletterImages({ entry, newsletter, onChange }: {
@@ -24,16 +26,19 @@ export function NewsletterImages({ entry, newsletter, onChange }: {
         }
     }
 
+    const blocked = newsletter.hasBlockedRemoteImages && !newsletter.remoteImagesAllowed;
     return (
-        <>
-            {newsletter.hasBlockedRemoteImages && !newsletter.remoteImagesAllowed ? (
-                <aside className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-lg bg-muted/60 p-4 text-sm">
-                    <div className="max-w-md space-y-1"><p>Remote images are blocked</p><p className="text-muted-foreground">Loading them may tell the sender you opened this message. This choice applies only to this message.</p></div>
+        <Frame gap="xl" paddingBottom={blocked || notice ? '4xl' : 'none'}>
+            {blocked ? (
+                <Frame align="center" as="aside" background="muted-soft" direction="row" gap="l" justify="between" padding="l" radius="lg" wrap>
+                    <Frame gap="2xs" maxWidth="md">
+                        <Text size="sm">Remote images are blocked</Text>
+                        <Text size="sm" tone="muted">Loading them may tell the sender you opened this message. This choice applies only to this message.</Text>
+                    </Frame>
                     <Button disabled={pending} onClick={() => void allowImages()} variant="secondary">{pending ? 'Loading images…' : 'Load images'}</Button>
-                </aside>
+                </Frame>
             ) : null}
-
             <ReaderNotice notice={notice} />
-        </>
+        </Frame>
     );
 }

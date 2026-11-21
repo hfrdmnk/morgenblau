@@ -1,5 +1,8 @@
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence } from 'motion/react';
 import type { ComponentType } from 'react';
+
+import type { IconProps } from '@/components/icons';
+import { IconSwapLayer } from '@/components/ui/icon-swap';
 
 /* Icon swap storyboard, one stage:
  *   0ms  outgoing icon blurs to 3px and scales to 0.9 while the next one resolves in place, over 160ms
@@ -21,18 +24,17 @@ export function IconCrossfade({
     name,
     icon: Icon,
     instant,
-    className = 'size-5',
+    size = 'xl',
 }: {
     name: string;
-    className?: string;
-    icon: ComponentType<{ className?: string }>;
+    size?: IconProps['size'];
+    icon: ComponentType<IconProps>;
     instant: boolean;
 }) {
     return (
         <AnimatePresence initial={false} custom={instant}>
-            <motion.span
+            <IconSwapLayer
                 key={name}
-                className="absolute flex size-5 items-center justify-center"
                 custom={instant}
                 variants={ICON}
                 initial={instant ? false : 'hidden'}
@@ -40,8 +42,8 @@ export function IconCrossfade({
                 exit="hidden"
                 transition={{ duration: instant ? 0 : TIMING.swap, ease: EASE }}
             >
-                <Icon className={className} />
-            </motion.span>
+                <Icon size={size} />
+            </IconSwapLayer>
         </AnimatePresence>
     );
 }

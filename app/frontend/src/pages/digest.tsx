@@ -1,14 +1,20 @@
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, useReducedMotion } from 'motion/react';
 import { useEffect, useId, useMemo, useState } from 'react';
-import { Link, useLocation } from 'wouter';
+import { useLocation } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
 import { AddSourceDialog } from '@/components/add-source-dialog';
 import { ChevronDownIcon } from '@/components/icons';
-import { ItemList, ListError, ListItem, PostList, SourceIcon } from '@/components/item-list';
-import { Skeleton } from '@/components/skeleton';
+import { ItemList, ListError, ListItem } from '@/components/item-list';
+import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/status-state';
 import { Button } from '@/components/ui/button';
+import { Link } from '@/components/ui/link';
+import { FeaturePost, FoldedPosts, PostList, PostRow } from '@/components/ui/post-list';
+import { SourceIcon } from '@/components/ui/source-icon';
+import { Frame } from '@/design/frame';
+import { MotionFrame } from '@/design/motion';
+import { Text } from '@/design/text';
 import { useCommands } from '@/hooks/use-commands';
 import { useDigest, type DigestEntry } from '@/hooks/use-digest';
 import { useDocumentTitle } from '@/hooks/use-document-title';
@@ -19,7 +25,6 @@ import { addCalendarDays, selectedDigestDate, startOfToday, toDateKey } from '@/
 import { digestHref, entryHref, readerSourceHref } from '@/lib/paths';
 import { entryExcerpt } from '@/lib/reader';
 import { showShortcutNotice } from '@/lib/shortcuts';
-import { cn } from '@/lib/utils';
 
 const dayName = new Intl.DateTimeFormat(undefined, { weekday: 'long' });
 export function Digest() {
@@ -32,12 +37,19 @@ export function Digest() {
     useDocumentTitle(dayName.format(selectedDate));
 
     return (
-        <main className="mx-auto w-full max-w-3xl px-5 pb-20 pt-20 sm:px-8 md:pt-24" id="main">
-            <h1 className="mb-8 text-base font-book text-muted-foreground">
+        <Frame
+            as="main"
+            gap="3xl"
+            id="main"
+            maxWidth="3xl"
+            paddingX={{ base: 'xl', sm: '3xl' }}
+            width="full"
+        >
+            <Text as="h1" size="base" tone="muted" weight="book">
                 {dayName.format(selectedDate)}
-            </h1>
+            </Text>
             <DigestContent date={selectedKey} state={digest} />
-        </main>
+        </Frame>
     );
 }
 
@@ -118,21 +130,23 @@ function LoadedDigest({ date, digest }: { date: string; digest: DigestData }) {
     const primary = groupBySource(digest.entries.filter((entry) => entry.source.primary));
     const rest = groupBySource(digest.entries.filter((entry) => !entry.source.primary));
     return (
-        <PostList className="flex flex-col gap-20">
-            {primary.length > 0 ? (
-                <ol aria-label="Primary sources" className="flex flex-col gap-12">
-                    {primary.map((group) => (
-                        <PrimaryItem date={date} group={group} key={group.key} onToggle={() => toggle(group.key)} open={open.has(group.key)} />
-                    ))}
-                </ol>
-            ) : null}
-            {rest.length > 0 ? (
-                <ItemList ordered>
-                    {rest.map((group) => (
-                        <DigestItem date={date} group={group} key={group.key} onToggle={() => toggle(group.key)} open={open.has(group.key)} />
-                    ))}
-                </ItemList>
-            ) : null}
+        <PostList>
+            <Frame gap="7xl">
+                {primary.length > 0 ? (
+                    <Frame aria-label="Primary sources" as="ol" gap="5xl">
+                        {primary.map((group) => (
+                            <PrimaryItem date={date} group={group} key={group.key} onToggle={() => toggle(group.key)} open={open.has(group.key)} />
+                        ))}
+                    </Frame>
+                ) : null}
+                {rest.length > 0 ? (
+                    <ItemList ordered>
+                        {rest.map((group) => (
+                            <DigestItem date={date} group={group} key={group.key} onToggle={() => toggle(group.key)} open={open.has(group.key)} />
+                        ))}
+                    </ItemList>
+                ) : null}
+            </Frame>
         </PostList>
     );
 }
@@ -213,47 +227,32 @@ function PrimaryItem({ date, group, onToggle, open }: GroupProps) {
     const image = entry.image && entry.image !== failedImage ? entry.image : null;
     const href = entryHref(entry.entrySlug, date);
     return (
-        <li className="flex flex-col gap-3">
-            <div className={cn('-m-3 p-3', image ? 'flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_auto] sm:grid-rows-[auto_auto_1fr] sm:gap-x-8' : 'flex flex-col gap-3')} data-post>
-                <PrimarySource entry={entry} />
-                <h2 className="text-2xl font-medium tracking-[-0.015em] text-balance break-words sm:col-start-1 sm:row-start-2 sm:text-3xl">
-                    <Link className={`rounded-sm hover:text-foreground/75 ${entry.title ? 'text-foreground' : 'text-muted-foreground'}`} data-post-link href={href}>{entry.title || 'Untitled'}</Link>
-                </h2>
-                {excerpt ? (
-                    <p className="line-clamp-2 max-w-[60ch] self-start text-base text-muted-foreground text-pretty sm:col-start-1 sm:row-start-3">{excerpt}</p>
-                ) : null}
-                {image ? <PrimaryImage href={href} onError={() => setFailedImage(image)} src={image} /> : null}
-            </div>
-            {group.more.length > 0 ? <MoreFromSource className="text-xl" date={date} group={group} onToggle={onToggle} open={open} /> : null}
-        </li>
+        <Frame as="li" gap="m">
+            <FeaturePost
+                excerpt={excerpt ? <Text lineClamp={2} size="base" tone="muted" wrap="pretty">{excerpt}</Text> : null}
+                headline={(
+                    <Text as="h2" break="words" size={{ base: '2xl', sm: '3xl' }} tone={entry.title ? undefined : 'muted'} weight="medium" wrap="balance">
+                        <Link data-post-link href={href} variant={entry.title ? 'title' : 'quiet'}>{entry.title || 'Untitled'}</Link>
+                    </Text>
+                )}
+                image={image ? { href, onError: () => setFailedImage(image), src: image } : null}
+                source={<PrimarySource entry={entry} />}
+            />
+            {group.more.length > 0 ? <MoreFromSource date={date} group={group} onToggle={onToggle} open={open} size="xl" /> : null}
+        </Frame>
     );
 }
 
 function PrimarySource({ entry }: { entry: DigestEntry }) {
     const sourceHref = readerSourceHref(entry.source);
-    const className = 'flex min-w-0 items-center gap-2 self-start rounded-sm text-sm font-medium text-foreground sm:col-start-1 sm:row-start-1';
     const source = (
         <>
             <SourceIcon src={entry.source.faviconUrl} />
-            <span className="truncate">{sourceLabel(entry)}</span>
+            <Text as="span" size="sm" truncate weight="medium">{sourceLabel(entry)}</Text>
         </>
     );
-    if (!sourceHref) return <div className={className}>{source}</div>;
-    return <Link className={`${className} hover:text-foreground/75`} href={sourceHref}>{source}</Link>;
-}
-
-// The title already carries the link for assistive tech; the image is a second, pointer-only way in.
-function PrimaryImage({ href, onError, src }: { href: string; onError: () => void; src: string }) {
-    return (
-        <Link
-            aria-hidden
-            className="order-first mb-1 block aspect-[2/1] w-full overflow-hidden rounded-lg bg-muted ring-1 ring-foreground/5 sm:order-none sm:col-start-2 sm:row-span-2 sm:row-start-2 sm:mb-0 sm:aspect-[4/3] sm:w-44 sm:self-start"
-            href={href}
-            tabIndex={-1}
-        >
-            <img alt="" className="size-full object-cover" decoding="async" loading="lazy" onError={onError} src={src} />
-        </Link>
-    );
+    if (!sourceHref) return <Frame align="center" direction="row" gap="s" minWidth={0}>{source}</Frame>;
+    return <Link href={sourceHref} variant="title-row">{source}</Link>;
 }
 
 function sourceLabel(entry: DigestEntry): string {
@@ -271,42 +270,48 @@ function DigestItem({ date, group, onToggle, open }: GroupProps) {
         <ListItem
             href={entryHref(entry.entrySlug, date)}
             icon={entry.source.faviconUrl}
-            meta={sourceHref ? <Link className="rounded-sm hover:text-foreground" href={sourceHref}>{meta}</Link> : meta}
-            note={group.more.length > 0 ? <MoreList className="text-lg" date={date} entries={group.more} id={id} open={open} /> : null}
-            status={group.more.length > 0 ? <MoreToggle controls={id} group={group} onToggle={onToggle} open={open} /> : null}
+            meta={sourceHref ? <Link href={sourceHref} variant="quiet">{meta}</Link> : meta}
+            note={group.more.length > 0 ? <MoreList date={date} entries={group.more} id={id} open={open} size="lg" /> : null}
+            status={group.more.length > 0 ? <MoreToggle controls={id} group={group} onToggle={onToggle} open={open} size="pill" /> : null}
             title={entry.title || 'Untitled'}
         />
     );
 }
 
-function MoreFromSource({ className, date, group, onToggle, open }: GroupProps & { className: string }) {
+type TitleSize = 'lg' | 'xl';
+
+function MoreFromSource({ date, group, onToggle, open, size }: GroupProps & { size: TitleSize }) {
     const id = useId();
     return (
-        <div>
-            <div className="-ml-2">
-                <MoreToggle controls={id} group={group} onToggle={onToggle} open={open} />
-            </div>
-            <MoreList className={className} date={date} entries={group.more} id={id} open={open} />
-        </div>
+        <Frame>
+            {/* Block flow: the toggle sits on a line of body text, whose height sets the room above the folded posts. */}
+            <Frame display="block">
+                <MoreToggle controls={id} group={group} onToggle={onToggle} open={open} size="pill-start" />
+            </Frame>
+            <MoreList date={date} entries={group.more} id={id} open={open} size={size} />
+        </Frame>
     );
 }
 
-function MoreToggle({ controls, group, onToggle, open }: { controls: string; group: SourceGroup; onToggle: () => void; open: boolean }) {
+function MoreToggle({ controls, group, onToggle, open, size }: {
+    controls: string;
+    group: SourceGroup;
+    onToggle: () => void;
+    open: boolean;
+    size: 'pill' | 'pill-start';
+}) {
     return (
-        <button
+        <Button
             aria-controls={controls}
             aria-expanded={open}
             aria-label={`${open ? 'Hide' : 'Show'} ${group.more.length} more from ${sourceLabel(group.lead)}`}
-            className="-my-1 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full px-2 py-1 text-sm font-medium text-muted-foreground tabular-nums transition-[color,background-color,transform] duration-(--motion-duration-fast) hover:bg-foreground/5 hover:text-foreground active:scale-96 aria-expanded:bg-foreground/5 aria-expanded:text-foreground"
             onClick={onToggle}
-            type="button"
+            size={size}
+            variant="disclosure"
         >
-            +{group.more.length} more
-            <ChevronDownIcon
-                aria-hidden
-                className={cn('size-3.5 shrink-0 transition-transform duration-(--motion-duration-ui) ease-(--ease-out) motion-reduce:transition-none', open && 'rotate-180')}
-            />
-        </button>
+            <Text as="span" numeric="tabular">+{group.more.length} more</Text>
+            <ChevronDownIcon aria-hidden rotate={open ? 180 : undefined} size="sm" />
+        </Button>
     );
 }
 
@@ -314,28 +319,30 @@ function MoreToggle({ controls, group, onToggle, open }: { controls: string; gro
 const MORE_TIMING = { open: 0.24, close: 0.16, ease: [0.16, 1, 0.3, 1] as const };
 
 // The source already heads the group, so the folded posts show only their titles.
-function MoreList({ className, date, entries, id, open }: { className: string; date: string; entries: DigestEntry[]; id: string; open: boolean }) {
+function MoreList({ date, entries, id, open, size }: { date: string; entries: DigestEntry[]; id: string; open: boolean; size: TitleSize }) {
     const reduced = useReducedMotion();
     return (
         <AnimatePresence initial={false}>
             {open ? (
-                <motion.div
+                <MotionFrame
                     animate={{ height: 'auto', opacity: 1, transition: { duration: reduced ? 0 : MORE_TIMING.open, ease: MORE_TIMING.ease } }}
-                    className="overflow-hidden"
                     exit={{ height: 0, opacity: 0, transition: { duration: reduced ? 0 : MORE_TIMING.close, ease: MORE_TIMING.ease } }}
                     id={id}
                     initial={{ height: 0, opacity: 0 }}
+                    overflow="hidden"
                 >
-                    <ol className="ml-[7px] flex flex-col gap-5 border-l border-border pt-5 pl-[17px]">
+                    <FoldedPosts>
                         {entries.map((entry) => (
-                            <li className="-mx-2 -my-1.5 min-w-0 px-2 py-1.5" data-post key={`${entry.id}-${entry.entrySlug}`}>
-                                <Link className={cn('block min-w-0 truncate rounded-sm font-medium text-foreground hover:text-foreground/75', className)} data-post-link href={entryHref(entry.entrySlug, date)} title={entry.title || 'Untitled'}>
-                                    {entry.title || 'Untitled'}
-                                </Link>
-                            </li>
+                            <PostRow as="li" key={`${entry.id}-${entry.entrySlug}`} size="compact">
+                                <Text as="span" display="block" size={size} truncate weight="medium">
+                                    <Link data-post-link href={entryHref(entry.entrySlug, date)} title={entry.title || 'Untitled'} variant="title">
+                                        {entry.title || 'Untitled'}
+                                    </Link>
+                                </Text>
+                            </PostRow>
                         ))}
-                    </ol>
-                </motion.div>
+                    </FoldedPosts>
+                </MotionFrame>
             ) : null}
         </AnimatePresence>
     );

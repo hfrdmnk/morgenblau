@@ -1,20 +1,12 @@
 import type { ComponentProps } from 'react';
 
-import { cn } from '@/lib/utils';
+import { cn } from 'cn';
 
-function Card({
-    className,
-    size = 'default',
-    ...props
-}: ComponentProps<'div'> & { size?: 'default' | 'sm' }) {
+function Card({ className, ...props }: ComponentProps<'div'>) {
     return (
         <div
             data-slot="card"
-            data-size={size}
-            className={cn(
-                'group/card flex flex-col gap-(--card-spacing) bg-card py-(--card-spacing) text-card-foreground [--card-spacing:--spacing(6)] data-[size=sm]:[--card-spacing:--spacing(4)]',
-                className,
-            )}
+            className={cn('flex flex-col gap-6 bg-card py-6 text-card-foreground', className)}
             {...props}
         />
     );
@@ -25,7 +17,7 @@ function CardHeader({ className, ...props }: ComponentProps<'div'>) {
         <div
             data-slot="card-header"
             className={cn(
-                'grid auto-rows-min items-start gap-1 px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto]',
+                'grid auto-rows-min items-start gap-1 px-6 has-data-[slot=card-action]:grid-cols-(--grid-trailing)',
                 className,
             )}
             {...props}
@@ -37,10 +29,7 @@ function CardTitle({ className, ...props }: ComponentProps<'div'>) {
     return (
         <div
             data-slot="card-title"
-            className={cn(
-                'text-base font-medium group-data-[size=sm]/card:text-sm',
-                className,
-            )}
+            className={cn('text-base font-medium', className)}
             {...props}
         />
     );
@@ -73,7 +62,7 @@ function CardContent({ className, ...props }: ComponentProps<'div'>) {
     return (
         <div
             data-slot="card-content"
-            className={cn('flex flex-col gap-3 px-(--card-spacing)', className)}
+            className={cn('flex flex-col gap-3 px-6', className)}
             {...props}
         />
     );
@@ -83,7 +72,7 @@ function CardFooter({ className, ...props }: ComponentProps<'div'>) {
     return (
         <div
             data-slot="card-footer"
-            className={cn('flex items-center px-(--card-spacing)', className)}
+            className={cn('flex items-center px-6', className)}
             {...props}
         />
     );

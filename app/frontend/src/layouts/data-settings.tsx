@@ -1,9 +1,17 @@
 import type { ReactNode } from 'react';
 
+import { Frame } from '@/design/frame';
+
 export function DataSettings({ children }: { children: ReactNode }) {
     return (
-        <main className="mx-auto w-full max-w-3xl px-5 pb-20 pt-16 sm:px-8 md:pt-24" id="main">
+        <Frame
+            as="main"
+            id="main"
+            maxWidth="3xl"
+            paddingX={{ base: 'xl', sm: '3xl' }}
+            width="full"
+        >
             {children}
-        </main>
+        </Frame>
     );
 }

@@ -1,18 +1,19 @@
 import { useEffect, useId, useState } from 'react';
-import { Link as RouterLink } from 'wouter';
 
 import { IconCrossfade } from '@/components/icon-crossfade';
 import { CheckIcon, CopyIcon } from '@/components/icons';
 import { PdsLink } from '@/components/public-data-hint';
-import { Skeleton } from '@/components/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
+import { VeiledFieldLink } from '@/components/ui/veiled-field';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 import { useAppProfile } from '@/hooks/use-app-profile';
 import { useCopy } from '@/hooks/use-copy';
 import { newsletterAddress } from '@/lib/add-source';
 import { ApiError } from '@/lib/api';
 import { PATHS } from '@/lib/paths';
-import { cn } from '@/lib/utils';
 
 type AddressStatus = 'loading' | 'ready' | 'failed';
 
@@ -51,32 +52,36 @@ export function NewsletterAddress({
     }, [profileReady]);
 
     return (
-        <section
+        <Frame
+            as="section"
             aria-labelledby={heading}
-            className={settings ? '' : 'border-t border-border/60 pt-6'}
+            border={settings ? undefined : 'top'}
+            gap="l"
+            paddingTop={settings ? undefined : '2xl'}
         >
-            <h2
-                className={settings ? 'text-lg font-medium' : 'font-medium'}
-                id={heading}
-            >
-                Newsletters
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-                Subscribe with your private email address.
-            </p>
-            <NewsletterAddressContent
-                status={status}
-                address={address}
-                error={error}
-                settings={settings}
-                onNavigate={onNavigate}
-            />
-            <p className="mt-3 text-xs text-pretty text-subtle-foreground">
-                {settings && 'This address is generated for you. '}
-                Newsletters are always private and not saved to your <PdsLink />.
-                They appear after their first email arrives.
-            </p>
-        </section>
+            <Frame gap="2xs">
+                <Text as="h2" id={heading} size={settings ? 'lg' : undefined} weight="medium">
+                    Newsletters
+                </Text>
+                <Text size="sm" tone="muted">
+                    Subscribe with your private email address.
+                </Text>
+            </Frame>
+            <Frame gap="m">
+                <NewsletterAddressContent
+                    status={status}
+                    address={address}
+                    error={error}
+                    settings={settings}
+                    onNavigate={onNavigate}
+                />
+                <Text size="xs" tone="subtle" wrap="pretty">
+                    {settings && 'This address is generated for you. '}
+                    Newsletters are always private and not saved to your <PdsLink />.
+                    They appear after their first email arrives.
+                </Text>
+            </Frame>
+        </Frame>
     );
 }
 
@@ -112,36 +117,24 @@ function NewsletterAddressContent({
         );
     if (settings)
         return (
-            <div className="mt-4">
-                <p className="text-sm text-muted-foreground" role="alert">
+            <Frame align="start" gap="m">
+                <Text role="alert" size="sm" tone="muted">
                     {error}
-                </p>
-                <Button
-                    className="mt-3"
-                    variant="secondary"
-                    onClick={() => window.location.reload()}
-                >
+                </Text>
+                <Button variant="secondary" onClick={() => window.location.reload()}>
                     Retry
                 </Button>
-            </div>
+            </Frame>
         );
     return (
-        <RouterLink
+        <VeiledFieldLink
             href={PATHS.general}
+            icon={<CopyIcon size="md" />}
             onClick={onNavigate}
-            className="relative mt-4 block h-10 overflow-hidden rounded-md bg-input text-sm"
+            value="your-address@news.example.com"
         >
-            <span
-                aria-hidden="true"
-                className="flex h-full items-center justify-between gap-2 px-3 text-subtle-foreground blur-[3px] select-none"
-            >
-                your-address@news.example.com
-                <CopyIcon className="size-4 shrink-0" />
-            </span>
-            <span className="absolute inset-0 flex items-center justify-center bg-input/50 px-3 text-center font-medium">
-                View your newsletter settings
-            </span>
-        </RouterLink>
+            View your newsletter settings
+        </VeiledFieldLink>
     );
 }
 
@@ -150,10 +143,19 @@ const COPY_ADDRESS_FAILURE = {
     description: 'Select the address and copy it manually.',
 };
 
+// The crossfade sizes its icon for a 20px slot; the copy button's icons stay at its 16px.
+function CopyGlyph() {
+    return <CopyIcon size="md" />;
+}
+
+function CheckGlyph() {
+    return <CheckIcon size="md" />;
+}
+
 function CopyNewsletterAddress({ address }: { address: string }) {
     const { copied, copy, instant } = useCopy(address, COPY_ADDRESS_FAILURE);
     return (
-        <InputGroup className="mt-4">
+        <InputGroup>
             <InputGroupInput
                 aria-label="Newsletter email address"
                 onFocus={(event) => event.target.select()}
@@ -166,19 +168,18 @@ function CopyNewsletterAddress({ address }: { address: string }) {
                         ? 'Newsletter address copied'
                         : 'Copy newsletter email address'
                 }
-                className={cn('relative', { 'text-success hover:text-success': copied })}
                 onClick={copy}
+                tone={copied ? 'success' : undefined}
             >
                 <IconCrossfade
-                    className="size-4"
-                    icon={copied ? CheckIcon : CopyIcon}
+                    icon={copied ? CheckGlyph : CopyGlyph}
                     instant={instant}
                     name={copied ? 'check' : 'copy'}
                 />
             </InputGroupButton>
-            <span aria-live="polite" className="sr-only">
+            <Text as="span" aria-live="polite" visuallyHidden>
                 {copied ? 'Newsletter address copied.' : ''}
-            </span>
+            </Text>
         </InputGroup>
     );
 }

@@ -35,7 +35,7 @@ When in doubt, it is judgment. A mechanical fix that turns any check red is reve
 - No behaviour changes.
 - Never add or reword rules or prose in any AGENTS.md, SPEC.md or skill. The only doc edit allowed is correcting a stale reference (path, make target, bun script, Go symbol, route) whose replacement is unambiguous. Everything else goes to an issue.
 - Never suppress a check: no `fallow-ignore` comments or config ignores, no `eslint-disable`, no `//nolint`, no `t.Skip`, no new entries in an invariant test's allowlist (such as `unscopedNewsletterQueries`), no lowered fallow thresholds.
-- Never touch `internal/database/migrations/` (goose owns them), `internal/database/db/` (sqlc-generated), `lexicons/`, `LAWS.md` (law changes need the maintainer), `.agents/skills/verify-morgenblau/features/` (the verify skill maintains its own feature map) or the shadcn components in `frontend/src/components/ui/`.
+- Never touch `internal/database/migrations/` (goose owns them), `internal/database/db/` (sqlc-generated), `lexicons/`, `LAWS.md` (law changes need the maintainer) or `.agents/skills/verify-morgenblau/features/` (the verify skill maintains its own feature map).
 - Never run `make migrate-*`, `make dev` or anything that touches `./data/` or a PDS.
 - Never change the state or labels of an existing issue.
 

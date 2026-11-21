@@ -1,6 +1,5 @@
 import { Drawer } from '@base-ui/react/drawer';
-import { Switch } from '@base-ui/react/switch';
-import { motion, useReducedMotion } from 'motion/react';
+import { useReducedMotion } from 'motion/react';
 import {
     useEffect,
     useEffectEvent,
@@ -18,17 +17,25 @@ import { toast } from 'sonner';
 import { useLocation } from 'wouter';
 
 import { GenerateFeed, GenerateOffer } from '@/components/generate-feed';
-import { CheckIcon, ChevronDownIcon, CloseIcon, EnterIcon, ExternalLinkIcon, LoadingIcon, MoreIcon, PenIcon, PlusIcon } from '@/components/icons';
+import { CheckIcon, ChevronDownIcon, CloseIcon, EnterIcon, ExternalLinkIcon, LoadingIcon, MoreIcon, PlusIcon } from '@/components/icons';
 import { NewsletterAddress } from '@/components/newsletter-address';
 import { PersonAvatar } from '@/components/person-avatar';
 import { PublicDataHint } from '@/components/public-data-hint';
-import { Skeleton } from '@/components/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteNewsletterDialog, RemoveDialog } from '@/components/source-removal';
 import { TagChips, TagInput } from '@/components/tag-input';
 import { Button } from '@/components/ui/button';
-import { DrawerBackdrop, DrawerPopup, DrawerViewport } from '@/components/ui/drawer';
+import { DescriptionList } from '@/components/ui/description-list';
+import { DrawerBackdrop, DrawerContent, DrawerFooter, DrawerHandle, DrawerPopup, DrawerViewport } from '@/components/ui/drawer';
 import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 import { Link } from '@/components/ui/link';
+import { NameField } from '@/components/ui/name-field';
+import { ReaderBody } from '@/components/ui/reader-body';
+import { RowButton, RowSpace } from '@/components/ui/row-button';
+import { Switch, SwitchLabel } from '@/components/ui/switch';
+import { Frame } from '@/design/frame';
+import { MotionFrame } from '@/design/motion';
+import { Text } from '@/design/text';
 import { useGeneration, type GenerationStep } from '@/hooks/use-generation';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useReaderFont } from '@/hooks/use-reader-font';
@@ -73,8 +80,6 @@ import {
     resumeNewsletter,
     titleTooLong,
 } from '@/lib/source-edit';
-import { cn } from '@/lib/utils';
-import '../pages/reader.css';
 
 /* Sheet storyboard: every level of detail is its own screen inside one sheet.
  *   0ms  sheet slides in from its edge over --motion-duration-overlay (ui/drawer.tsx)
@@ -131,8 +136,8 @@ export function AddSourceDialog({ trigger, initialUrl }: { trigger?: ReactElemen
             open={open}
             saving={saving}
             trigger={initialUrl !== undefined ? undefined : trigger ?? (
-                <Button aria-label="Add a source" className="text-subtle-foreground" size="icon-sm" variant="ghost">
-                    <PlusIcon className="size-5" />
+                <Button aria-label="Add a source" size="icon-sm" variant="subtle">
+                    <PlusIcon size="xl" />
                 </Button>
             )}
         >
@@ -171,8 +176,8 @@ function EditSheet({ root }: { root: Extract<Screen, { kind: 'edit' | 'newslette
             open={open}
             saving={saving}
             trigger={(
-                <Button aria-label={`Edit ${screenTitle(root)}`} className="text-subtle-foreground hover:text-foreground" size="icon-sm" variant="ghost">
-                    <MoreIcon className="size-5" />
+                <Button aria-label={`Edit ${screenTitle(root)}`} size="icon-sm" variant="subtle">
+                    <MoreIcon size="xl" />
                 </Button>
             )}
         >
@@ -204,9 +209,7 @@ function SheetDrawer({ open, saving, trigger, initialFocus, onOpenChange, childr
                 <DrawerBackdrop />
                 <DrawerViewport side={side}>
                     <DrawerPopup initialFocus={initialFocus} side={side}>
-                        {side === 'bottom' && (
-                            <div aria-hidden="true" className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-accent" />
-                        )}
+                        {side === 'bottom' && <DrawerHandle />}
                         {children}
                     </DrawerPopup>
                 </DrawerViewport>
@@ -311,8 +314,9 @@ function SheetBody({
     }
 
     return (
-        <div
-            className="flex min-h-0 flex-1 flex-col"
+        <Frame
+            grow
+            minHeight={0}
             onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') setKeyboard(true);
             }}
@@ -328,7 +332,7 @@ function SheetBody({
                 subscriptions={subscriptions}
                 top={top}
             />
-            <Drawer.Content className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-6">
+            <DrawerContent>
                 {inputRef ? <ScreenTransition active={!screen} focusOnMount={false} instant={sheet.instant}>
                     <SearchScreen
                             discovery={discovery}
@@ -351,8 +355,8 @@ function SheetBody({
                         <ScreenView form={formOf(entry)} name={nameOf(entry)} screen={entry.screen} sheet={sheet} />
                     </ScreenTransition>
                 ))}
-            </Drawer.Content>
-        </div>
+            </DrawerContent>
+        </Frame>
     );
 }
 
@@ -368,17 +372,28 @@ function SheetHeader({ top, subscriptions, nameOf, formOf, canGoBack, saving, on
     onName: (id: number, name: string) => void;
 }) {
     const named = top && nameable(top.screen, subscriptions) ? { id: top.id, name: nameOf(top), form: formOf(top), screen: top.screen } : undefined;
+    const hinted = named && nameTooLong(named.name, named.screen);
     return (
         <>
-            <header className="flex h-14 shrink-0 items-center gap-1 px-3">
+            {/* A length hint takes the header's bottom padding, so it sits just under the name. */}
+            <Frame
+                align="center"
+                as="header"
+                direction="row"
+                gap="2xs"
+                paddingBottom={hinted ? 'none' : 's'}
+                paddingTop="s"
+                paddingX="m"
+                shrink={false}
+            >
                 {canGoBack ? (
-                    <Button aria-label="Back" className="text-muted-foreground" disabled={saving} onClick={onBack} size="icon" variant="ghost">
-                        <ChevronDownIcon className="size-4 rotate-90" />
+                    <Button aria-label="Back" disabled={saving} onClick={onBack} size="icon" variant="quiet">
+                        <ChevronDownIcon rotate={90} size="md" />
                     </Button>
                 ) : null}
                 {named ? (
                     <>
-                        <Drawer.Title className="sr-only">{named.name}</Drawer.Title>
+                        <Drawer.Title render={<Text as="h2" visuallyHidden />}>{named.name}</Drawer.Title>
                         <NameInput
                             disabled={saving}
                             form={named.form}
@@ -389,18 +404,27 @@ function SheetHeader({ top, subscriptions, nameOf, formOf, canGoBack, saving, on
                         />
                     </>
                 ) : (
-                    <Drawer.Title className={cn('min-w-0 flex-1 truncate text-base font-medium', !canGoBack && 'pl-3')}>
-                        {top ? screenTitle(top.screen) : 'Add a source'}
-                    </Drawer.Title>
+                    <SheetTitle inset={!canGoBack} screen={top?.screen} />
                 )}
                 <Drawer.Close
-                    render={<Button aria-label="Close" className="text-muted-foreground" disabled={saving} size="icon" variant="ghost" />}
+                    render={<Button aria-label="Close" disabled={saving} size="icon" variant="quiet" />}
                 >
-                    <CloseIcon className="size-5" />
+                    <CloseIcon size="xl" />
                 </Drawer.Close>
-            </header>
-            {named ? <NameLengthHint canGoBack={canGoBack} form={named.form} name={named.name} screen={named.screen} /> : null}
+            </Frame>
+            {hinted ? <NameLengthHint canGoBack={canGoBack} form={named.form} /> : null}
         </>
+    );
+}
+
+// Starts where NameInput's text does, so a screen's title sits in the same place whether or not it can be renamed.
+function SheetTitle({ screen, inset }: { screen?: Screen; inset: boolean }) {
+    return (
+        <Frame grow minWidth={0} paddingStart={inset ? 'm' : 's'}>
+            <Drawer.Title render={<Text as="h2" size="base" truncate weight="medium" />}>
+                {screen ? screenTitle(screen) : 'Add a source'}
+            </Drawer.Title>
+        </Frame>
     );
 }
 
@@ -430,12 +454,14 @@ function useScreenNames() {
     };
 }
 
-function NameLengthHint({ name, screen, form, canGoBack }: { name: string; screen: Screen; form: string; canGoBack: boolean }) {
-    if (!nameTooLong(name, screen)) return null;
+// Lines up under the name: the header's inset, plus the back button and its gap when there is one.
+function NameLengthHint({ form, canGoBack }: { form: string; canGoBack: boolean }) {
     return (
-        <p className={cn('-mt-2 pr-6 pb-2 text-sm text-destructive', canGoBack ? 'pl-16' : 'pl-6')} id={nameHintId(form)}>
-            Names can be up to {MAX_TITLE_LENGTH} characters.
-        </p>
+        <Frame paddingBottom="s" paddingEnd="2xl" paddingStart={canGoBack ? '6xl' : '2xl'}>
+            <Text id={nameHintId(form)} size="sm" tone="destructive">
+                Names can be up to {MAX_TITLE_LENGTH} characters.
+            </Text>
+        </Frame>
     );
 }
 
@@ -462,17 +488,17 @@ function ScreenTransition({ active, instant, focusOnMount, children }: {
         mounted.current = true;
     }, [active, focusOnMount]);
     return (
-        <motion.div
+        <MotionFrame
             animate={active ? { opacity: 1, transform: SCREEN.rest } : { opacity: 0, transform: SCREEN.pop }}
-            className="outline-none"
             hidden={!active}
             initial={instant ? false : { opacity: 0, transform: SCREEN.push }}
+            outline="none"
             ref={ref}
             tabIndex={-1}
             transition={active && !instant ? { duration: TIMING.screen, ease: SCREEN.ease } : { duration: 0 }}
         >
             {children}
-        </motion.div>
+        </MotionFrame>
     );
 }
 
@@ -490,7 +516,7 @@ function nameTooLong(name: string, screen: Screen) {
     return name.trim() !== screenTitle(screen) && titleTooLong(name);
 }
 
-// The label spans the name and its pen, so a click anywhere on either edits the name. The name sits in the header, outside its screen's form, so form ties Enter to that form's save.
+// The name sits in the header, outside its screen's form, so form ties Enter to that form's save.
 function NameInput({ value, form, invalid, inset, disabled, onChange }: {
     value: string;
     form: string;
@@ -500,32 +526,17 @@ function NameInput({ value, form, invalid, inset, disabled, onChange }: {
     onChange: (name: string) => void;
 }) {
     return (
-        <div className={cn('flex min-w-0 flex-1', inset ? 'ml-3' : 'ml-2')}>
-            <label className={cn('group flex h-9 max-w-full min-w-0 cursor-text items-center gap-1.5', disabled && 'pointer-events-none')}>
-                <span className="relative flex min-w-0">
-                    <input
-                        aria-describedby={invalid ? nameHintId(form) : undefined}
-                        aria-invalid={invalid}
-                        aria-label="Name"
-                        form={form}
-                        autoComplete="off"
-                        className="min-w-0 truncate bg-transparent text-base font-medium outline-none field-sizing-content"
-                        disabled={disabled}
-                        onChange={(event) => onChange(event.target.value)}
-                        spellCheck={false}
-                        value={value}
-                    />
-                    <span
-                        aria-hidden="true"
-                        className={cn(
-                            'absolute inset-x-0 bottom-0 h-px origin-left transition-transform duration-(--motion-duration-ui) ease-(--ease-out) group-focus-within:scale-x-100',
-                            invalid ? 'scale-x-100 bg-destructive' : 'scale-x-0 bg-subtle-foreground/50',
-                        )}
-                    />
-                </span>
-                <PenIcon aria-hidden="true" className="size-3.5 shrink-0 text-subtle-foreground" />
-            </label>
-        </div>
+        <Frame direction="row" grow minWidth={0} paddingStart={inset ? 'm' : 's'}>
+            <NameField
+                aria-describedby={invalid ? nameHintId(form) : undefined}
+                aria-label="Name"
+                disabled={disabled}
+                form={form}
+                invalid={invalid}
+                onChange={(event) => onChange(event.target.value)}
+                value={value}
+            />
+        </Frame>
     );
 }
 
@@ -553,25 +564,27 @@ function SearchScreen({ inputRef, url, discovery, sheet, onChange, onSubmit, onR
     onReset: () => void;
 }) {
     return (
-        <>
-            <Drawer.Description className="text-sm text-muted-foreground">
-                Paste a site, blog, or YouTube channel.
-            </Drawer.Description>
-            <UrlForm discovery={discovery} inputRef={inputRef} onChange={onChange} onSubmit={onSubmit} saving={sheet.saving} url={url} />
-            <div className="mt-8">
+        <Frame gap="3xl">
+            <Frame gap="l">
+                <Drawer.Description render={<Text size="sm" tone="muted" />}>
+                    Paste a site, blog, or YouTube channel.
+                </Drawer.Description>
+                <UrlForm discovery={discovery} inputRef={inputRef} onChange={onChange} onSubmit={onSubmit} saving={sheet.saving} url={url} />
+            </Frame>
+            <Frame>
                 {discovery.stage === 'loading' ? <Pending label="Looking for feeds" /> : null}
                 {discovery.stage === 'found' ? (
-                    <div>
-                        <p className="sr-only" role="status">{foundFeeds(discovery.site)}</p>
+                    <Frame gap="l">
+                        <Text role="status" visuallyHidden>{foundFeeds(discovery.site)}</Text>
                         <SiteResults sheet={sheet} site={discovery.site} />
-                        <Button className="mt-4 -ml-2.5 text-muted-foreground" disabled={sheet.saving} onClick={onReset} size="sm" variant="ghost">
+                        <Button disabled={sheet.saving} onClick={onReset} size="text" variant="quiet">
                             Add a newsletter instead
                         </Button>
-                    </div>
+                    </Frame>
                 ) : null}
                 {discovery.stage === 'idle' || discovery.stage === 'error' ? <NewsletterAddress onNavigate={sheet.close} /> : null}
-            </div>
-        </>
+            </Frame>
+        </Frame>
     );
 }
 
@@ -586,8 +599,8 @@ function UrlForm({ inputRef, url, discovery, saving, onChange, onSubmit }: {
     const loading = discovery.stage === 'loading';
     const invalid = discovery.stage === 'error';
     return (
-        <form className="mt-4" onSubmit={onSubmit}>
-            <label className="sr-only" htmlFor="source-url">Website or feed URL</label>
+        <Frame as="form" gap="m" onSubmit={onSubmit}>
+            <Text as="label" htmlFor="source-url" visuallyHidden>Website or feed URL</Text>
             <InputGroup>
                 <InputGroupInput
                     aria-describedby={invalid ? 'discovery-error' : undefined}
@@ -605,13 +618,13 @@ function UrlForm({ inputRef, url, discovery, saving, onChange, onSubmit }: {
                     value={url}
                 />
                 <InputGroupButton aria-busy={loading} aria-label="Find feeds" disabled={saving || loading || !url.trim()} type="submit">
-                    {loading ? <LoadingIcon className="motion-safe:animate-spin" /> : <EnterIcon />}
+                    {loading ? <LoadingIcon spin /> : <EnterIcon />}
                 </InputGroupButton>
             </InputGroup>
             {discovery.stage === 'error' ? (
-                <p className="mt-3 text-sm text-destructive" id="discovery-error" role="alert">{discovery.error}</p>
+                <Text id="discovery-error" role="alert" size="sm" tone="destructive">{discovery.error}</Text>
             ) : null}
-        </form>
+        </Frame>
     );
 }
 
@@ -623,10 +636,10 @@ function foundFeeds(site: SiteResult) {
 
 function Pending({ label }: { label: string }) {
     return (
-        <p className="flex h-36 items-center justify-center text-muted-foreground" role="status">
-            <LoadingIcon className="size-5 motion-safe:animate-spin" />
-            <span className="sr-only">{label}</span>
-        </p>
+        <Frame align="center" height="status" justify="center" role="status">
+            <LoadingIcon size="xl" spin tone="muted" />
+            <Text visuallyHidden>{label}</Text>
+        </Frame>
     );
 }
 
@@ -644,28 +657,28 @@ function SiteResults({ site, sheet }: { site: SiteResult; sheet: Sheet }) {
     const profile = site.profile;
     const summary = profile && profileSummary(profile);
     return (
-        <div className="space-y-6">
+        <Frame gap="2xl">
             {profile ? (
-                <ul>
-                    <Row onClick={() => sheet.push({ kind: 'profile', site, profile })}>
-                        <span className="flex items-center gap-3">
-                            <PersonAvatar className="size-10" seed={siteHost(site.url)} />
-                            <span className="min-w-0">
-                                <span className="block truncate text-sm font-medium">{profileName(profile, site)}</span>
-                                <span className="block truncate text-xs text-subtle-foreground">
+                <Frame as="ul">
+                    <Row gap="s" onClick={() => sheet.push({ kind: 'profile', site, profile })}>
+                        <Frame align="center" as="span" direction="row" gap="m">
+                            <PersonAvatar seed={siteHost(site.url)} size="lg" />
+                            <Frame as="span" minWidth={0}>
+                                <Text as="span" size="sm" truncate weight="medium">{profileName(profile, site)}</Text>
+                                <Text as="span" size="xs" tone="subtle" truncate>
                                     {profile.following?.length ? `Profile · follows ${profile.following.length} sites` : 'Profile'}
-                                </span>
-                            </span>
-                        </span>
+                                </Text>
+                            </Frame>
+                        </Frame>
                         {summary ? (
-                            <span className="mt-2 line-clamp-2 block text-sm text-pretty text-muted-foreground">{summary}</span>
+                            <Text as="span" lineClamp={2} size="sm" tone="muted" wrap="pretty">{summary}</Text>
                         ) : null}
                     </Row>
-                </ul>
+                </Frame>
             ) : null}
-            <div>
-                <p className="mb-1 text-xs text-muted-foreground" id={feedsLabel}>Available feeds</p>
-                <ul aria-labelledby={feedsLabel}>
+            <Frame gap="2xs">
+                <Text id={feedsLabel} size="xs" tone="muted">Available feeds</Text>
+                <Frame aria-labelledby={feedsLabel} as="ul">
                     {site.candidates.map((candidate) => {
                         const status = candidateStatus(candidate, site, sheet.subscriptions);
                         const title = sourceTitle(candidate);
@@ -674,16 +687,16 @@ function SiteResults({ site, sheet }: { site: SiteResult; sheet: Sheet }) {
                                 key={sourceKey(candidate)}
                                 label={status.note ? `${title}, ${status.note}` : undefined}
                                 onClick={() => sheet.push({ kind: 'feed', candidate, site })}
-                                trailing={status.rkey ? <CheckIcon className="size-4 shrink-0 text-success" /> : undefined}
+                                trailing={status.rkey ? <CheckIcon size="md" tone="success" /> : undefined}
                             >
-                                <span className="block truncate text-sm font-medium" title={title}>{title}</span>
-                                <span className="mt-0.5 block truncate text-xs text-subtle-foreground">{status.note ?? feedMeta(candidate)}</span>
+                                <Text as="span" size="sm" title={title} truncate weight="medium">{title}</Text>
+                                <Text as="span" size="xs" tone="subtle" truncate>{status.note ?? feedMeta(candidate)}</Text>
                             </Row>
                         );
                     })}
-                </ul>
-            </div>
-        </div>
+                </Frame>
+            </Frame>
+        </Frame>
     );
 }
 
@@ -720,24 +733,21 @@ function followsSibling(candidate: SourceCandidate, site: SiteResult | undefined
     return followedSibling || followedElsewhere;
 }
 
-function Row({ onClick, label, trailing, children }: {
+// gap separates the lines of a row's text: a title and its meta sit close, a summary further apart.
+function Row({ onClick, label, trailing, gap = '3xs', children }: {
     onClick: () => void;
     label?: string;
     trailing?: ReactNode;
+    gap?: 's' | '3xs';
     children: ReactNode;
 }) {
     return (
-        <li>
-            <button
-                aria-label={label}
-                className="-mx-3 flex min-h-16 w-[calc(100%+1.5rem)] cursor-pointer items-center gap-3 rounded-lg px-3 py-3 text-left transition-[background-color] duration-(--motion-duration-fast) hover:bg-secondary/60"
-                onClick={onClick}
-                type="button"
-            >
-                <span className="min-w-0 flex-1">{children}</span>
-                {trailing ?? <ChevronDownIcon className="size-4 shrink-0 -rotate-90 text-subtle-foreground" />}
-            </button>
-        </li>
+        <Frame as="li">
+            <RowButton aria-label={label} onClick={onClick}>
+                <Frame as="span" gap={gap} grow minWidth={0}>{children}</Frame>
+                {trailing ?? <ChevronDownIcon rotate={270} size="md" tone="subtle" />}
+            </RowButton>
+        </Frame>
     );
 }
 
@@ -780,9 +790,9 @@ function useSheetMutation(sheet: Sheet) {
     }
 
     const errorLine = error ? (
-        <p className="text-sm text-destructive" role="alert">
+        <Text role="alert" size="sm" tone="destructive">
             {error.message} {error.reauth ? <Link href={PATHS.login}>Sign in again</Link> : null}
-        </p>
+        </Text>
     ) : null;
 
     return { run, errorLine };
@@ -826,28 +836,28 @@ function FeedScreen({ candidate, site, known, form, name, nameTooLong, sheet }: 
     }
 
     return (
-        <div className="space-y-8">
-            <p className="truncate text-xs text-subtle-foreground" title={sourceLocation(source)}>{feedMeta(source)}</p>
+        <Frame gap="3xl">
+            <Text size="xs" title={sourceLocation(source)} tone="subtle" truncate>{feedMeta(source)}</Text>
             <PostPreview candidate={source} disabled={sheet.saving} onOpen={(post) => sheet.push({ kind: 'post', candidate: source, post })} onYouTubeDown={() => setYouTubeDown(true)} />
             {status.rkey ? (
                 <>
-                    <p className="flex items-center gap-2 rounded-lg bg-background p-4 text-sm text-muted-foreground">
-                        <CheckIcon className="size-4 text-success" />
-                        {status.note}
-                    </p>
+                    <Frame align="center" background="background" direction="row" gap="s" padding="l" radius="lg">
+                        <CheckIcon size="md" tone="success" />
+                        <Text size="sm" tone="muted">{status.note}</Text>
+                    </Frame>
                     {errorLine}
                     <SheetAction busyLabel="Removing source" onClick={() => remove(status.rkey)} saving={sheet.saving} variant="secondary">
                         Remove from sources
                     </SheetAction>
                 </>
             ) : status.note ? (
-                <p className="rounded-lg bg-background p-4 text-sm text-muted-foreground">{status.note}</p>
+                <Notice>{status.note}</Notice>
             ) : (
-                <SourceForm action="Add to sources" busyLabel="Adding source" errorLine={errorLine} id={form} nameTooLong={nameTooLong} onSave={save} saving={sheet.saving} secondary={<PublicDataHint className="pt-1 text-center text-balance" />}>
+                <SourceForm action="Add to sources" busyLabel="Adding source" errorLine={errorLine} id={form} nameTooLong={nameTooLong} onSave={save} saving={sheet.saving} secondary={<PublicDataHint centered />}>
                     <ShortsSwitch choice={shorts} disabled={sheet.saving} />
                 </SourceForm>
             )}
-        </div>
+        </Frame>
     );
 }
 
@@ -881,7 +891,7 @@ function GeneratedScreen({ screen, form, name, nameTooLong, sheet }: {
                     nameTooLong={nameTooLong}
                     onSave={(options) => save(generatedCandidate(source), options)}
                     saving={sheet.saving}
-                    secondary={<PublicDataHint className="pt-1 text-center text-balance" />}
+                    secondary={<PublicDataHint centered />}
                 />
             )}
             instant={sheet.instant}
@@ -942,8 +952,8 @@ function EditScreen({ screen, form, name, nameTooLong, sheet }: {
     }
 
     return (
-        <div className="space-y-8">
-            <p className="truncate text-xs text-subtle-foreground" title={sourceLocation(candidate)}>{feedMeta(candidate)}</p>
+        <Frame gap="3xl">
+            <Text size="xs" title={sourceLocation(candidate)} tone="subtle" truncate>{feedMeta(candidate)}</Text>
             <PostPreview candidate={candidate} disabled={sheet.saving} onOpen={(post) => sheet.push({ kind: 'post', candidate, post })} />
             <SourceForm
                 action="Save changes"
@@ -956,7 +966,7 @@ function EditScreen({ screen, form, name, nameTooLong, sheet }: {
                 onSave={save}
                 saving={sheet.saving}
                 secondary={(
-                    <Button className="w-full" disabled={sheet.saving} onClick={() => setRemoving(true)} size="lg" type="button" variant="destructive">
+                    <Button disabled={sheet.saving} onClick={() => setRemoving(true)} size="lg" type="button" variant="destructive">
                         Delete source
                     </Button>
                 )}
@@ -974,7 +984,7 @@ function EditScreen({ screen, form, name, nameTooLong, sheet }: {
                 removedFocus={removedFocus}
                 source={feedEditable(source, feedSourceName(source))}
             />
-        </div>
+        </Frame>
     );
 }
 
@@ -1018,11 +1028,9 @@ function NewsletterScreen({ screen, form, name, nameTooLong, sheet }: {
     }
 
     return (
-        <div className="space-y-8">
-            <p className="truncate text-xs text-subtle-foreground" title={source.senderAddress}>{source.senderAddress}</p>
-            {stopped ? (
-                <p className="rounded-lg bg-background p-4 text-sm text-muted-foreground">Stopped. New mail from this sender is discarded until you resume it.</p>
-            ) : null}
+        <Frame gap="3xl">
+            <Text size="xs" title={source.senderAddress} tone="subtle" truncate>{source.senderAddress}</Text>
+            {stopped ? <Notice>Stopped. New mail from this sender is discarded until you resume it.</Notice> : null}
             <SourceForm
                 action="Save changes"
                 busyLabel="Saving newsletter"
@@ -1036,15 +1044,15 @@ function NewsletterScreen({ screen, form, name, nameTooLong, sheet }: {
                 secondary={(
                     <>
                         {stopped ? (
-                            <Button className="w-full" disabled={sheet.saving} onClick={() => write(() => resumeNewsletter(editable), 'Newsletter resumed', 'Couldn’t resume this newsletter.')} size="lg" type="button" variant="secondary">
+                            <Button disabled={sheet.saving} onClick={() => write(() => resumeNewsletter(editable), 'Newsletter resumed', 'Couldn’t resume this newsletter.')} size="lg" type="button" variant="secondary">
                                 Resume newsletter
                             </Button>
                         ) : (
-                            <Button className="w-full" disabled={sheet.saving} onClick={() => setDialog('stop')} size="lg" type="button" variant="secondary">
+                            <Button disabled={sheet.saving} onClick={() => setDialog('stop')} size="lg" type="button" variant="secondary">
                                 Stop newsletter
                             </Button>
                         )}
-                        <Button className="w-full" disabled={sheet.saving} onClick={() => setDialog('delete')} size="lg" type="button" variant="destructive">
+                        <Button disabled={sheet.saving} onClick={() => setDialog('delete')} size="lg" type="button" variant="destructive">
                             {source.canUnsubscribe ? 'Unsubscribe and delete' : 'Delete newsletter'}
                         </Button>
                     </>
@@ -1072,7 +1080,15 @@ function NewsletterScreen({ screen, form, name, nameTooLong, sheet }: {
                 removedFocus={removedFocus}
                 source={editable}
             />
-        </div>
+        </Frame>
+    );
+}
+
+function Notice({ children }: { children: ReactNode }) {
+    return (
+        <Frame background="background" padding="l" radius="lg">
+            <Text size="sm" tone="muted">{children}</Text>
+        </Frame>
     );
 }
 
@@ -1096,15 +1112,16 @@ function SourceForm({ id, action, busyLabel, nameTooLong, initial = { tags: [], 
     const [primary, setPrimary] = useState(initial.primary);
     const overlong = hasOverlongTag(draft) || nameTooLong;
     return (
-        <form
-            className="space-y-8"
+        <Frame
+            as="form"
+            gap="3xl"
             id={id}
             onSubmit={(event) => {
                 event.preventDefault();
                 if (!overlong) onSave({ tags: addTags(tags, draft), primary });
             }}
         >
-            <div>
+            <Frame gap="m">
                 <TagInput
                     canAdd={canAddTags(tags, draft)}
                     draft={draft}
@@ -1119,7 +1136,7 @@ function SourceForm({ id, action, busyLabel, nameTooLong, initial = { tags: [], 
                     tags={tags}
                 />
                 {tags.length ? <TagChips inputRef={tagInput} onRemove={(tag) => setTags(tags.filter((other) => other !== tag))} tags={tags} /> : null}
-            </div>
+            </Frame>
             {children}
             <OptionSwitch
                 checked={primary}
@@ -1138,7 +1155,7 @@ function SourceForm({ id, action, busyLabel, nameTooLong, initial = { tags: [], 
             >
                 {action}
             </SheetAction>
-        </form>
+        </Frame>
     );
 }
 
@@ -1151,18 +1168,18 @@ function SheetAction({ saving, busyLabel, disabled = false, error, secondary, ch
     secondary?: ReactNode;
 }) {
     return (
-        <div className="sticky bottom-0 -mx-6 space-y-2 bg-popover px-6 pt-2 pb-1">
+        <DrawerFooter>
             {error}
-            <Button aria-busy={saving} className="w-full" disabled={saving || disabled} size="lg" {...props}>
+            <Button aria-busy={saving} disabled={saving || disabled} size="lg" {...props}>
                 {saving ? (
                     <>
-                        <LoadingIcon className="motion-safe:animate-spin" />
-                        <span className="sr-only">{busyLabel}</span>
+                        <LoadingIcon spin />
+                        <Text as="span" visuallyHidden>{busyLabel}</Text>
                     </>
                 ) : children}
             </Button>
             {secondary}
-        </div>
+        </DrawerFooter>
     );
 }
 
@@ -1204,43 +1221,47 @@ function PostPreview({ candidate, disabled, onOpen, onYouTubeDown }: {
         return () => controller.abort();
     }, [candidate]);
     return (
-        <section aria-labelledby={label}>
-            <h3 className="text-xs text-muted-foreground" id={label}>Latest posts</h3>
+        <Frame aria-labelledby={label} as="section" gap="s">
+            <Text as="h3" id={label} size="xs" tone="muted">Latest posts</Text>
             {/* Room for three posts while they load; an error is one line and needs none. */}
-            <div className={cn('mt-2', (posts === 'loading' || Array.isArray(posts)) && 'min-h-27 pointer-coarse:min-h-33')}>
+            <RowSpace reserve={posts === 'loading' || Array.isArray(posts)}>
                 <Skeleton
                     data={Array.isArray(posts) ? posts : null}
-                    error={posts === 'failed' ? <p className="pt-3 text-sm text-muted-foreground">Recent posts couldn’t be loaded.</p>
+                    error={posts === 'failed' ? <PreviewNote>Recent posts couldn’t be loaded.</PreviewNote>
                         : posts === 'youtubeDown' ? (
-                            <p className="pt-3 text-sm text-pretty text-muted-foreground italic">
+                            <PreviewNote outage>
                                 YouTube’s feeds are down right now, so videos can’t be previewed. Following the channel still works: its videos arrive once YouTube is back.
-                            </p>
+                            </PreviewNote>
                         ) : undefined}
                     label="Loading latest posts"
                     sample={SAMPLE_POSTS}
                 >
                     {(items) => items.length ? (
-                        <ol>
+                        <Frame as="ol">
                             {items.map((post, index) => (
-                                <li key={index}>
-                                    <button
-                                        className="-mx-2 flex h-9 w-[calc(100%+1rem)] pointer-coarse:h-11 cursor-pointer items-center justify-between disabled:pointer-events-none gap-4 rounded-md px-2 text-left text-sm transition-[background-color] duration-(--motion-duration-fast) hover:bg-secondary/60"
-                                        disabled={disabled}
-                                        onClick={() => onOpen(post)}
-                                        type="button"
-                                    >
-                                        <span className="min-w-0 truncate" title={post.title}>{post.title || 'Untitled'}</span>
-                                        <span className="shrink-0 text-xs text-subtle-foreground tabular-nums">{postDate(post.publishedAt)}</span>
-                                    </button>
-                                </li>
+                                <Frame as="li" key={index}>
+                                    <RowButton disabled={disabled} onClick={() => onOpen(post)} size="compact">
+                                        <Text as="span" title={post.title} truncate>{post.title || 'Untitled'}</Text>
+                                        <Text as="span" numeric="tabular" size="xs" tone="subtle">{postDate(post.publishedAt)}</Text>
+                                    </RowButton>
+                                </Frame>
                             ))}
-                        </ol>
+                        </Frame>
                     ) : (
-                        <p className="pt-3 text-sm text-muted-foreground">Nothing published yet. New posts reach your newspaper as they appear.</p>
+                        <PreviewNote>Nothing published yet. New posts reach your newspaper as they appear.</PreviewNote>
                     )}
                 </Skeleton>
-            </div>
-        </section>
+            </RowSpace>
+        </Frame>
+    );
+}
+
+// A line in place of the posts; an outage is set in italics, as the one notice that is not about the feed itself.
+function PreviewNote({ outage = false, children }: { outage?: boolean; children: ReactNode }) {
+    return (
+        <Frame paddingTop="m">
+            <Text as={outage ? 'em' : 'p'} size="sm" tone="muted" wrap={outage ? 'pretty' : undefined}>{children}</Text>
+        </Frame>
     );
 }
 
@@ -1255,30 +1276,25 @@ function PostScreen({ post }: { post: PreviewPost }) {
     const { body, extracted, pending, notice, loadFull } = useArticle(original, post.contentHtml?.trim() ?? '');
     const date = postDate(post.publishedAt);
     return (
-        <article className="space-y-8">
-            {date ? <p className="text-xs text-subtle-foreground">{date}</p> : null}
+        <Frame as="article" gap="3xl">
+            {date ? <Text size="xs" tone="subtle">{date}</Text> : null}
             <ArticleBody body={body} hasNotice={Boolean(notice)} original={original} pending={pending} url={post.url} />
             {original && body && !extracted ? (
-                <div className="space-y-3 text-sm text-muted-foreground">
-                    <p>Only seeing part of the article?</p>
+                <Frame align="start" gap="m">
+                    <Text size="sm" tone="muted">Only seeing part of the article?</Text>
                     <Button disabled={pending} onClick={() => void loadFull(original)} variant="secondary">
                         {pending ? 'Loading full article…' : 'Load full article'}
                     </Button>
-                </div>
+                </Frame>
             ) : null}
-            {notice ? <p className="text-sm text-muted-foreground" role="status">{notice}</p> : null}
+            {notice ? <Text role="status" size="sm" tone="muted">{notice}</Text> : null}
             {original ? (
-                <a
-                    className="inline-flex min-h-8 items-center gap-2 rounded-sm text-sm text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground"
-                    href={original}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                >
+                <Link href={original} rel="noopener noreferrer" target="_blank" variant="external">
                     Read original
-                    <ExternalLinkIcon className="size-3.5" />
-                </a>
+                    <ExternalLinkIcon size="sm" />
+                </Link>
             ) : null}
-        </article>
+        </Frame>
     );
 }
 
@@ -1335,8 +1351,7 @@ function ArticleBody({ body, url, original, pending, hasNotice }: {
     const [font] = useReaderFont();
     if (body)
         return (
-            <div
-                className="reader-body"
+            <ReaderBody
                 dangerouslySetInnerHTML={{ __html: readerBody({ body, url, contentType: 'blogpost' }) }}
                 data-font={font}
             />
@@ -1344,16 +1359,16 @@ function ArticleBody({ body, url, original, pending, hasNotice }: {
     if (pending)
         return (
             <Skeleton label="Loading article">
-                <div className="reader-body" data-font={font}>
-                    <p>A paragraph of sample text that stands in for the article while it loads, running across a few lines.</p>
-                </div>
+                <ReaderBody data-font={font}>
+                    <Text>A paragraph of sample text that stands in for the article while it loads, running across a few lines.</Text>
+                </ReaderBody>
             </Skeleton>
         );
     if (hasNotice) return null;
     return (
-        <p className="text-muted-foreground">
+        <Text tone="muted">
             {original ? 'There is no readable content here. Open the original to continue.' : 'No content is available for this post.'}
-        </p>
+        </Text>
     );
 }
 
@@ -1366,21 +1381,13 @@ function OptionSwitch({ label, description, checked, disabled, onChange }: {
 }) {
     const id = useId();
     return (
-        <div className="flex items-center justify-between gap-4">
-            <label className="cursor-pointer select-none" htmlFor={id}>
-                <span className="block text-sm font-medium">{label}</span>
-                <span className="block text-xs text-muted-foreground">{description}</span>
-            </label>
-            <Switch.Root
-                checked={checked}
-                className="relative flex h-6 w-10 shrink-0 cursor-pointer rounded-full bg-accent p-0.5 transition-[background-color] duration-(--motion-duration-ui) ease-out data-checked:bg-primary data-disabled:cursor-not-allowed"
-                disabled={disabled}
-                id={id}
-                onCheckedChange={onChange}
-            >
-                <Switch.Thumb className="size-5 rounded-full bg-popover shadow-[0_1px_2px_oklch(0.216_0.006_56.043/0.2)] transition-transform duration-(--motion-duration-ui) ease-(--ease-out) data-checked:translate-x-4" />
-            </Switch.Root>
-        </div>
+        <Frame align="center" direction="row" gap="l" justify="between">
+            <SwitchLabel htmlFor={id}>
+                <Text as="span" display="block" size="sm" weight="medium">{label}</Text>
+                <Text as="span" display="block" size="xs" tone="muted">{description}</Text>
+            </SwitchLabel>
+            <Switch checked={checked} disabled={disabled} id={id} onCheckedChange={onChange} />
+        </Frame>
     );
 }
 
@@ -1394,45 +1401,46 @@ function ProfileScreen({ profile, site, sheet }: { profile: SiteProfile; site: S
     const name = profileName(profile, site);
     const [showAllFollows, setShowAllFollows] = useState(false);
     return (
-        <div className="space-y-8">
-            <div className="flex items-center gap-4">
-                <PersonAvatar className="size-14" seed={siteHost(site.url)} />
-                <div className="min-w-0">
-                    <p className="truncate text-xl font-medium">{name}</p>
-                    <p className="truncate text-sm text-subtle-foreground">{displayURL(site.url)}</p>
-                </div>
-            </div>
-            {profile.summary ? <p className="text-pretty text-muted-foreground">{profile.summary}</p> : null}
+        <Frame gap="3xl">
+            <Frame align="center" direction="row" gap="l">
+                <PersonAvatar seed={siteHost(site.url)} size="xl" />
+                <Frame minWidth={0}>
+                    <Text size="xl" truncate weight="medium">{name}</Text>
+                    <Text size="sm" tone="subtle" truncate>{displayURL(site.url)}</Text>
+                </Frame>
+            </Frame>
+            {profile.summary ? <Text tone="muted" wrap="pretty">{profile.summary}</Text> : null}
             {profile.aboutHtml ? <ProfileAbout html={profile.aboutHtml} /> : null}
             {profile.contact?.length ? (
-                <section aria-labelledby="profile-contact">
-                    <h3 className="mb-3 text-xs text-muted-foreground" id="profile-contact">Contact</h3>
-                    <dl className="space-y-3">
+                <Frame aria-labelledby="profile-contact" as="section" gap="m">
+                    <Text as="h3" id="profile-contact" size="xs" tone="muted">Contact</Text>
+                    <DescriptionList>
                         {profile.contact.map((contact) => (
-                            <div className="min-w-0" key={contact.value}>
-                                <dt className="text-xs text-subtle-foreground">
+                            <Frame gap="3xs" key={contact.value} minWidth={0}>
+                                <Text as="dt" size="xs" tone="subtle">
                                     {contact.kind === 'email' ? 'Email' : 'Website'}
                                     {contact.preferred ? ' · preferred' : ''}
-                                </dt>
-                                <dd className="mt-0.5 truncate text-sm">
-                                    <a
-                                        className="underline decoration-border underline-offset-4 hover:decoration-foreground"
+                                </Text>
+                                <Text as="dd" size="sm" truncate>
+                                    <Link
                                         href={contact.kind === 'email' ? `mailto:${contact.value}` : contact.value}
                                         rel="noreferrer"
                                         target={contact.kind === 'url' ? '_blank' : undefined}
+                                        variant="underline"
                                     >
                                         {contact.kind === 'email' ? contact.value : displayURL(contact.value)}
-                                    </a>
-                                </dd>
-                            </div>
+                                    </Link>
+                                </Text>
+                            </Frame>
                         ))}
-                    </dl>
-                </section>
+                    </DescriptionList>
+                </Frame>
             ) : null}
             {profile.following?.length ? (
-                <section aria-labelledby="profile-following">
-                    <h3 className="mb-3 text-xs text-muted-foreground" id="profile-following">Follows {profile.following.length} sites</h3>
-                    <ul>
+                <Frame aria-labelledby="profile-following" as="section" gap="m">
+                    <Text as="h3" id="profile-following" size="xs" tone="muted">Follows {profile.following.length} sites</Text>
+                    <Frame gap="s">
+                    <Frame as="ul">
                         {(showAllFollows ? profile.following : profile.following.slice(0, PROFILE_PREVIEW_COUNT)).map((follow) => {
                             const candidate: SourceCandidate = { feedUrl: follow.feedUrl, title: follow.title || undefined, siteUrl: follow.siteUrl };
                             const status = candidateStatus(candidate, undefined, sheet.subscriptions, follow.rkey);
@@ -1442,20 +1450,21 @@ function ProfileScreen({ profile, site, sheet }: { profile: SiteProfile; site: S
                                     key={follow.feedUrl}
                                     label={status.rkey ? `${title}, ${status.note}` : undefined}
                                     onClick={() => sheet.push({ kind: 'feed', candidate, rkey: follow.rkey })}
-                                    trailing={status.rkey ? <CheckIcon className="size-4 shrink-0 text-success" /> : undefined}
+                                    trailing={status.rkey ? <CheckIcon size="md" tone="success" /> : undefined}
                                 >
-                                    <span className="block truncate text-sm font-medium" title={title}>{title}</span>
-                                    <span className="mt-0.5 block truncate text-xs text-subtle-foreground">{feedMeta(candidate)}</span>
+                                    <Text as="span" size="sm" title={title} truncate weight="medium">{title}</Text>
+                                    <Text as="span" size="xs" tone="subtle" truncate>{feedMeta(candidate)}</Text>
                                 </Row>
                             );
                         })}
-                    </ul>
+                    </Frame>
                     {profile.following.length > PROFILE_PREVIEW_COUNT ? (
                         <ShowMoreButton expanded={showAllFollows} onToggle={() => setShowAllFollows(!showAllFollows)} />
                     ) : null}
-                </section>
+                    </Frame>
+                </Frame>
             ) : null}
-        </div>
+        </Frame>
     );
 }
 
@@ -1474,9 +1483,9 @@ function ProfileAbout({ html }: { html: string }) {
         return () => observer.disconnect();
     }, [html, expanded]);
     return (
-        <div>
-            <div
-                className={cn('reader-body', !expanded && 'line-clamp-5')}
+        <Frame gap="s">
+            <ReaderBody
+                clamped={!expanded}
                 dangerouslySetInnerHTML={content}
                 data-font={font}
                 data-size="compact"
@@ -1485,13 +1494,13 @@ function ProfileAbout({ html }: { html: string }) {
                 ref={ref}
             />
             {overflows ? <ShowMoreButton expanded={expanded} onToggle={() => setExpanded(!expanded)} /> : null}
-        </div>
+        </Frame>
     );
 }
 
 function ShowMoreButton({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
     return (
-        <Button className="mt-2 -ml-2.5 text-muted-foreground" onClick={onToggle} size="sm" variant="ghost">
+        <Button onClick={onToggle} size="text" variant="quiet">
             {expanded ? 'Show less' : 'Show more'}
         </Button>
     );

@@ -1,12 +1,13 @@
-import type { ReactNode } from 'react';
-
 import { ListError } from '@/components/item-list';
 import { PersonAvatar } from '@/components/person-avatar';
-import { Skeleton } from '@/components/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
+import { UsageHeader, UsageRow, UsageStats } from '@/components/ui/usage-table';
+import { PageSection } from '@/components/page-section';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useSources } from '@/hooks/use-sources';
 import { formatDate } from '@/lib/source-display';
-import { cn } from '@/lib/utils';
 
 type SourceCounts = { regular: number; generated: number; newsletter: number };
 
@@ -38,38 +39,37 @@ export function Admin() {
     const usage = useSources<Usage>('/api/admin/usage');
     useDocumentTitle('Usage');
     return (
-        <main aria-label="Admin" className="mx-auto w-full max-w-3xl space-y-14 px-5 pb-20 pt-20 sm:px-8 md:pt-24" id="main">
-            <h1 className="sr-only">Usage</h1>
+        <Frame
+            as="main"
+            aria-label="Admin"
+            gap="5xl"
+            id="main"
+            maxWidth="3xl"
+            paddingX={{ base: 'xl', sm: '3xl' }}
+            width="full"
+        >
+            <Text as="h1" visuallyHidden>Usage</Text>
             <Skeleton
                 data={usage.status === 'loaded' ? usage.data : null}
                 error={usage.status === 'error' ? (
                     usage.notFound ? (
-                        <div className="space-y-3" role="alert">
-                            <h2 className="text-2xl font-medium">Not found</h2>
-                            <p className="text-muted-foreground">This page is only available to admins.</p>
-                        </div>
+                        <Frame gap="m" role="alert">
+                            <Text as="h2" size="2xl" weight="medium">Not found</Text>
+                            <Text tone="muted">This page is only available to admins.</Text>
+                        </Frame>
                     ) : <ListError label="usage" retry={usage.retry} />
                 ) : undefined}
                 label="Loading usage"
                 sample={SAMPLE_USAGE}
             >
                 {(data) => (
-                    <div className="space-y-14">
-                        <Section title="Overview"><Totals totals={data.totals} /></Section>
-                        <Section title="People"><People people={data.people} /></Section>
-                    </div>
+                    <Frame gap="5xl">
+                        <PageSection title="Overview"><Totals totals={data.totals} /></PageSection>
+                        <PageSection title="People"><People people={data.people} /></PageSection>
+                    </Frame>
                 )}
             </Skeleton>
-        </main>
-    );
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-    return (
-        <section aria-label={title}>
-            <h2 className="text-base font-medium text-muted-foreground">{title}</h2>
-            <div className="mt-7">{children}</div>
-        </section>
+        </Frame>
     );
 }
 
@@ -81,29 +81,29 @@ function Totals({ totals }: { totals: Usage['totals'] }) {
         { label: 'Newsletters', value: totals.newsletter },
     ];
     return (
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-4">
+        <UsageStats>
             {stats.map(({ label, value }) => (
-                <div key={label}>
-                    <dt className="text-sm text-muted-foreground">{label}</dt>
-                    <dd className="mt-1 text-3xl font-medium tabular-nums">{value}</dd>
-                </div>
+                <Frame key={label} gap="2xs">
+                    <Text as="dt" size="sm" tone="muted">{label}</Text>
+                    <Text as="dd" size="3xl" weight="medium" numeric="tabular">{value}</Text>
+                </Frame>
             ))}
-        </dl>
+        </UsageStats>
     );
 }
 
 function People({ people }: { people: Person[] }) {
-    if (!people.length) return <p className="text-sm text-muted-foreground">Nobody has signed in yet.</p>;
+    if (!people.length) return <Text size="sm" tone="muted">Nobody has signed in yet.</Text>;
     return (
-        <div>
-            <div aria-hidden="true" className="hidden grid-cols-[1fr_repeat(3,5.5rem)] gap-4 pb-3 text-xs text-subtle-foreground sm:grid">
-                <span>Person</span>
-                {COUNT_COLUMNS.map(({ label }) => <span className="text-right" key={label}>{label}</span>)}
-            </div>
-            <ul aria-label="People" className="space-y-6">
+        <Frame gap="m">
+            <UsageHeader aria-hidden="true">
+                <Text as="span" size="xs" tone="subtle">Person</Text>
+                {COUNT_COLUMNS.map(({ label }) => <Text as="span" align="end" key={label} size="xs" tone="subtle">{label}</Text>)}
+            </UsageHeader>
+            <Frame as="ul" aria-label="People" gap="2xl">
                 {people.map((person) => <PersonRow key={person.did} person={person} />)}
-            </ul>
-        </div>
+            </Frame>
+        </Frame>
     );
 }
 
@@ -124,21 +124,37 @@ function countLabel(person: Person, key: keyof SourceCounts, label: string): str
 function PersonRow({ person }: { person: Person }) {
     const name = personName(person);
     return (
-        <li className="grid min-w-0 grid-cols-[2rem_1fr] items-center gap-x-3 gap-y-2 sm:grid-cols-[2rem_1fr_repeat(3,5.5rem)] sm:gap-x-4">
+        <UsageRow>
             <PersonAvatar seed={person.did} lazy src={person.avatar} />
-            <div className="min-w-0">
-                <p className={cn('truncate font-medium', !person.handle && 'font-mono text-sm')} title={person.did}>{name}</p>
-                <p className="truncate text-sm text-subtle-foreground">{personMeta(person, name)}</p>
-            </div>
-            <p className="col-start-2 text-sm text-muted-foreground sm:hidden">
-                {COUNT_COLUMNS.map(({ key, label }) => countLabel(person, key, label)).join(' · ')}
-            </p>
+            <Frame minWidth={0}>
+                <Text
+                    family={person.handle ? undefined : 'duo'}
+                    size={person.handle ? undefined : 'sm'}
+                    title={person.did}
+                    truncate
+                    weight="medium"
+                >
+                    {name}
+                </Text>
+                <Text size="sm" tone="subtle" truncate>{personMeta(person, name)}</Text>
+            </Frame>
+            <Frame colStart={2} display={{ base: 'flex', sm: 'none' }}>
+                <Text size="sm" tone="muted">
+                    {COUNT_COLUMNS.map(({ key, label }) => countLabel(person, key, label)).join(' · ')}
+                </Text>
+            </Frame>
             {COUNT_COLUMNS.map(({ key, label }) => (
-                <p className={cn('hidden text-right tabular-nums sm:block', person[key] === 0 && 'text-subtle-foreground')} key={key}>
-                    <span aria-hidden="true">{person[key]}</span>
-                    <span className="sr-only">{countLabel(person, key, label)}</span>
-                </p>
+                <Text
+                    align="end"
+                    display={{ base: 'none', sm: 'block' }}
+                    key={key}
+                    numeric="tabular"
+                    tone={person[key] === 0 ? 'subtle' : undefined}
+                >
+                    <Text as="span" aria-hidden="true">{person[key]}</Text>
+                    <Text as="span" visuallyHidden>{countLabel(person, key, label)}</Text>
+                </Text>
             ))}
-        </li>
+        </UsageRow>
     );
 }

@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 
-import { PostList } from '@/components/item-list';
+import { PostList } from '@/components/ui/post-list';
+import { TranscriptList, TranscriptPassage } from '@/components/ui/transcript';
+import { PlayerSlot, VideoEmbed } from '@/components/ui/video';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
 import { useHeightProperty } from '@/hooks/use-height-property';
 import { useReaderFont } from '@/hooks/use-reader-font';
 import { useYouTubePlayer, youtubeEmbedURL, type YouTubePlayer } from '@/hooks/use-youtube-player';
@@ -15,14 +19,12 @@ export function ReaderYouTube({ entrySlug, videoID, title }: { entrySlug: string
     useHeightProperty(playerBox, '--reader-player-height');
     const transcript = useTranscript(entrySlug);
     return (
-        <div className="mb-10">
-            <div ref={playerBox} className={`-mt-3 bg-background pt-3 ${player.playing ? 'sticky top-0 z-10' : ''}`}>
-                <div className="aspect-video overflow-hidden rounded-lg bg-muted">
-                    <iframe ref={frame} className="h-full w-full border-0" src={youtubeEmbedURL(videoID)} title={title} allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" />
-                </div>
-            </div>
+        <Frame gap="4xl" paddingBottom="4xl">
+            <PlayerSlot playing={player.playing} ref={playerBox}>
+                <VideoEmbed ref={frame} src={youtubeEmbedURL(videoID)} title={title} allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" />
+            </PlayerSlot>
             {transcript?.status === 'ready' ? <ReaderTranscript kind={transcript.kind} paragraphs={groupCues(transcript.cues)} player={player} playerBox={playerBox} /> : null}
-        </div>
+        </Frame>
     );
 }
 
@@ -57,25 +59,30 @@ function ReaderTranscript({ paragraphs, kind, player, playerBox }: {
         if (player.playing && list.current && active >= 0) follow(list.current.children, before, active, playerBox.current);
     }, [active, player.playing, playerBox]);
     return (
-        <section aria-labelledby="transcript-title" className="mt-10">
-            <h2 className="mb-6 flex items-baseline gap-3 text-sm text-muted-foreground" id="transcript-title">
-                <span className="font-medium text-foreground">Transcript</span>
-                {kind === 'asr' ? <span>Auto-generated</span> : null}
-            </h2>
+        <Frame aria-labelledby="transcript-title" as="section" gap="2xl">
+            <Text as="h2" id="transcript-title" size="sm" tone="muted">
+                <Frame align="baseline" as="span" direction="row" gap="m">
+                    <Text as="span" tone="foreground" weight="medium">Transcript</Text>
+                    {kind === 'asr' ? <Text as="span">Auto-generated</Text> : null}
+                </Frame>
+            </Text>
             {/* The arrows walk the passages and Enter or a click plays from one, as posts open in a list; j and k stay with stepping entries. */}
             <PostList arrowsOnly>
-                <ol ref={list} className="reader-transcript" data-font={font} data-stuck={player.playing ? '' : undefined}>
+                <TranscriptList font={font} ref={list} stuck={player.playing}>
                     {paragraphs.map((paragraph, index) => (
-                        <li key={paragraph.start} aria-current={index === active ? 'true' : undefined} data-post={player.ready ? '' : undefined}>
-                            {player.ready
-                                ? <button aria-label={`Play from ${formatTimestamp(paragraph.start)}`} data-post-link onClick={() => player.seekTo(paragraph.start)} type="button">{formatTimestamp(paragraph.start)}</button>
-                                : <span>{formatTimestamp(paragraph.start)}</span>}
-                            <p>{paragraph.text}</p>
-                        </li>
+                        <TranscriptPassage
+                            current={index === active}
+                            key={paragraph.start}
+                            label={`Play from ${formatTimestamp(paragraph.start)}`}
+                            onPlay={player.ready ? () => player.seekTo(paragraph.start) : undefined}
+                            time={formatTimestamp(paragraph.start)}
+                        >
+                            {paragraph.text}
+                        </TranscriptPassage>
                     ))}
-                </ol>
+                </TranscriptList>
             </PostList>
-        </section>
+        </Frame>
     );
 }
 

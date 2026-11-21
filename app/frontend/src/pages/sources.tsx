@@ -1,11 +1,14 @@
 import { useRef, type ReactNode, type RefObject } from 'react';
-import { Link } from 'wouter';
 
 import { EditNewsletterSheet, EditSourceSheet } from '@/components/add-source-dialog';
 import { FeedHealth, GeneratedNote } from '@/components/feed-health';
 import { ItemList, ListError, ListItem } from '@/components/item-list';
-import { Skeleton } from '@/components/skeleton';
-import { GeneratedMark, PrimaryMark } from '@/components/source-marks';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Link } from '@/components/ui/link';
+import { PageSection } from '@/components/page-section';
+import { Frame } from '@/design/frame';
+import { Text } from '@/design/text';
+import { GeneratedMark, PrimaryMark } from '@/components/ui/source-mark';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-sources';
@@ -18,13 +21,21 @@ export function Sources() {
     const heading = useRef<HTMLHeadingElement>(null);
     useDocumentTitle('Sources');
     return (
-        <main aria-label="Sources" className="mx-auto w-full max-w-3xl space-y-14 px-5 pb-20 pt-20 sm:px-8 md:pt-24" id="main">
-            <h1 className="sr-only" ref={heading} tabIndex={-1}>Sources</h1>
+        <Frame
+            as="main"
+            aria-label="Sources"
+            gap="5xl"
+            id="main"
+            maxWidth="3xl"
+            paddingX={{ base: 'xl', sm: '3xl' }}
+            width="full"
+        >
+            <Text as="h1" visuallyHidden ref={heading} tabIndex={-1}>Sources</Text>
             <TooltipProvider>
                 <FeedList removedFocus={heading} />
                 <NewsletterList removedFocus={heading} />
             </TooltipProvider>
-        </main>
+        </Frame>
     );
 }
 
@@ -39,7 +50,7 @@ const SAMPLE_NEWSLETTERS: NewsletterSource[] = ['Example Newsletter', 'Sample Di
 function FeedList({ removedFocus }: { removedFocus: RemovedFocus }) {
     const state = useSources<FeedSource[]>('/api/subscriptions', 15_000);
     return (
-        <SourceSection title="Feeds">
+        <PageSection title="Feeds">
             <Skeleton
                 data={state.status === 'loaded' ? state.data : null}
                 error={state.status === 'error' ? <ListError label="feeds" retry={state.retry} /> : undefined}
@@ -56,9 +67,9 @@ function FeedList({ removedFocus }: { removedFocus: RemovedFocus }) {
                                 note={<GeneratedNote source={source} />}
                                 menu={<EditSourceSheet onChanged={state.refresh} removedFocus={removedFocus} source={source} />} />
                         )} />
-                ) : <p className="text-sm text-muted-foreground">No feeds yet. <Link href={PATHS.import} className="underline underline-offset-4">Import feeds</Link> to get started.</p>}
+                ) : <Text size="sm" tone="muted">No feeds yet. <Link href={PATHS.import} variant="underline">Import feeds</Link> to get started.</Text>}
             </Skeleton>
-        </SourceSection>
+        </PageSection>
     );
 }
 
@@ -66,7 +77,7 @@ function NewsletterList({ removedFocus }: { removedFocus: RemovedFocus }) {
     const state = useSources<{ active: NewsletterSource[]; stopped: NewsletterSource[] }>('/api/newsletters');
     return (
         <>
-            <SourceSection title="Newsletters">
+            <PageSection title="Newsletters">
                 <Skeleton
                     data={state.status === 'loaded' ? state.data.active : null}
                     error={state.status === 'error' ? <ListError label="newsletters" retry={state.retry} /> : undefined}
@@ -74,9 +85,9 @@ function NewsletterList({ removedFocus }: { removedFocus: RemovedFocus }) {
                     sample={SAMPLE_NEWSLETTERS}
                 >
                     {(active) => active.length ? <NewsletterRows onChanged={state.refresh} removedFocus={removedFocus} sources={active} /> :
-                        <p className="text-sm text-muted-foreground">Newsletters appear here when mail arrives at your private address.</p>}
+                        <Text size="sm" tone="muted">Newsletters appear here when mail arrives at your private address.</Text>}
                 </Skeleton>
-            </SourceSection>
+            </PageSection>
             {state.status === 'loaded' ? <StoppedNewsletters onChanged={state.refresh} removedFocus={removedFocus} sources={state.data.stopped} /> : null}
         </>
     );
@@ -85,18 +96,9 @@ function NewsletterList({ removedFocus }: { removedFocus: RemovedFocus }) {
 function StoppedNewsletters({ sources, onChanged, removedFocus }: { sources: NewsletterSource[]; onChanged: () => void; removedFocus: RemovedFocus }) {
     if (!sources.length) return null;
     return (
-        <SourceSection title="Stopped newsletters">
+        <PageSection title="Stopped newsletters">
             <NewsletterRows onChanged={onChanged} removedFocus={removedFocus} sources={sources} stopped />
-        </SourceSection>
-    );
-}
-
-function SourceSection({ title, children }: { title: string; children: ReactNode }) {
-    return (
-        <section aria-label={title}>
-            <h2 className="text-base font-medium text-muted-foreground">{title}</h2>
-            <div className="mt-7">{children}</div>
-        </section>
+        </PageSection>
     );
 }
 
@@ -115,14 +117,14 @@ function NewsletterRows({ sources, stopped = false, onChanged, removedFocus }: {
 
 function LetterGroups<T>({ sources, label, row }: { sources: T[]; label: (source: T) => string; row: (source: T) => ReactNode }) {
     return (
-        <div className="space-y-12">
+        <Frame gap="5xl">
             {groupByInitial(sources, label).map(({ initial, items }) => (
-                <div key={initial}>
-                    <h3 className="text-sm font-medium text-subtle-foreground">{initial}</h3>
-                    <div className="mt-5"><ItemList>{items.map(row)}</ItemList></div>
-                </div>
+                <Frame key={initial} gap="xl">
+                    <Text as="h3" size="sm" weight="medium" tone="subtle">{initial}</Text>
+                    <ItemList>{items.map(row)}</ItemList>
+                </Frame>
             ))}
-        </div>
+        </Frame>
     );
 }
 
@@ -139,7 +141,7 @@ function SourceRow({ href, title, identity, favicon, primary, generated = false,
 }) {
     return (
         <ListItem href={href} title={sourceLabel(title, identity)} icon={favicon}
-            mark={primary ? <PrimaryMark className="size-3.5" /> : undefined} note={note}
-            meta={displayURL(identity)} status={<>{generated ? <GeneratedMark className="-ml-1 size-3.5" /> : null}{health}</>} actions={menu} />
+            mark={primary ? <PrimaryMark size="sm" /> : undefined} note={note}
+            meta={displayURL(identity)} status={<>{generated ? <GeneratedMark size="sm" tucked /> : null}{health}</>} actions={menu} />
     );
 }
