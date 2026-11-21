@@ -9,10 +9,12 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -66,21 +68,26 @@ func NewPostShibaHandler(service *Service, secret string, maxMessageBytes int64)
 			return
 		}
 		if !validWebhookSignature(secret, r.Header.Get("X-Capsule-Timestamp"), r.Header.Get("X-Capsule-Signature"), body, service.now()) {
+			slog.Warn("newsletter webhook rejected", "reason", "signature", "timestamp", r.Header.Get("X-Capsule-Timestamp"), "has_signature", r.Header.Get("X-Capsule-Signature") != "", "bytes", len(body))
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		form, err := webhookForm(r.Header.Get("Content-Type"), body)
 		if errors.Is(err, errUnsupportedWebhookType) {
+			slog.Warn("newsletter webhook rejected", "reason", "content type", "content_type", r.Header.Get("Content-Type"))
 			w.WriteHeader(http.StatusUnsupportedMediaType)
 			return
 		}
 		if err != nil {
+			slog.Warn("newsletter webhook rejected", "reason", "form", "content_type", r.Header.Get("Content-Type"), "err", err)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		raw := []byte(form.Get("email"))
 		var envelope webhookEnvelope
 		if len(raw) == 0 || json.Unmarshal([]byte(form.Get("envelope")), &envelope) != nil || len(envelope.To) == 0 {
+			// Field names and the envelope's keys show the payload's shape without logging reader addresses.
+			slog.Warn("newsletter webhook rejected", "reason", "fields", "fields", slices.Sorted(maps.Keys(form)), "email_bytes", len(raw), "envelope_keys", jsonKeys(form.Get("envelope")))
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -113,6 +120,14 @@ func NewPostShibaHandler(service *Service, secret string, maxMessageBytes int64)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+func jsonKeys(value string) []string {
+	var object map[string]json.RawMessage
+	if json.Unmarshal([]byte(value), &object) != nil {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(object))
 }
 
 var errUnsupportedWebhookType = errors.New("unsupported webhook content type")
