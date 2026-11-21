@@ -27,7 +27,9 @@ function Mark({ label, tucked = false, children }: { label: string; tucked?: boo
     return (
         <Tooltip>
             <TooltipTrigger
-                render={<span aria-label={label} className={cn('inline-flex shrink-0', tucked && '-ms-1')} role="img" />}
+                render={
+                    <span aria-label={label} className={cn('inline-flex shrink-0', tucked && '-ms-1')} role="img" />
+                }
             >
                 {children}
             </TooltipTrigger>
@@ -42,7 +44,9 @@ const gutters = { row: 'sm:-left-7', title: 'sm:-left-8' };
 // the line. The title's row is the positioned parent.
 function GutterMark({ offset, children }: { offset: keyof typeof gutters; children: ReactNode }) {
     return (
-        <span className={cn('flex shrink-0 sm:absolute sm:top-1/2 sm:-translate-y-1/2', gutters[offset])}>{children}</span>
+        <span className={cn('flex shrink-0 sm:absolute sm:top-1/2 sm:-translate-y-1/2', gutters[offset])}>
+            {children}
+        </span>
     );
 }
 

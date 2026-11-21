@@ -39,9 +39,9 @@ const CHROME_PAGES: PageDef[] = [
 ];
 
 const CHROME_PATTERN = new RegExp(
-    `^(?:${CHROME_PAGES.map(({ path }) =>
-        path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/:[^/]+/g, '[^/]+'),
-    ).join('|')})$`,
+    `^(?:${CHROME_PAGES.map(({ path }) => path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/:[^/]+/g, '[^/]+')).join(
+        '|',
+    )})$`,
 );
 
 export default function App() {

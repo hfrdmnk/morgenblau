@@ -14,7 +14,12 @@ function MenuList(props: Omit<ComponentProps<'nav'>, 'className' | 'style'>) {
 }
 
 function MenuLink(props: Omit<ComponentProps<'a'>, 'className' | 'style'> & { href: string }) {
-    return <RouterLink className="flex min-h-10 items-center gap-3 rounded-md px-2 text-sm hover:bg-secondary" {...props} />;
+    return (
+        <RouterLink
+            className="flex min-h-10 items-center gap-3 rounded-md px-2 text-sm hover:bg-secondary"
+            {...props}
+        />
+    );
 }
 
 export { MenuLink, MenuList, MenuPopup };

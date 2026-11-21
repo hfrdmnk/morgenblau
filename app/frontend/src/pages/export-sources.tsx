@@ -22,12 +22,7 @@ export function ExportSources() {
         try {
             toast.success(await downloadOpml());
         } catch (error) {
-            toast.error(
-                describeMutationError(
-                    error,
-                    'Could not export your sources. Please try again.',
-                ),
-            );
+            toast.error(describeMutationError(error, 'Could not export your sources. Please try again.'));
         } finally {
             setBusy(false);
         }
@@ -37,11 +32,11 @@ export function ExportSources() {
         <DataSettings>
             <Frame gap="5xl">
                 <Frame gap="m">
-                    <Text as="h1" size="2xl" weight="medium">Export sources</Text>
+                    <Text as="h1" size="2xl" weight="medium">
+                        Export sources
+                    </Text>
                     <Frame maxWidth="xl">
-                        <Text tone="muted">
-                            Take your feeds to another reader, or keep a copy for yourself.
-                        </Text>
+                        <Text tone="muted">Take your feeds to another reader, or keep a copy for yourself.</Text>
                     </Frame>
                 </Frame>
                 <Frame gap="m">
@@ -51,27 +46,20 @@ export function ExportSources() {
                                 OPML file
                             </Text>
                             <Text size="sm" tone="muted">
-                                Your RSS and Atom feeds, including YouTube feeds. Tags
-                                become folders; a source with several tags appears in each
-                                folder.
+                                Your RSS and Atom feeds, including YouTube feeds. Tags become folders; a source with
+                                several tags appears in each folder.
                             </Text>
                         </Frame>
                         <Frame direction="row">
-                            <Button
-                                variant="secondary"
-                                disabled={busy}
-                                onClick={() => void download()}
-                            >
-                                <DownloadIcon />{' '}
-                                {busy ? 'Preparing export…' : 'Download OPML'}
+                            <Button variant="secondary" disabled={busy} onClick={() => void download()}>
+                                <DownloadIcon /> {busy ? 'Preparing export…' : 'Download OPML'}
                             </Button>
                         </Frame>
                     </Frame>
                     <Frame maxWidth="lg">
                         <Text size="xs" tone="subtle">
-                            Newsletters and native Standardfeed subscriptions are not
-                            included. Your Standardfeed subscriptions remain on your PDS.
-                            Exporting does not change your sources.
+                            Newsletters and native Standardfeed subscriptions are not included. Your Standardfeed
+                            subscriptions remain on your PDS. Exporting does not change your sources.
                         </Text>
                     </Frame>
                 </Frame>
@@ -90,18 +78,13 @@ function PublicFollowing() {
                     Public list
                 </Text>
                 <Text size="sm" tone="muted">
-                    Publish the feeds you follow at a public address, for a
-                    blogroll on your site. Anyone with the address sees each
-                    feed’s title, link and tags. Newsletters are never included.
+                    Publish the feeds you follow at a public address, for a blogroll on your site. Anyone with the
+                    address sees each feed’s title, link and tags. Newsletters are never included.
                 </Text>
             </Frame>
             {enabled && <PublishedList />}
             <Frame direction="row">
-                <Button
-                    variant="secondary"
-                    disabled={busy || enabled === undefined}
-                    onClick={() => void toggle()}
-                >
+                <Button variant="secondary" disabled={busy || enabled === undefined} onClick={() => void toggle()}>
                     {enabled ? 'Stop publishing' : 'Publish list'}
                 </Button>
             </Frame>
@@ -133,11 +116,9 @@ function PublishedList() {
             </Frame>
             <Frame maxWidth="lg">
                 <Text size="xs" tone="subtle">
-                    Narrow the list with <Text as="code">?tag=</Text>,{' '}
-                    <Text as="code">excludeTag=</Text>, <Text as="code">kind=</Text> or{' '}
-                    <Text as="code">excludeKind=</Text> (rss, youtube, standardfeed),{' '}
-                    <Text as="code">primary=true</Text>, and{' '}
-                    <Text as="code">folders=none</Text> for a flat OPML file.
+                    Narrow the list with <Text as="code">?tag=</Text>, <Text as="code">excludeTag=</Text>,{' '}
+                    <Text as="code">kind=</Text> or <Text as="code">excludeKind=</Text> (rss, youtube, standardfeed),{' '}
+                    <Text as="code">primary=true</Text>, and <Text as="code">folders=none</Text> for a flat OPML file.
                 </Text>
             </Frame>
         </Frame>

@@ -67,7 +67,9 @@ function respond(handler: (call: Call) => Response | Promise<Response>) {
 
 // The screen on top of the sheet; screens below it stay mounted but hidden.
 function screen() {
-    return [...document.querySelectorAll<HTMLElement>('.overscroll-contain > [tabindex="-1"]')].find((node) => !node.hidden)!;
+    return [...document.querySelectorAll<HTMLElement>('.overscroll-contain > [tabindex="-1"]')].find(
+        (node) => !node.hidden,
+    )!;
 }
 
 async function waitFor(text: string) {
@@ -212,7 +214,13 @@ test('an unsure list asks for one post, regenerates around it, and can still be 
         body.anchorUrl
             ? new Promise((resolve) => {
                   release = () =>
-                      resolve(Response.json({ ...preview, items: [{ url: 'https://news.example.com/posts/third', title: 'Third post', date: null }], itemCount: 3 }));
+                      resolve(
+                          Response.json({
+                              ...preview,
+                              items: [{ url: 'https://news.example.com/posts/third', title: 'Third post', date: null }],
+                              itemCount: 3,
+                          }),
+                      );
               })
             : Response.json(unsure),
     );
@@ -233,7 +241,10 @@ test('an unsure list asks for one post, regenerates around it, and can still be 
 
     await act(async () => release());
     await settle();
-    expect(calls[1].body).toEqual({ url: 'https://news.example.com/', anchorUrl: 'https://news.example.com/posts/third' });
+    expect(calls[1].body).toEqual({
+        url: 'https://news.example.com/',
+        anchorUrl: 'https://news.example.com/posts/third',
+    });
     expect(screen().textContent).toContain('Third post');
     expect(screen().textContent).not.toContain('First post');
     expect(screen().textContent).not.toContain('isn’t sure');
@@ -247,7 +258,9 @@ for (const [why, line] of [
     ['no_better', 'That post didn’t help. The feed stays as it was.'],
 ]) {
     test(`a post that does not help (${why}) leaves the feed and the field as they were`, async () => {
-        const calls = respond(({ body }) => Response.json(body.anchorUrl ? { ...unsure, anchorRejected: why } : unsure));
+        const calls = respond(({ body }) =>
+            Response.json(body.anchorUrl ? { ...unsure, anchorRejected: why } : unsure),
+        );
         await generate();
         await settle();
         const input = anchorField()!;
@@ -280,7 +293,11 @@ for (const [why, line] of [
 }
 
 test('an unsure list shows fewer posts so the post field stays in view', async () => {
-    const items = ['one', 'two', 'three', 'four', 'five'].map((name) => ({ url: `https://news.example.com/posts/${name}`, title: `Post ${name}`, date: null }));
+    const items = ['one', 'two', 'three', 'four', 'five'].map((name) => ({
+        url: `https://news.example.com/posts/${name}`,
+        title: `Post ${name}`,
+        date: null,
+    }));
     respond(({ body }) => Response.json(body.anchorUrl ? { ...preview, items } : { ...unsure, items }));
     await generate();
     await settle();
@@ -314,10 +331,17 @@ test('a site that blocks feed readers offers nothing to add', async () => {
 });
 
 test('a reader over the generation limit is told calmly and not offered a retry', async () => {
-    respond(() => Response.json({ code: 'rate_limited', message: 'Slow down' }, { status: 429, headers: { 'Retry-After': '600' } }));
+    respond(() =>
+        Response.json(
+            { code: 'rate_limited', message: 'Slow down' },
+            { status: 429, headers: { 'Retry-After': '600' } },
+        ),
+    );
     await generate();
     await settle();
-    expect(screen().querySelector('[role="alert"]')?.textContent).toBe('You’ve generated a lot of feeds recently. Try again later.');
+    expect(screen().querySelector('[role="alert"]')?.textContent).toBe(
+        'You’ve generated a lot of feeds recently. Try again later.',
+    );
     expect(button('Try again')).toBeUndefined();
     expect(screen().contains(document.activeElement)).toBe(true);
 });
@@ -327,7 +351,10 @@ test('a setup still running from before is waited out with Try again', async () 
     respond(() => {
         attempt++;
         return attempt === 1
-            ? Response.json({ code: 'setup_in_flight', message: 'Still generating' }, { status: 429, headers: { 'Retry-After': '10' } })
+            ? Response.json(
+                  { code: 'setup_in_flight', message: 'Still generating' },
+                  { status: 429, headers: { 'Retry-After': '10' } },
+              )
             : Response.json(preview);
     });
     await generate();
@@ -389,7 +416,9 @@ test('a server that cannot regenerate keeps the preview and does not blame the a
 });
 
 test('a generator that is not available is not offered again at once', async () => {
-    respond(() => Response.json({ code: 'unavailable', message: "Feed generation isn't available yet" }, { status: 503 }));
+    respond(() =>
+        Response.json({ code: 'unavailable', message: "Feed generation isn't available yet" }, { status: 503 }),
+    );
     await generate();
     await settle();
     expect(screen().querySelector('[role="alert"]')?.textContent).toBe('Feed generation isn’t available right now.');

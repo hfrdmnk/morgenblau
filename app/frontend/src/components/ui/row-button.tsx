@@ -10,14 +10,19 @@ const rowButtonVariants = cva(
         variants: {
             size: {
                 default: '-mx-3 min-h-16 w-bleed-3 gap-3 rounded-lg p-3',
-                compact: '-mx-2 h-9 w-bleed-2 justify-between gap-4 rounded-md px-2 text-sm disabled:pointer-events-none pointer-coarse:h-11',
+                compact:
+                    '-mx-2 h-9 w-bleed-2 justify-between gap-4 rounded-md px-2 text-sm disabled:pointer-events-none pointer-coarse:h-11',
             },
         },
         defaultVariants: { size: 'default' },
     },
 );
 
-function RowButton({ size, type = 'button', ...props }: Omit<ComponentProps<'button'>, 'className' | 'style'> & VariantProps<typeof rowButtonVariants>) {
+function RowButton({
+    size,
+    type = 'button',
+    ...props
+}: Omit<ComponentProps<'button'>, 'className' | 'style'> & VariantProps<typeof rowButtonVariants>) {
     return <button data-slot="row-button" className={rowButtonVariants({ size })} type={type} {...props} />;
 }
 

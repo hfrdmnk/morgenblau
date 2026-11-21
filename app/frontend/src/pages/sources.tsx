@@ -30,7 +30,9 @@ export function Sources() {
             paddingX={{ base: 'xl', sm: '3xl' }}
             width="full"
         >
-            <Text as="h1" visuallyHidden ref={heading} tabIndex={-1}>Sources</Text>
+            <Text as="h1" visuallyHidden ref={heading} tabIndex={-1}>
+                Sources
+            </Text>
             <TooltipProvider>
                 <FeedList removedFocus={heading} />
                 <NewsletterList removedFocus={heading} />
@@ -39,12 +41,27 @@ export function Sources() {
     );
 }
 
-const SAMPLE_FEEDS: FeedSource[] = ['Example Publication', 'Another Example Journal', 'Sample Weekly', 'Example Notes'].map((title, index) => ({
-    rkey: `${index}`, title, feedUrl: 'https://example.com/feed.xml', siteUrl: 'https://example.com', primary: index === 0, fetchStatus: 'ready',
+const SAMPLE_FEEDS: FeedSource[] = [
+    'Example Publication',
+    'Another Example Journal',
+    'Sample Weekly',
+    'Example Notes',
+].map((title, index) => ({
+    rkey: `${index}`,
+    title,
+    feedUrl: 'https://example.com/feed.xml',
+    siteUrl: 'https://example.com',
+    primary: index === 0,
+    fetchStatus: 'ready',
 }));
 
 const SAMPLE_NEWSLETTERS: NewsletterSource[] = ['Example Newsletter', 'Sample Dispatch'].map((title, index) => ({
-    id: `${index}`, title, senderAddress: 'hello@example.com', primary: false, canUnsubscribe: false, tags: [],
+    id: `${index}`,
+    title,
+    senderAddress: 'hello@example.com',
+    primary: false,
+    canUnsubscribe: false,
+    tags: [],
 }));
 
 function FeedList({ removedFocus }: { removedFocus: RemovedFocus }) {
@@ -57,17 +74,48 @@ function FeedList({ removedFocus }: { removedFocus: RemovedFocus }) {
                 label="Loading feeds"
                 sample={SAMPLE_FEEDS}
             >
-                {(feeds) => feeds.length ? (
-                    <LetterGroups sources={feeds} label={(source) => sourceLabel(source.title, source.siteUrl || source.feedUrl)}
-                        row={(source) => (
-                            <SourceRow key={source.rkey} href={sourceHref(source.rkey)} title={source.title}
-                                identity={source.siteUrl || source.feedUrl} favicon={source.faviconUrl}
-                                primary={source.primary} generated={Boolean(source.generated)}
-                                health={<FeedHealth labelled source={source} waitingChannels={waitingOnYouTube(feeds)} />}
-                                note={<GeneratedNote source={source} />}
-                                menu={<EditSourceSheet onChanged={state.refresh} removedFocus={removedFocus} source={source} />} />
-                        )} />
-                ) : <Text size="sm" tone="muted">No feeds yet. <Link href={PATHS.import} variant="underline">Import feeds</Link> to get started.</Text>}
+                {(feeds) =>
+                    feeds.length ? (
+                        <LetterGroups
+                            sources={feeds}
+                            label={(source) => sourceLabel(source.title, source.siteUrl || source.feedUrl)}
+                            row={(source) => (
+                                <SourceRow
+                                    key={source.rkey}
+                                    href={sourceHref(source.rkey)}
+                                    title={source.title}
+                                    identity={source.siteUrl || source.feedUrl}
+                                    favicon={source.faviconUrl}
+                                    primary={source.primary}
+                                    generated={Boolean(source.generated)}
+                                    health={
+                                        <FeedHealth
+                                            labelled
+                                            source={source}
+                                            waitingChannels={waitingOnYouTube(feeds)}
+                                        />
+                                    }
+                                    note={<GeneratedNote source={source} />}
+                                    menu={
+                                        <EditSourceSheet
+                                            onChanged={state.refresh}
+                                            removedFocus={removedFocus}
+                                            source={source}
+                                        />
+                                    }
+                                />
+                            )}
+                        />
+                    ) : (
+                        <Text size="sm" tone="muted">
+                            No feeds yet.{' '}
+                            <Link href={PATHS.import} variant="underline">
+                                Import feeds
+                            </Link>{' '}
+                            to get started.
+                        </Text>
+                    )
+                }
             </Skeleton>
         </PageSection>
     );
@@ -84,16 +132,37 @@ function NewsletterList({ removedFocus }: { removedFocus: RemovedFocus }) {
                     label="Loading newsletters"
                     sample={SAMPLE_NEWSLETTERS}
                 >
-                    {(active) => active.length ? <NewsletterRows onChanged={state.refresh} removedFocus={removedFocus} sources={active} /> :
-                        <Text size="sm" tone="muted">Newsletters appear here when mail arrives at your private address.</Text>}
+                    {(active) =>
+                        active.length ? (
+                            <NewsletterRows onChanged={state.refresh} removedFocus={removedFocus} sources={active} />
+                        ) : (
+                            <Text size="sm" tone="muted">
+                                Newsletters appear here when mail arrives at your private address.
+                            </Text>
+                        )
+                    }
                 </Skeleton>
             </PageSection>
-            {state.status === 'loaded' ? <StoppedNewsletters onChanged={state.refresh} removedFocus={removedFocus} sources={state.data.stopped} /> : null}
+            {state.status === 'loaded' ? (
+                <StoppedNewsletters
+                    onChanged={state.refresh}
+                    removedFocus={removedFocus}
+                    sources={state.data.stopped}
+                />
+            ) : null}
         </>
     );
 }
 
-function StoppedNewsletters({ sources, onChanged, removedFocus }: { sources: NewsletterSource[]; onChanged: () => void; removedFocus: RemovedFocus }) {
+function StoppedNewsletters({
+    sources,
+    onChanged,
+    removedFocus,
+}: {
+    sources: NewsletterSource[];
+    onChanged: () => void;
+    removedFocus: RemovedFocus;
+}) {
     if (!sources.length) return null;
     return (
         <PageSection title="Stopped newsletters">
@@ -102,25 +171,58 @@ function StoppedNewsletters({ sources, onChanged, removedFocus }: { sources: New
     );
 }
 
-function NewsletterRows({ sources, stopped = false, onChanged, removedFocus }: {
-    sources: NewsletterSource[]; stopped?: boolean; onChanged: () => void; removedFocus: RemovedFocus;
+function NewsletterRows({
+    sources,
+    stopped = false,
+    onChanged,
+    removedFocus,
+}: {
+    sources: NewsletterSource[];
+    stopped?: boolean;
+    onChanged: () => void;
+    removedFocus: RemovedFocus;
 }) {
     return (
-        <LetterGroups sources={sources} label={(source) => sourceLabel(source.title, source.senderAddress)}
+        <LetterGroups
+            sources={sources}
+            label={(source) => sourceLabel(source.title, source.senderAddress)}
             row={(source) => (
-                <SourceRow key={source.id} href={newsletterSourceHref(source.id)} title={source.title}
-                    identity={source.senderAddress} primary={!stopped && source.primary}
-                    menu={<EditNewsletterSheet onChanged={onChanged} removedFocus={removedFocus} source={source} stopped={stopped} />} />
-            )} />
+                <SourceRow
+                    key={source.id}
+                    href={newsletterSourceHref(source.id)}
+                    title={source.title}
+                    identity={source.senderAddress}
+                    primary={!stopped && source.primary}
+                    menu={
+                        <EditNewsletterSheet
+                            onChanged={onChanged}
+                            removedFocus={removedFocus}
+                            source={source}
+                            stopped={stopped}
+                        />
+                    }
+                />
+            )}
+        />
     );
 }
 
-function LetterGroups<T>({ sources, label, row }: { sources: T[]; label: (source: T) => string; row: (source: T) => ReactNode }) {
+function LetterGroups<T>({
+    sources,
+    label,
+    row,
+}: {
+    sources: T[];
+    label: (source: T) => string;
+    row: (source: T) => ReactNode;
+}) {
     return (
         <Frame gap="5xl">
             {groupByInitial(sources, label).map(({ initial, items }) => (
                 <Frame key={initial} gap="xl">
-                    <Text as="h3" size="sm" weight="medium" tone="subtle">{initial}</Text>
+                    <Text as="h3" size="sm" weight="medium" tone="subtle">
+                        {initial}
+                    </Text>
                     <ItemList>{items.map(row)}</ItemList>
                 </Frame>
             ))}
@@ -136,12 +238,42 @@ function sourceLabel(title: string | undefined, identity: string): string {
     return title || displayURL(identity);
 }
 
-function SourceRow({ href, title, identity, favicon, primary, generated = false, health, note, menu }: {
-    href: string; title?: string; identity: string; favicon?: string; primary: boolean; generated?: boolean; health?: ReactNode; note?: ReactNode; menu: ReactNode;
+function SourceRow({
+    href,
+    title,
+    identity,
+    favicon,
+    primary,
+    generated = false,
+    health,
+    note,
+    menu,
+}: {
+    href: string;
+    title?: string;
+    identity: string;
+    favicon?: string;
+    primary: boolean;
+    generated?: boolean;
+    health?: ReactNode;
+    note?: ReactNode;
+    menu: ReactNode;
 }) {
     return (
-        <ListItem href={href} title={sourceLabel(title, identity)} icon={favicon}
-            mark={primary ? <PrimaryMark size="sm" /> : undefined} note={note}
-            meta={displayURL(identity)} status={<>{generated ? <GeneratedMark size="sm" tucked /> : null}{health}</>} actions={menu} />
+        <ListItem
+            href={href}
+            title={sourceLabel(title, identity)}
+            icon={favicon}
+            mark={primary ? <PrimaryMark size="sm" /> : undefined}
+            note={note}
+            meta={displayURL(identity)}
+            status={
+                <>
+                    {generated ? <GeneratedMark size="sm" tucked /> : null}
+                    {health}
+                </>
+            }
+            actions={menu}
+        />
     );
 }

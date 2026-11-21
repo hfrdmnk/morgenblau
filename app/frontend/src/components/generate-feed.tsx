@@ -8,12 +8,7 @@ import { Frame, type FrameProps } from '@/design/frame';
 import { MotionFrame } from '@/design/motion';
 import { Text } from '@/design/text';
 import type { GenerationStep } from '@/hooks/use-generation';
-import {
-    anchorError,
-    anchorRejection,
-    generatedVerdict,
-    type GeneratedSource,
-} from '@/lib/add-source';
+import { anchorError, anchorRejection, generatedVerdict, type GeneratedSource } from '@/lib/add-source';
 
 // A sample is enough to recognize the site's posts, with the post field still in view when unsure.
 const PREVIEW_POSTS = { sure: 5, unsure: 3 };
@@ -59,20 +54,12 @@ export function GenerateFeed({
                 transition={{ duration: instant ? 0 : 0.2 }}
             >
                 {step.step === 'pending' && (
-                    <Pending>
-                        Reading the page and a few of its posts. This can take
-                        a little while.
-                    </Pending>
+                    <Pending>Reading the page and a few of its posts. This can take a little while.</Pending>
                 )}
                 {step.step === 'failed' && (
-                    <GenerationFailed
-                        message={step.message}
-                        onRetry={step.retry ? onRetry : undefined}
-                    />
+                    <GenerationFailed message={step.message} onRetry={step.retry ? onRetry : undefined} />
                 )}
-                {step.step === 'preview' && (
-                    <GeneratedPreview source={step.source} {...preview} />
-                )}
+                {step.step === 'preview' && <GeneratedPreview source={step.source} {...preview} />}
             </MotionFrame>
         </Frame>
     );
@@ -107,11 +94,7 @@ function settleFocus(root: HTMLElement | null, order: string[]) {
     if (!root) return;
     const active = document.activeElement;
     const ours =
-        !active ||
-        !active.isConnected ||
-        active === document.body ||
-        active.contains(root) ||
-        root.contains(active);
+        !active || !active.isConnected || active === document.body || active.contains(root) || root.contains(active);
     if (!ours) return;
     const target = order.map((name) => focusTarget(root, name)).find(Boolean);
     (target ?? root).focus();
@@ -126,8 +109,7 @@ export function GenerateOffer({ onGenerate }: { onGenerate: () => void }) {
     return (
         <Panel>
             <Text size="sm" tone="muted">
-                No feed found on this page. Morgenblau can generate one from the
-                posts it lists.
+                No feed found on this page. Morgenblau can generate one from the posts it lists.
             </Text>
             <Button onClick={onGenerate} size="sm" variant="secondary">
                 Generate a feed
@@ -138,39 +120,23 @@ export function GenerateOffer({ onGenerate }: { onGenerate: () => void }) {
 
 function Pending({ children }: { children: string }) {
     return (
-        <Frame
-            align="center"
-            gap="m"
-            height="status"
-            justify="center"
-            paddingX="2xl"
-            role="status"
-        >
+        <Frame align="center" gap="m" height="status" justify="center" paddingX="2xl" role="status">
             <LoadingIcon size="xl" spin tone="muted" />
-            <Text align="center" size="sm" tone="muted">{children}</Text>
+            <Text align="center" size="sm" tone="muted">
+                {children}
+            </Text>
         </Frame>
     );
 }
 
-function GenerationFailed({
-    message,
-    onRetry,
-}: {
-    message: string;
-    onRetry?: () => void;
-}) {
+function GenerationFailed({ message, onRetry }: { message: string; onRetry?: () => void }) {
     return (
         <Panel>
             <Text role="alert" size="sm" tone="muted">
                 {message}
             </Text>
             {onRetry && (
-                <Button
-                    data-focus="retry"
-                    onClick={onRetry}
-                    size="sm"
-                    variant="secondary"
-                >
+                <Button data-focus="retry" onClick={onRetry} size="sm" variant="secondary">
                     Try again
                 </Button>
             )}
@@ -178,12 +144,7 @@ function GenerationFailed({
     );
 }
 
-function GeneratedPreview({
-    source,
-    saving,
-    onPointAt,
-    add,
-}: PreviewProps & { source: GeneratedSource }) {
+function GeneratedPreview({ source, saving, onPointAt, add }: PreviewProps & { source: GeneratedSource }) {
     const [anchoring, setAnchoring] = useState(false);
     const verdict = generatedVerdict(source);
 
@@ -199,7 +160,9 @@ function GeneratedPreview({
     if (verdict.blocked)
         return (
             <Panel>
-                <Text size="sm" tone="muted">This site blocks feed readers.</Text>
+                <Text size="sm" tone="muted">
+                    This site blocks feed readers.
+                </Text>
             </Panel>
         );
     const unsure = verdict.askAnchor && verdict.subscribable;
@@ -207,12 +170,7 @@ function GeneratedPreview({
     return (
         // Without the post list, the form still sits as far below the sheet's header as it would below the list.
         <Frame gap="l" paddingTop={previewed ? undefined : 'l'}>
-            {previewed && (
-                <PostPreview
-                    source={source}
-                    limit={unsure ? PREVIEW_POSTS.unsure : PREVIEW_POSTS.sure}
-                />
-            )}
+            {previewed && <PostPreview source={source} limit={unsure ? PREVIEW_POSTS.unsure : PREVIEW_POSTS.sure} />}
             {verdict.askAnchor && (
                 <AnchorForm
                     key={source.id + source.itemCount}
@@ -233,18 +191,14 @@ function GeneratedPreview({
     );
 }
 
-function PostPreview({
-    source,
-    limit,
-}: {
-    source: GeneratedSource;
-    limit: number;
-}) {
+function PostPreview({ source, limit }: { source: GeneratedSource; limit: number }) {
     const headingId = useId();
     const host = source.siteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
     return (
         <Frame as="section" aria-labelledby={headingId} gap="s">
-            <Text size="xs" tone="muted">Generated feed</Text>
+            <Text size="xs" tone="muted">
+                Generated feed
+            </Text>
             <Frame background="background" gap="l" padding="l" radius="lg">
                 <Frame gap="2xs">
                     <Text
@@ -301,9 +255,7 @@ const ANCHOR_PROMPT = {
 // A shared feed can be broken by one failed poll while it still serves the posts it stored.
 function anchorPrompt(source: GeneratedSource, found: boolean) {
     if (!found) return ANCHOR_PROMPT.empty;
-    return source.health === 'broken'
-        ? ANCHOR_PROMPT.stale
-        : ANCHOR_PROMPT.unsure;
+    return source.health === 'broken' ? ANCHOR_PROMPT.stale : ANCHOR_PROMPT.unsure;
 }
 
 function useAnchorField(
@@ -313,20 +265,15 @@ function useAnchorField(
 ) {
     const [anchor, setAnchor] = useState('');
     const [edited, setEdited] = useState(false);
-    const [error, setError] = useState<ReturnType<typeof anchorError> | null>(
-        null,
-    );
-    const notice =
-        rejected && !edited && !error ? anchorRejection(rejected) : undefined;
+    const [error, setError] = useState<ReturnType<typeof anchorError> | null>(null);
+    const notice = rejected && !edited && !error ? anchorRejection(rejected) : undefined;
 
     async function submit(event: FormEvent) {
         event.preventDefault();
         if (anchoring || !anchor.trim()) return;
         setError(null);
         setEdited(false);
-        await onSubmit(anchor).catch((failure) =>
-            setError(anchorError(failure)),
-        );
+        await onSubmit(anchor).catch((failure) => setError(anchorError(failure)));
     }
 
     function change(value: string) {
@@ -368,9 +315,7 @@ function AnchorForm({
             </Text>
             <InputGroup>
                 <InputGroupInput
-                    aria-describedby={
-                        field.described ? `${inputId}-message` : undefined
-                    }
+                    aria-describedby={field.described ? `${inputId}-message` : undefined}
                     aria-invalid={Boolean(field.error?.invalid)}
                     aria-busy={anchoring}
                     autoCapitalize="none"
@@ -384,28 +329,14 @@ function AnchorForm({
                     spellCheck={false}
                     value={field.anchor}
                 />
-                <UsePostButton
-                    anchoring={anchoring}
-                    disabled={disabled || !field.anchor.trim()}
-                />
+                <UsePostButton anchoring={anchoring} disabled={disabled || !field.anchor.trim()} />
             </InputGroup>
-            <AnchorMessage
-                anchoring={anchoring}
-                error={field.error}
-                notice={field.notice}
-                id={`${inputId}-message`}
-            />
+            <AnchorMessage anchoring={anchoring} error={field.error} notice={field.notice} id={`${inputId}-message`} />
         </Frame>
     );
 }
 
-function UsePostButton({
-    anchoring,
-    disabled,
-}: {
-    anchoring: boolean;
-    disabled: boolean;
-}) {
+function UsePostButton({ anchoring, disabled }: { anchoring: boolean; disabled: boolean }) {
     return (
         <InputGroupButton
             aria-busy={anchoring}
@@ -414,22 +345,14 @@ function UsePostButton({
             focusableWhenDisabled={anchoring}
             type="submit"
         >
-            {anchoring ? (
-                <LoadingIcon spin />
-            ) : (
-                <EnterIcon />
-            )}
+            {anchoring ? <LoadingIcon spin /> : <EnterIcon />}
         </InputGroupButton>
     );
 }
 
 const SEARCHING = 'Looking for posts like that one. This can take a little while.';
 
-function anchorMessage(
-    anchoring: boolean,
-    error: ReturnType<typeof anchorError> | null,
-    notice?: string,
-) {
+function anchorMessage(anchoring: boolean, error: ReturnType<typeof anchorError> | null, notice?: string) {
     if (anchoring) return { text: SEARCHING, role: 'status' };
     // The dialog's status region already announced the notice; a second live region would repeat it.
     if (notice) return { text: notice };
@@ -456,12 +379,7 @@ function AnchorMessage({
     }, [message?.text]);
     if (!message) return null;
     return (
-        <FieldMessage
-            id={anchoring ? undefined : id}
-            invalid={message.invalid}
-            ref={line}
-            role={message.role}
-        >
+        <FieldMessage id={anchoring ? undefined : id} invalid={message.invalid} ref={line} role={message.role}>
             {message.text}
         </FieldMessage>
     );

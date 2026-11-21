@@ -21,8 +21,14 @@ export function useShortcuts(shortcuts: Partial<Record<string, () => void>>) {
 
 export function useModeShortcuts() {
     const [location, navigate] = useLocation();
-    useShortcuts(Object.fromEntries(APP_MODES.map(({ href, shortcut }) => [
-        shortcut,
-        () => { if (location !== href) navigate(href); },
-    ])));
+    useShortcuts(
+        Object.fromEntries(
+            APP_MODES.map(({ href, shortcut }) => [
+                shortcut,
+                () => {
+                    if (location !== href) navigate(href);
+                },
+            ]),
+        ),
+    );
 }

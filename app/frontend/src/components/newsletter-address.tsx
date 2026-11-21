@@ -17,13 +17,7 @@ import { PATHS } from '@/lib/paths';
 
 type AddressStatus = 'loading' | 'ready' | 'failed';
 
-export function NewsletterAddress({
-    settings = false,
-    onNavigate,
-}: {
-    settings?: boolean;
-    onNavigate?: () => void;
-}) {
+export function NewsletterAddress({ settings = false, onNavigate }: { settings?: boolean; onNavigate?: () => void }) {
     const heading = useId();
     const profile = useAppProfile();
     const profileReady = profile.kind === 'ready';
@@ -35,8 +29,7 @@ export function NewsletterAddress({
         const controller = new AbortController();
         void newsletterAddress(controller.signal)
             .then((address) => {
-                if (!address)
-                    throw new Error('Newsletter address not provisioned');
+                if (!address) throw new Error('Newsletter address not provisioned');
                 if (!controller.signal.aborted) {
                     setAddress(address);
                     setStatus('ready');
@@ -77,8 +70,8 @@ export function NewsletterAddress({
                 />
                 <Text size="xs" tone="subtle" wrap="pretty">
                     {settings && 'This address is generated for you. '}
-                    Newsletters are always private and not saved to your <PdsLink />.
-                    They appear after their first email arrives.
+                    Newsletters are always private and not saved to your <PdsLink />. They appear after their first
+                    email arrives.
                 </Text>
             </Frame>
         </Frame>
@@ -86,8 +79,7 @@ export function NewsletterAddress({
 }
 
 function newsletterErrorMessage(error: unknown) {
-    return error instanceof ApiError &&
-        (error.code === 'unavailable' || [404, 405].includes(error.status))
+    return error instanceof ApiError && (error.code === 'unavailable' || [404, 405].includes(error.status))
         ? 'Newsletter delivery isn’t enabled on this server yet.'
         : 'Your newsletter address isn’t available right now. Try again in a moment.';
 }
@@ -163,11 +155,7 @@ function CopyNewsletterAddress({ address }: { address: string }) {
                 value={address}
             />
             <InputGroupButton
-                aria-label={
-                    copied
-                        ? 'Newsletter address copied'
-                        : 'Copy newsletter email address'
-                }
+                aria-label={copied ? 'Newsletter address copied' : 'Copy newsletter email address'}
                 onClick={copy}
                 tone={copied ? 'success' : undefined}
             >

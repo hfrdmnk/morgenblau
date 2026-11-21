@@ -1,11 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-import {
-    canRetryGeneration,
-    generateSource,
-    generationError,
-    type GeneratedSource,
-} from '@/lib/add-source';
+import { canRetryGeneration, generateSource, generationError, type GeneratedSource } from '@/lib/add-source';
 
 export type GenerationStep =
     | { step: 'pending' }
@@ -46,8 +41,7 @@ export function useGeneration(onStep: (step: GenerationStep) => void) {
     async function pointAt(url: string, anchor: string) {
         const controller = begin();
         const source = await generateSource(url, anchor, controller.signal);
-        if (!controller.signal.aborted)
-            onStep({ step: 'preview', source, anchored: true });
+        if (!controller.signal.aborted) onStep({ step: 'preview', source, anchored: true });
     }
 
     return { generate, pointAt };

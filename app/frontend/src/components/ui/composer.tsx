@@ -7,7 +7,11 @@ import { cn } from 'cn';
 
 // A chat-style composer in a dialog: one input surface holding attachments, the text and its actions, with a status line under it.
 
-function ComposerDialog({ title, children, ...props }: Omit<Dialog.Popup.Props, 'className' | 'style'> & { title: string }) {
+function ComposerDialog({
+    title,
+    children,
+    ...props
+}: Omit<Dialog.Popup.Props, 'className' | 'style'> & { title: string }) {
     return (
         <Dialog.Portal>
             <DialogBackdrop />
@@ -57,10 +61,26 @@ function ComposerHint({ children }: { children: ReactNode }) {
 }
 
 // A thumbnail whose remove button shows on hover or focus, and always on touch screens, where nothing hovers.
-function AttachmentThumb({ src, name, disabled, onRemove }: { src: string; name: string; disabled: boolean; onRemove: () => void }) {
+function AttachmentThumb({
+    src,
+    name,
+    disabled,
+    onRemove,
+}: {
+    src: string;
+    name: string;
+    disabled: boolean;
+    onRemove: () => void;
+}) {
     return (
         <span className="group relative block">
-            <img alt={name} className="size-16 rounded-md object-cover shadow-image-edge" height={64} src={src} width={64} />
+            <img
+                alt={name}
+                className="size-16 rounded-md object-cover shadow-image-edge"
+                height={64}
+                src={src}
+                width={64}
+            />
             <button
                 aria-label={`Remove ${name}`}
                 className="absolute -top-1.5 -right-1.5 flex size-5 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground opacity-0 shadow-popover transition-opacity duration-(--motion-duration-fast) group-focus-within:opacity-100 group-hover:opacity-100 before:absolute before:-inset-2.5 focus-visible:opacity-100 pointer-coarse:opacity-100"

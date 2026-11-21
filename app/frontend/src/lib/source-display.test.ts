@@ -18,8 +18,8 @@ describe('source facts', () => {
 });
 
 describe('groupByInitial', () => {
-    const group = (labels: string[]) => groupByInitial(labels, (label) => label)
-        .map(({ initial, items }) => [initial, items]);
+    const group = (labels: string[]) =>
+        groupByInitial(labels, (label) => label).map(({ initial, items }) => [initial, items]);
 
     test('groups by first letter in collation order, folding case and accents', () => {
         expect(group(['beta.example.com', 'Zeta Weekly', 'Ärzte Blog', 'alpha', 'Amp News'])).toEqual([

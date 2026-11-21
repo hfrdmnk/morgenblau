@@ -112,7 +112,9 @@ test('found feeds are announced in one short line', async () => {
 });
 
 function screen() {
-    return [...document.querySelectorAll<HTMLElement>('.overscroll-contain > [tabindex="-1"]')].find((node) => !node.hidden)!;
+    return [...document.querySelectorAll<HTMLElement>('.overscroll-contain > [tabindex="-1"]')].find(
+        (node) => !node.hidden,
+    )!;
 }
 
 async function press(text: string) {
@@ -136,7 +138,12 @@ test('the publication follows its site’s second RSS feed through removal and r
                 candidates: [
                     { feedUrl: 'https://news.example.com/rss.xml', title: 'Example RSS' },
                     { feedUrl: atom, title: 'Example Atom' },
-                    { kind: 'standardfeed', publication: 'at://did:plc:example/site.standard.publication/self', title: 'Example Standard', subscribedVia: { kind: 'rss' } },
+                    {
+                        kind: 'standardfeed',
+                        publication: 'at://did:plc:example/site.standard.publication/self',
+                        title: 'Example Standard',
+                        subscribedVia: { kind: 'rss' },
+                    },
                 ],
                 existingSubscriptions: [{ feedUrl: atom, rkey: 'atom-rkey', title: 'Example Atom' }],
             });
@@ -212,9 +219,17 @@ test('during a YouTube outage the sheet says why there is no preview and still a
     const feed = 'https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv';
     let added = '';
     respond((url, body) => {
-        if (url.endsWith('/resolve')) return Response.json({ candidates: [{ feedUrl: feed, title: 'Example Channel' }], existingSubscriptions: [] });
+        if (url.endsWith('/resolve'))
+            return Response.json({
+                candidates: [{ feedUrl: feed, title: 'Example Channel' }],
+                existingSubscriptions: [],
+            });
         if (url.endsWith('/profile')) return Response.json({ profile: null });
-        if (url.endsWith('/preview')) return Response.json({ code: 'youtube_down', message: 'YouTube’s feeds are down right now' }, { status: 502 });
+        if (url.endsWith('/preview'))
+            return Response.json(
+                { code: 'youtube_down', message: 'YouTube’s feeds are down right now' },
+                { status: 502 },
+            );
         if (url.endsWith('/tags')) return Response.json({ tags: [] });
         if (url.endsWith('/api/subscriptions')) {
             added = JSON.parse(body).feedUrl;
@@ -253,7 +268,15 @@ test('editing a channel followed without Shorts renames it and brings Shorts bac
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
-    const source = { rkey: 'long-rkey', kind: 'rss' as const, feedUrl: longForm, title: 'Example Channel', primary: false, tags: ['video'], fetchStatus: 'ready' as const };
+    const source = {
+        rkey: 'long-rkey',
+        kind: 'rss' as const,
+        feedUrl: longForm,
+        title: 'Example Channel',
+        primary: false,
+        tags: ['video'],
+        fetchStatus: 'ready' as const,
+    };
     await act(async () => root.render(<EditSourceSheet onChanged={() => changed++} source={source} />));
     unmount = () => {
         root.unmount();
@@ -262,7 +285,8 @@ test('editing a channel followed without Shorts renames it and brings Shorts bac
     };
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Edit Example Channel"]')!.click());
     await waitFor('Exclude Shorts');
-    const saveButton = () => [...screen().querySelectorAll('button')].find((node) => node.textContent?.includes('Save changes'))!;
+    const saveButton = () =>
+        [...screen().querySelectorAll('button')].find((node) => node.textContent?.includes('Save changes'))!;
     expect(saveButton().disabled).toBe(true);
     const label = [...screen().querySelectorAll('label')].find((node) => node.textContent?.includes('Exclude Shorts'))!;
     const toggle = screen().querySelector<HTMLElement>(`[role="switch"][aria-labelledby="${label.id}"]`)!;
@@ -296,7 +320,8 @@ test('an untitled feed with a long address can be added and edited without renam
     const tooLong = 'N'.repeat(129);
     const bodies: unknown[] = [];
     respond((url, body) => {
-        if (url.endsWith('/resolve')) return Response.json({ candidates: [{ feedUrl: long }], existingSubscriptions: [] });
+        if (url.endsWith('/resolve'))
+            return Response.json({ candidates: [{ feedUrl: long }], existingSubscriptions: [] });
         if (url.endsWith('/profile')) return Response.json({ profile: null });
         if (url.endsWith('/preview')) return Response.json({ items: [] });
         if (url.endsWith('/tags')) return Response.json({ tags: [] });
@@ -306,12 +331,14 @@ test('an untitled feed with a long address can be added and edited without renam
         }
         throw new Error(`unexpected ${url}`);
     });
-    const button = (text: string) => [...screen().querySelectorAll('button')].find((node) => node.textContent?.includes(text))!;
+    const button = (text: string) =>
+        [...screen().querySelectorAll('button')].find((node) => node.textContent?.includes(text))!;
     const name = () => document.querySelector<HTMLInputElement>('input[aria-label="Name"]')!;
-    const type = async (value: string) => act(async () => {
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name(), value);
-        name().dispatchEvent(new DOMEvent('input', { bubbles: true }));
-    });
+    const type = async (value: string) =>
+        act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name(), value);
+            name().dispatchEvent(new DOMEvent('input', { bubbles: true }));
+        });
 
     await findFeeds('news.example.com');
     await press(long);
@@ -323,7 +350,9 @@ test('an untitled feed with a long address can be added and edited without renam
     await type(tooLong);
     expect(name().getAttribute('aria-invalid')).toBe('true');
     expect(button('Add to sources').disabled).toBe(true);
-    expect(document.getElementById(name().getAttribute('aria-describedby')!)?.textContent).toContain('Names can be up to 128 characters.');
+    expect(document.getElementById(name().getAttribute('aria-describedby')!)?.textContent).toContain(
+        'Names can be up to 128 characters.',
+    );
     await type(long);
     await press('Add to sources');
     expect(bodies[0]).toEqual({ feedUrl: long });
@@ -332,7 +361,13 @@ test('an untitled feed with a long address can be added and edited without renam
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
-    const source = { rkey: 'long-rkey', kind: 'rss' as const, feedUrl: long, primary: false, fetchStatus: 'waiting' as const };
+    const source = {
+        rkey: 'long-rkey',
+        kind: 'rss' as const,
+        feedUrl: long,
+        primary: false,
+        fetchStatus: 'waiting' as const,
+    };
     await act(async () => root.render(<EditSourceSheet onChanged={() => {}} source={source} />));
     unmount = () => {
         root.unmount();
@@ -343,7 +378,9 @@ test('an untitled feed with a long address can be added and edited without renam
     await waitFor('Save changes');
     expect(name().getAttribute('aria-invalid')).toBe('false');
     const primary = [...screen().querySelectorAll('label')].find((node) => node.textContent?.includes('Primary'))!;
-    await act(async () => screen().querySelector<HTMLElement>(`[role="switch"][aria-labelledby="${primary.id}"]`)!.click());
+    await act(async () =>
+        screen().querySelector<HTMLElement>(`[role="switch"][aria-labelledby="${primary.id}"]`)!.click(),
+    );
     await settle();
     expect(button('Save changes').disabled).toBe(false);
     await press('Save changes');

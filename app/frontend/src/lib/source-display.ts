@@ -46,7 +46,8 @@ export function groupByInitial<T>(items: T[], label: (item: T) => string): { ini
         const initial = initialOf(label(item));
         groups.set(initial, [...(groups.get(initial) ?? []), item]);
     }
-    return [...groups].map(([initial, members]) => ({ initial, items: members }))
+    return [...groups]
+        .map(([initial, members]) => ({ initial, items: members }))
         .sort((a, b) => Number(a.initial === '#') - Number(b.initial === '#'));
 }
 
@@ -63,10 +64,17 @@ function countLabel(count: number, unit: string): string | undefined {
     return `${count} ${count === 1 ? unit : `${unit}s`}`;
 }
 
-function facts(label: string | undefined, frequency: string | undefined, count: number, unit: string, last?: string | null): string[] {
+function facts(
+    label: string | undefined,
+    frequency: string | undefined,
+    count: number,
+    unit: string,
+    last?: string | null,
+): string[] {
     const lastDate = formatDate(last);
-    return [label, frequencyLabel(frequency), countLabel(count, unit), lastDate && `Last ${unit} ${lastDate}`]
-        .filter((fact): fact is string => Boolean(fact));
+    return [label, frequencyLabel(frequency), countLabel(count, unit), lastDate && `Last ${unit} ${lastDate}`].filter(
+        (fact): fact is string => Boolean(fact),
+    );
 }
 
 export function feedFacts(source: { frequency?: string; totalEntries: number; lastPublishedAt?: string }): string[] {
@@ -74,7 +82,13 @@ export function feedFacts(source: { frequency?: string; totalEntries: number; la
 }
 
 // A stopped newsletter has no cadence to promise.
-export function newsletterFacts(source: { status: string; frequency: string; issueCount: number; lastReceivedAt: string | null }): string[] {
-    if (source.status === 'stopped') return facts('Stopped', undefined, source.issueCount, 'issue', source.lastReceivedAt);
+export function newsletterFacts(source: {
+    status: string;
+    frequency: string;
+    issueCount: number;
+    lastReceivedAt: string | null;
+}): string[] {
+    if (source.status === 'stopped')
+        return facts('Stopped', undefined, source.issueCount, 'issue', source.lastReceivedAt);
     return facts(undefined, source.frequency, source.issueCount, 'issue', source.lastReceivedAt);
 }

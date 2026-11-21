@@ -16,13 +16,28 @@ test('arrowsOnly leaves j and k alone, and the keys start from the current row',
     const played: string[] = [];
     const row = (label: string, current = false) => (
         <li aria-current={current ? 'true' : undefined} data-post="">
-            <button data-post-link onClick={() => played.push(label)} type="button">{label}</button>
+            <button data-post-link onClick={() => played.push(label)} type="button">
+                {label}
+            </button>
         </li>
     );
-    const press = (key: string) => act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })); });
+    const press = (key: string) =>
+        act(async () => {
+            window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+        });
     const selected = () => container.querySelector('[data-selected]')?.textContent;
     try {
-        await act(async () => root.render(<PostList arrowsOnly><ol>{row('0:00')}{row('0:30', true)}{row('1:00')}</ol></PostList>));
+        await act(async () =>
+            root.render(
+                <PostList arrowsOnly>
+                    <ol>
+                        {row('0:00')}
+                        {row('0:30', true)}
+                        {row('1:00')}
+                    </ol>
+                </PostList>,
+            ),
+        );
         await press('j');
         expect(selected()).toBeUndefined();
         await press('ArrowDown');
@@ -30,7 +45,11 @@ test('arrowsOnly leaves j and k alone, and the keys start from the current row',
         await press('ArrowUp');
         await press('ArrowUp');
         expect(selected()).toBe('0:00');
-        await act(async () => { (document.activeElement as HTMLElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+        await act(async () => {
+            (document.activeElement as HTMLElement).dispatchEvent(
+                new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+            );
+        });
         expect(played).toEqual(['0:00']);
     } finally {
         act(() => root.unmount());

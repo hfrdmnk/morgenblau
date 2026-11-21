@@ -16,7 +16,16 @@ import {
     SourcesIcon,
 } from '@/components/icons';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AppHeaderBar, DateStrip, DateStripDay, DateStripSpacer, DayStepper, ModeLink, ModeNav, SettingsTab } from '@/components/ui/app-chrome';
+import {
+    AppHeaderBar,
+    DateStrip,
+    DateStripDay,
+    DateStripSpacer,
+    DayStepper,
+    ModeLink,
+    ModeNav,
+    SettingsTab,
+} from '@/components/ui/app-chrome';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Link } from '@/components/ui/link';
@@ -90,7 +99,11 @@ export function AppHeader() {
                     <AddSourceDialog />
                     <Skeleton
                         data={profile.kind === 'ready' ? profile.profile : null}
-                        error={profile.kind === 'error' ? <Avatar aria-label="Profile unavailable" blank role="img" /> : undefined}
+                        error={
+                            profile.kind === 'error' ? (
+                                <Avatar aria-label="Profile unavailable" blank role="img" />
+                            ) : undefined
+                        }
                         label="Loading profile"
                         sample={SAMPLE_PROFILE}
                     >
@@ -166,9 +179,18 @@ function DigestDateNav() {
     const nextDate = toDateKey(addCalendarDays(selectedDate, 1));
 
     return (
-        <Frame colSpan={{ base: 2, md: 1 }} colStart={{ md: 2 }} justifySelf={{ md: 'center' }} rowStart={{ base: 2, md: 1 }}>
+        <Frame
+            colSpan={{ base: 2, md: 1 }}
+            colStart={{ md: 2 }}
+            justifySelf={{ md: 'center' }}
+            rowStart={{ base: 2, md: 1 }}
+        >
             <DayStepper aria-label="Digest day">
-                <Link aria-label="Previous day" href={digestHref(toDateKey(addCalendarDays(selectedDate, -1)))} variant="step">
+                <Link
+                    aria-label="Previous day"
+                    href={digestHref(toDateKey(addCalendarDays(selectedDate, -1)))}
+                    variant="step"
+                >
                     <ArrowRightIcon rotate={180} size="md" />
                 </Link>
                 <Text align="center" aria-label={fullDate.format(selectedDate)} as="span">
@@ -179,7 +201,11 @@ function DigestDateNav() {
                         <ArrowRightIcon size="md" />
                     </Button>
                 ) : (
-                    <Link aria-label="Next day" href={digestHref(nextDate === todayKey ? undefined : nextDate)} variant="step">
+                    <Link
+                        aria-label="Next day"
+                        href={digestHref(nextDate === todayKey ? undefined : nextDate)}
+                        variant="step"
+                    >
                         <ArrowRightIcon size="md" />
                     </Link>
                 )}

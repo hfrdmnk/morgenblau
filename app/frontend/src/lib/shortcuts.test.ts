@@ -50,6 +50,8 @@ describe('shortcut keys', () => {
             expect(press({ key: 'S', shiftKey: true }, element(html))).toBeNull();
             expect(press({ key: 'Escape' }, element(html))).toBeNull();
         }
-        expect(press({ key: 'S', shiftKey: true }, element('<div contenteditable="false"><a data-target>link</a></div>'))).toBe('Shift+S');
+        expect(
+            press({ key: 'S', shiftKey: true }, element('<div contenteditable="false"><a data-target>link</a></div>')),
+        ).toBe('Shift+S');
     });
 });

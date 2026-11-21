@@ -36,7 +36,12 @@ afterAll(() => GlobalRegistrator.unregister());
 function Page() {
     const [location] = useLocation();
     useNavigationScrollRestoration();
-    if (location.startsWith('/settings')) return <DataSettings><h1>Settings content</h1></DataSettings>;
+    if (location.startsWith('/settings'))
+        return (
+            <DataSettings>
+                <h1>Settings content</h1>
+            </DataSettings>
+        );
     if (location === '/admin') return <Link href="/settings/general">Open settings</Link>;
     return (
         <>
@@ -53,14 +58,16 @@ async function render(href: string, profile: ProfileState = { kind: 'loading' })
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
-    await act(async () => root.render(
-        <Router hook={useAppLocation}>
-            <AppProfileContext.Provider value={profile}>
-                <AppHeader />
-                <Page />
-            </AppProfileContext.Provider>
-        </Router>,
-    ));
+    await act(async () =>
+        root.render(
+            <Router hook={useAppLocation}>
+                <AppProfileContext.Provider value={profile}>
+                    <AppHeader />
+                    <Page />
+                </AppProfileContext.Provider>
+            </Router>,
+        ),
+    );
     unmount = () => {
         root.unmount();
         container.remove();
@@ -70,8 +77,8 @@ async function render(href: string, profile: ProfileState = { kind: 'loading' })
 }
 
 function link(container: HTMLElement, name: string): HTMLAnchorElement {
-    const found = [...container.querySelectorAll('a')].find((item) =>
-        item.getAttribute('aria-label') === name || item.textContent?.trim() === name,
+    const found = [...container.querySelectorAll('a')].find(
+        (item) => item.getAttribute('aria-label') === name || item.textContent?.trim() === name,
     );
     expect(found).toBeDefined();
     return found!;
@@ -133,8 +140,12 @@ test('same-URL navigation cancels pending settings scroll restoration', async ()
             super(callback);
             this.resize = () => callback([], this);
         }
-        observe() { resizeCallbacks.add(this.resize); }
-        disconnect() { resizeCallbacks.delete(this.resize); }
+        observe() {
+            resizeCallbacks.add(this.resize);
+        }
+        disconnect() {
+            resizeCallbacks.delete(this.resize);
+        }
     }
     globalThis.ResizeObserver = ContentResizeObserver;
     window.scrollTo = (_options?: number | ScrollToOptions, y?: number) => {
@@ -196,8 +207,12 @@ test('the header and mode bar heights reach the page while the header is mounted
             super(callback);
             this.resize = () => callback([], this);
         }
-        observe() { resizeCallbacks.add(this.resize); }
-        disconnect() { resizeCallbacks.delete(this.resize); }
+        observe() {
+            resizeCallbacks.add(this.resize);
+        }
+        disconnect() {
+            resizeCallbacks.delete(this.resize);
+        }
     }
     globalThis.ResizeObserver = ManualResizeObserver;
     const root = document.documentElement.style;

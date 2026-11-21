@@ -12,7 +12,13 @@ afterAll(() => GlobalRegistrator.unregister());
 function Player() {
     const frame = useRef<HTMLIFrameElement>(null);
     const player = useYouTubePlayer(frame);
-    return <><iframe ref={frame} title="Example video" /><button onClick={() => player.seekTo(83_000)}>Play from 1:23</button><output>{`${player.ready} ${player.playing} ${player.currentTime}`}</output></>;
+    return (
+        <>
+            <iframe ref={frame} title="Example video" />
+            <button onClick={() => player.seekTo(83_000)}>Play from 1:23</button>
+            <output>{`${player.ready} ${player.playing} ${player.currentTime}`}</output>
+        </>
+    );
 }
 
 function deliver(source: unknown, origin: string, data: object) {
@@ -27,7 +33,8 @@ test('the player reports time and state only from its own embed, and seeking pos
         await act(async () => root.render(<Player />));
         const frame = container.querySelector('iframe')!;
         const sent: Array<[string, string]> = [];
-        frame.contentWindow!.postMessage = ((message: string, target: string) => sent.push([message, target])) as Window['postMessage'];
+        frame.contentWindow!.postMessage = ((message: string, target: string) =>
+            sent.push([message, target])) as Window['postMessage'];
         const state = () => container.querySelector('output')!.textContent;
         expect(state()).toBe('false false 0');
 
@@ -42,11 +49,16 @@ test('the player reports time and state only from its own embed, and seeking pos
         expect(state()).toBe('true false 12500');
 
         await act(async () => container.querySelector('button')!.click());
-        const commands = sent.map(([message, target]) => {
-            expect(target).toBe(PLAYER_ORIGIN);
-            return JSON.parse(message);
-        }).filter((m) => m.event === 'command' && m.func !== 'addEventListener');
-        expect(commands.map((m) => [m.func, m.args])).toEqual([['seekTo', [83, true]], ['playVideo', []]]);
+        const commands = sent
+            .map(([message, target]) => {
+                expect(target).toBe(PLAYER_ORIGIN);
+                return JSON.parse(message);
+            })
+            .filter((m) => m.event === 'command' && m.func !== 'addEventListener');
+        expect(commands.map((m) => [m.func, m.args])).toEqual([
+            ['seekTo', [83, true]],
+            ['playVideo', []],
+        ]);
         expect(state()).toBe('true false 83000');
     } finally {
         act(() => root.unmount());

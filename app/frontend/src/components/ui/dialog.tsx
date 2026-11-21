@@ -19,7 +19,12 @@ function DialogBackdrop({ className, ...props }: Dialog.Backdrop.Props) {
 
 // Centred on both axes and scaled from the centre, so every modal enters the same way.
 // short: a popup whose content can grow long, such as an import receipt, stops well short of the screen's height.
-function DialogPopup({ className, size, short = false, ...props }: Dialog.Popup.Props & { size?: 'md'; short?: boolean }) {
+function DialogPopup({
+    className,
+    size,
+    short = false,
+    ...props
+}: Dialog.Popup.Props & { size?: 'md'; short?: boolean }) {
     return (
         <Dialog.Popup
             data-slot="dialog-popup"

@@ -22,14 +22,18 @@ export function SaveToast({ save, onHold }: { save: EntrySave; onHold: (held: bo
         <Frame
             gap="m"
             minWidth={0}
-            onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) onHold(false); }}
+            onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) onHold(false);
+            }}
             onFocus={() => onHold(true)}
             width="full"
         >
             <Frame align="center" direction="row" gap="m">
                 <CheckIcon size="md" tone="success-icon" />
                 <Frame grow>
-                    <Text as="span" weight="medium">Saved to Library</Text>
+                    <Text as="span" weight="medium">
+                        Saved to Library
+                    </Text>
                 </Frame>
                 {!open ? (
                     <Button aria-keyshortcuts="t" onClick={() => setOpen(true)} size="inline" variant="quiet">

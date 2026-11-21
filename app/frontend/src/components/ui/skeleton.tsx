@@ -49,7 +49,9 @@ function Placeholder({ label, children }: { label: string; children: ReactNode }
         <div aria-busy="true">
             <span className="sr-only">{label}</span>
             <div aria-hidden="true" inert>
-                <div hidden ref={source}><InSample.Provider value>{children}</InSample.Provider></div>
+                <div hidden ref={source}>
+                    <InSample.Provider value>{children}</InSample.Provider>
+                </div>
                 <div className="skeleton" ref={copy} />
             </div>
         </div>

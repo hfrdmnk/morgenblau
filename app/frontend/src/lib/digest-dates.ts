@@ -48,7 +48,20 @@ export function selectedDigestDate(search: string, today: Date): Date {
 }
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const MONTHS = [
+    'january',
+    'february',
+    'march',
+    'april',
+    'may',
+    'june',
+    'july',
+    'august',
+    'september',
+    'october',
+    'november',
+    'december',
+];
 
 // Three letters at least, so a short query like "mo" stays a search instead of becoming a date.
 function namedIndex(names: string[], word: string): number {
@@ -96,7 +109,9 @@ function writtenDay(query: string, today: Date): Date | null {
     const monthFirst = /^([a-z]+) (\d{1,2}),? ?(\d{4})?$/.exec(query);
     const [day, name, year] = dayFirst
         ? [dayFirst[1], dayFirst[2], dayFirst[3]]
-        : monthFirst ? [monthFirst[2], monthFirst[1], monthFirst[3]] : [];
+        : monthFirst
+          ? [monthFirst[2], monthFirst[1], monthFirst[3]]
+          : [];
     const month = name ? namedIndex(MONTHS, name) : -1;
     if (month < 0) return null;
     return latestOn(month, Number(day), fullYear(year), today);

@@ -4,7 +4,15 @@ import { api, ApiError } from './api';
 
 export type EditableSource =
     | { kind: 'feed'; rkey: string; title: string; tags: string[] }
-    | { kind: 'newsletter'; id: string; title: string; tags: string[]; stopped: boolean; canUnsubscribe: boolean; latestEntrySlug?: string };
+    | {
+          kind: 'newsletter';
+          id: string;
+          title: string;
+          tags: string[];
+          stopped: boolean;
+          canUnsubscribe: boolean;
+          latestEntrySlug?: string;
+      };
 
 // The subscription lexicon caps a record at ten tags of 64 graphemes and titles at 128.
 export const MAX_TAGS = 10;
@@ -23,7 +31,8 @@ export const REMOVAL = {
     },
     newsletter: {
         title: (name: string) => `Stop “${name}”?`,
-        description: 'Unsaved issues are deleted and new mail from this sender is discarded. Saved issues stay in your Library, and you can resume it later.',
+        description:
+            'Unsaved issues are deleted and new mail from this sender is discarded. Saved issues stay in your Library, and you can resume it later.',
         action: 'Stop newsletter',
         done: 'Newsletter stopped',
         failed: 'Couldn’t stop this newsletter.',
@@ -33,13 +42,15 @@ export const REMOVAL = {
 export const DELETION = {
     automatic: {
         title: (name: string) => `Unsubscribe from “${name}”?`,
-        description: 'Morgenblau asks the sender to remove your address, then deletes this newsletter and its unsaved issues. Saved issues stay in your Library.',
+        description:
+            'Morgenblau asks the sender to remove your address, then deletes this newsletter and its unsaved issues. Saved issues stay in your Library.',
         action: 'Unsubscribe and delete',
         done: 'Unsubscribed and deleted',
     },
     manual: {
         title: (name: string) => `Delete “${name}”?`,
-        description: 'Unsubscribe manually, usually through the link at the bottom of an issue, then delete it here. Saved issues stay in your Library. If you don’t unsubscribe, its next issue shows up again as a new newsletter.',
+        description:
+            'Unsubscribe manually, usually through the link at the bottom of an issue, then delete it here. Saved issues stay in your Library. If you don’t unsubscribe, its next issue shows up again as a new newsletter.',
         action: 'Delete newsletter',
         done: 'Newsletter deleted',
     },
@@ -53,8 +64,19 @@ export function feedEditable(source: FeedSource, title: string): EditableSource 
     return { kind: 'feed', rkey: source.rkey, title, tags: source.tags ?? [] };
 }
 
-export function newsletterEditable(source: NewsletterSource, stopped: boolean): Extract<EditableSource, { kind: 'newsletter' }> {
-    return { kind: 'newsletter', id: source.id, title: source.title, tags: source.tags, stopped, canUnsubscribe: source.canUnsubscribe, latestEntrySlug: source.latestEntrySlug };
+export function newsletterEditable(
+    source: NewsletterSource,
+    stopped: boolean,
+): Extract<EditableSource, { kind: 'newsletter' }> {
+    return {
+        kind: 'newsletter',
+        id: source.id,
+        title: source.title,
+        tags: source.tags,
+        stopped,
+        canUnsubscribe: source.canUnsubscribe,
+        latestEntrySlug: source.latestEntrySlug,
+    };
 }
 
 function sourcePath(source: EditableSource): string {
@@ -64,7 +86,10 @@ function sourcePath(source: EditableSource): string {
 }
 
 // The PATCH route changes only the fields it is sent, so an edit never rewrites a field from a stale copy.
-export function editNewsletter(source: Extract<EditableSource, { kind: 'newsletter' }>, change: { title?: string; tags?: string[]; primary?: boolean }) {
+export function editNewsletter(
+    source: Extract<EditableSource, { kind: 'newsletter' }>,
+    change: { title?: string; tags?: string[]; primary?: boolean },
+) {
     return api(sourcePath(source), { method: 'PATCH', body: change });
 }
 

@@ -13,8 +13,17 @@ const triggerVariants = {
         'flex shrink-0 cursor-pointer items-center gap-1.5 rounded-sm underline decoration-subtle-line decoration-dotted underline-offset-4 transition-[color] duration-(--motion-duration-fast) hover:text-foreground',
 };
 
-function PopoverTrigger({ variant, ...props }: PopoverPrimitive.Trigger.Props & { variant?: keyof typeof triggerVariants }) {
-    return <PopoverPrimitive.Trigger data-slot="popover-trigger" className={variant && triggerVariants[variant]} {...props} />;
+function PopoverTrigger({
+    variant,
+    ...props
+}: PopoverPrimitive.Trigger.Props & { variant?: keyof typeof triggerVariants }) {
+    return (
+        <PopoverPrimitive.Trigger
+            data-slot="popover-trigger"
+            className={variant && triggerVariants[variant]}
+            {...props}
+        />
+    );
 }
 
 function PopoverContent({
@@ -25,10 +34,7 @@ function PopoverContent({
     sideOffset = 8,
     ...props
 }: PopoverPrimitive.Popup.Props &
-    Pick<
-        PopoverPrimitive.Positioner.Props,
-        'align' | 'alignOffset' | 'side' | 'sideOffset'
-    >) {
+    Pick<PopoverPrimitive.Positioner.Props, 'align' | 'alignOffset' | 'side' | 'sideOffset'>) {
     return (
         <PopoverPrimitive.Portal>
             <PopoverPrimitive.Positioner
@@ -52,23 +58,11 @@ function PopoverContent({
 }
 
 function PopoverHeader({ className, ...props }: ComponentProps<'div'>) {
-    return (
-        <div
-            data-slot="popover-header"
-            className={cn('flex flex-col gap-1', className)}
-            {...props}
-        />
-    );
+    return <div data-slot="popover-header" className={cn('flex flex-col gap-1', className)} {...props} />;
 }
 
 function PopoverTitle({ className, ...props }: PopoverPrimitive.Title.Props) {
-    return (
-        <PopoverPrimitive.Title
-            data-slot="popover-title"
-            className={cn('font-medium', className)}
-            {...props}
-        />
-    );
+    return <PopoverPrimitive.Title data-slot="popover-title" className={cn('font-medium', className)} {...props} />;
 }
 
 function PopoverDescription({
@@ -85,11 +79,4 @@ function PopoverDescription({
     );
 }
 
-export {
-    Popover,
-    PopoverContent,
-    PopoverDescription,
-    PopoverHeader,
-    PopoverTitle,
-    PopoverTrigger,
-};
+export { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger };

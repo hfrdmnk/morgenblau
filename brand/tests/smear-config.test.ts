@@ -14,9 +14,7 @@ describe('normalizeConfig', () => {
         const config = { ...structuredClone(DEFAULT_CONFIG), seed: 2794913770 };
         config.flow.angle = -37;
         config.scene.lightSize = 0.31;
-        expect(normalizeConfig(JSON.parse(serializeConfig(config)))).toEqual(
-            config,
-        );
+        expect(normalizeConfig(JSON.parse(serializeConfig(config)))).toEqual(config);
     });
 
     test('clamps out-of-range and missing values into the knob bounds', () => {
@@ -26,7 +24,7 @@ describe('normalizeConfig', () => {
             size: { width: 99999, height: 10 },
             flow: { smearLength: 50, angle: Number.NaN },
             scene: { lightSize: -3 },
-            color: { hue: 999, chroma: "x" },
+            color: { hue: 999, chroma: 'x' },
         });
         expect(config.seed).toBe(4294967295);
         expect(config.mode).toBe(DEFAULT_CONFIG.mode);

@@ -8,12 +8,7 @@ export class ApiError extends Error {
     readonly code: string | undefined;
     readonly errors?: FieldErrors;
 
-    constructor(
-        status: number,
-        code: string | undefined,
-        message: string,
-        errors?: FieldErrors,
-    ) {
+    constructor(status: number, code: string | undefined, message: string, errors?: FieldErrors) {
         super(message);
         this.name = 'ApiError';
         this.status = status;
@@ -45,10 +40,7 @@ type ApiOptions = {
     signal?: AbortSignal;
 };
 
-export async function api<T = undefined>(
-    path: string,
-    options: ApiOptions = {},
-): Promise<T> {
+export async function api<T = undefined>(path: string, options: ApiOptions = {}): Promise<T> {
     const { method = 'GET', body, signal } = options;
     const response = await fetch(path, {
         method,
@@ -63,9 +55,7 @@ export async function api<T = undefined>(
               }),
     });
     if (!response.ok) {
-        const failure = (await response
-            .json()
-            .catch(() => null)) as FailureBody | null;
+        const failure = (await response.json().catch(() => null)) as FailureBody | null;
         throw new ApiError(
             response.status,
             failure?.code,

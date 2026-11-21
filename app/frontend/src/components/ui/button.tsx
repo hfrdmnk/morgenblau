@@ -19,7 +19,8 @@ const buttonVariants = cva(
                 // Chrome navigation that changes only its colour on hover, like the links around it.
                 nav: 'text-muted-foreground hover:text-foreground disabled:text-subtle-foreground',
                 // Shows or hides more of a list; open, it keeps the hover look, and its chevron turns with it.
-                disclosure: 'text-muted-foreground hover:bg-foreground-faint hover:text-foreground aria-expanded:bg-foreground-faint aria-expanded:text-foreground [&_svg]:transition-transform [&_svg]:duration-(--motion-duration-ui) [&_svg]:ease-(--ease-out) motion-reduce:[&_svg]:transition-none',
+                disclosure:
+                    'text-muted-foreground hover:bg-foreground-faint hover:text-foreground aria-expanded:bg-foreground-faint aria-expanded:text-foreground [&_svg]:transition-transform [&_svg]:duration-(--motion-duration-ui) [&_svg]:ease-(--ease-out) motion-reduce:[&_svg]:transition-none',
                 destructive: `${raised} btn-surface-destructive-tint text-destructive`,
             },
             size: {
@@ -57,11 +58,7 @@ function Button({
     ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
     return (
-        <ButtonPrimitive
-            data-slot="button"
-            className={cn(buttonVariants({ variant, size }), className)}
-            {...props}
-        />
+        <ButtonPrimitive data-slot="button" className={cn(buttonVariants({ variant, size }), className)} {...props} />
     );
 }
 

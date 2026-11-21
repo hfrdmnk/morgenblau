@@ -31,10 +31,7 @@ type DigestResponse = {
     hasActiveJob: boolean;
 };
 
-type LoadState<T> =
-    | { status: 'loading' }
-    | { status: 'loaded'; data: T }
-    | { status: 'error' };
+type LoadState<T> = { status: 'loading' } | { status: 'loaded'; data: T } | { status: 'error' };
 
 export function useDigest(date: string) {
     const [state, setState] = useState<LoadState<DigestResponse> & { date?: string }>({

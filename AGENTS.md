@@ -10,7 +10,7 @@ This is a monorepo. Each project builds and deploys on its own; nothing is share
 - `site/`: the Astro landing page for `morgen.blue`. Deploys to Cloudflare Workers.
 - `brand/`: Abstract Studio, the Vite/React tool that generates brand artwork. Deploys to Vercel.
 
-Bun owns every JavaScript install; each project keeps its own `bun.lock`.
+Bun owns every JavaScript install; each project keeps its own `bun.lock`. `bun fmt` formats each JavaScript project from its own directory, with options in its `bunfig.toml` and indentation from `.editorconfig`; CI runs `bun fmt --check`. It never runs from the root, where it would reformat lexicons and other files that are not ours to restyle.
 
 ## Spec Compliance
 

@@ -22,12 +22,16 @@ function storedFont(): ReaderFont | null {
 
 function subscribe(listener: () => void) {
     listeners.add(listener);
-    return () => { listeners.delete(listener); };
+    return () => {
+        listeners.delete(listener);
+    };
 }
 
 export function useReaderFont() {
     const font = useSyncExternalStore(subscribe, () => storedFont() ?? 'sans');
-    const [error, setError] = useState(() => (storedFont() === null ? 'Your browser could not load the saved reader font.' : ''));
+    const [error, setError] = useState(() =>
+        storedFont() === null ? 'Your browser could not load the saved reader font.' : '',
+    );
 
     function changeFont(next: ReaderFont) {
         try {

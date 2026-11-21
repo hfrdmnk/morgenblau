@@ -5,7 +5,9 @@ function SourceIcon({ src, size = 'md' }: { src?: string | null; size?: 'md' | '
         <img
             alt=""
             data-slot="source-icon"
-            className={size === '2xl' ? 'size-6 shrink-0 rounded-sm object-cover' : 'size-4 shrink-0 rounded-sm object-cover'}
+            className={
+                size === '2xl' ? 'size-6 shrink-0 rounded-sm object-cover' : 'size-4 shrink-0 rounded-sm object-cover'
+            }
             loading="lazy"
             onError={(event) => {
                 event.currentTarget.hidden = true;

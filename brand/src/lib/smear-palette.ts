@@ -43,9 +43,7 @@ function color(l: number, c: number, baseHue: number): Rgb {
         if (rgb.every((channel) => channel >= 0 && channel <= 1)) low = mid;
         else high = mid;
     }
-    return oklchToLinear(l, low, hue).map((channel) =>
-        Math.min(1, Math.max(0, channel)),
-    ) as Rgb;
+    return oklchToLinear(l, low, hue).map((channel) => Math.min(1, Math.max(0, channel))) as Rgb;
 }
 
 // Analogous colours spread around one hue, a near-white light, and a complementary accent. The seed varies them inside the knobs.
@@ -62,10 +60,6 @@ export function generatePalette(seed: number, knobs: PaletteKnobs): Palette {
             color(0.75 + random() * 0.12, chroma * (0.7 + random() * 0.4), near()),
         ],
         light: color(0.95 + random() * 0.03, 0.012 + random() * 0.02, near()),
-        accent: color(
-            0.7 + random() * 0.12,
-            Math.max(chroma, 0.1),
-            hue + 180 + (random() - 0.5) * 60,
-        ),
+        accent: color(0.7 + random() * 0.12, Math.max(chroma, 0.1), hue + 180 + (random() - 0.5) * 60),
     };
 }

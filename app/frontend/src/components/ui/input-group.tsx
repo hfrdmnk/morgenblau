@@ -21,7 +21,10 @@ function InputGroup({ className, ...props }: ComponentProps<'div'>) {
 function InputGroupInput({ className, ...props }: ComponentProps<typeof Input>) {
     return (
         <Input
-            className={cn('h-full flex-1 bg-transparent focus-visible:outline-none aria-invalid:shadow-none disabled:opacity-100', className)}
+            className={cn(
+                'h-full flex-1 bg-transparent focus-visible:outline-none aria-invalid:shadow-none disabled:opacity-100',
+                className,
+            )}
             {...props}
         />
     );

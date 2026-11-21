@@ -38,7 +38,8 @@ export function youtubeFeeds(feedUrl: string) {
     } catch {
         return undefined;
     }
-    if (!['youtube.com', 'www.youtube.com'].includes(url.hostname) || url.pathname !== '/feeds/videos.xml') return undefined;
+    if (!['youtube.com', 'www.youtube.com'].includes(url.hostname) || url.pathname !== '/feeds/videos.xml')
+        return undefined;
     const id =
         /^UC([\w-]{22})$/.exec(url.searchParams.get('channel_id') ?? '')?.[1] ??
         /^UULF([\w-]{22})$/.exec(url.searchParams.get('playlist_id') ?? '')?.[1];
@@ -56,17 +57,11 @@ function webURL(input: string) {
     const trimmed = input.trim();
     let url: URL;
     try {
-        url = new URL(
-            /^[a-z][a-z\d+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`,
-        );
+        url = new URL(/^[a-z][a-z\d+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`);
     } catch {
         return undefined;
     }
-    return ['https:', 'http:'].includes(url.protocol) &&
-        !url.username &&
-        !url.password
-        ? url.href
-        : undefined;
+    return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : undefined;
 }
 
 export function discoverSources(input: string, signal: AbortSignal) {
@@ -79,11 +74,7 @@ export function discoverSources(input: string, signal: AbortSignal) {
     });
 }
 
-export type GeneratedHealth =
-    | 'ok'
-    | 'needs_attention'
-    | 'blocked_by_site'
-    | 'broken';
+export type GeneratedHealth = 'ok' | 'needs_attention' | 'blocked_by_site' | 'broken';
 
 export type AnchorRejection = 'not_on_page' | 'not_confirmed' | 'no_better';
 
@@ -100,18 +91,12 @@ export type GeneratedSource = {
     anchorRejected?: AnchorRejection;
 };
 
-export function generateSource(
-    input: string,
-    anchor: string | undefined,
-    signal: AbortSignal,
-) {
+export function generateSource(input: string, anchor: string | undefined, signal: AbortSignal) {
     const url = webURL(input);
     if (!url) return Promise.reject(new Error('Enter a website URL.'));
     const anchorUrl = anchor === undefined ? undefined : webURL(anchor);
     if (anchor !== undefined && !anchorUrl)
-        return Promise.reject(
-            new Error('Enter the address of one post on that page.'),
-        );
+        return Promise.reject(new Error('Enter the address of one post on that page.'));
     return api<GeneratedSource>('/api/web-sources', {
         method: 'POST',
         body: anchorUrl ? { url, anchorUrl } : { url },
@@ -120,8 +105,7 @@ export function generateSource(
 }
 
 const RATE_LIMITED = 'You’ve generated a lot of feeds recently. Try again later.';
-const SETUP_IN_FLIGHT =
-    'Your last feed is still being generated. Try again in a moment.';
+const SETUP_IN_FLIGHT = 'Your last feed is still being generated. Try again in a moment.';
 
 // The reader's own earlier setup is still spending, so this clears in seconds unlike a limit.
 function setupInFlight(error: ApiError) {
@@ -133,8 +117,7 @@ function limitMessage(error: ApiError) {
 }
 
 const CODE_MESSAGES: Record<string, string> = {
-    browser_built:
-        'This site builds its post list in the browser, so Morgenblau can’t follow it yet.',
+    browser_built: 'This site builds its post list in the browser, so Morgenblau can’t follow it yet.',
 };
 
 const STATUS_MESSAGES: Record<number, string> = {
@@ -144,8 +127,7 @@ const STATUS_MESSAGES: Record<number, string> = {
 };
 
 function apiGenerationError(error: ApiError) {
-    if (error.status === 429 || error.code === 'rate_limited')
-        return limitMessage(error);
+    if (error.status === 429 || error.code === 'rate_limited') return limitMessage(error);
     const known = CODE_MESSAGES[error.code ?? ''] ?? STATUS_MESSAGES[error.status];
     if (known) return known;
     return error.status < 500 ? error.message : undefined;
@@ -155,19 +137,14 @@ function apiGenerationError(error: ApiError) {
 export function generationError(error: unknown) {
     const api = error instanceof ApiError ? apiGenerationError(error) : undefined;
     if (api) return api;
-    return error instanceof Error &&
-        !(error instanceof TypeError) &&
-        !(error instanceof ApiError)
+    return error instanceof Error && !(error instanceof TypeError) && !(error instanceof ApiError)
         ? error.message
         : 'Couldn’t generate a feed. Try again.';
 }
 
 // Only a bad address is the reader's to fix; a busy or unreachable server is not.
 export function anchorError(error: unknown) {
-    const invalid =
-        error instanceof ApiError
-            ? error.status === 400
-            : !(error instanceof TypeError);
+    const invalid = error instanceof ApiError ? error.status === 400 : !(error instanceof TypeError);
     return {
         message:
             error instanceof ApiError && invalid
@@ -187,9 +164,7 @@ export function anchorRejection(why: AnchorRejection) {
 // A long limit, an unavailable generator or a bad address answers the same way at once.
 export function canRetryGeneration(error: unknown) {
     if (error instanceof ApiError)
-        return error.status === 429
-            ? setupInFlight(error)
-            : error.status >= 500 && error.status !== 503;
+        return error.status === 429 ? setupInFlight(error) : error.status >= 500 && error.status !== 503;
     return error instanceof TypeError;
 }
 
@@ -198,9 +173,7 @@ export function generatedVerdict(source: GeneratedSource) {
     const found = source.itemCount > 0;
     return {
         subscribable: !blocked && found,
-        askAnchor:
-            !blocked &&
-            (!found || source.needsAnchor || source.health !== 'ok'),
+        askAnchor: !blocked && (!found || source.needsAnchor || source.health !== 'ok'),
         blocked,
     };
 }
@@ -216,10 +189,7 @@ export function generatedCandidate(source: GeneratedSource): SourceCandidate {
 export type SourceOptions = { tags: string[]; primary: boolean; title?: string };
 
 // Options travel only when set: a native publication with none needs no sidecar record.
-export async function addSource(
-    candidate: SourceCandidate,
-    options: SourceOptions = { tags: [], primary: false },
-) {
+export async function addSource(candidate: SourceCandidate, options: SourceOptions = { tags: [], primary: false }) {
     // A publication's own name needs no sidecar, so only a name the reader typed travels with it.
     const identity =
         candidate.kind === 'standardfeed'
@@ -242,7 +212,10 @@ export type SourceChange = { title?: string; tags?: string[]; primary?: boolean;
 
 // The PATCH route rewrites only the fields it is sent, so the change carries only what the reader edited.
 export async function editSource(rkey: string, change: SourceChange) {
-    const { jobId } = await api<{ jobId?: string }>(`/api/subscriptions/${encodeURIComponent(rkey)}`, { method: 'PATCH', body: change });
+    const { jobId } = await api<{ jobId?: string }>(`/api/subscriptions/${encodeURIComponent(rkey)}`, {
+        method: 'PATCH',
+        body: change,
+    });
     subscriptionChanges.dispatchEvent(new Event('change'));
     // A re-pointed feed has no posts until its fetch lands, so views read it again once the job settles.
     if (jobId) void settled(jobId).then(() => subscriptionChanges.dispatchEvent(new Event('change')));
@@ -270,7 +243,8 @@ export type PreviewPost = { title: string; publishedAt?: string; url?: string; c
 export async function previewSource(candidate: SourceCandidate, signal: AbortSignal) {
     const { items } = await api<{ items: PreviewPost[] }>('/api/subscriptions/preview', {
         method: 'POST',
-        body: candidate.kind === 'standardfeed' ? { publication: candidate.publication } : { feedUrl: candidate.feedUrl },
+        body:
+            candidate.kind === 'standardfeed' ? { publication: candidate.publication } : { feedUrl: candidate.feedUrl },
         signal,
     });
     return items;
@@ -309,7 +283,11 @@ export type SiteResult = SourceDiscovery & { url: string; profile: SiteProfile |
 export async function findSite(input: string, signal: AbortSignal): Promise<SiteResult> {
     const url = webURL(input);
     const profile = url
-        ? api<{ profile: SiteProfile | null }>('/api/subscriptions/profile', { method: 'POST', body: { url }, signal }).then(
+        ? api<{ profile: SiteProfile | null }>('/api/subscriptions/profile', {
+              method: 'POST',
+              body: { url },
+              signal,
+          }).then(
               (result) => result.profile ?? null,
               () => null,
           )
@@ -318,12 +296,7 @@ export async function findSite(input: string, signal: AbortSignal): Promise<Site
     return { ...discovery, url: input, profile: await profile };
 }
 
-export async function newsletterAddress(
-    signal: AbortSignal,
-): Promise<string | undefined> {
-    const existing = await api<{ address?: string }>(
-        '/api/newsletters/address',
-        { signal },
-    );
+export async function newsletterAddress(signal: AbortSignal): Promise<string | undefined> {
+    const existing = await api<{ address?: string }>('/api/newsletters/address', { signal });
     return existing.address;
 }

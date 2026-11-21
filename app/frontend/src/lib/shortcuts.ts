@@ -17,7 +17,13 @@ export function showShortcutNotice(message: string) {
 
 // The command menu takes ⌘K, or Ctrl+K off Apple platforms, from anywhere, text fields included, as other apps do.
 export function isCommandMenuKey(event: KeyboardEvent): boolean {
-    return (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && !event.repeat && event.key.toLowerCase() === 'k';
+    return (
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        !event.repeat &&
+        event.key.toLowerCase() === 'k'
+    );
 }
 
 // A space separates keys that do the same thing.

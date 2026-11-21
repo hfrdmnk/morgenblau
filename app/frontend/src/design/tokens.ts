@@ -72,7 +72,14 @@ export const frame = {
     minWidth: { 0: 'min-w-0' },
     // control: a default Button's height, so a row of text lines up with one; touch: the 44px touch target.
     // state: the room a page's loading, empty or error state centres in, so it reads as the page and not a stray line.
-    minHeight: { 0: 'min-h-0', screen: 'min-h-dvh', full: 'min-h-full', control: 'min-h-10', touch: 'min-h-11', state: 'min-h-52' },
+    minHeight: {
+        0: 'min-h-0',
+        screen: 'min-h-dvh',
+        full: 'min-h-full',
+        control: 'min-h-10',
+        touch: 'min-h-11',
+        state: 'min-h-52',
+    },
     maxWidth: {
         sm: 'max-w-sm',
         md: 'max-w-md',

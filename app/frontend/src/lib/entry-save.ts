@@ -51,16 +51,18 @@ export function createEntrySave(entry: ReaderEntry) {
     // Resolves to whether the change reached the server; a dropped or failed one resolves false.
     function enqueue(request: () => Promise<void>, failure: string): Promise<boolean> {
         const queuedIn = generation;
-        const done = queue.then(async () => {
-            if (queuedIn !== generation) return false;
-            await request();
-            return true;
-        }).catch((error: unknown) => {
-            generation += 1;
-            set(confirmed);
-            toast.error(describeMutationError(error, failure));
-            return false;
-        });
+        const done = queue
+            .then(async () => {
+                if (queuedIn !== generation) return false;
+                await request();
+                return true;
+            })
+            .catch((error: unknown) => {
+                generation += 1;
+                set(confirmed);
+                toast.error(describeMutationError(error, failure));
+                return false;
+            });
         queue = done.then(() => undefined);
         return done;
     }
@@ -101,7 +103,9 @@ export function createEntrySave(entry: ReaderEntry) {
         get: () => state,
         subscribe(listener: () => void) {
             listeners.add(listener);
-            return () => { listeners.delete(listener); };
+            return () => {
+                listeners.delete(listener);
+            };
         },
         save,
         setTags,

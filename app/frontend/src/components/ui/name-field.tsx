@@ -5,9 +5,18 @@ import { cn } from 'cn';
 
 // A name edited in place, as a heading: the field sizes to its text, and an underline draws in on focus, or stays while invalid.
 // The label spans the name and its pen, so a click anywhere on either edits the name.
-function NameField({ invalid = false, disabled, ...props }: Omit<ComponentProps<'input'>, 'className' | 'style' | 'aria-invalid'> & { invalid?: boolean }) {
+function NameField({
+    invalid = false,
+    disabled,
+    ...props
+}: Omit<ComponentProps<'input'>, 'className' | 'style' | 'aria-invalid'> & { invalid?: boolean }) {
     return (
-        <label className={cn('group flex h-9 max-w-full min-w-0 cursor-text items-center gap-1.5', disabled && 'pointer-events-none')}>
+        <label
+            className={cn(
+                'group flex h-9 max-w-full min-w-0 cursor-text items-center gap-1.5',
+                disabled && 'pointer-events-none',
+            )}
+        >
             <span className="relative flex min-w-0">
                 <input
                     aria-invalid={invalid}

@@ -20,10 +20,9 @@ function ComboboxContent({
     className,
     ...props
 }: ComboboxPrimitive.Popup.Props &
-    Pick<
-        ComboboxPrimitive.Positioner.Props,
-        'align' | 'alignOffset' | 'side' | 'sideOffset' | 'anchor'
-    > & { hideEmpty?: boolean }) {
+    Pick<ComboboxPrimitive.Positioner.Props, 'align' | 'alignOffset' | 'side' | 'sideOffset' | 'anchor'> & {
+        hideEmpty?: boolean;
+    }) {
     return (
         <ComboboxPrimitive.Portal>
             <ComboboxPrimitive.Positioner
@@ -52,10 +51,7 @@ function ComboboxList({ className, ...props }: ComboboxPrimitive.List.Props) {
     return (
         <ComboboxPrimitive.List
             data-slot="combobox-list"
-            className={cn(
-                'max-h-72 scroll-py-1 overflow-y-auto overscroll-contain p-1 data-empty:p-0',
-                className,
-            )}
+            className={cn('max-h-72 scroll-py-1 overflow-y-auto overscroll-contain p-1 data-empty:p-0', className)}
             {...props}
         />
     );

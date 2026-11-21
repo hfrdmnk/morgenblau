@@ -45,10 +45,7 @@ function knobs<T extends Record<string, { min: number; max: number; step: number
     values: { [K in keyof T]: number },
 ): { [K in keyof T]: Knob } {
     return Object.fromEntries(
-        Object.entries(group).map(([key, bound]) => [
-            key,
-            [values[key]!, bound.min, bound.max, bound.step],
-        ]),
+        Object.entries(group).map(([key, bound]) => [key, [values[key]!, bound.min, bound.max, bound.step]]),
     ) as { [K in keyof T]: Knob };
 }
 
@@ -70,8 +67,7 @@ function loadInitialConfig(): SmearConfig {
 
 function sizeLabel(size: SmearConfig['size']): string {
     const preset = Object.entries(SIZE_PRESETS).find(
-        ([, value]) =>
-            value.width === size.width && value.height === size.height,
+        ([, value]) => value.width === size.width && value.height === size.height,
     );
     return preset ? preset[0] : CUSTOM_SIZE;
 }
@@ -87,11 +83,7 @@ function downloadBlob(blob: Blob, filename: string): void {
 
 let offlineRenderer: SmearRenderer | undefined;
 
-function renderOffline(
-    config: SmearConfig,
-    width: number,
-    height: number,
-): HTMLCanvasElement {
+function renderOffline(config: SmearConfig, width: number, height: number): HTMLCanvasElement {
     offlineRenderer ??= createSmearRenderer(document.createElement('canvas'));
     offlineRenderer.render(config, width, height);
     return offlineRenderer.canvas;
@@ -102,9 +94,7 @@ export default function App() {
     const [seed, setSeed] = useState(initialConfig.seed);
     const [mode, setMode] = useState<Mode>(initialConfig.mode);
     const [size, setSize] = useState(initialConfig.size);
-    const [customSize, setCustomSize] = useState(
-        sizeLabel(initialConfig.size) === CUSTOM_SIZE,
-    );
+    const [customSize, setCustomSize] = useState(sizeLabel(initialConfig.size) === CUSTOM_SIZE);
     const [exportScale, setExportScale] = useState(2);
     const [status, setStatus] = useState('');
     const [error, setError] = useState('');
@@ -116,10 +106,7 @@ export default function App() {
     const rendererRef = useRef<SmearRenderer | null>(null);
     const lastChangeRef = useRef(0);
 
-    const dialConfig = useMemo(
-        () => createDialConfig(initialConfig),
-        [initialConfig],
-    );
+    const dialConfig = useMemo(() => createDialConfig(initialConfig), [initialConfig]);
     const dial = useDialKitController('Knobs', dialConfig, { id: 'smear' });
     const values = dial.values;
 
@@ -135,29 +122,14 @@ export default function App() {
             backdrop: values.backdrop,
             finish: values.finish,
         }),
-        [
-            mode,
-            seed,
-            size,
-            values.backdrop,
-            values.color,
-            values.finish,
-            values.flow,
-            values.scene,
-        ],
+        [mode, seed, size, values.backdrop, values.color, values.finish, values.flow, values.scene],
     );
 
     const fit = useMemo(() => {
-        const scale = Math.min(
-            stageSize.width / size.width,
-            stageSize.height / size.height,
-        );
+        const scale = Math.min(stageSize.width / size.width, stageSize.height / size.height);
         const width = Math.max(1, Math.floor(size.width * scale));
         const height = Math.max(1, Math.floor(size.height * scale));
-        const pixelWidth = Math.min(
-            size.width,
-            Math.round(width * window.devicePixelRatio),
-        );
+        const pixelWidth = Math.min(size.width, Math.round(width * window.devicePixelRatio));
         return {
             width,
             height,
@@ -246,10 +218,7 @@ export default function App() {
     }
 
     async function save() {
-        const next = [
-            { savedAt: new Date().toISOString(), config },
-            ...saved,
-        ];
+        const next = [{ savedAt: new Date().toISOString(), config }, ...saved];
         localStorage.setItem(SAVED_KEY, JSON.stringify(next));
         setSaved(next);
         try {
@@ -260,10 +229,7 @@ export default function App() {
         }
     }
 
-    const maxScale = Math.max(
-        1,
-        Math.floor(SIZE_BOUNDS.max / Math.max(size.width, size.height)),
-    );
+    const maxScale = Math.max(1, Math.floor(SIZE_BOUNDS.max / Math.max(size.width, size.height)));
     const scale = Math.min(exportScale, maxScale);
     const exportWidth = size.width * scale;
     const exportHeight = size.height * scale;
@@ -275,10 +241,7 @@ export default function App() {
                 setError('PNG export failed.');
                 return;
             }
-            downloadBlob(
-                blob,
-                `smear-${mode}-${seed}-${exportWidth}x${exportHeight}.png`,
-            );
+            downloadBlob(blob, `smear-${mode}-${seed}-${exportWidth}x${exportHeight}.png`);
             setStatus(`Exported ${exportWidth}×${exportHeight} PNG`);
         }, 'image/png');
     }
@@ -287,9 +250,7 @@ export default function App() {
         if (!Number.isFinite(value)) return;
         setSize((current) => ({
             ...current,
-            [axis]: Math.round(
-                Math.min(SIZE_BOUNDS.max, Math.max(SIZE_BOUNDS.min, value)),
-            ),
+            [axis]: Math.round(Math.min(SIZE_BOUNDS.max, Math.max(SIZE_BOUNDS.min, value))),
         }));
     }
 
@@ -345,45 +306,30 @@ export default function App() {
                             setCustomSize(label === CUSTOM_SIZE);
                             if (label !== CUSTOM_SIZE) {
                                 setSize({
-                                    ...SIZE_PRESETS[
-                                        label as keyof typeof SIZE_PRESETS
-                                    ],
+                                    ...SIZE_PRESETS[label as keyof typeof SIZE_PRESETS],
                                 });
                             }
                         }}
                     >
-                        {[...Object.keys(SIZE_PRESETS), CUSTOM_SIZE].map(
-                            (label) => (
-                                <option key={label}>{label}</option>
-                            ),
-                        )}
+                        {[...Object.keys(SIZE_PRESETS), CUSTOM_SIZE].map((label) => (
+                            <option key={label}>{label}</option>
+                        ))}
                     </select>
                 </label>
                 {customSize ? (
                     <div className="studio-custom-size">
                         {(['width', 'height'] as const).map((axis) => (
                             <label key={`${axis}-${size[axis]}`}>
-                                <span className="studio-visually-hidden">
-                                    {axis}
-                                </span>
+                                <span className="studio-visually-hidden">{axis}</span>
                                 <input
                                     type="number"
                                     min={SIZE_BOUNDS.min}
                                     max={SIZE_BOUNDS.max}
                                     defaultValue={size[axis]}
-                                    onBlur={(event) =>
-                                        updateCustomSize(
-                                            axis,
-                                            event.target.valueAsNumber,
-                                        )
-                                    }
+                                    onBlur={(event) => updateCustomSize(axis, event.target.valueAsNumber)}
                                     onKeyDown={(event) => {
                                         if (event.key === 'Enter') {
-                                            updateCustomSize(
-                                                axis,
-                                                event.currentTarget
-                                                    .valueAsNumber,
-                                            );
+                                            updateCustomSize(axis, event.currentTarget.valueAsNumber);
                                         }
                                     }}
                                 />
@@ -393,28 +339,15 @@ export default function App() {
                 ) : null}
                 <label className="studio-size">
                     <span className="studio-visually-hidden">Export scale</span>
-                    <select
-                        value={scale}
-                        onChange={(event) =>
-                            setExportScale(Number(event.target.value))
-                        }
-                    >
+                    <select value={scale} onChange={(event) => setExportScale(Number(event.target.value))}>
                         {EXPORT_SCALES.map((option) => (
-                            <option
-                                key={option}
-                                value={option}
-                                disabled={option > maxScale}
-                            >
+                            <option key={option} value={option} disabled={option > maxScale}>
                                 {option}×
                             </option>
                         ))}
                     </select>
                 </label>
-                <button
-                    type="button"
-                    className="studio-button"
-                    onClick={exportPng}
-                >
+                <button type="button" className="studio-button" onClick={exportPng}>
                     <Download aria-hidden="true" />
                     Export {exportWidth}×{exportHeight}
                 </button>
@@ -436,9 +369,7 @@ export default function App() {
 
             <nav className="studio-rail" aria-label="Saved configs">
                 {saved.length === 0 ? (
-                    <p className="studio-rail-empty">
-                        Saved configs appear here.
-                    </p>
+                    <p className="studio-rail-empty">Saved configs appear here.</p>
                 ) : (
                     saved.map((item) => (
                         <button
@@ -451,9 +382,7 @@ export default function App() {
                                 setStatus(`Applied ${item.config.mode} · ${item.config.seed}`);
                             }}
                         >
-                            {thumbnails[item.savedAt] ? (
-                                <img src={thumbnails[item.savedAt]} alt="" />
-                            ) : null}
+                            {thumbnails[item.savedAt] ? <img src={thumbnails[item.savedAt]} alt="" /> : null}
                             <span>
                                 {item.config.mode} · {item.config.seed}
                             </span>

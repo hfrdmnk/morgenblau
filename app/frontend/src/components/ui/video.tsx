@@ -5,7 +5,13 @@ import { cn } from 'cn';
 // The player's slot. While it plays it sticks to the top over what scrolls beneath it; the band above the player, pulled into the
 // space before it, covers that text too.
 function PlayerSlot({ playing, ...props }: Omit<ComponentProps<'div'>, 'className' | 'style'> & { playing: boolean }) {
-    return <div data-slot="player-slot" className={cn('-mt-3 bg-background pt-3', playing && 'sticky top-0 z-10')} {...props} />;
+    return (
+        <div
+            data-slot="player-slot"
+            className={cn('-mt-3 bg-background pt-3', playing && 'sticky top-0 z-10')}
+            {...props}
+        />
+    );
 }
 
 // An embedded player in a 16:9 frame.

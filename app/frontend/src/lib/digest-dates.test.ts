@@ -60,9 +60,7 @@ describe('digest dates', () => {
     });
 
     test('calendar arithmetic crosses month boundaries', () => {
-        expect(toDateKey(addCalendarDays(new Date(2026, 2, 1), -1))).toBe(
-            '2026-02-28',
-        );
+        expect(toDateKey(addCalendarDays(new Date(2026, 2, 1), -1))).toBe('2026-02-28');
     });
 
     test('parsing accepts calendar dates and rejects normalized or malformed input', () => {

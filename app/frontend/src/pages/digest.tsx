@@ -37,14 +37,7 @@ export function Digest() {
     useDocumentTitle(dayName.format(selectedDate));
 
     return (
-        <Frame
-            as="main"
-            gap="3xl"
-            id="main"
-            maxWidth="3xl"
-            paddingX={{ base: 'xl', sm: '3xl' }}
-            width="full"
-        >
+        <Frame as="main" gap="3xl" id="main" maxWidth="3xl" paddingX={{ base: 'xl', sm: '3xl' }} width="full">
             <Text as="h1" size="base" tone="muted" weight="book">
                 {dayName.format(selectedDate)}
             </Text>
@@ -63,20 +56,23 @@ function useDayShortcuts(selected: Date, today: Date, entries: DigestEntry[]) {
         navigate(digestHref(key === todayKey ? undefined : key));
     };
     const earlier = () => show(addCalendarDays(selected, -1));
-    const later = () => isToday ? showShortcutNotice('Today is the latest digest') : show(addCalendarDays(selected, 1));
+    const later = () =>
+        isToday ? showShortcutNotice('Today is the latest digest') : show(addCalendarDays(selected, 1));
     useShortcuts({
         ArrowLeft: earlier,
         h: earlier,
         ArrowRight: later,
         l: later,
-        'Shift+T': () => isToday ? showShortcutNotice('Already showing today') : show(today),
+        'Shift+T': () => (isToday ? showShortcutNotice('Already showing today') : show(today)),
     });
     useCommands([
         { id: 'day:previous', group, label: 'Previous day', keywords: ['earlier', 'back'], run: earlier },
-        ...(isToday ? [] : [
-            { id: 'day:next', group, label: 'Next day', keywords: ['later', 'forward'], run: later },
-            { id: 'day:today', group, label: 'Today', run: () => show(today) },
-        ]),
+        ...(isToday
+            ? []
+            : [
+                  { id: 'day:next', group, label: 'Next day', keywords: ['later', 'forward'], run: later },
+                  { id: 'day:today', group, label: 'Today', run: () => show(today) },
+              ]),
         ...entries.map((entry) => ({
             id: `headline:${entry.entrySlug}`,
             group: 'Headlines',
@@ -95,9 +91,12 @@ const SAMPLE_SOURCE = { title: 'Example Publication', siteUrl: 'https://example.
 const SAMPLE_DIGEST: DigestData = {
     date: '2026-01-01',
     hasActiveJob: false,
-    entries: ['A sample headline that runs about as long as most do', 'A shorter sample headline', 'Another sample headline of a typical length', 'A sample headline'].map((title, index) => (
-        { id: index + 1, entrySlug: `${index}`, title, body: null, source: SAMPLE_SOURCE }
-    )),
+    entries: [
+        'A sample headline that runs about as long as most do',
+        'A shorter sample headline',
+        'Another sample headline of a typical length',
+        'A sample headline',
+    ].map((title, index) => ({ id: index + 1, entrySlug: `${index}`, title, body: null, source: SAMPLE_SOURCE })),
 };
 
 function DigestContent({ date, state }: { date: string; state: ReturnType<typeof useDigest> }) {
@@ -135,14 +134,26 @@ function LoadedDigest({ date, digest }: { date: string; digest: DigestData }) {
                 {primary.length > 0 ? (
                     <Frame aria-label="Primary sources" as="ol" gap="5xl">
                         {primary.map((group) => (
-                            <PrimaryItem date={date} group={group} key={group.key} onToggle={() => toggle(group.key)} open={open.has(group.key)} />
+                            <PrimaryItem
+                                date={date}
+                                group={group}
+                                key={group.key}
+                                onToggle={() => toggle(group.key)}
+                                open={open.has(group.key)}
+                            />
                         ))}
                     </Frame>
                 ) : null}
                 {rest.length > 0 ? (
                     <ItemList ordered>
                         {rest.map((group) => (
-                            <DigestItem date={date} group={group} key={group.key} onToggle={() => toggle(group.key)} open={open.has(group.key)} />
+                            <DigestItem
+                                date={date}
+                                group={group}
+                                key={group.key}
+                                onToggle={() => toggle(group.key)}
+                                open={open.has(group.key)}
+                            />
                         ))}
                     </ItemList>
                 ) : null}
@@ -158,7 +169,12 @@ function groupBySource(entries: DigestEntry[]): SourceGroup[] {
     const groups = new Map<string, SourceGroup>();
     for (const entry of entries) {
         const { source } = entry;
-        const key = source.kind === 'newsletter' ? `newsletter:${source.id}` : source.feedUrl ? `feed:${source.feedUrl}` : `entry:${entry.id}`;
+        const key =
+            source.kind === 'newsletter'
+                ? `newsletter:${source.id}`
+                : source.feedUrl
+                  ? `feed:${source.feedUrl}`
+                  : `entry:${entry.id}`;
         const group = groups.get(key);
         if (group) group.more.push(entry);
         else groups.set(key, { key, lead: entry, more: [] });
@@ -171,9 +187,10 @@ function EmptyDigest({ digest }: { digest: DigestData }) {
     const feeds = useSources<FeedSource[]>('/api/subscriptions');
     const newsletters = useSources<{ active: unknown[]; stopped: unknown[] }>('/api/newsletters');
     // Servers without newsletter delivery answer 404 here, which means the reader has no newsletters.
-    const noSources = feeds.status === 'loaded' && newsletters.status !== 'loading'
-        ? feeds.data.length === 0 && (newsletters.status === 'error' || newsletters.data.active.length === 0)
-        : null;
+    const noSources =
+        feeds.status === 'loaded' && newsletters.status !== 'loading'
+            ? feeds.data.length === 0 && (newsletters.status === 'error' || newsletters.data.active.length === 0)
+            : null;
     // After a source change the copy waits for the digest's own answer, which may turn this day into collecting instead.
     const [changedAt, setChangedAt] = useState<DigestData | null>(null);
     useEffect(() => {
@@ -229,16 +246,33 @@ function PrimaryItem({ date, group, onToggle, open }: GroupProps) {
     return (
         <Frame as="li" gap="m">
             <FeaturePost
-                excerpt={excerpt ? <Text lineClamp={2} size="base" tone="muted" wrap="pretty">{excerpt}</Text> : null}
-                headline={(
-                    <Text as="h2" break="words" size={{ base: '2xl', sm: '3xl' }} tone={entry.title ? undefined : 'muted'} weight="medium" wrap="balance">
-                        <Link data-post-link href={href} variant={entry.title ? 'title' : 'quiet'}>{entry.title || 'Untitled'}</Link>
+                excerpt={
+                    excerpt ? (
+                        <Text lineClamp={2} size="base" tone="muted" wrap="pretty">
+                            {excerpt}
+                        </Text>
+                    ) : null
+                }
+                headline={
+                    <Text
+                        as="h2"
+                        break="words"
+                        size={{ base: '2xl', sm: '3xl' }}
+                        tone={entry.title ? undefined : 'muted'}
+                        weight="medium"
+                        wrap="balance"
+                    >
+                        <Link data-post-link href={href} variant={entry.title ? 'title' : 'quiet'}>
+                            {entry.title || 'Untitled'}
+                        </Link>
                     </Text>
-                )}
+                }
                 image={image ? { href, onError: () => setFailedImage(image), src: image } : null}
                 source={<PrimarySource entry={entry} />}
             />
-            {group.more.length > 0 ? <MoreFromSource date={date} group={group} onToggle={onToggle} open={open} size="xl" /> : null}
+            {group.more.length > 0 ? (
+                <MoreFromSource date={date} group={group} onToggle={onToggle} open={open} size="xl" />
+            ) : null}
         </Frame>
     );
 }
@@ -248,11 +282,22 @@ function PrimarySource({ entry }: { entry: DigestEntry }) {
     const source = (
         <>
             <SourceIcon src={entry.source.faviconUrl} />
-            <Text as="span" size="sm" truncate weight="medium">{sourceLabel(entry)}</Text>
+            <Text as="span" size="sm" truncate weight="medium">
+                {sourceLabel(entry)}
+            </Text>
         </>
     );
-    if (!sourceHref) return <Frame align="center" direction="row" gap="s" minWidth={0}>{source}</Frame>;
-    return <Link href={sourceHref} variant="title-row">{source}</Link>;
+    if (!sourceHref)
+        return (
+            <Frame align="center" direction="row" gap="s" minWidth={0}>
+                {source}
+            </Frame>
+        );
+    return (
+        <Link href={sourceHref} variant="title-row">
+            {source}
+        </Link>
+    );
 }
 
 function sourceLabel(entry: DigestEntry): string {
@@ -270,9 +315,25 @@ function DigestItem({ date, group, onToggle, open }: GroupProps) {
         <ListItem
             href={entryHref(entry.entrySlug, date)}
             icon={entry.source.faviconUrl}
-            meta={sourceHref ? <Link href={sourceHref} variant="quiet">{meta}</Link> : meta}
-            note={group.more.length > 0 ? <MoreList date={date} entries={group.more} id={id} open={open} size="lg" /> : null}
-            status={group.more.length > 0 ? <MoreToggle controls={id} group={group} onToggle={onToggle} open={open} size="pill" /> : null}
+            meta={
+                sourceHref ? (
+                    <Link href={sourceHref} variant="quiet">
+                        {meta}
+                    </Link>
+                ) : (
+                    meta
+                )
+            }
+            note={
+                group.more.length > 0 ? (
+                    <MoreList date={date} entries={group.more} id={id} open={open} size="lg" />
+                ) : null
+            }
+            status={
+                group.more.length > 0 ? (
+                    <MoreToggle controls={id} group={group} onToggle={onToggle} open={open} size="pill" />
+                ) : null
+            }
             title={entry.title || 'Untitled'}
         />
     );
@@ -293,7 +354,13 @@ function MoreFromSource({ date, group, onToggle, open, size }: GroupProps & { si
     );
 }
 
-function MoreToggle({ controls, group, onToggle, open, size }: {
+function MoreToggle({
+    controls,
+    group,
+    onToggle,
+    open,
+    size,
+}: {
     controls: string;
     group: SourceGroup;
     onToggle: () => void;
@@ -309,7 +376,9 @@ function MoreToggle({ controls, group, onToggle, open, size }: {
             size={size}
             variant="disclosure"
         >
-            <Text as="span" numeric="tabular">+{group.more.length} more</Text>
+            <Text as="span" numeric="tabular">
+                +{group.more.length} more
+            </Text>
             <ChevronDownIcon aria-hidden rotate={open ? 180 : undefined} size="sm" />
         </Button>
     );
@@ -319,14 +388,34 @@ function MoreToggle({ controls, group, onToggle, open, size }: {
 const MORE_TIMING = { open: 0.24, close: 0.16, ease: [0.16, 1, 0.3, 1] as const };
 
 // The source already heads the group, so the folded posts show only their titles.
-function MoreList({ date, entries, id, open, size }: { date: string; entries: DigestEntry[]; id: string; open: boolean; size: TitleSize }) {
+function MoreList({
+    date,
+    entries,
+    id,
+    open,
+    size,
+}: {
+    date: string;
+    entries: DigestEntry[];
+    id: string;
+    open: boolean;
+    size: TitleSize;
+}) {
     const reduced = useReducedMotion();
     return (
         <AnimatePresence initial={false}>
             {open ? (
                 <MotionFrame
-                    animate={{ height: 'auto', opacity: 1, transition: { duration: reduced ? 0 : MORE_TIMING.open, ease: MORE_TIMING.ease } }}
-                    exit={{ height: 0, opacity: 0, transition: { duration: reduced ? 0 : MORE_TIMING.close, ease: MORE_TIMING.ease } }}
+                    animate={{
+                        height: 'auto',
+                        opacity: 1,
+                        transition: { duration: reduced ? 0 : MORE_TIMING.open, ease: MORE_TIMING.ease },
+                    }}
+                    exit={{
+                        height: 0,
+                        opacity: 0,
+                        transition: { duration: reduced ? 0 : MORE_TIMING.close, ease: MORE_TIMING.ease },
+                    }}
                     id={id}
                     initial={{ height: 0, opacity: 0 }}
                     overflow="hidden"
@@ -335,7 +424,12 @@ function MoreList({ date, entries, id, open, size }: { date: string; entries: Di
                         {entries.map((entry) => (
                             <PostRow as="li" key={`${entry.id}-${entry.entrySlug}`} size="compact">
                                 <Text as="span" display="block" size={size} truncate weight="medium">
-                                    <Link data-post-link href={entryHref(entry.entrySlug, date)} title={entry.title || 'Untitled'} variant="title">
+                                    <Link
+                                        data-post-link
+                                        href={entryHref(entry.entrySlug, date)}
+                                        title={entry.title || 'Untitled'}
+                                        variant="title"
+                                    >
                                         {entry.title || 'Untitled'}
                                     </Link>
                                 </Text>

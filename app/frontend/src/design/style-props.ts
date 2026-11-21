@@ -14,7 +14,8 @@ export type StyleProps<M extends ClassMaps> = {
 };
 
 function tokenClasses(map: Record<string, string>, value: unknown): string[] {
-    const perBreakpoint: [string, unknown][] = typeof value === 'object' && value !== null ? Object.entries(value) : [['base', value]];
+    const perBreakpoint: [string, unknown][] =
+        typeof value === 'object' && value !== null ? Object.entries(value) : [['base', value]];
     return perBreakpoint
         .filter(([, token]) => token !== undefined)
         .flatMap(([breakpoint, token]) =>

@@ -13,8 +13,7 @@ export function usePublicFollowing() {
         void api<Setting>('/api/public-following', { signal: controller.signal })
             .then((setting) => setEnabled(setting.enabled))
             .catch(() => {
-                if (!controller.signal.aborted)
-                    toast.error('Could not load your public list setting.');
+                if (!controller.signal.aborted) toast.error('Could not load your public list setting.');
             });
         return () => controller.abort();
     }, []);
@@ -32,12 +31,7 @@ export function usePublicFollowing() {
         try {
             await set(!enabled);
         } catch (error) {
-            toast.error(
-                describeMutationError(
-                    error,
-                    'Could not change your public list. Please try again.',
-                ),
-            );
+            toast.error(describeMutationError(error, 'Could not change your public list. Please try again.'));
         } finally {
             setBusy(false);
         }

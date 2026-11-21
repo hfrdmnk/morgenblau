@@ -41,15 +41,19 @@ function json(body: unknown) {
 
 // The menu's own lists load on open; this reader follows nothing.
 function quietServer() {
-    globalThis.fetch = Object.assign(async (url: Parameters<typeof fetch>[0]) => {
-        const path = String(url);
-        if (path === '/api/profiles/me') return json({ did: 'did:plc:example', handle: 'reader.example', displayName: null, avatar: null });
-        if (path === '/api/newsletters/address') return json({ address: 'reader@inbound.example.com' });
-        if (path.startsWith('/api/newsletters')) return json({ active: [], stopped: [] });
-        if (path.endsWith('/tags')) return json({ tags: [] });
-        if (path.startsWith('/api/public-following')) return json({ enabled: false });
-        return json([]);
-    }, { preconnect: realFetch.preconnect });
+    globalThis.fetch = Object.assign(
+        async (url: Parameters<typeof fetch>[0]) => {
+            const path = String(url);
+            if (path === '/api/profiles/me')
+                return json({ did: 'did:plc:example', handle: 'reader.example', displayName: null, avatar: null });
+            if (path === '/api/newsletters/address') return json({ address: 'reader@inbound.example.com' });
+            if (path.startsWith('/api/newsletters')) return json({ active: [], stopped: [] });
+            if (path.endsWith('/tags')) return json({ tags: [] });
+            if (path.startsWith('/api/public-following')) return json({ enabled: false });
+            return json([]);
+        },
+        { preconnect: realFetch.preconnect },
+    );
 }
 
 const renames: string[] = [];
@@ -58,44 +62,57 @@ const tagWrites: string[][] = [];
 let failTagWrite = () => {};
 
 function SourcePage() {
-    useCommands([{ id: 'headline', group: 'Headlines', label: 'Last Monday in review', searchOnly: true, run: () => {} }, {
-        id: 'rename',
-        group: 'Example Publication',
-        label: 'Rename',
-        step: {
-            kind: 'text',
-            title: 'Rename',
-            initial: 'Example Publication',
-            placeholder: 'A name',
-            action: (value) => `Rename to “${value}”`,
-            submit: (value) => {
-                renames.push(value);
-                return 'Source renamed';
+    useCommands([
+        { id: 'headline', group: 'Headlines', label: 'Last Monday in review', searchOnly: true, run: () => {} },
+        {
+            id: 'rename',
+            group: 'Example Publication',
+            label: 'Rename',
+            step: {
+                kind: 'text',
+                title: 'Rename',
+                initial: 'Example Publication',
+                placeholder: 'A name',
+                action: (value) => `Rename to “${value}”`,
+                submit: (value) => {
+                    renames.push(value);
+                    return 'Source renamed';
+                },
             },
         },
-    }, {
-        id: 'primary',
-        group: 'Example Publication',
-        label: 'Primary',
-        // Never settles, so every later Enter lands while the first write is still in flight.
-        toggle: { on: false, set: (on) => { primaryWrites.push(on); return new Promise(() => {}); } },
-    }, {
-        id: 'tags',
-        group: 'Example Publication',
-        label: 'Edit tags',
-        step: {
-            kind: 'tags',
-            title: 'Tags',
-            tags: ['design'],
-            suggestionsPath: '/api/subscriptions/tags',
-            // A write with “weekend” waits until the test fails it, as a save that already toasted its own failure does.
-            save: (tags) => {
-                tagWrites.push(tags);
-                if (!tags.includes('weekend')) return Promise.resolve();
-                return new Promise((_, reject) => { failTagWrite = () => reject(new CommandProblem('')); });
+        {
+            id: 'primary',
+            group: 'Example Publication',
+            label: 'Primary',
+            // Never settles, so every later Enter lands while the first write is still in flight.
+            toggle: {
+                on: false,
+                set: (on) => {
+                    primaryWrites.push(on);
+                    return new Promise(() => {});
+                },
             },
         },
-    }]);
+        {
+            id: 'tags',
+            group: 'Example Publication',
+            label: 'Edit tags',
+            step: {
+                kind: 'tags',
+                title: 'Tags',
+                tags: ['design'],
+                suggestionsPath: '/api/subscriptions/tags',
+                // A write with “weekend” waits until the test fails it, as a save that already toasted its own failure does.
+                save: (tags) => {
+                    tagWrites.push(tags);
+                    if (!tags.includes('weekend')) return Promise.resolve();
+                    return new Promise((_, reject) => {
+                        failTagWrite = () => reject(new CommandProblem(''));
+                    });
+                },
+            },
+        },
+    ]);
     return <input aria-label="A field on the page" />;
 }
 
@@ -105,14 +122,16 @@ async function render() {
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
-    await act(async () => root.render(
-        <StrictMode>
-            <Router hook={useAppLocation}>
-                <SourcePage />
-                <CommandMenu />
-            </Router>
-        </StrictMode>,
-    ));
+    await act(async () =>
+        root.render(
+            <StrictMode>
+                <Router hook={useAppLocation}>
+                    <SourcePage />
+                    <CommandMenu />
+                </Router>
+            </StrictMode>,
+        ),
+    );
     unmount = () => {
         root.unmount();
         container.remove();
@@ -150,7 +169,9 @@ test('Ctrl+K opens the menu from a text field, and a typed day goes to that dige
     expect(document.activeElement).toBe(menuInput());
 
     await type('last monday');
-    expect(document.querySelector('[cmdk-item][data-selected="true"]')?.textContent).toContain('Go to Monday, November 2');
+    expect(document.querySelector('[cmdk-item][data-selected="true"]')?.textContent).toContain(
+        'Go to Monday, November 2',
+    );
     await press('Enter');
     expect(`${location.pathname}${location.search}`).toBe('/?date=2026-11-02');
 });
@@ -191,7 +212,8 @@ test('Enter pressed again while a command is still saving runs it only once', as
     await type('primary');
     await act(async () => {
         const input = menuInput()!;
-        for (let i = 0; i < 3; i++) input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        for (let i = 0; i < 3; i++)
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
         await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(primaryWrites).toEqual([true]);
@@ -202,7 +224,9 @@ test('Add a source opens the add sheet, newsletter address included, outside the
     await press('k', { metaKey: true });
     await type('add a source');
     await press('Enter');
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
     const sheet = document.querySelector('[role="dialog"][data-open]');
     expect(sheet?.querySelector<HTMLInputElement>('input[value="reader@inbound.example.com"]')).not.toBeNull();
@@ -214,7 +238,9 @@ test('Add a source opened from a focused control leaves focus in the sheet, so C
     await press('k', { ctrlKey: true });
     await type('add a source');
     await press('Enter');
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    });
 
     const sheet = document.querySelector('[role="dialog"][data-open]');
     expect(sheet?.contains(document.activeElement)).toBe(true);
@@ -228,7 +254,9 @@ test('Escape returns focus to the control that opened the menu', async () => {
     field.focus();
     await press('k', { ctrlKey: true });
     await press('Escape');
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    });
     expect(document.activeElement).toBe(field);
 });
 
@@ -247,7 +275,10 @@ test('a failed tag save unchecks the tag and drops the edit queued behind it', a
         await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const tagged = () => [...document.querySelectorAll('[cmdk-item]')].filter((row) => row.textContent?.endsWith('Tagged')).map((row) => row.textContent?.replace('Tagged', ''));
+    const tagged = () =>
+        [...document.querySelectorAll('[cmdk-item]')]
+            .filter((row) => row.textContent?.endsWith('Tagged'))
+            .map((row) => row.textContent?.replace('Tagged', ''));
     expect(tagWrites).toEqual([['design', 'weekend']]);
     expect(tagged()).toEqual(['design']);
     expect(document.querySelector('[role="dialog"] [role="alert"]')).toBeNull();

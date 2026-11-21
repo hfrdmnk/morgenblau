@@ -12,10 +12,7 @@ export type AppProfile = {
     feedback?: boolean;
 };
 
-export type AppProfileState =
-    | { kind: 'loading' }
-    | { kind: 'ready'; profile: AppProfile }
-    | { kind: 'error' };
+export type AppProfileState = { kind: 'loading' } | { kind: 'ready'; profile: AppProfile } | { kind: 'error' };
 
 export const AppProfileContext = createContext<AppProfileState | null>(null);
 

@@ -18,7 +18,11 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: 
                 <ErrorState
                     title="This page couldn’t be shown"
                     description="Something on this page broke while loading. Reloading usually fixes it."
-                    action={<Button variant="secondary" onClick={() => window.location.reload()}>Reload page</Button>}
+                    action={
+                        <Button variant="secondary" onClick={() => window.location.reload()}>
+                            Reload page
+                        </Button>
+                    }
                 />
             </Frame>
         );

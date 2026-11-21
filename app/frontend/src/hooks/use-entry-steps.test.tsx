@@ -43,20 +43,30 @@ function Reader() {
 
 async function open(href: string, respond: (path: string, call: number) => unknown) {
     const requested: string[] = [];
-    globalThis.fetch = Object.assign(async (input: RequestInfo | URL) => {
-        const path = String(input);
-        requested.push(path);
-        return Response.json(await respond(path, requested.length));
-    }, { preconnect: realFetch.preconnect });
+    globalThis.fetch = Object.assign(
+        async (input: RequestInfo | URL) => {
+            const path = String(input);
+            requested.push(path);
+            return Response.json(await respond(path, requested.length));
+        },
+        { preconnect: realFetch.preconnect },
+    );
     window.history.replaceState(null, '', href);
     const container = document.createElement('div');
     const root = createRoot(container);
-    await act(async () => root.render(
-        <Router hook={useAppLocation}>
-            <Route path="/entry/:slug"><Reader /></Route>
-        </Router>,
-    ));
-    unmount = () => { root.unmount(); unmount = () => {}; };
+    await act(async () =>
+        root.render(
+            <Router hook={useAppLocation}>
+                <Route path="/entry/:slug">
+                    <Reader />
+                </Route>
+            </Router>,
+        ),
+    );
+    unmount = () => {
+        root.unmount();
+        unmount = () => {};
+    };
     return requested;
 }
 
@@ -70,7 +80,11 @@ async function press(key: string) {
 const here = () => window.location.pathname + window.location.search;
 
 test('Right and Left step through the digest day the entry came from', async () => {
-    const requested = await open('/entry/b?from=2026-10-14', () => ({ date: '2026-10-14', hasActiveJob: false, entries: [{ entrySlug: 'a' }, { entrySlug: 'b' }, { entrySlug: 'c' }] }));
+    const requested = await open('/entry/b?from=2026-10-14', () => ({
+        date: '2026-10-14',
+        hasActiveJob: false,
+        entries: [{ entrySlug: 'a' }, { entrySlug: 'b' }, { entrySlug: 'c' }],
+    }));
 
     await press('ArrowRight');
     expect(here()).toBe('/entry/c?from=2026-10-14');
@@ -87,7 +101,10 @@ test('Right and Left step through the digest day the entry came from', async () 
 });
 
 test('an entry opened from a newsletter steps through that newsletter, and stops at its first issue', async () => {
-    const requested = await open('/entry/second?from=%2Fsources%2Fnewsletters%2Fnl_example', () => [{ entrySlug: 'first' }, { entrySlug: 'second' }]);
+    const requested = await open('/entry/second?from=%2Fsources%2Fnewsletters%2Fnl_example', () => [
+        { entrySlug: 'first' },
+        { entrySlug: 'second' },
+    ]);
 
     await press('ArrowLeft');
     expect(here()).toBe('/entry/first?from=%2Fsources%2Fnewsletters%2Fnl_example');
@@ -97,8 +114,14 @@ test('an entry opened from a newsletter steps through that newsletter, and stops
 });
 
 test('an entry collected after the list was loaded is still reached', async () => {
-    const digest = (slugs: string[]) => ({ date: '2026-10-14', hasActiveJob: false, entries: slugs.map((entrySlug) => ({ entrySlug })) });
-    const requested = await open('/entry/a?from=2026-10-14', (_, call) => digest(call === 1 ? ['a', 'b'] : ['a', 'b', 'c']));
+    const digest = (slugs: string[]) => ({
+        date: '2026-10-14',
+        hasActiveJob: false,
+        entries: slugs.map((entrySlug) => ({ entrySlug })),
+    });
+    const requested = await open('/entry/a?from=2026-10-14', (_, call) =>
+        digest(call === 1 ? ['a', 'b'] : ['a', 'b', 'c']),
+    );
 
     await press('j');
     await press('j');
@@ -111,7 +134,11 @@ test('presses made while the list loads each move one entry', async () => {
     const pushes = spyOn(window.history, 'pushState');
     await open('/entry/a?from=2026-10-14', async () => {
         await Bun.sleep(30);
-        return { date: '2026-10-14', hasActiveJob: false, entries: [{ entrySlug: 'a' }, { entrySlug: 'b' }, { entrySlug: 'c' }] };
+        return {
+            date: '2026-10-14',
+            hasActiveJob: false,
+            entries: [{ entrySlug: 'a' }, { entrySlug: 'b' }, { entrySlug: 'c' }],
+        };
     });
 
     await act(async () => {

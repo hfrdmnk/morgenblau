@@ -1,6 +1,9 @@
 import type { ComponentProps } from 'react';
 
-type ProgressBarProps = Omit<ComponentProps<'div'>, 'className' | 'style' | 'children' | 'role'> & { value: number; max: number };
+type ProgressBarProps = Omit<ComponentProps<'div'>, 'className' | 'style' | 'children' | 'role'> & {
+    value: number;
+    max: number;
+};
 
 // The fill slides in with transform, so progress never transitions the bar's width.
 function ProgressBar({ value, max, ...props }: ProgressBarProps) {

@@ -1,6 +1,6 @@
 ---
 paths:
-  - "app/frontend/**"
+    - 'app/frontend/**'
 ---
 
 # Frontend conventions

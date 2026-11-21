@@ -28,7 +28,11 @@ function SpecimenAside({ children }: { children: ReactNode }) {
 
 // Three page states in one tinted strip, divided where they meet in either direction.
 function SpecimenStrip({ children }: { children: ReactNode }) {
-    return <div className="grid divide-y divide-border rounded-xl bg-muted lg:grid-cols-3 lg:divide-x lg:divide-y-0">{children}</div>;
+    return (
+        <div className="grid divide-y divide-border rounded-xl bg-muted lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+            {children}
+        </div>
+    );
 }
 
 export { SpecimenAside, SpecimenStrip, StateSpecimen, Swatch, ThemeScope };

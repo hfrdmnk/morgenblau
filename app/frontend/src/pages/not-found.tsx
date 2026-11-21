@@ -9,18 +9,22 @@ import { PATHS } from '@/lib/paths';
 export function NotFound() {
     useDocumentTitle('Page not found');
     return (
-        <Frame
-            as="main"
-            id="main"
-            maxWidth="3xl"
-            paddingX={{ base: 'xl', sm: '3xl' }}
-            width="full"
-        >
-            <Text as="h1" visuallyHidden>Page not found</Text>
+        <Frame as="main" id="main" maxWidth="3xl" paddingX={{ base: 'xl', sm: '3xl' }} width="full">
+            <Text as="h1" visuallyHidden>
+                Page not found
+            </Text>
             <EmptyState
                 title="Page not found"
                 description="This address doesn’t lead to anything in Morgenblau."
-                action={<Button render={<Link href={PATHS.digest} variant="plain" />} nativeButton={false} variant="secondary">Go to the digest</Button>}
+                action={
+                    <Button
+                        render={<Link href={PATHS.digest} variant="plain" />}
+                        nativeButton={false}
+                        variant="secondary"
+                    >
+                        Go to the digest
+                    </Button>
+                }
             />
         </Frame>
     );

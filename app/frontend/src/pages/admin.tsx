@@ -24,8 +24,14 @@ type Usage = { totals: SourceCounts & { people: number }; people: Person[] };
 const SAMPLE_USAGE: Usage = {
     totals: { people: 3, regular: 24, generated: 2, newsletter: 5 },
     people: ['Example Person', 'Another Example', 'Sample Reader'].map((displayName, index) => ({
-        did: `did:plc:sample${index}`, handle: `reader${index}.example`, displayName, avatar: null,
-        lastActiveAt: '2026-01-01T00:00:00Z', regular: 8, generated: 1, newsletter: 2,
+        did: `did:plc:sample${index}`,
+        handle: `reader${index}.example`,
+        displayName,
+        avatar: null,
+        lastActiveAt: '2026-01-01T00:00:00Z',
+        regular: 8,
+        generated: 1,
+        newsletter: 2,
     })),
 };
 
@@ -48,24 +54,36 @@ export function Admin() {
             paddingX={{ base: 'xl', sm: '3xl' }}
             width="full"
         >
-            <Text as="h1" visuallyHidden>Usage</Text>
+            <Text as="h1" visuallyHidden>
+                Usage
+            </Text>
             <Skeleton
                 data={usage.status === 'loaded' ? usage.data : null}
-                error={usage.status === 'error' ? (
-                    usage.notFound ? (
-                        <Frame gap="m" role="alert">
-                            <Text as="h2" size="2xl" weight="medium">Not found</Text>
-                            <Text tone="muted">This page is only available to admins.</Text>
-                        </Frame>
-                    ) : <ListError label="usage" retry={usage.retry} />
-                ) : undefined}
+                error={
+                    usage.status === 'error' ? (
+                        usage.notFound ? (
+                            <Frame gap="m" role="alert">
+                                <Text as="h2" size="2xl" weight="medium">
+                                    Not found
+                                </Text>
+                                <Text tone="muted">This page is only available to admins.</Text>
+                            </Frame>
+                        ) : (
+                            <ListError label="usage" retry={usage.retry} />
+                        )
+                    ) : undefined
+                }
                 label="Loading usage"
                 sample={SAMPLE_USAGE}
             >
                 {(data) => (
                     <Frame gap="5xl">
-                        <PageSection title="Overview"><Totals totals={data.totals} /></PageSection>
-                        <PageSection title="People"><People people={data.people} /></PageSection>
+                        <PageSection title="Overview">
+                            <Totals totals={data.totals} />
+                        </PageSection>
+                        <PageSection title="People">
+                            <People people={data.people} />
+                        </PageSection>
                     </Frame>
                 )}
             </Skeleton>
@@ -84,8 +102,12 @@ function Totals({ totals }: { totals: Usage['totals'] }) {
         <UsageStats>
             {stats.map(({ label, value }) => (
                 <Frame key={label} gap="2xs">
-                    <Text as="dt" size="sm" tone="muted">{label}</Text>
-                    <Text as="dd" size="3xl" weight="medium" numeric="tabular">{value}</Text>
+                    <Text as="dt" size="sm" tone="muted">
+                        {label}
+                    </Text>
+                    <Text as="dd" size="3xl" weight="medium" numeric="tabular">
+                        {value}
+                    </Text>
                 </Frame>
             ))}
         </UsageStats>
@@ -93,15 +115,28 @@ function Totals({ totals }: { totals: Usage['totals'] }) {
 }
 
 function People({ people }: { people: Person[] }) {
-    if (!people.length) return <Text size="sm" tone="muted">Nobody has signed in yet.</Text>;
+    if (!people.length)
+        return (
+            <Text size="sm" tone="muted">
+                Nobody has signed in yet.
+            </Text>
+        );
     return (
         <Frame gap="m">
             <UsageHeader aria-hidden="true">
-                <Text as="span" size="xs" tone="subtle">Person</Text>
-                {COUNT_COLUMNS.map(({ label }) => <Text as="span" align="end" key={label} size="xs" tone="subtle">{label}</Text>)}
+                <Text as="span" size="xs" tone="subtle">
+                    Person
+                </Text>
+                {COUNT_COLUMNS.map(({ label }) => (
+                    <Text as="span" align="end" key={label} size="xs" tone="subtle">
+                        {label}
+                    </Text>
+                ))}
             </UsageHeader>
             <Frame as="ul" aria-label="People" gap="2xl">
-                {people.map((person) => <PersonRow key={person.did} person={person} />)}
+                {people.map((person) => (
+                    <PersonRow key={person.did} person={person} />
+                ))}
             </Frame>
         </Frame>
     );
@@ -136,7 +171,9 @@ function PersonRow({ person }: { person: Person }) {
                 >
                     {name}
                 </Text>
-                <Text size="sm" tone="subtle" truncate>{personMeta(person, name)}</Text>
+                <Text size="sm" tone="subtle" truncate>
+                    {personMeta(person, name)}
+                </Text>
             </Frame>
             <Frame colStart={2} display={{ base: 'flex', sm: 'none' }}>
                 <Text size="sm" tone="muted">
@@ -151,8 +188,12 @@ function PersonRow({ person }: { person: Person }) {
                     numeric="tabular"
                     tone={person[key] === 0 ? 'subtle' : undefined}
                 >
-                    <Text as="span" aria-hidden="true">{person[key]}</Text>
-                    <Text as="span" visuallyHidden>{countLabel(person, key, label)}</Text>
+                    <Text as="span" aria-hidden="true">
+                        {person[key]}
+                    </Text>
+                    <Text as="span" visuallyHidden>
+                        {countLabel(person, key, label)}
+                    </Text>
                 </Text>
             ))}
         </UsageRow>

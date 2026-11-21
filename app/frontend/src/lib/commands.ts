@@ -6,16 +6,29 @@ export type CommandOption = { value: string; label: string; detail?: string; sho
 // A step takes over the menu's input, so an action asks for its value in place.
 export type CommandStep =
     | {
-        kind: 'text';
-        title: string;
-        initial: string;
-        placeholder: string;
-        action: (value: string) => string;
-        problem?: (value: string) => string | null;
-        submit: (value: string) => Outcome;
-    }
-    | { kind: 'choice'; title: string; placeholder: string; options: CommandOption[]; current?: string; submit: (value: string) => Outcome }
-    | { kind: 'tags'; title: string; tags: string[]; suggestionsPath: string; save: (tags: string[]) => Promise<unknown> | void }
+          kind: 'text';
+          title: string;
+          initial: string;
+          placeholder: string;
+          action: (value: string) => string;
+          problem?: (value: string) => string | null;
+          submit: (value: string) => Outcome;
+      }
+    | {
+          kind: 'choice';
+          title: string;
+          placeholder: string;
+          options: CommandOption[];
+          current?: string;
+          submit: (value: string) => Outcome;
+      }
+    | {
+          kind: 'tags';
+          title: string;
+          tags: string[];
+          suggestionsPath: string;
+          save: (tags: string[]) => Promise<unknown> | void;
+      }
     | { kind: 'confirm'; title: string; description: string; action: string; submit: () => Outcome };
 
 export type Command = {
@@ -28,9 +41,7 @@ export type Command = {
     // Listed only once the reader types, so long lists such as every source stay out of the opening view.
     searchOnly?: boolean;
 } & (
-    | { run: () => Outcome }
-    | { toggle: { on: boolean; set: (on: boolean) => Promise<unknown> } }
-    | { step: CommandStep }
+    { run: () => Outcome } | { toggle: { on: boolean; set: (on: boolean) => Promise<unknown> } } | { step: CommandStep }
 );
 
 // A failure whose message is meant for the reader, shown in the menu as it is. An empty one means the reader was already told.
@@ -61,7 +72,9 @@ export const pageCommands = {
     get: () => snapshot,
     subscribe(listener: () => void) {
         listeners.add(listener);
-        return () => { listeners.delete(listener); };
+        return () => {
+            listeners.delete(listener);
+        };
     },
     set(key: symbol, commands: Command[]) {
         registrations.set(key, commands);

@@ -11,7 +11,12 @@ afterAll(() => GlobalRegistrator.unregister());
 
 function FontChoice() {
     const [font, setFont, error] = useReaderFont();
-    return <><button onClick={() => setFont(font === 'sans' ? 'serif' : 'sans')}>{font}</button>{error ? <p role="alert">{error}</p> : null}</>;
+    return (
+        <>
+            <button onClick={() => setFont(font === 'sans' ? 'serif' : 'sans')}>{font}</button>
+            {error ? <p role="alert">{error}</p> : null}
+        </>
+    );
 }
 
 test('reader font defaults to sans, persists choices, and rejects unknown stored values', async () => {
@@ -52,7 +57,9 @@ test('denied storage access falls back to sans without breaking render', async (
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')!;
     Object.defineProperty(globalThis, 'localStorage', {
         configurable: true,
-        get() { throw new DOMException('Storage denied', 'SecurityError'); },
+        get() {
+            throw new DOMException('Storage denied', 'SecurityError');
+        },
     });
     const container = document.createElement('div');
     document.body.append(container);
@@ -109,7 +116,14 @@ test('a font chosen in one place shows everywhere the font is read', async () =>
     document.body.append(container);
     const root = createRoot(container);
     try {
-        await act(async () => root.render(<><FontChoice /><FontChoice /></>));
+        await act(async () =>
+            root.render(
+                <>
+                    <FontChoice />
+                    <FontChoice />
+                </>,
+            ),
+        );
         const [first, second] = container.querySelectorAll('button');
         await act(async () => first.click());
         expect(second.textContent).toBe('serif');

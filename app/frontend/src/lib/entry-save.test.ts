@@ -4,11 +4,17 @@ import { createEntrySave } from './entry-save';
 import type { ReaderEntry } from './reader';
 
 const realFetch = globalThis.fetch;
-afterEach(() => { globalThis.fetch = realFetch; });
+afterEach(() => {
+    globalThis.fetch = realFetch;
+});
 
 const entry: ReaderEntry = {
-    entrySlug: 'abc', title: 'Example', url: 'https://example.com/post', contentType: 'blogpost',
-    publishedAt: '2026-10-30T00:00:00Z', body: null,
+    entrySlug: 'abc',
+    title: 'Example',
+    url: 'https://example.com/post',
+    contentType: 'blogpost',
+    publishedAt: '2026-10-30T00:00:00Z',
+    body: null,
     source: { title: 'Example Publication', siteUrl: null, feedUrl: 'https://example.com/feed.xml' },
 };
 
@@ -27,7 +33,9 @@ test('a tag added while the save is in flight patches the record that save creat
     let created!: () => void;
     const calls = stubFetch(async (method) => {
         if (method !== 'POST') return Response.json({ tags: ['read-later'] });
-        await new Promise<void>((resolve) => { created = resolve; });
+        await new Promise<void>((resolve) => {
+            created = resolve;
+        });
         return Response.json({ rkey: '3new' });
     });
 

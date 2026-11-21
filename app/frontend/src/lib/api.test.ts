@@ -1,11 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import {
-    api,
-    ApiError,
-    classifyMutationError,
-    describeMutationError,
-} from './api';
+import { api, ApiError, classifyMutationError, describeMutationError } from './api';
 
 const realFetch = globalThis.fetch;
 
@@ -13,20 +8,13 @@ afterEach(() => {
     globalThis.fetch = realFetch;
 });
 
-function stubFetch(
-    status: number,
-    body?: unknown,
-    capture?: { url?: string; init?: RequestInit },
-) {
+function stubFetch(status: number, body?: unknown, capture?: { url?: string; init?: RequestInit }) {
     globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
         if (capture) {
             capture.url = String(url);
             capture.init = init;
         }
-        return new Response(
-            body === undefined ? null : JSON.stringify(body),
-            { status },
-        );
+        return new Response(body === undefined ? null : JSON.stringify(body), { status });
     }) as typeof fetch;
 }
 
@@ -61,9 +49,7 @@ describe('api', () => {
         expect(capture.init?.headers).toEqual({
             'content-type': 'application/json',
         });
-        expect(capture.init?.body).toBe(
-            '{"feedUrl":"https://feed.example.test/rss"}',
-        );
+        expect(capture.init?.body).toBe('{"feedUrl":"https://feed.example.test/rss"}');
     });
 
     test('sends FormData untouched so the browser sets the multipart boundary', async () => {
@@ -112,21 +98,15 @@ describe('api', () => {
 
     test('isReauth only for 403 + reauth_required', async () => {
         stubFetch(403, { code: 'reauth_required', message: 'Session expired' });
-        const reauth = (await api('/api/saves', { method: 'POST', body: {} }).catch(
-            (e: unknown) => e,
-        )) as ApiError;
+        const reauth = (await api('/api/saves', { method: 'POST', body: {} }).catch((e: unknown) => e)) as ApiError;
         expect(reauth.isReauth).toBe(true);
 
         stubFetch(403, { code: 'forbidden' });
-        const forbidden = (await api('/api/saves').catch(
-            (e: unknown) => e,
-        )) as ApiError;
+        const forbidden = (await api('/api/saves').catch((e: unknown) => e)) as ApiError;
         expect(forbidden.isReauth).toBe(false);
 
         stubFetch(500, { code: 'reauth_required' });
-        const serverError = (await api('/api/saves').catch(
-            (e: unknown) => e,
-        )) as ApiError;
+        const serverError = (await api('/api/saves').catch((e: unknown) => e)) as ApiError;
         expect(serverError.isReauth).toBe(false);
     });
 
@@ -155,23 +135,17 @@ describe('classifyMutationError', () => {
     });
 
     test('classifies a non-ApiError as failed', () => {
-        expect(classifyMutationError(new Error('network down'))).toBe(
-            'failed',
-        );
+        expect(classifyMutationError(new Error('network down'))).toBe('failed');
     });
 });
 
 describe('describeMutationError', () => {
     test('uses the backend message for an ApiError', () => {
         const error = new ApiError(422, 'invalid_input', 'URL is not a feed');
-        expect(describeMutationError(error, 'fallback')).toBe(
-            'URL is not a feed',
-        );
+        expect(describeMutationError(error, 'fallback')).toBe('URL is not a feed');
     });
 
     test('falls back to the caller copy for a non-ApiError', () => {
-        expect(
-            describeMutationError(new Error('network down'), 'fallback'),
-        ).toBe('fallback');
+        expect(describeMutationError(new Error('network down'), 'fallback')).toBe('fallback');
     });
 });

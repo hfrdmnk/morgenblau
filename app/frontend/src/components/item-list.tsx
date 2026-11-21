@@ -8,17 +8,39 @@ import { SourceIcon } from '@/components/ui/source-icon';
 import { Frame } from '@/design/frame';
 import { Text } from '@/design/text';
 
-export function ItemList({ children, label, ordered = false }: {
+export function ItemList({
+    children,
+    label,
+    ordered = false,
+}: {
     children: ReactNode;
     label?: string;
     ordered?: boolean;
 }) {
-    if (ordered) return <Frame aria-label={label} as="ol" gap="3xl">{children}</Frame>;
-    return <Frame aria-label={label} as="ul" gap="3xl">{children}</Frame>;
+    if (ordered)
+        return (
+            <Frame aria-label={label} as="ol" gap="3xl">
+                {children}
+            </Frame>
+        );
+    return (
+        <Frame aria-label={label} as="ul" gap="3xl">
+            {children}
+        </Frame>
+    );
 }
 
 // mark hangs in the gutter left of the title on wide screens, so marked and unmarked titles share one edge.
-export function ListItem({ title, href, mark, icon, meta, status, note, actions }: {
+export function ListItem({
+    title,
+    href,
+    mark,
+    icon,
+    meta,
+    status,
+    note,
+    actions,
+}: {
     title: string;
     href: string;
     mark?: ReactNode;
@@ -43,7 +65,9 @@ export function ListItem({ title, href, mark, icon, meta, status, note, actions 
                         >
                             {mark ? <GutterMark offset="row">{mark}</GutterMark> : null}
                             <Text as="span" display="block" size="lg" truncate weight="medium">
-                                <Link data-post-link href={href} title={title} variant="title">{title}</Link>
+                                <Link data-post-link href={href} title={title} variant="title">
+                                    {title}
+                                </Link>
                             </Text>
                         </Frame>
                         {icon || meta ? (
@@ -51,7 +75,9 @@ export function ListItem({ title, href, mark, icon, meta, status, note, actions 
                             <Text as="span" size="sm" tone="subtle">
                                 <Frame align="center" as="span" direction="row" gap="s" minWidth={0}>
                                     <SourceIcon src={icon} />
-                                    <Text as="span" truncate>{meta}</Text>
+                                    <Text as="span" truncate>
+                                        {meta}
+                                    </Text>
                                     {status}
                                 </Frame>
                             </Text>
@@ -68,8 +94,12 @@ export function ListItem({ title, href, mark, icon, meta, status, note, actions 
 export function ListError({ label, retry }: { label: string; retry: () => void }) {
     return (
         <Frame align="center" direction="row" gap="l" role="alert" wrap>
-            <Text size="sm" tone="muted">Couldn’t load {label}.</Text>
-            <Button onClick={retry} size="sm" variant="secondary">Try again</Button>
+            <Text size="sm" tone="muted">
+                Couldn’t load {label}.
+            </Text>
+            <Button onClick={retry} size="sm" variant="secondary">
+                Try again
+            </Button>
         </Frame>
     );
 }

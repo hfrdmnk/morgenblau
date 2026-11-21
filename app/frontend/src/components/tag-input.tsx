@@ -9,7 +9,11 @@ import { Text } from '@/design/text';
 import { useSources } from '@/hooks/use-sources';
 import { MAX_TAG_LENGTH, MAX_TAGS } from '@/lib/source-edit';
 
-export function TagChips({ tags, inputRef, onRemove }: {
+export function TagChips({
+    tags,
+    inputRef,
+    onRemove,
+}: {
     tags: string[];
     inputRef: RefObject<HTMLInputElement | null>;
     onRemove: (tag: string) => void;
@@ -21,12 +25,30 @@ export function TagChips({ tags, inputRef, onRemove }: {
         (buttons[index + 1] ?? buttons[index - 1] ?? inputRef.current)?.focus();
         onRemove(tag);
     }
-    if (!tags.length) return <Text size="sm" tone="subtle">No tags yet.</Text>;
+    if (!tags.length)
+        return (
+            <Text size="sm" tone="subtle">
+                No tags yet.
+            </Text>
+        );
     return (
         <Frame aria-label="Tags" as="ul" direction="row" gap="s" wrap>
             {tags.map((tag) => (
-                <Frame align="center" as="li" background="muted" direction="row" gap="2xs" key={tag} paddingEnd="2xs" paddingStart="m" paddingY="3xs" radius="full">
-                    <Text as="span" size="sm" tone="muted">{tag}</Text>
+                <Frame
+                    align="center"
+                    as="li"
+                    background="muted"
+                    direction="row"
+                    gap="2xs"
+                    key={tag}
+                    paddingEnd="2xs"
+                    paddingStart="m"
+                    paddingY="3xs"
+                    radius="full"
+                >
+                    <Text as="span" size="sm" tone="muted">
+                        {tag}
+                    </Text>
                     <Button
                         aria-label={`Remove tag ${tag}`}
                         onClick={(event) => remove(tag, event.currentTarget)}
@@ -42,7 +64,17 @@ export function TagChips({ tags, inputRef, onRemove }: {
     );
 }
 
-export function TagInput({ tags, draft, canAdd, overlong, inputRef, onDraft, onAdd, suggestionsPath = '/api/subscriptions/tags', hiddenLabel = false }: {
+export function TagInput({
+    tags,
+    draft,
+    canAdd,
+    overlong,
+    inputRef,
+    onDraft,
+    onAdd,
+    suggestionsPath = '/api/subscriptions/tags',
+    hiddenLabel = false,
+}: {
     tags: string[];
     draft: string;
     canAdd: boolean;
@@ -63,16 +95,24 @@ export function TagInput({ tags, draft, canAdd, overlong, inputRef, onDraft, onA
     return (
         <Frame gap="s">
             {hiddenLabel ? (
-                <Text as="label" htmlFor={inputId} visuallyHidden>Add a tag</Text>
+                <Text as="label" htmlFor={inputId} visuallyHidden>
+                    Add a tag
+                </Text>
             ) : (
-                <Text as="label" htmlFor={inputId} size="sm" weight="medium">Add a tag</Text>
+                <Text as="label" htmlFor={inputId} size="sm" weight="medium">
+                    Add a tag
+                </Text>
             )}
             <Combobox
                 inputValue={draft}
                 items={suggestions}
                 onInputValueChange={onDraft}
-                onItemHighlighted={(item) => { highlighted.current = item !== undefined; }}
-                onValueChange={(tag: string | null) => { if (tag) onAdd(tag); }}
+                onItemHighlighted={(item) => {
+                    highlighted.current = item !== undefined;
+                }}
+                onValueChange={(tag: string | null) => {
+                    if (tag) onAdd(tag);
+                }}
                 value={null}
             >
                 <InputGroup ref={anchor}>
@@ -96,11 +136,17 @@ export function TagInput({ tags, draft, canAdd, overlong, inputRef, onDraft, onA
                 </InputGroup>
                 <ComboboxContent anchor={anchor} hideEmpty>
                     <ComboboxList>
-                        {(tag: string) => <ComboboxItem key={tag} value={tag}>{tag}</ComboboxItem>}
+                        {(tag: string) => (
+                            <ComboboxItem key={tag} value={tag}>
+                                {tag}
+                            </ComboboxItem>
+                        )}
                     </ComboboxList>
                 </ComboboxContent>
             </Combobox>
-            <LimitHint id={hintId} shown={overlong}>Tags can be up to {MAX_TAG_LENGTH} characters.</LimitHint>
+            <LimitHint id={hintId} shown={overlong}>
+                Tags can be up to {MAX_TAG_LENGTH} characters.
+            </LimitHint>
         </Frame>
     );
 }
@@ -113,5 +159,9 @@ function useTagSuggestions(path: string, exclude: string[]) {
 
 function LimitHint({ id, shown, children }: { id: string; shown: boolean; children: ReactNode }) {
     if (!shown) return null;
-    return <Text id={id} size="sm" tone="destructive">{children}</Text>;
+    return (
+        <Text id={id} size="sm" tone="destructive">
+            {children}
+        </Text>
+    );
 }

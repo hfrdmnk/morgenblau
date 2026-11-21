@@ -1,12 +1,7 @@
 import { useId, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
-import {
-    ArrowRightIcon,
-    CheckIcon,
-    ExternalLinkIcon,
-    LoadingIcon,
-} from '@/components/icons';
+import { ArrowRightIcon, CheckIcon, ExternalLinkIcon, LoadingIcon } from '@/components/icons';
 import { EmptyState, ErrorState, LoadingState } from '@/components/status-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,13 +24,7 @@ import {
     PopoverTitle,
     PopoverTrigger,
 } from '@/components/ui/popover';
-import {
-    SpecimenAside,
-    SpecimenStrip,
-    StateSpecimen,
-    Swatch,
-    ThemeScope,
-} from '@/components/ui/specimen';
+import { SpecimenAside, SpecimenStrip, StateSpecimen, Swatch, ThemeScope } from '@/components/ui/specimen';
 import { Textarea } from '@/components/ui/textarea';
 import { Frame } from '@/design/frame';
 import { Text } from '@/design/text';
@@ -130,8 +119,12 @@ function Section({ children, description, id, title }: SectionProps) {
     return (
         <Frame as="section" id={id} gap="2xl">
             <Frame as="header" maxWidth="2xl" gap="s">
-                <Text as="h2" size="2xl" weight="medium">{title}</Text>
-                <Text size="sm" tone="muted">{description}</Text>
+                <Text as="h2" size="2xl" weight="medium">
+                    {title}
+                </Text>
+                <Text size="sm" tone="muted">
+                    {description}
+                </Text>
             </Frame>
             {children}
         </Frame>
@@ -139,13 +132,24 @@ function Section({ children, description, id, title }: SectionProps) {
 }
 
 function Eyebrow({ children }: { children: ReactNode }) {
-    return <Text size="xs" weight="medium" tone="subtle" caps>{children}</Text>;
+    return (
+        <Text size="xs" weight="medium" tone="subtle" caps>
+            {children}
+        </Text>
+    );
 }
 
 function ThemePanel({ children, theme }: { theme: 'light' | 'dark'; children: ReactNode }) {
     return (
         <ThemeScope theme={theme}>
-            <Frame minHeight="full" radius="xl" background="background" shadow="hairline" padding={{ base: 'xl', sm: '2xl' }} gap="xl">
+            <Frame
+                minHeight="full"
+                radius="xl"
+                background="background"
+                shadow="hairline"
+                padding={{ base: 'xl', sm: '2xl' }}
+                gap="xl"
+            >
                 <Eyebrow>{theme === 'light' ? 'Light' : 'Dark'}</Eyebrow>
                 {children}
             </Frame>
@@ -180,7 +184,9 @@ function TokenGrid({ tokens }: { tokens: readonly Token[] }) {
                 return (
                     <Frame key={label} minWidth={0} gap="xs">
                         <Swatch variable={typeof token === 'string' ? token : token.variable} />
-                        <Text as="code" size="xs" tone="muted" break="words">{label}</Text>
+                        <Text as="code" size="xs" tone="muted" break="words">
+                            {label}
+                        </Text>
                     </Frame>
                 );
             })}
@@ -191,14 +197,20 @@ function TokenGrid({ tokens }: { tokens: readonly Token[] }) {
 function Field({ children, label }: { children: ReactNode; label: string }) {
     return (
         <Frame as="label" gap="s">
-            <Text as="span" size="sm" weight="medium">{label}</Text>
+            <Text as="span" size="sm" weight="medium">
+                {label}
+            </Text>
             {children}
         </Frame>
     );
 }
 
 function Caption({ children }: { children: ReactNode }) {
-    return <Text size="xs" tone="subtle">{children}</Text>;
+    return (
+        <Text size="xs" tone="subtle">
+            {children}
+        </Text>
+    );
 }
 
 function TypeSpecimens() {
@@ -206,7 +218,9 @@ function TypeSpecimens() {
         <Frame gap="xl">
             {typeScale.map((size) => (
                 <Frame key={size} display="grid" columns="specimen" align="baseline" gap="l">
-                    <Text as="code" size="xs" tone="subtle">{size}</Text>
+                    <Text as="code" size="xs" tone="subtle">
+                        {size}
+                    </Text>
                     <Text size={size}>{typeSamples[size]}</Text>
                 </Frame>
             ))}
@@ -219,7 +233,9 @@ function TypeSpecimens() {
             </Frame>
             <Frame direction="row" wrap gapX="xl" gapY="s" border="top" paddingTop="xl">
                 {keys(text.tone).map((tone) => (
-                    <Text key={tone} size="sm" tone={tone}>{tone}</Text>
+                    <Text key={tone} size="sm" tone={tone}>
+                        {tone}
+                    </Text>
                 ))}
             </Frame>
         </Frame>
@@ -231,10 +247,14 @@ function SpacingSpecimens() {
         <Frame gap="m">
             {keys(spacing).map((name: Spacing) => (
                 <Frame key={name} display="grid" columns="specimen" align="center" gap="l">
-                    <Text as="code" size="xs" tone="subtle">{name}</Text>
+                    <Text as="code" size="xs" tone="subtle">
+                        {name}
+                    </Text>
                     <Frame direction="row" align="center" gap="m">
                         <Frame background="primary" radius="sm" paddingStart={name} paddingY="xs" shrink={false} />
-                        <Text as="code" size="xs" tone="muted">{Number(spacing[name]) * 4}px</Text>
+                        <Text as="code" size="xs" tone="muted">
+                            {Number(spacing[name]) * 4}px
+                        </Text>
                     </Frame>
                 </Frame>
             ))}
@@ -249,7 +269,9 @@ function ShapeSpecimens() {
                 {keys(frame.radius).map((radius) => (
                     <Frame key={radius} align="center" gap="s">
                         <Frame background="muted" radius={radius} padding="3xl" />
-                        <Text as="code" size="xs" tone="muted">{radius}</Text>
+                        <Text as="code" size="xs" tone="muted">
+                            {radius}
+                        </Text>
                     </Frame>
                 ))}
             </Frame>
@@ -257,7 +279,9 @@ function ShapeSpecimens() {
                 {keys(frame.shadow).map((shadow) => (
                     <Frame key={shadow} align="center" gap="s">
                         <Frame background="popover" radius="lg" padding="3xl" shadow={shadow} />
-                        <Text as="code" size="xs" tone="muted">{shadow}</Text>
+                        <Text as="code" size="xs" tone="muted">
+                            {shadow}
+                        </Text>
                     </Frame>
                 ))}
             </Frame>
@@ -279,14 +303,22 @@ function ButtonSpecimens() {
                     <Frame key={variant} gap="m">
                         <Caption>{variant === 'default' ? 'Primary' : 'Secondary'} states</Caption>
                         <Frame direction="row" wrap gap="m">
-                            <Button size="sm" variant={variant}>Rest</Button>
+                            <Button size="sm" variant={variant}>
+                                Rest
+                            </Button>
                             <StateSpecimen state="hover">
-                                <Button size="sm" variant={variant}>Hover</Button>
+                                <Button size="sm" variant={variant}>
+                                    Hover
+                                </Button>
                             </StateSpecimen>
                             <StateSpecimen state="focus">
-                                <Button size="sm" variant={variant}>Focus</Button>
+                                <Button size="sm" variant={variant}>
+                                    Focus
+                                </Button>
                             </StateSpecimen>
-                            <Button size="sm" variant={variant} disabled>Disabled</Button>
+                            <Button size="sm" variant={variant} disabled>
+                                Disabled
+                            </Button>
                         </Frame>
                     </Frame>
                 ))}
@@ -327,7 +359,9 @@ function FormSpecimens() {
                     </StateSpecimen>
                     <Frame as="span" id={successId} direction="row" align="center" gap="2xs">
                         <CheckIcon size="xs" tone="success" />
-                        <Text as="span" size="xs" tone="success">Source found</Text>
+                        <Text as="span" size="xs" tone="success">
+                            Source found
+                        </Text>
                     </Frame>
                 </Frame>
             </Field>
@@ -361,7 +395,15 @@ function SurfaceSpecimens() {
                 </CardFooter>
             </Card>
             <Frame direction="row" align="start" justify="center" radius="xl" background="muted" padding="3xl">
-                <Frame width="full" maxWidth="popover" radius="lg" background="popover" padding="l" shadow="popover" gap="2xs">
+                <Frame
+                    width="full"
+                    maxWidth="popover"
+                    radius="lg"
+                    background="popover"
+                    padding="l"
+                    shadow="popover"
+                    gap="2xs"
+                >
                     <Text weight="medium">Popover plane</Text>
                     <Text size="sm" tone="muted">
                         A distinct elevated surface reserved for temporary context.
@@ -372,7 +414,11 @@ function SurfaceSpecimens() {
     );
 }
 
-function PrimitiveReference({ name, description, maps }: {
+function PrimitiveReference({
+    name,
+    description,
+    maps,
+}: {
     name: string;
     description: string;
     maps: Record<string, Record<string | number, string>>;
@@ -380,13 +426,19 @@ function PrimitiveReference({ name, description, maps }: {
     return (
         <Frame gap="l">
             <Frame gap="2xs">
-                <Text as="h3" weight="medium">{name}</Text>
-                <Text size="sm" tone="muted">{description}</Text>
+                <Text as="h3" weight="medium">
+                    {name}
+                </Text>
+                <Text size="sm" tone="muted">
+                    {description}
+                </Text>
             </Frame>
             <Frame as="ul" gap="s">
                 {Object.entries(maps).map(([prop, map]) => (
                     <Frame as="li" key={prop} display="grid" columns={{ sm: 'sidebar' }} gapX="l" gapY="3xs">
-                        <Text as="code" size="xs">{prop}</Text>
+                        <Text as="code" size="xs">
+                            {prop}
+                        </Text>
                         <Text as="code" size="xs" tone="muted" break="words">
                             {Object.keys(map).join(' · ')}
                         </Text>
@@ -421,7 +473,9 @@ export function Styleguide() {
                     >
                         {sections.map(([id, label]) => (
                             <Link key={id} href={`#${id}`} variant="muted">
-                                <Text as="span" size="sm" wrap="nowrap">{label}</Text>
+                                <Text as="span" size="sm" wrap="nowrap">
+                                    {label}
+                                </Text>
                             </Link>
                         ))}
                     </Frame>
@@ -431,12 +485,14 @@ export function Styleguide() {
                     <Frame as="header" id="foundations" gap="l">
                         <Badge>Phase two</Badge>
                         <Frame maxWidth="3xl" gap="m">
-                            <Text as="h1" size="3xl" weight="medium">Morgenblau style guide</Text>
+                            <Text as="h1" size="3xl" weight="medium">
+                                Morgenblau style guide
+                            </Text>
                             <Frame maxWidth="2xl">
                                 <Text size="lg" tone="muted">
-                                    A working index of the design tokens and the primitives built on them.
-                                    Product pages compose Frame, Text and these components; lint rejects
-                                    raw elements and class strings.
+                                    A working index of the design tokens and the primitives built on them. Product pages
+                                    compose Frame, Text and these components; lint rejects raw elements and class
+                                    strings.
                                 </Text>
                             </Frame>
                         </Frame>
@@ -466,17 +522,23 @@ export function Styleguide() {
                         <ThemePair>
                             <Frame gap="2xl">
                                 <Frame gap="m">
-                                    <Text size="sm" weight="medium">Core</Text>
+                                    <Text size="sm" weight="medium">
+                                        Core
+                                    </Text>
                                     <TokenGrid tokens={semanticTokens} />
                                 </Frame>
                                 <Frame gap="m" border="top" paddingTop="2xl">
-                                    <Text size="sm" weight="medium">Charts and shell</Text>
+                                    <Text size="sm" weight="medium">
+                                        Charts and shell
+                                    </Text>
                                     <TokenGrid tokens={supportTokens} />
                                 </Frame>
                             </Frame>
                         </ThemePair>
                         <Tinted>
-                            <Text size="sm" weight="medium">Product modes</Text>
+                            <Text size="sm" weight="medium">
+                                Product modes
+                            </Text>
                             <TokenGrid tokens={productColors} />
                         </Tinted>
                     </Section>
@@ -509,7 +571,14 @@ export function Styleguide() {
                         <ThemePair>
                             <ButtonSpecimens />
                         </ThemePair>
-                        <Frame display="grid" columns={{ sm: 3 }} gap="2xl" radius="xl" background="muted" padding={{ base: 'xl', sm: '2xl' }}>
+                        <Frame
+                            display="grid"
+                            columns={{ sm: 3 }}
+                            gap="2xl"
+                            radius="xl"
+                            background="muted"
+                            padding={{ base: 'xl', sm: '2xl' }}
+                        >
                             <Frame gap="m">
                                 <Caption>Icon buttons</Caption>
                                 <Frame direction="row" gap="m">
@@ -566,7 +635,14 @@ export function Styleguide() {
                         <ThemePair>
                             <SurfaceSpecimens />
                         </ThemePair>
-                        <Frame direction="row" align="center" gap="l" radius="xl" background="muted" padding={{ base: 'xl', sm: '2xl' }}>
+                        <Frame
+                            direction="row"
+                            align="center"
+                            gap="l"
+                            radius="xl"
+                            background="muted"
+                            padding={{ base: 'xl', sm: '2xl' }}
+                        >
                             <Popover>
                                 <PopoverTrigger render={<Button variant="secondary" />}>
                                     Open interactive popover
@@ -586,10 +662,22 @@ export function Styleguide() {
                             </Text>
                         </Frame>
                         <Frame direction="row" wrap gap="m">
-                            <Button variant="secondary" onClick={() => toast.success('Import complete', { description: '16 added, 0 updated, 0 already up to date.' })}>
+                            <Button
+                                variant="secondary"
+                                onClick={() =>
+                                    toast.success('Import complete', {
+                                        description: '16 added, 0 updated, 0 already up to date.',
+                                    })
+                                }
+                            >
                                 Show success toast
                             </Button>
-                            <Button variant="secondary" onClick={() => toast.error('Could not import sources', { description: 'Please try again.' })}>
+                            <Button
+                                variant="secondary"
+                                onClick={() =>
+                                    toast.error('Could not import sources', { description: 'Please try again.' })
+                                }
+                            >
                                 Show error toast
                             </Button>
                             <Button variant="secondary" onClick={() => toast.info('No next article in this digest')}>
@@ -628,16 +716,30 @@ export function Styleguide() {
                     >
                         <Frame display="grid" columns={{ sm: 2 }} gap="l">
                             {[
-                                { label: 'Default', spin: true, sample: 'Loading feedback', note: '120ms · 160ms · 240ms' },
-                                { label: 'Reduced motion', spin: false, sample: 'Static status indicator', note: '1ms interface durations · no rotation' },
+                                {
+                                    label: 'Default',
+                                    spin: true,
+                                    sample: 'Loading feedback',
+                                    note: '120ms · 160ms · 240ms',
+                                },
+                                {
+                                    label: 'Reduced motion',
+                                    spin: false,
+                                    sample: 'Static status indicator',
+                                    note: '1ms interface durations · no rotation',
+                                },
                             ].map(({ label, spin, sample, note }) => (
                                 <Frame key={label} radius="xl" background="muted" padding="2xl" gap="xl">
                                     <Caption>{label}</Caption>
                                     <Frame direction="row" align="center" gap="m">
                                         <LoadingIcon size="2xl" spin={spin} />
-                                        <Text as="span" size="sm">{sample}</Text>
+                                        <Text as="span" size="sm">
+                                            {sample}
+                                        </Text>
                                     </Frame>
-                                    <Text as="code" size="xs" tone="muted">{note}</Text>
+                                    <Text as="code" size="xs" tone="muted">
+                                        {note}
+                                    </Text>
                                 </Frame>
                             ))}
                         </Frame>

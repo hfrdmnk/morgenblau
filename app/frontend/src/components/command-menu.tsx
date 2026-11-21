@@ -6,7 +6,15 @@ import { useLocation } from 'wouter';
 
 import { AddSourceDialog } from '@/components/add-source-dialog';
 import { CheckIcon, ChevronDownIcon, EnterIcon, LoadingIcon, PlusIcon } from '@/components/icons';
-import { CommandCheck, CommandDialog, CommandGroup, CommandItem, CommandList, CommandSearch, CommandToggle } from '@/components/ui/command';
+import {
+    CommandCheck,
+    CommandDialog,
+    CommandGroup,
+    CommandItem,
+    CommandList,
+    CommandSearch,
+    CommandToggle,
+} from '@/components/ui/command';
 import { Kbd } from '@/components/ui/kbd';
 import { SourceIcon } from '@/components/ui/source-icon';
 import { Frame } from '@/design/frame';
@@ -47,7 +55,8 @@ export function CommandMenu() {
             const target = event.target instanceof Element ? event.target : null;
             if (target?.closest('[role="dialog"], [role="alertdialog"]') && !popup.current?.contains(target)) return;
             event.preventDefault();
-            if (!popup.current?.contains(document.activeElement)) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            if (!popup.current?.contains(document.activeElement))
+                opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
             setStep(null);
             setOpen((value) => !value);
         }
@@ -74,7 +83,9 @@ export function CommandMenu() {
                 open={open && enabled}
             >
                 <CommandDialog
-                    finalFocus={() => (opener.current?.isConnected && opener.current !== document.body ? opener.current : false)}
+                    finalFocus={() =>
+                        opener.current?.isConnected && opener.current !== document.body ? opener.current : false
+                    }
                     ref={popup}
                     title="Command menu"
                 >
@@ -120,7 +131,11 @@ type MenuProps = {
     onStep: (step: CommandStep | null) => void;
 };
 
-function MenuBody({ step, onAddSource, ...props }: MenuProps & { step: CommandStep | null; onAddSource: (url: string) => void }) {
+function MenuBody({
+    step,
+    onAddSource,
+    ...props
+}: MenuProps & { step: CommandStep | null; onAddSource: (url: string) => void }) {
     const registered = useSyncExternalStore(pageCommands.subscribe, pageCommands.get);
     const global = useGlobalCommands(onAddSource);
     // A flipped toggle shows its new state at once; the page catches up when its data reloads.
@@ -138,12 +153,14 @@ function MenuBody({ step, onAddSource, ...props }: MenuProps & { step: CommandSt
             commands={[...global, ...registered]}
             flipped={flipped}
             onAddSource={onAddSource}
-            onFlip={(id, on) => setFlipped((previous) => {
-                const next = new Map(previous);
-                if (on === undefined) next.delete(id);
-                else next.set(id, on);
-                return next;
-            })}
+            onFlip={(id, on) =>
+                setFlipped((previous) => {
+                    const next = new Map(previous);
+                    if (on === undefined) next.delete(id);
+                    else next.set(id, on);
+                    return next;
+                })
+            }
             {...props}
             onStep={onStep}
             run={run}
@@ -179,7 +196,12 @@ function useRun({ onClose, onPending }: MenuProps) {
             onPending(false);
         }
     }
-    return { ...state, run, busy: () => inFlight.current, fail: (error: string) => setState((previous) => ({ ...previous, error })) };
+    return {
+        ...state,
+        run,
+        busy: () => inFlight.current,
+        fail: (error: string) => setState((previous) => ({ ...previous, error })),
+    };
 }
 
 function problemText(failure: unknown, fallback: string): string {
@@ -199,7 +221,16 @@ function filter(value: string, search: string, keywords?: string[]) {
     return score < 0.05 ? 0 : score;
 }
 
-function Shell({ query, onQuery, chip, placeholder, shouldFilter = true, error, onBackspace, children }: {
+function Shell({
+    query,
+    onQuery,
+    chip,
+    placeholder,
+    shouldFilter = true,
+    error,
+    onBackspace,
+    children,
+}: {
     query: string;
     onQuery: (query: string) => void;
     chip?: string;
@@ -241,7 +272,9 @@ function Shell({ query, onQuery, chip, placeholder, shouldFilter = true, error, 
             />
             {error ? (
                 <Frame paddingTop="m" paddingX="xl">
-                    <Text role="alert" size="sm" tone="destructive">{error}</Text>
+                    <Text role="alert" size="sm" tone="destructive">
+                        {error}
+                    </Text>
                 </Frame>
             ) : null}
             <CommandList ref={list}>{children}</CommandList>
@@ -252,8 +285,14 @@ function Shell({ query, onQuery, chip, placeholder, shouldFilter = true, error, 
 function Label({ children, detail }: { children: ReactNode; detail?: string }) {
     return (
         <Frame align="baseline" as="span" direction="row" gap="s" grow minWidth={0}>
-            <Text as="span" truncate>{children}</Text>
-            {detail ? <Text as="span" size="xs" tone="subtle" truncate>{detail}</Text> : null}
+            <Text as="span" truncate>
+                {children}
+            </Text>
+            {detail ? (
+                <Text as="span" size="xs" tone="subtle" truncate>
+                    {detail}
+                </Text>
+            ) : null}
         </Frame>
     );
 }
@@ -274,7 +313,12 @@ function Keys({ keys }: { keys: string }) {
     return (
         <Frame as="span" direction="row" gap="2xs" shrink={false}>
             {keys.split(' ').map((combo) => (
-                <Kbd key={combo}>{combo.split('+').map((key) => KEY_NAMES[key] ?? key.toUpperCase()).join(APPLE ? '' : ' ')}</Kbd>
+                <Kbd key={combo}>
+                    {combo
+                        .split('+')
+                        .map((key) => KEY_NAMES[key] ?? key.toUpperCase())
+                        .join(APPLE ? '' : ' ')}
+                </Kbd>
             ))}
         </Frame>
     );
@@ -284,7 +328,9 @@ function Keys({ keys }: { keys: string }) {
 function ListNote({ children }: { children: ReactNode }) {
     return (
         <Frame paddingX="m" paddingY="2xl">
-            <Text align="center" size="sm" tone="muted">{children}</Text>
+            <Text align="center" size="sm" tone="muted">
+                {children}
+            </Text>
         </Frame>
     );
 }
@@ -292,7 +338,12 @@ function ListNote({ children }: { children: ReactNode }) {
 const Busy = () => <LoadingIcon aria-label="Working" size="md" spin tone="subtle" />;
 
 const dayLabel = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
-const dayWithYear = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const dayWithYear = new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+});
 
 function formatDay(day: Date, today: Date): string {
     const ago = Math.round((today.getTime() - day.getTime()) / 86_400_000);
@@ -313,7 +364,14 @@ function pastedSite(query: string): string | null {
     }
 }
 
-function RootView({ commands, flipped, onFlip, run, onStep, onAddSource }: MenuProps & {
+function RootView({
+    commands,
+    flipped,
+    onFlip,
+    run,
+    onStep,
+    onAddSource,
+}: MenuProps & {
     commands: Command[];
     flipped: Map<string, boolean>;
     onFlip: (id: string, on: boolean | undefined) => void;
@@ -334,10 +392,12 @@ function RootView({ commands, flipped, onFlip, run, onStep, onAddSource }: MenuP
         if ('toggle' in command) {
             const on = !(flipped.get(command.id) ?? command.toggle.on);
             onFlip(command.id, on);
-            void run.run(() => command.toggle.set(on), { close: false }).then((done) => {
-                if (!done) onFlip(command.id, undefined);
-                setBusy(null);
-            });
+            void run
+                .run(() => command.toggle.set(on), { close: false })
+                .then((done) => {
+                    if (!done) onFlip(command.id, undefined);
+                    setBusy(null);
+                });
             return;
         }
         void run.run(command.run).then(() => setBusy(null));
@@ -346,9 +406,22 @@ function RootView({ commands, flipped, onFlip, run, onStep, onAddSource }: MenuP
     const groups = rankedGroups(commands, query);
 
     return (
-        <Shell error={run.error} onQuery={setQuery} placeholder="Type a command, source or day" query={query} shouldFilter={false}>
+        <Shell
+            error={run.error}
+            onQuery={setQuery}
+            placeholder="Type a command, source or day"
+            query={query}
+            shouldFilter={false}
+        >
             {day ? (
-                <CommandItem value="typed-day" onSelect={() => void run.run(() => navigate(digestHref(toDateKey(day) === toDateKey(today) ? undefined : toDateKey(day))))}>
+                <CommandItem
+                    value="typed-day"
+                    onSelect={() =>
+                        void run.run(() =>
+                            navigate(digestHref(toDateKey(day) === toDateKey(today) ? undefined : toDateKey(day))),
+                        )
+                    }
+                >
                     <Label detail="Digest">Go to {formatDay(day, today)}</Label>
                 </CommandItem>
             ) : null}
@@ -369,7 +442,11 @@ function RootView({ commands, flipped, onFlip, run, onStep, onAddSource }: MenuP
                         >
                             {command.icon ? <SourceIcon src={command.icon} /> : null}
                             <Label detail={command.detail}>{command.label}</Label>
-                            {busy === command.id && run.pending ? <Busy /> : <RowEnd command={command} on={flipped.get(command.id)} />}
+                            {busy === command.id && run.pending ? (
+                                <Busy />
+                            ) : (
+                                <RowEnd command={command} on={flipped.get(command.id)} />
+                            )}
                         </CommandItem>
                     ))}
                 </CommandGroup>
@@ -388,7 +465,9 @@ function rankedGroups(commands: Command[], query: string) {
     const groups = new Map<string, { command: Command; score: number }[]>();
     for (const command of commands) {
         if (command.searchOnly && !searching) continue;
-        const score = searching ? filter(command.id, query, [command.label, ...(command.keywords ?? []), command.detail ?? '']) : 1;
+        const score = searching
+            ? filter(command.id, query, [command.label, ...(command.keywords ?? []), command.detail ?? ''])
+            : 1;
         if (score > 0) groups.set(command.group, [...(groups.get(command.group) ?? []), { command, score }]);
     }
     // Without a query the page's own commands come first, then navigation, then actions; with one, the best match leads.
@@ -398,12 +477,23 @@ function rankedGroups(commands: Command[], query: string) {
         .sort((a, b) => (searching ? best(b) - best(a) : 0) || rank(a) - rank(b))
         .map((group) => ({
             group,
-            commands: groups.get(group)!.sort((a, b) => b.score - a.score).map(({ command }) => command),
+            commands: groups
+                .get(group)!
+                .sort((a, b) => b.score - a.score)
+                .map(({ command }) => command),
         }));
 }
 
 function RowEnd({ command, on }: { command: Command; on?: boolean }) {
-    if ('toggle' in command) return <><Text as="span" visuallyHidden>{(on ?? command.toggle.on) ? 'On' : 'Off'}</Text><CommandToggle on={on ?? command.toggle.on} /></>;
+    if ('toggle' in command)
+        return (
+            <>
+                <Text as="span" visuallyHidden>
+                    {(on ?? command.toggle.on) ? 'On' : 'Off'}
+                </Text>
+                <CommandToggle on={on ?? command.toggle.on} />
+            </>
+        );
     return 'step' in command ? <ChevronDownIcon aria-hidden="true" rotate={270} size="sm" tone="subtle" /> : null;
 }
 
@@ -421,8 +511,20 @@ function TextStep({ step, run, back }: StepProps<'text'>) {
     const [value, setValue] = useState(step.initial);
     const problem = step.problem?.(value) ?? null;
     return (
-        <Shell chip={step.title} error={run.error || problem || ''} onBackspace={back} onQuery={setValue} placeholder={step.placeholder} query={value} shouldFilter={false}>
-            <CommandItem disabled={Boolean(problem) || run.pending} value="submit" onSelect={() => void run.run(() => step.submit(value))}>
+        <Shell
+            chip={step.title}
+            error={run.error || problem || ''}
+            onBackspace={back}
+            onQuery={setValue}
+            placeholder={step.placeholder}
+            query={value}
+            shouldFilter={false}
+        >
+            <CommandItem
+                disabled={Boolean(problem) || run.pending}
+                value="submit"
+                onSelect={() => void run.run(() => step.submit(value))}
+            >
                 <Label>{step.action(value)}</Label>
                 {run.pending ? <Busy /> : <EnterIcon aria-hidden="true" size="md" tone="subtle" />}
             </CommandItem>
@@ -434,7 +536,14 @@ function ChoiceStep({ step, run, back }: StepProps<'choice'>) {
     const [query, setQuery] = useState('');
     const [busy, setBusy] = useState<string | null>(null);
     return (
-        <Shell chip={step.title} error={run.error} onBackspace={back} onQuery={setQuery} placeholder={step.placeholder} query={query}>
+        <Shell
+            chip={step.title}
+            error={run.error}
+            onBackspace={back}
+            onQuery={setQuery}
+            placeholder={step.placeholder}
+            query={query}
+        >
             {step.options.map((option) => (
                 <CommandItem
                     disabled={run.pending}
@@ -448,7 +557,11 @@ function ChoiceStep({ step, run, back }: StepProps<'choice'>) {
                 >
                     <Label detail={option.detail}>{option.label}</Label>
                     {option.shortcut ? <Keys keys={option.shortcut} /> : null}
-                    {busy === option.value && run.pending ? <Busy /> : option.value === step.current ? <CheckIcon aria-label="Current" size="md" tone="primary" /> : null}
+                    {busy === option.value && run.pending ? (
+                        <Busy />
+                    ) : option.value === step.current ? (
+                        <CheckIcon aria-label="Current" size="md" tone="primary" />
+                    ) : null}
                 </CommandItem>
             ))}
             <Cmdk.Empty>
@@ -471,14 +584,27 @@ function TagsStep({ step, run, back }: StepProps<'tags'>) {
         change(next);
     };
     return (
-        <Shell chip={step.title} error={run.error || tagHint(draft, creatable, full)} onBackspace={back} onQuery={setQuery} placeholder={full ? 'Remove a tag' : 'Find or create a tag'} query={query}>
+        <Shell
+            chip={step.title}
+            error={run.error || tagHint(draft, creatable, full)}
+            onBackspace={back}
+            onQuery={setQuery}
+            placeholder={full ? 'Remove a tag' : 'Find or create a tag'}
+            query={query}
+        >
             {creatable ? (
-                <CommandItem disabled={full || hasOverlongTag(draft)} value="create-tag" onSelect={() => choose(addTags(tags, draft))}>
+                <CommandItem
+                    disabled={full || hasOverlongTag(draft)}
+                    value="create-tag"
+                    onSelect={() => choose(addTags(tags, draft))}
+                >
                     <PlusIcon aria-hidden="true" size="md" tone="subtle" />
                     <Label>Create tag “{draft}”</Label>
                 </CommandItem>
             ) : null}
-            {offered.map((tag) => <TagRow full={full} key={tag} onChange={choose} tag={tag} tags={tags} />)}
+            {offered.map((tag) => (
+                <TagRow full={full} key={tag} onChange={choose} tag={tag} tags={tags} />
+            ))}
             {!creatable && !offered.length ? <ListNote>Type a tag to create it.</ListNote> : null}
         </Shell>
     );
@@ -521,22 +647,49 @@ function tagHint(draft: string, creatable: boolean, full: boolean): string {
     return full ? `Up to ${MAX_TAGS} tags.` : '';
 }
 
-function TagRow({ tag, tags, full, onChange }: { tag: string; tags: string[]; full: boolean; onChange: (tags: string[]) => void }) {
+function TagRow({
+    tag,
+    tags,
+    full,
+    onChange,
+}: {
+    tag: string;
+    tags: string[];
+    full: boolean;
+    onChange: (tags: string[]) => void;
+}) {
     const on = tags.some((other) => other.toLowerCase() === tag.toLowerCase());
     return (
-        <CommandItem disabled={!on && full} value={`tag:${tag}`} keywords={[tag]} onSelect={() => onChange(on ? tags.filter((other) => other !== tag) : [...tags, tag])}>
+        <CommandItem
+            disabled={!on && full}
+            value={`tag:${tag}`}
+            keywords={[tag]}
+            onSelect={() => onChange(on ? tags.filter((other) => other !== tag) : [...tags, tag])}
+        >
             <CommandCheck checked={on} />
             <Label>{tag}</Label>
-            <Text as="span" visuallyHidden>{on ? 'Tagged' : 'Not tagged'}</Text>
+            <Text as="span" visuallyHidden>
+                {on ? 'Tagged' : 'Not tagged'}
+            </Text>
         </CommandItem>
     );
 }
 
 function ConfirmStep({ step, run, back }: StepProps<'confirm'>) {
     return (
-        <Shell chip={step.title} error={run.error} onBackspace={back} onQuery={() => {}} placeholder="Press Enter to confirm, Esc to go back" query="" shouldFilter={false}>
+        <Shell
+            chip={step.title}
+            error={run.error}
+            onBackspace={back}
+            onQuery={() => {}}
+            placeholder="Press Enter to confirm, Esc to go back"
+            query=""
+            shouldFilter={false}
+        >
             <Frame paddingBottom="m" paddingTop="s" paddingX="m">
-                <Text size="sm" tone="muted">{step.description}</Text>
+                <Text size="sm" tone="muted">
+                    {step.description}
+                </Text>
             </Frame>
             <CommandItem destructive disabled={run.pending} value="confirm" onSelect={() => void run.run(step.submit)}>
                 <Label>{step.action}</Label>
@@ -581,9 +734,27 @@ function useGlobalCommands(onAddSource: (url: string) => void): Command[] {
                 submit: (key) => navigate(digestHref(key || undefined)),
             },
         },
-        { id: 'go:general', group: GO_TO, label: 'General settings', keywords: ['settings', 'preferences'], run: go(PATHS.general) },
-        { id: 'go:import', group: GO_TO, label: 'Import sources', keywords: ['settings', 'opml', 'youtube', 'takeout'], run: go(PATHS.import) },
-        { id: 'go:export', group: GO_TO, label: 'Export sources', keywords: ['settings', 'opml', 'public', 'following'], run: go(PATHS.export) },
+        {
+            id: 'go:general',
+            group: GO_TO,
+            label: 'General settings',
+            keywords: ['settings', 'preferences'],
+            run: go(PATHS.general),
+        },
+        {
+            id: 'go:import',
+            group: GO_TO,
+            label: 'Import sources',
+            keywords: ['settings', 'opml', 'youtube', 'takeout'],
+            run: go(PATHS.import),
+        },
+        {
+            id: 'go:export',
+            group: GO_TO,
+            label: 'Export sources',
+            keywords: ['settings', 'opml', 'public', 'following'],
+            run: go(PATHS.export),
+        },
     ];
 
     const sources: Command[] = [
@@ -600,21 +771,32 @@ function useGlobalCommands(onAddSource: (url: string) => void): Command[] {
                 run: go(sourceHref(feed.rkey)),
             };
         }),
-        ...(newsletters.status === 'loaded' ? [...newsletters.data.active.map((source) => [source, false] as const), ...newsletters.data.stopped.map((source) => [source, true] as const)] : [])
-            .map(([source, stopped]) => ({
-                id: `newsletter:${source.id}`,
-                group: 'Sources',
-                label: source.title || source.senderAddress,
-                detail: stopped ? `Stopped · ${source.senderAddress}` : source.senderAddress,
-                keywords: source.tags,
-                icon: null,
-                searchOnly: true,
-                run: go(newsletterSourceHref(source.id)),
-            })),
+        ...(newsletters.status === 'loaded'
+            ? [
+                  ...newsletters.data.active.map((source) => [source, false] as const),
+                  ...newsletters.data.stopped.map((source) => [source, true] as const),
+              ]
+            : []
+        ).map(([source, stopped]) => ({
+            id: `newsletter:${source.id}`,
+            group: 'Sources',
+            label: source.title || source.senderAddress,
+            detail: stopped ? `Stopped · ${source.senderAddress}` : source.senderAddress,
+            keywords: source.tags,
+            icon: null,
+            searchOnly: true,
+            run: go(newsletterSourceHref(source.id)),
+        })),
     ];
 
     const actions: Command[] = [
-        { id: 'add-source', group: ACTIONS, label: 'Add a source…', keywords: ['subscribe', 'follow', 'feed', 'new'], run: () => onAddSource('') },
+        {
+            id: 'add-source',
+            group: ACTIONS,
+            label: 'Add a source…',
+            keywords: ['subscribe', 'follow', 'feed', 'new'],
+            run: () => onAddSource(''),
+        },
         {
             id: 'refresh',
             group: ACTIONS,
@@ -652,14 +834,24 @@ function useGlobalCommands(onAddSource: (url: string) => void): Command[] {
                 return copied(address, 'Newsletter address copied');
             },
         },
-        { id: 'export-opml', group: ACTIONS, label: 'Download OPML export', keywords: ['export', 'backup', 'opml'], run: downloadOpml },
-        ...(following.enabled === undefined ? [] : [{
-            id: 'public-following',
+        {
+            id: 'export-opml',
             group: ACTIONS,
-            label: 'Public following list',
-            keywords: ['blogroll', 'opml', 'share', 'publish'],
-            toggle: { on: following.enabled, set: following.set },
-        }]),
+            label: 'Download OPML export',
+            keywords: ['export', 'backup', 'opml'],
+            run: downloadOpml,
+        },
+        ...(following.enabled === undefined
+            ? []
+            : [
+                  {
+                      id: 'public-following',
+                      group: ACTIONS,
+                      label: 'Public following list',
+                      keywords: ['blogroll', 'opml', 'share', 'publish'],
+                      toggle: { on: following.enabled, set: following.set },
+                  },
+              ]),
         {
             id: 'shortcuts',
             group: ACTIONS,
@@ -669,7 +861,12 @@ function useGlobalCommands(onAddSource: (url: string) => void): Command[] {
                 kind: 'choice',
                 title: 'Keyboard shortcuts',
                 placeholder: 'Find a shortcut',
-                options: SHORTCUTS.map(({ keys, label, where }) => ({ value: `${where}:${label}`, label, detail: where, shortcut: keys })),
+                options: SHORTCUTS.map(({ keys, label, where }) => ({
+                    value: `${where}:${label}`,
+                    label,
+                    detail: where,
+                    shortcut: keys,
+                })),
                 submit: () => {},
             },
         },

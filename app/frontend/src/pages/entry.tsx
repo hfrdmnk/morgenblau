@@ -26,7 +26,16 @@ import { CommandProblem, copied, openInTab, type Command } from '@/lib/commands'
 import { parseDigestDate, toDateKey } from '@/lib/digest-dates';
 import { digestHref, PATHS, readerSourceHref, sourceOrigin } from '@/lib/paths';
 import type { EntrySave } from '@/lib/entry-save';
-import { allowRemoteImages, hasNewReaderContent, httpURL, readerBody, readerMetadata, sourceActionLabel, youtubeID, type ReaderEntry } from '@/lib/reader';
+import {
+    allowRemoteImages,
+    hasNewReaderContent,
+    httpURL,
+    readerBody,
+    readerMetadata,
+    sourceActionLabel,
+    youtubeID,
+    type ReaderEntry,
+} from '@/lib/reader';
 import { announceRemove, announceSave } from '@/lib/save-announce';
 
 export function Entry() {
@@ -49,10 +58,26 @@ export function Entry() {
 
     return (
         <Frame align="center" background="background" minHeight="screen">
-            <Frame align="start" aria-label="Reader" as="nav" maxWidth="3xl" paddingTop={{ base: '2xl', sm: '4xl' }} paddingX={{ base: 'xl', sm: '3xl' }} width="full">
+            <Frame
+                align="start"
+                aria-label="Reader"
+                as="nav"
+                maxWidth="3xl"
+                paddingTop={{ base: '2xl', sm: '4xl' }}
+                paddingX={{ base: 'xl', sm: '3xl' }}
+                width="full"
+            >
                 <BackLink href={back} keyShortcut="Escape" label={backLabel} />
             </Frame>
-            <Frame as="main" id="reader" maxWidth="3xl" paddingBottom="8xl" paddingTop={{ base: '5xl', sm: '6xl' }} paddingX={{ base: 'xl', sm: '3xl' }} width="full">
+            <Frame
+                as="main"
+                id="reader"
+                maxWidth="3xl"
+                paddingBottom="8xl"
+                paddingTop={{ base: '5xl', sm: '6xl' }}
+                paddingX={{ base: 'xl', sm: '3xl' }}
+                width="full"
+            >
                 <EntryLoader key={slug} navigation={navigation} slug={slug} />
             </Frame>
         </Frame>
@@ -73,7 +98,10 @@ async function loadEntry(slug: string, signal: AbortSignal): Promise<Extract<Ent
     const state = { status: 'loaded' as const, entry, extracted: false, extractionFailed: false };
     if (!canExtractArticle(entry) || entry.body?.trim()) return state;
     try {
-        state.entry = await api<ReaderEntry>(`/api/entries/${encodeURIComponent(slug)}/extract`, { method: 'POST', signal });
+        state.entry = await api<ReaderEntry>(`/api/entries/${encodeURIComponent(slug)}/extract`, {
+            method: 'POST',
+            signal,
+        });
         state.extracted = Boolean(state.entry.body?.trim());
         state.extractionFailed = !state.extracted;
     } catch {
@@ -91,27 +119,47 @@ function EntryLoader({ slug, navigation }: { slug: string; navigation: Command[]
         const controller = new AbortController();
         const signal = controller.signal;
         void loadEntry(slug, signal)
-            .then((next) => { if (!signal.aborted) setState(next); })
+            .then((next) => {
+                if (!signal.aborted) setState(next);
+            })
             .catch((error: unknown) => {
                 if (!signal.aborted) setState({ status: 'error', error });
             });
         return () => controller.abort();
     }, [slug, attempt]);
 
-    const error = state.status === 'error' ? (
-        <EntryError
-            status={state.error instanceof ApiError ? state.error.status : 0}
-            retry={() => { setState({ status: 'loading' }); setAttempt(attempt + 1); }}
-        />
-    ) : undefined;
+    const error =
+        state.status === 'error' ? (
+            <EntryError
+                status={state.error instanceof ApiError ? state.error.status : 0}
+                retry={() => {
+                    setState({ status: 'loading' });
+                    setAttempt(attempt + 1);
+                }}
+            />
+        ) : undefined;
     return (
-        <Skeleton data={state.status === 'loaded' ? state : null} error={error} label="Loading entry" sample={SAMPLE_ENTRY}>
-            {(loaded) => <Reader initialEntry={loaded.entry} initiallyExtracted={loaded.extracted} extractionFailed={loaded.extractionFailed} live={loaded !== SAMPLE_ENTRY} navigation={navigation} />}
+        <Skeleton
+            data={state.status === 'loaded' ? state : null}
+            error={error}
+            label="Loading entry"
+            sample={SAMPLE_ENTRY}
+        >
+            {(loaded) => (
+                <Reader
+                    initialEntry={loaded.entry}
+                    initiallyExtracted={loaded.extracted}
+                    extractionFailed={loaded.extractionFailed}
+                    live={loaded !== SAMPLE_ENTRY}
+                    navigation={navigation}
+                />
+            )}
         </Skeleton>
     );
 }
 
-const SAMPLE_PARAGRAPH = 'A paragraph of sample text that stands in for the entry while it loads. It runs across several lines, about as long as a paragraph in a typical post, so the skeleton fills the column the way the article will.';
+const SAMPLE_PARAGRAPH =
+    'A paragraph of sample text that stands in for the entry while it loads. It runs across several lines, about as long as a paragraph in a typical post, so the skeleton fills the column the way the article will.';
 
 const SAMPLE_ENTRY: Extract<EntryState, { status: 'loaded' }> = {
     status: 'loaded',
@@ -132,18 +180,39 @@ function EntryError({ status, retry }: { status: number; retry: () => void }) {
         404: ['Entry unavailable', 'It may have been removed, or its source is no longer in your newspaper.'],
         401: ['Sign in to read this entry', 'Your session may have ended.'],
     };
-    const [title, description] = messages[status] ?? ['This entry could not be loaded', 'Please try again in a moment.'];
+    const [title, description] = messages[status] ?? [
+        'This entry could not be loaded',
+        'Please try again in a moment.',
+    ];
     return (
         <Frame align="start" gap="l" role="alert">
-            <Text as="h1" size="3xl" tracking="tight" weight="medium">{title}</Text>
+            <Text as="h1" size="3xl" tracking="tight" weight="medium">
+                {title}
+            </Text>
             <Text tone="muted">{description}</Text>
-            {status === 401 ? <Text><Link href={PATHS.login} variant="underline">Sign in</Link></Text> : status !== 404 ? <Button variant="secondary" onClick={retry}>Try again</Button> : null}
+            {status === 401 ? (
+                <Text>
+                    <Link href={PATHS.login} variant="underline">
+                        Sign in
+                    </Link>
+                </Text>
+            ) : status !== 404 ? (
+                <Button variant="secondary" onClick={retry}>
+                    Try again
+                </Button>
+            ) : null}
         </Frame>
     );
 }
 
 // live is false for the loading sample, which must not offer its commands.
-function Reader({ initialEntry, initiallyExtracted, extractionFailed, live, navigation }: {
+function Reader({
+    initialEntry,
+    initiallyExtracted,
+    extractionFailed,
+    live,
+    navigation,
+}: {
     initialEntry: ReaderEntry;
     initiallyExtracted: boolean;
     extractionFailed: boolean;
@@ -157,7 +226,14 @@ function Reader({ initialEntry, initiallyExtracted, extractionFailed, live, navi
             <ReaderHeader entry={entry} />
             <ReaderMedia entry={entry} onChange={setEntry} />
             <ReaderBody entry={entry} />
-            {canExtractArticle(entry) ? <ArticleExtraction entry={entry} onChange={setEntry} initiallyExtracted={initiallyExtracted} extractionFailed={extractionFailed} /> : null}
+            {canExtractArticle(entry) ? (
+                <ArticleExtraction
+                    entry={entry}
+                    onChange={setEntry}
+                    initiallyExtracted={initiallyExtracted}
+                    extractionFailed={extractionFailed}
+                />
+            ) : null}
             {save ? <SaveFiling save={save} /> : null}
             <ReaderRail entry={entry} save={save} />
             {live ? <ReaderCommands entry={entry} navigation={navigation} onChange={setEntry} save={save} /> : null}
@@ -168,7 +244,12 @@ function Reader({ initialEntry, initiallyExtracted, extractionFailed, live, navi
 const READER = 'Reader';
 
 // The save's commands register first, as a child, so they lead the menu.
-function ReaderCommands({ entry, save, navigation, onChange }: {
+function ReaderCommands({
+    entry,
+    save,
+    navigation,
+    onChange,
+}: {
     entry: ReaderEntry;
     save: EntrySave | null;
     navigation: Command[];
@@ -178,7 +259,16 @@ function ReaderCommands({ entry, save, navigation, onChange }: {
     const sourceLink = readerSourceHref(entry.source);
     useCommands([
         ...originalCommands(entry),
-        ...(sourceLink ? [{ id: 'entry:source', group: READER, label: `Go to ${sourceTitle(entry)}`, run: () => navigate(sourceLink) }] : []),
+        ...(sourceLink
+            ? [
+                  {
+                      id: 'entry:source',
+                      group: READER,
+                      label: `Go to ${sourceTitle(entry)}`,
+                      run: () => navigate(sourceLink),
+                  },
+              ]
+            : []),
         ...imageCommands(entry, onChange),
         ...navigation,
     ]);
@@ -190,20 +280,27 @@ function originalCommands(entry: ReaderEntry): Command[] {
     if (!original) return [];
     return [
         { id: 'entry:original', group: READER, label: sourceActionLabel(entry), run: () => openInTab(original) },
-        { id: 'entry:copy-link', group: READER, label: 'Copy link to original', run: () => copied(original, 'Link copied') },
+        {
+            id: 'entry:copy-link',
+            group: READER,
+            label: 'Copy link to original',
+            run: () => copied(original, 'Link copied'),
+        },
     ];
 }
 
 function imageCommands(entry: ReaderEntry, onChange: (entry: ReaderEntry) => void): Command[] {
     const { newsletter } = entry;
     if (!newsletter?.hasBlockedRemoteImages || newsletter.remoteImagesAllowed) return [];
-    return [{
-        id: 'entry:images',
-        group: READER,
-        label: 'Load remote images',
-        detail: 'This message only',
-        run: async () => onChange(await allowRemoteImages(entry, newsletter)),
-    }];
+    return [
+        {
+            id: 'entry:images',
+            group: READER,
+            label: 'Load remote images',
+            detail: 'This message only',
+            run: async () => onChange(await allowRemoteImages(entry, newsletter)),
+        },
+    ];
 }
 
 function SaveCommands({ save }: { save: EntrySave }) {
@@ -224,7 +321,19 @@ function SaveCommands({ save }: { save: EntrySave }) {
                 },
             },
         },
-        { id: 'entry:tags', group: READER, label: 'Edit tags', detail: tags.join(', '), step: { kind: 'tags', title: 'Tags', tags, suggestionsPath: '/api/saves/tags', save: (next) => applied(save.setTags(next)) } },
+        {
+            id: 'entry:tags',
+            group: READER,
+            label: 'Edit tags',
+            detail: tags.join(', '),
+            step: {
+                kind: 'tags',
+                title: 'Tags',
+                tags,
+                suggestionsPath: '/api/saves/tags',
+                save: (next) => applied(save.setTags(next)),
+            },
+        },
     ]);
     return null;
 }
@@ -246,7 +355,12 @@ function EntryVideo({ entry }: { entry: ReaderEntry }) {
     return <ReaderVideo video={readerMetadata(entry.metadata).video} title={title} />;
 }
 
-function ArticleExtraction({ entry, onChange, initiallyExtracted, extractionFailed }: {
+function ArticleExtraction({
+    entry,
+    onChange,
+    initiallyExtracted,
+    extractionFailed,
+}: {
     entry: ReaderEntry;
     onChange: (entry: ReaderEntry) => void;
     initiallyExtracted: boolean;
@@ -254,13 +368,17 @@ function ArticleExtraction({ entry, onChange, initiallyExtracted, extractionFail
 }) {
     const [extracted, setExtracted] = useState(initiallyExtracted);
     const [pending, setPending] = useState(false);
-    const [notice, setNotice] = useState(extractionFailed ? 'The full article could not be loaded. You can try again or open the original.' : '');
+    const [notice, setNotice] = useState(
+        extractionFailed ? 'The full article could not be loaded. You can try again or open the original.' : '',
+    );
 
     async function extract() {
         setPending(true);
         setNotice('');
         try {
-            const updated = await api<ReaderEntry>(`/api/entries/${encodeURIComponent(entry.entrySlug)}/extract`, { method: 'POST' });
+            const updated = await api<ReaderEntry>(`/api/entries/${encodeURIComponent(entry.entrySlug)}/extract`, {
+                method: 'POST',
+            });
             if (hasNewReaderContent(entry.body, updated.body)) {
                 onChange(updated);
                 setExtracted(true);
@@ -285,17 +403,28 @@ function ArticleExtraction({ entry, onChange, initiallyExtracted, extractionFail
 function ExtractPrompt({ pending, onExtract }: { pending: boolean; onExtract: () => void }) {
     return (
         <Frame align="start" gap="m" paddingTop="5xl">
-            <Text size="sm" tone="muted">Only seeing part of the article?</Text>
-            <Button disabled={pending} onClick={onExtract} variant="secondary">{pending ? 'Loading full article…' : 'Load full article'}</Button>
+            <Text size="sm" tone="muted">
+                Only seeing part of the article?
+            </Text>
+            <Button disabled={pending} onClick={onExtract} variant="secondary">
+                {pending ? 'Loading full article…' : 'Load full article'}
+            </Button>
         </Frame>
     );
 }
 
 function ReaderBody({ entry }: { entry: ReaderEntry }) {
     const [font] = useReaderFont();
-    if (entry.body?.trim()) return <ArticleBody data-font={font} dangerouslySetInnerHTML={{ __html: readerBody(entry) }} />;
+    if (entry.body?.trim())
+        return <ArticleBody data-font={font} dangerouslySetInnerHTML={{ __html: readerBody(entry) }} />;
     if (entry.contentType === 'video') return null;
-    return <Text tone="muted">{httpURL(entry.url) ? 'There is no readable content here. Open the original to continue.' : 'No content is available for this entry.'}</Text>;
+    return (
+        <Text tone="muted">
+            {httpURL(entry.url)
+                ? 'There is no readable content here. Open the original to continue.'
+                : 'No content is available for this entry.'}
+        </Text>
+    );
 }
 
 function sourceTitle(entry: ReaderEntry): string {
@@ -318,11 +447,24 @@ function ReaderHeader({ entry }: { entry: ReaderEntry }) {
     const labels: Record<string, string> = { newsletter: ' · Newsletter', video: ' · Video', microblog: ' · Post' };
     return (
         <Frame as="header" gap="l" paddingBottom="4xl">
-            <Text size="sm" tone="muted"><SourceLink entry={entry}>{source}</SourceLink>{labels[entry.contentType]}</Text>
-            <Text as="h1" break="words" id="entry-title" size="3xl" tracking="tight" weight="medium" wrap="balance">{entryTitle(entry)}</Text>
+            <Text size="sm" tone="muted">
+                <SourceLink entry={entry}>{source}</SourceLink>
+                {labels[entry.contentType]}
+            </Text>
+            <Text as="h1" break="words" id="entry-title" size="3xl" tracking="tight" weight="medium" wrap="balance">
+                {entryTitle(entry)}
+            </Text>
             <Frame direction="row" gapX="m" gapY="2xs" wrap>
-                {author ? <Text as="span" size="sm" tone="subtle">{author}</Text> : null}
-                {!Number.isNaN(date.getTime()) ? <Text as="time" dateTime={entry.publishedAt} size="sm" tone="subtle">{date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</Text> : null}
+                {author ? (
+                    <Text as="span" size="sm" tone="subtle">
+                        {author}
+                    </Text>
+                ) : null}
+                {!Number.isNaN(date.getTime()) ? (
+                    <Text as="time" dateTime={entry.publishedAt} size="sm" tone="subtle">
+                        {date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </Text>
+                ) : null}
             </Frame>
         </Frame>
     );
@@ -331,19 +473,27 @@ function ReaderHeader({ entry }: { entry: ReaderEntry }) {
 function SourceLink({ entry, children }: { entry: ReaderEntry; children: string }) {
     const href = readerSourceHref(entry.source);
     if (!href) return children;
-    return <Link href={href} variant="quiet">{children}</Link>;
+    return (
+        <Link href={href} variant="quiet">
+            {children}
+        </Link>
+    );
 }
 
-function ReaderVideo({ video, title }: {
-    video?: { url: string; type: string };
-    title: string;
-}) {
+function ReaderVideo({ video, title }: { video?: { url: string; type: string }; title: string }) {
     if (video) {
         return (
             <Frame paddingBottom="4xl">
-                <VideoPlayer aria-label={title} controls preload="none"><source src={video.url} type={video.type} /><Text>Your browser cannot play this video. Open it at the source.</Text></VideoPlayer>
+                <VideoPlayer aria-label={title} controls preload="none">
+                    <source src={video.url} type={video.type} />
+                    <Text>Your browser cannot play this video. Open it at the source.</Text>
+                </VideoPlayer>
             </Frame>
         );
     }
-    return <Frame paddingBottom="4xl"><Text tone="muted">This video is available at its original source.</Text></Frame>;
+    return (
+        <Frame paddingBottom="4xl">
+            <Text tone="muted">This video is available at its original source.</Text>
+        </Frame>
+    );
 }

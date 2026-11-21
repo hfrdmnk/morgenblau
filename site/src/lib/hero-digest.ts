@@ -10,7 +10,13 @@ const ZONE = 'Europe/Zurich';
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_ICON_BYTES = 256 * 1024;
 
-export type HeroSource = { title: string | null; siteUrl: string | null; feedUrl: string; favicon: string | null; primary: boolean };
+export type HeroSource = {
+    title: string | null;
+    siteUrl: string | null;
+    feedUrl: string;
+    favicon: string | null;
+    primary: boolean;
+};
 export type HeroEntry = { title: string | null; url: string | null; excerpt: string | null; image: string | null };
 export type HeroGroup = { source: HeroSource; lead: HeroEntry; more: number };
 // day is the digest's calendar date at UTC midnight, so it formats in UTC.
@@ -42,8 +48,13 @@ async function loadHeroDigest(now: Date): Promise<HeroDigest> {
         const items = await fetchFeed(subscription.feedUrl).catch(() => []);
         return items.filter(({ publishedAt }) => publishedAt >= start && publishedAt < end);
     });
-    const followed = subscriptions.map((subscription, index) => ({ subscription, items: feeds[index] })).filter(({ items }) => items.length > 0);
-    const sources = await mapPool(followed, 8, async ({ subscription }) => ({ ...subscription, favicon: await loadFavicon(subscription.siteUrl ?? subscription.feedUrl) }));
+    const followed = subscriptions
+        .map((subscription, index) => ({ subscription, items: feeds[index] }))
+        .filter(({ items }) => items.length > 0);
+    const sources = await mapPool(followed, 8, async ({ subscription }) => ({
+        ...subscription,
+        favicon: await loadFavicon(subscription.siteUrl ?? subscription.feedUrl),
+    }));
     // The app lists posts newest first and breaks publish-time ties by row id, newest first. PDS listings start with the newest subscription, and a feed stores its items in document order, so each feed's items go in reversed before the stable sort.
     const posts = followed
         .flatMap(({ items }, index) => items.toReversed().map((item) => ({ source: sources[index], item })))
@@ -66,21 +77,37 @@ async function loadHeroDigest(now: Date): Promise<HeroDigest> {
             image: source.primary && lead.image ? await loadImage(lead.image) : null,
         },
     }));
-    return { day, avatar, primary: all.filter(({ source }) => source.primary), rest: all.filter(({ source }) => !source.primary) };
+    return {
+        day,
+        avatar,
+        primary: all.filter(({ source }) => source.primary),
+        rest: all.filter(({ source }) => !source.primary),
+    };
 }
 
 // A digest is one day of its reader's calendar; the hero shows Dominik's, so it is the day in Zurich when the site is built.
 function zurichDay(now: Date) {
-    const parts = new Intl.DateTimeFormat('en-US', { timeZone: ZONE, year: 'numeric', month: 'numeric', day: 'numeric' }).formatToParts(now);
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: ZONE,
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+    }).formatToParts(now);
     const part = (type: string) => Number(parts.find((p) => p.type === type)!.value);
     const [year, month, date] = [part('year'), part('month') - 1, part('day')];
-    return { day: new Date(Date.UTC(year, month, date)), start: zurichMidnight(year, month, date), end: zurichMidnight(year, month, date + 1) };
+    return {
+        day: new Date(Date.UTC(year, month, date)),
+        start: zurichMidnight(year, month, date),
+        end: zurichMidnight(year, month, date + 1),
+    };
 }
 
 // Zurich changes its clocks at 02:00 or 03:00, so the offset in force at midnight UTC is the one at Zurich's own midnight.
 function zurichMidnight(year: number, month: number, date: number): Date {
     const wall = Date.UTC(year, month, date);
-    const name = new Intl.DateTimeFormat('en-US', { timeZone: ZONE, timeZoneName: 'longOffset' }).formatToParts(wall).find((p) => p.type === 'timeZoneName')!.value;
+    const name = new Intl.DateTimeFormat('en-US', { timeZone: ZONE, timeZoneName: 'longOffset' })
+        .formatToParts(wall)
+        .find((p) => p.type === 'timeZoneName')!.value;
     const [, sign, hours, minutes] = /GMT([+-])(\d\d):(\d\d)/.exec(name)!;
     return new Date(wall - (sign === '-' ? -1 : 1) * (Number(hours) * 60 + Number(minutes)) * 60_000);
 }
@@ -96,11 +123,21 @@ async function listSubscriptions(pds: string): Promise<Subscription[]> {
     const subscriptions: Subscription[] = [];
     let cursor = '';
     do {
-        const page = await (await get(`${pds}/xrpc/com.atproto.repo.listRecords?repo=${ACCOUNT}&collection=${SUBSCRIPTION}&limit=100&cursor=${cursor}`, 'application/json')).json();
+        const page = await (
+            await get(
+                `${pds}/xrpc/com.atproto.repo.listRecords?repo=${ACCOUNT}&collection=${SUBSCRIPTION}&limit=100&cursor=${cursor}`,
+                'application/json',
+            )
+        ).json();
         for (const { value } of page.records) {
             // Standardfeed sidecars carry no feed URL; the account follows none, so they are left out.
             if (value.source?.$type !== `${SUBSCRIPTION}#rssFeed`) continue;
-            subscriptions.push({ feedUrl: value.source.feedUrl, siteUrl: value.source.siteUrl ?? null, title: value.title || null, primary: value.primary === true });
+            subscriptions.push({
+                feedUrl: value.source.feedUrl,
+                siteUrl: value.source.siteUrl ?? null,
+                title: value.title || null,
+                primary: value.primary === true,
+            });
         }
         cursor = page.cursor ?? '';
     } while (cursor);
@@ -108,7 +145,12 @@ async function listSubscriptions(pds: string): Promise<Subscription[]> {
 }
 
 async function loadAvatar(pds: string): Promise<string | null> {
-    const profile = await (await get(`${pds}/xrpc/com.atproto.repo.getRecord?repo=${ACCOUNT}&collection=app.bsky.actor.profile&rkey=self`, 'application/json')).json();
+    const profile = await (
+        await get(
+            `${pds}/xrpc/com.atproto.repo.getRecord?repo=${ACCOUNT}&collection=app.bsky.actor.profile&rkey=self`,
+            'application/json',
+        )
+    ).json();
     const cid = profile.value?.avatar?.ref?.$link;
     if (!cid) return null;
     const blob = await bytes(await get(`${pds}/xrpc/com.atproto.sync.getBlob?did=${ACCOUNT}&cid=${cid}`, 'image/*'));
@@ -116,7 +158,9 @@ async function loadAvatar(pds: string): Promise<string | null> {
 }
 
 async function fetchFeed(feedUrl: string): Promise<FeedItem[]> {
-    const doc = parser.parse(await (await get(feedUrl, 'application/rss+xml, application/atom+xml, application/xml, text/xml')).text());
+    const doc = parser.parse(
+        await (await get(feedUrl, 'application/rss+xml, application/atom+xml, application/xml, text/xml')).text(),
+    );
     if (doc.feed) return (doc.feed.entry ?? []).flatMap(atomItem);
     return (doc.rss?.channel?.item ?? doc['rdf:RDF']?.item ?? []).flatMap(rssItem);
 }
@@ -133,7 +177,15 @@ function text(value: unknown): string {
 function feedItem(title: string, url: string | null, date: string, body: string, image: string | null): FeedItem[] {
     const publishedAt = new Date(date);
     if (!date || Number.isNaN(publishedAt.getTime())) return [];
-    return [{ title: title || null, url, publishedAt, body, image: image && URL.canParse(image, url ?? undefined) ? new URL(image, url ?? undefined).href : null }];
+    return [
+        {
+            title: title || null,
+            url,
+            publishedAt,
+            body,
+            image: image && URL.canParse(image, url ?? undefined) ? new URL(image, url ?? undefined).href : null,
+        },
+    ];
 }
 
 // The image order follows gofeed's RSS translator, which the app's feed pipeline uses.
@@ -142,14 +194,31 @@ function rssItem(item: Node): FeedItem[] {
     const description = text(item.description);
     const enclosure = item.enclosure?.find((e: Node) => String(e['@type']).startsWith('image/'));
     const media = item['media:content']?.find((m: Node) => /image/.test(`${m['@type']} ${m['@medium']}`));
-    const image = item['itunes:image']?.['@href'] ?? media?.['@url'] ?? enclosure?.['@url'] ?? firstImage(content) ?? firstImage(description);
-    return feedItem(text(item.title), text(item.link?.[0]) || null, text(item.pubDate) || text(item['dc:date']), content || description, image ?? null);
+    const image =
+        item['itunes:image']?.['@href'] ??
+        media?.['@url'] ??
+        enclosure?.['@url'] ??
+        firstImage(content) ??
+        firstImage(description);
+    return feedItem(
+        text(item.title),
+        text(item.link?.[0]) || null,
+        text(item.pubDate) || text(item['dc:date']),
+        content || description,
+        image ?? null,
+    );
 }
 
 // gofeed gives Atom entries no image, so neither does the app.
 function atomItem(entry: Node): FeedItem[] {
     const link = entry.link?.find((l: Node) => !l['@rel'] || l['@rel'] === 'alternate');
-    return feedItem(text(entry.title), link?.['@href'] ?? null, text(entry.published) || text(entry.updated), text(entry.content) || text(entry.summary), null);
+    return feedItem(
+        text(entry.title),
+        link?.['@href'] ?? null,
+        text(entry.published) || text(entry.updated),
+        text(entry.content) || text(entry.summary),
+        null,
+    );
 }
 
 function firstImage(html: string): string | null {
@@ -180,12 +249,32 @@ async function loadFavicon(siteUrl: string): Promise<string | null> {
         const page = await get(siteUrl, 'text/html,application/xhtml+xml');
         base = new URL(page.url);
         for (const tag of (await page.text()).slice(0, MAX_ICON_BYTES).match(/<link\b[^>]*>/gi) ?? []) {
-            const attrs = Object.fromEntries([...tag.matchAll(/([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)].map((m) => [m[1].toLowerCase(), m[2] ?? m[3] ?? m[4]]));
-            const rel = String(attrs.rel ?? '').toLowerCase().split(/\s+/).find((token) => token in REL_WEIGHT);
-            if (!rel || !attrs.href || attrs.href.startsWith('data:') || !URL.canParse(decodeHTML(attrs.href), base)) continue;
+            const attrs = Object.fromEntries(
+                [...tag.matchAll(/([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)].map((m) => [
+                    m[1].toLowerCase(),
+                    m[2] ?? m[3] ?? m[4],
+                ]),
+            );
+            const rel = String(attrs.rel ?? '')
+                .toLowerCase()
+                .split(/\s+/)
+                .find((token) => token in REL_WEIGHT);
+            if (!rel || !attrs.href || attrs.href.startsWith('data:') || !URL.canParse(decodeHTML(attrs.href), base))
+                continue;
             const href = new URL(decodeHTML(attrs.href), base).href;
-            const size = Math.max(0, ...String(attrs.sizes ?? '').split(/\s+/).flatMap((s) => s.toLowerCase().split('x').map(Number)).filter(Number.isFinite));
-            candidates.push({ href, svg: attrs.type === 'image/svg+xml' || /\.svg($|\?)/i.test(href), size, weight: REL_WEIGHT[rel] });
+            const size = Math.max(
+                0,
+                ...String(attrs.sizes ?? '')
+                    .split(/\s+/)
+                    .flatMap((s) => s.toLowerCase().split('x').map(Number))
+                    .filter(Number.isFinite),
+            );
+            candidates.push({
+                href,
+                svg: attrs.type === 'image/svg+xml' || /\.svg($|\?)/i.test(href),
+                size,
+                weight: REL_WEIGHT[rel],
+            });
         }
     } catch {
         // A site that does not answer still gets its /favicon.ico tried.
@@ -229,7 +318,10 @@ function icoFrame(ico: Buffer): Buffer {
 async function loadImage(url: string): Promise<string | null> {
     try {
         const body = await bytes(await get(url, 'image/*'));
-        return dataURI('image/webp', await sharp(body).resize({ width: 480, withoutEnlargement: true }).webp({ quality: 72 }).toBuffer());
+        return dataURI(
+            'image/webp',
+            await sharp(body).resize({ width: 480, withoutEnlargement: true }).webp({ quality: 72 }).toBuffer(),
+        );
     } catch {
         return null;
     }
@@ -238,12 +330,21 @@ async function loadImage(url: string): Promise<string | null> {
 // Feed content names these URLs, so only public web hosts are fetched, never this machine's own network.
 function isPublicURL(url: URL): boolean {
     const host = url.hostname;
-    return /^https?:$/.test(url.protocol) && host.includes('.') && !host.endsWith('.internal') && !host.endsWith('.local') && !/^[\d.]+$|:/.test(host);
+    return (
+        /^https?:$/.test(url.protocol) &&
+        host.includes('.') &&
+        !host.endsWith('.internal') &&
+        !host.endsWith('.local') &&
+        !/^[\d.]+$|:/.test(host)
+    );
 }
 
 async function get(url: string, accept: string): Promise<Response> {
     if (!isPublicURL(new URL(url))) throw new Error(`refusing ${url}`);
-    const response = await fetch(url, { headers: { 'user-agent': USER_AGENT, accept }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const response = await fetch(url, {
+        headers: { 'user-agent': USER_AGENT, accept },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
     if (!response.ok || !isPublicURL(new URL(response.url))) throw new Error(`${url}: ${response.status}`);
     return response;
 }
@@ -261,11 +362,13 @@ function dataURI(type: string, body: Buffer): string {
 async function mapPool<T, R>(items: T[], limit: number, run: (item: T, index: number) => Promise<R>): Promise<R[]> {
     const results: R[] = new Array(items.length);
     let next = 0;
-    await Promise.all(Array.from({ length: limit }, async () => {
-        while (next < items.length) {
-            const index = next++;
-            results[index] = await run(items[index], index);
-        }
-    }));
+    await Promise.all(
+        Array.from({ length: limit }, async () => {
+            while (next < items.length) {
+                const index = next++;
+                results[index] = await run(items[index], index);
+            }
+        }),
+    );
     return results;
 }

@@ -1,6 +1,13 @@
 import { useState } from 'react';
 
-import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
+import {
+    Popover,
+    PopoverContent,
+    PopoverDescription,
+    PopoverHeader,
+    PopoverTitle,
+    PopoverTrigger,
+} from '@/components/ui/popover';
 import { StatusDot } from '@/components/ui/status-dot';
 import { Frame } from '@/design/frame';
 import { Text } from '@/design/text';
@@ -9,23 +16,62 @@ import type { FeedSource } from '@/hooks/use-sources';
 const RELATIVE = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
 
 // waitingChannels is how many of the reader's YouTube channels wait on the same outage, when the caller knows.
-export function FeedHealth({ source, labelled = false, waitingChannels }: { source: FeedSource; labelled?: boolean; waitingChannels?: number }) {
+export function FeedHealth({
+    source,
+    labelled = false,
+    waitingChannels,
+}: {
+    source: FeedSource;
+    labelled?: boolean;
+    waitingChannels?: number;
+}) {
     if (source.fetchStatus !== 'unavailable') return null;
     if (source.youtubeOutage) {
         if (labelled) return <YouTubeOutageStatus nextFetchAt={source.nextFetchAt} waitingChannels={waitingChannels} />;
-        return <Frame as="span" aria-label="Waiting on YouTube. Its feeds are down right now." direction="row" display="inline-flex" role="img" shrink={false}><StatusDot tone="warning" /></Frame>;
+        return (
+            <Frame
+                as="span"
+                aria-label="Waiting on YouTube. Its feeds are down right now."
+                direction="row"
+                display="inline-flex"
+                role="img"
+                shrink={false}
+            >
+                <StatusDot tone="warning" />
+            </Frame>
+        );
     }
     if (labelled) {
-        return <Frame as="span" align="center" direction="row" gap="xs" shrink={false}><StatusDot tone="destructive" /><Text as="span">Not fetching</Text></Frame>;
+        return (
+            <Frame as="span" align="center" direction="row" gap="xs" shrink={false}>
+                <StatusDot tone="destructive" />
+                <Text as="span">Not fetching</Text>
+            </Frame>
+        );
     }
-    return <Frame as="span" aria-label="Posts not fetching. Retrying automatically." direction="row" display="inline-flex" role="img" shrink={false}><StatusDot tone="destructive" /></Frame>;
+    return (
+        <Frame
+            as="span"
+            aria-label="Posts not fetching. Retrying automatically."
+            direction="row"
+            display="inline-flex"
+            role="img"
+            shrink={false}
+        >
+            <StatusDot tone="destructive" />
+        </Frame>
+    );
 }
 
 function YouTubeOutageStatus({ nextFetchAt, waitingChannels = 0 }: { nextFetchAt?: string; waitingChannels?: number }) {
     // Read when the popover opens, since render must not read the clock.
     const [openedAt, setOpenedAt] = useState(0);
     return (
-        <Popover onOpenChange={(open) => { if (open) setOpenedAt(Date.now()); }}>
+        <Popover
+            onOpenChange={(open) => {
+                if (open) setOpenedAt(Date.now());
+            }}
+        >
             <PopoverTrigger variant="explain">
                 <StatusDot tone="warning" />
                 Waiting on YouTube
@@ -34,10 +80,16 @@ function YouTubeOutageStatus({ nextFetchAt, waitingChannels = 0 }: { nextFetchAt
                 <PopoverHeader>
                     <PopoverTitle>YouTube’s feeds are down</PopoverTitle>
                     <PopoverDescription pretty>
-                        This is on YouTube’s side and usually clears within a few hours, so there’s nothing to fix. Morgenblau checks again {nextCheck(nextFetchAt, openedAt)}, and videos posted in the meantime still arrive.
+                        This is on YouTube’s side and usually clears within a few hours, so there’s nothing to fix.
+                        Morgenblau checks again {nextCheck(nextFetchAt, openedAt)}, and videos posted in the meantime
+                        still arrive.
                     </PopoverDescription>
                 </PopoverHeader>
-                {waitingChannels > 1 ? <Text size="xs" tone="subtle">{waitingChannels} of your YouTube channels are waiting.</Text> : null}
+                {waitingChannels > 1 ? (
+                    <Text size="xs" tone="subtle">
+                        {waitingChannels} of your YouTube channels are waiting.
+                    </Text>
+                ) : null}
             </PopoverContent>
         </Popover>
     );
@@ -53,11 +105,14 @@ export function GeneratedNote({ source }: { source: FeedSource }) {
     const generated = source.generated;
     if (!generated || generated.health === 'ok') return null;
     let note = 'This site blocks feed readers';
-    if (generated.health !== 'blocked_by_site') note = generated.healthReason ? `Needs attention: ${generated.healthReason}` : 'Needs attention';
+    if (generated.health !== 'blocked_by_site')
+        note = generated.healthReason ? `Needs attention: ${generated.healthReason}` : 'Needs attention';
     // A note sits a little under whatever it annotates: a source's facts, or a row in the source list.
     return (
         <Frame paddingTop="xs">
-            <Text size="xs" tone="muted">{note}</Text>
+            <Text size="xs" tone="muted">
+                {note}
+            </Text>
         </Frame>
     );
 }

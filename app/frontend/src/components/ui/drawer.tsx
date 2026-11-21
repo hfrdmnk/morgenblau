@@ -47,7 +47,13 @@ function DrawerPopup({ side, className, ...props }: Drawer.Popup.Props & { side:
 
 // The grab handle a bottom sheet shows above its content.
 function DrawerHandle() {
-    return <div aria-hidden="true" data-slot="drawer-handle" className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-accent" />;
+    return (
+        <div
+            aria-hidden="true"
+            data-slot="drawer-handle"
+            className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-accent"
+        />
+    );
 }
 
 // The scrolling body under a sheet's header; min-h-0 lets it shrink inside the popup's column so it, not the sheet, scrolls.

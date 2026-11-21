@@ -4,20 +4,7 @@ import { styleClasses, type StyleProps } from '@/design/style-props';
 import { text } from '@/design/tokens';
 
 type TextElement =
-    | 'p'
-    | 'span'
-    | 'h1'
-    | 'h2'
-    | 'h3'
-    | 'h4'
-    | 'label'
-    | 'code'
-    | 'strong'
-    | 'em'
-    | 'time'
-    | 'small'
-    | 'dt'
-    | 'dd';
+    'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'label' | 'code' | 'strong' | 'em' | 'time' | 'small' | 'dt' | 'dd';
 
 type TypeProps = StyleProps<typeof text>;
 

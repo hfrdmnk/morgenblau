@@ -9,21 +9,32 @@ afterAll(() => GlobalRegistrator.unregister());
 test('a stored entry loads its images through the proxy with the raw src, and still resolves links', () => {
     const body = '<p><a href="/about">About</a><img src="../img/chart.png?a=1&amp;b=2" alt="Chart"></p>';
     const template = document.createElement('template');
-    template.innerHTML = readerBody({ entrySlug: 'abc123', url: 'https://publication.example.com/posts/a', contentType: 'blogpost', body });
-    expect(template.content.querySelector('img')?.getAttribute('src')).toBe('/api/entries/abc123/images?src=..%2Fimg%2Fchart.png%3Fa%3D1%26b%3D2');
+    template.innerHTML = readerBody({
+        entrySlug: 'abc123',
+        url: 'https://publication.example.com/posts/a',
+        contentType: 'blogpost',
+        body,
+    });
+    expect(template.content.querySelector('img')?.getAttribute('src')).toBe(
+        '/api/entries/abc123/images?src=..%2Fimg%2Fchart.png%3Fa%3D1%26b%3D2',
+    );
     expect(template.content.querySelector('a')?.getAttribute('href')).toBe('https://publication.example.com/about');
 
     template.innerHTML = readerBody({ url: 'https://publication.example.com/posts/a', contentType: 'blogpost', body });
-    expect(template.content.querySelector('img')?.getAttribute('src')).toBe('https://publication.example.com/img/chart.png?a=1&b=2');
+    expect(template.content.querySelector('img')?.getAttribute('src')).toBe(
+        'https://publication.example.com/img/chart.png?a=1&b=2',
+    );
 });
 
 test('newsletter body keeps private app asset URLs and blocked images unchanged', () => {
     const body = '<img src="/api/newsletter-assets/example-id"><img alt="Blocked image">';
-    expect(readerBody({
-        url: 'https://publisher.example/newsletter',
-        contentType: 'newsletter',
-        body,
-    })).toBe(body);
+    expect(
+        readerBody({
+            url: 'https://publisher.example/newsletter',
+            contentType: 'newsletter',
+            body,
+        }),
+    ).toBe(body);
 });
 
 test('feed content URLs resolve against the article without moving local fragments', () => {
@@ -61,14 +72,16 @@ describe('reader source URLs', () => {
             'https://youtu.be/AbCdEf123_-',
             'https://m.youtube.com/shorts/AbCdEf123_-',
             'https://www.youtube-nocookie.com/embed/AbCdEf123_-',
-        ]) expect(youtubeID(url)).toBe('AbCdEf123_-');
+        ])
+            expect(youtubeID(url)).toBe('AbCdEf123_-');
         for (const url of [
             'https://youtube.com.evil.example/watch?v=AbCdEf123_-',
             'https://notyoutube.com/watch?v=AbCdEf123_-',
             'https://youtube.com/watch?v=bad',
             'https://youtube.com/channel/AbCdEf123_-',
             'javascript:alert(1)',
-        ]) expect(youtubeID(url)).toBeNull();
+        ])
+            expect(youtubeID(url)).toBeNull();
     });
 });
 
@@ -77,8 +90,13 @@ test('metadata tolerates malformed JSON and rejects non-video or unsafe enclosur
     expect(readerMetadata('null')).toEqual({});
     expect(readerMetadata('{"author":42,"enclosure":{"url":"javascript:alert(1)","type":"video/mp4"}}')).toEqual({});
     expect(readerMetadata('{"enclosure":{"url":"https://media.example/a.mp3","type":"audio/mpeg"}}')).toEqual({});
-    expect(readerMetadata('{"author":"Example Writer","enclosure":{"url":"https://media.example/a.mp4","type":"video/mp4"}}')).toEqual({
-        author: 'Example Writer', video: { url: 'https://media.example/a.mp4', type: 'video/mp4' },
+    expect(
+        readerMetadata(
+            '{"author":"Example Writer","enclosure":{"url":"https://media.example/a.mp4","type":"video/mp4"}}',
+        ),
+    ).toEqual({
+        author: 'Example Writer',
+        video: { url: 'https://media.example/a.mp4', type: 'video/mp4' },
     });
     expect(readerMetadata('{"enclosure":{"url":"https://media.example/a.mp4","type":"Video/MP4"}}')).toEqual({
         video: { url: 'https://media.example/a.mp4', type: 'video/mp4' },

@@ -45,12 +45,18 @@ function newsletterEntry(newsletter: Partial<NonNullable<ReaderEntry['newsletter
 async function render(entry: ReaderEntry, onChange: (entry: ReaderEntry) => void = () => {}) {
     globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
         requests.push({ url: String(url), method: init?.method ?? 'GET' });
-        return Response.json({ body: '<img src="https://images.example.com/cover.png">', remoteImagesAllowed: true, hasBlockedRemoteImages: false });
+        return Response.json({
+            body: '<img src="https://images.example.com/cover.png">',
+            remoteImagesAllowed: true,
+            hasBlockedRemoteImages: false,
+        });
     }) as typeof fetch;
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
-    await act(async () => root.render(<NewsletterImages entry={entry} newsletter={entry.newsletter!} onChange={onChange} />));
+    await act(async () =>
+        root.render(<NewsletterImages entry={entry} newsletter={entry.newsletter!} onChange={onChange} />),
+    );
     unmount = () => {
         root.unmount();
         container.remove();
@@ -61,7 +67,9 @@ async function render(entry: ReaderEntry, onChange: (entry: ReaderEntry) => void
 
 test('blocked newsletter images load only after the reader clicks', async () => {
     let changed: ReaderEntry | undefined;
-    const container = await render(newsletterEntry({}), (entry) => { changed = entry; });
+    const container = await render(newsletterEntry({}), (entry) => {
+        changed = entry;
+    });
 
     expect(container.textContent).toContain('Remote images are blocked');
     expect(requests).toEqual([]);

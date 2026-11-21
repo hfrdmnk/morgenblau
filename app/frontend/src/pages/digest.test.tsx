@@ -20,26 +20,38 @@ afterAll(() => GlobalRegistrator.unregister());
 type Routes = { feeds: Response; newsletters: Response };
 
 async function emptyDigest({ feeds, newsletters }: Routes) {
-    globalThis.fetch = Object.assign(async (input: RequestInfo | URL) => {
-        const path = new URL(String(input), 'http://app.example.com').pathname;
-        if (path === '/api/digest') return Response.json({ date: '2026-10-29', entries: [], hasActiveJob: false });
-        if (path === '/api/subscriptions') return feeds.clone();
-        if (path === '/api/newsletters') return newsletters.clone();
-        return Response.json({ code: 'not_found', message: 'not found' }, { status: 404 });
-    }, { preconnect: realFetch.preconnect });
+    globalThis.fetch = Object.assign(
+        async (input: RequestInfo | URL) => {
+            const path = new URL(String(input), 'http://app.example.com').pathname;
+            if (path === '/api/digest') return Response.json({ date: '2026-10-29', entries: [], hasActiveJob: false });
+            if (path === '/api/subscriptions') return feeds.clone();
+            if (path === '/api/newsletters') return newsletters.clone();
+            return Response.json({ code: 'not_found', message: 'not found' }, { status: 404 });
+        },
+        { preconnect: realFetch.preconnect },
+    );
     const container = document.createElement('div');
     const root = createRoot(container);
-    cleanup = () => { root.unmount(); container.remove(); };
+    cleanup = () => {
+        root.unmount();
+        container.remove();
+    };
     await act(async () => root.render(<Digest />));
     await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
     return container.textContent ?? '';
 }
 
-async function renderDigest(entries: unknown[], respond = () => Response.json({ date: '2026-10-29', entries, hasActiveJob: false })) {
+async function renderDigest(
+    entries: unknown[],
+    respond = () => Response.json({ date: '2026-10-29', entries, hasActiveJob: false }),
+) {
     globalThis.fetch = Object.assign(async () => respond(), { preconnect: realFetch.preconnect });
     const container = document.createElement('div');
     const root = createRoot(container);
-    cleanup = () => { root.unmount(); container.remove(); };
+    cleanup = () => {
+        root.unmount();
+        container.remove();
+    };
     await act(async () => root.render(<Digest />));
     await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
     return container;
@@ -47,8 +59,15 @@ async function renderDigest(entries: unknown[], respond = () => Response.json({ 
 
 function feedEntry(slug: string, title: string, primary: boolean, extra: Record<string, unknown> = {}) {
     return {
-        id: slug, entrySlug: slug, title, url: `https://publication.example.com/posts/${slug}`, contentType: 'blogpost', publishedAt: '2026-10-29T08:00:00Z',
-        body: null, source: { title: `${title} source`, siteUrl: 'https://publication.example.com', faviconUrl: null, primary }, ...extra,
+        id: slug,
+        entrySlug: slug,
+        title,
+        url: `https://publication.example.com/posts/${slug}`,
+        contentType: 'blogpost',
+        publishedAt: '2026-10-29T08:00:00Z',
+        body: null,
+        source: { title: `${title} source`, siteUrl: 'https://publication.example.com', faviconUrl: null, primary },
+        ...extra,
     };
 }
 
@@ -69,13 +88,29 @@ test('primary sources lead the digest with an excerpt, and an image only when th
 });
 
 test('a source with several posts keeps its latest in place and folds the rest beneath it', async () => {
-    const linkblog = { title: 'Example Linkblog', siteUrl: 'https://links.example.com', feedUrl: 'https://links.example.com/rss', faviconUrl: null };
+    const linkblog = {
+        title: 'Example Linkblog',
+        siteUrl: 'https://links.example.com',
+        feedUrl: 'https://links.example.com/rss',
+        faviconUrl: null,
+    };
     const post = (slug: string, source: Record<string, unknown>) => ({ ...feedEntry(slug, slug, false), source });
     const container = await renderDigest([
         post('links-latest', linkblog),
-        post('weekly', { title: 'Example Weekly', siteUrl: 'https://links.example.com', feedUrl: 'https://weekly.example.com/feed', faviconUrl: null }),
+        post('weekly', {
+            title: 'Example Weekly',
+            siteUrl: 'https://links.example.com',
+            feedUrl: 'https://weekly.example.com/feed',
+            faviconUrl: null,
+        }),
         post('links-older', linkblog),
-        post('letter', { kind: 'newsletter', id: 'letters', title: 'Example Letters', siteUrl: null, faviconUrl: null }),
+        post('letter', {
+            kind: 'newsletter',
+            id: 'letters',
+            title: 'Example Letters',
+            siteUrl: null,
+            faviconUrl: null,
+        }),
         post('links-oldest', linkblog),
     ]);
     const visible = () => [...container.querySelectorAll('a[href*="?from="]')].map((link) => link.textContent);
@@ -90,14 +125,22 @@ test('a source with several posts keeps its latest in place and folds the rest b
 });
 
 test('an open group stays open when a sync brings a newer post from its source, and when the page mounts again', async () => {
-    const source = { title: 'Example Notes', siteUrl: 'https://notes.example.com', feedUrl: 'https://notes.example.com/feed', faviconUrl: null };
+    const source = {
+        title: 'Example Notes',
+        siteUrl: 'https://notes.example.com',
+        feedUrl: 'https://notes.example.com/feed',
+        faviconUrl: null,
+    };
     const post = (slug: string) => ({ ...feedEntry(slug, slug, false), source });
     let syncing = true;
-    const respond = () => Response.json({
-        date: '2026-10-29',
-        entries: syncing ? [post('notes-a'), post('notes-b')] : [post('notes-new'), post('notes-a'), post('notes-b')],
-        hasActiveJob: syncing,
-    });
+    const respond = () =>
+        Response.json({
+            date: '2026-10-29',
+            entries: syncing
+                ? [post('notes-a'), post('notes-b')]
+                : [post('notes-new'), post('notes-a'), post('notes-b')],
+            hasActiveJob: syncing,
+        });
     let container = await renderDigest([], respond);
     const visible = () => [...container.querySelectorAll('a[href*="?from="]')].map((link) => link.textContent);
     const settle = (ms: number) => act(async () => new Promise((resolve) => setTimeout(resolve, ms)));
@@ -115,20 +158,41 @@ test('an open group stays open when a sync brings a newer post from its source, 
 
 test('the arrows and j/k walk the posts from the primary ones down, and Enter opens the one the pointer selected last', async () => {
     const container = await renderDigest([
-        feedEntry('first-ordinary', 'First ordinary post', false, { source: { title: 'Example Weekly', siteUrl: 'https://weekly.example.com', feedUrl: 'https://weekly.example.com/feed', faviconUrl: null } }),
-        feedEntry('second-ordinary', 'Second ordinary post', false, { source: { title: 'Example Notes', siteUrl: 'https://notes.example.com', feedUrl: 'https://notes.example.com/feed', faviconUrl: null } }),
+        feedEntry('first-ordinary', 'First ordinary post', false, {
+            source: {
+                title: 'Example Weekly',
+                siteUrl: 'https://weekly.example.com',
+                feedUrl: 'https://weekly.example.com/feed',
+                faviconUrl: null,
+            },
+        }),
+        feedEntry('second-ordinary', 'Second ordinary post', false, {
+            source: {
+                title: 'Example Notes',
+                siteUrl: 'https://notes.example.com',
+                feedUrl: 'https://notes.example.com/feed',
+                faviconUrl: null,
+            },
+        }),
         feedEntry('lead', 'Primary post', true),
     ]);
     document.body.append(container);
     // Navigating would go through this file's native Event, which Happy DOM's window refuses, so the opened link is recorded instead.
     const opened: string[] = [];
-    container.addEventListener('click', (event) => {
-        if (event.target instanceof HTMLAnchorElement) opened.push(event.target.textContent ?? '');
-        event.preventDefault();
-    }, { capture: true });
-    const press = (key: string) => act(async () => {
-        (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-    });
+    container.addEventListener(
+        'click',
+        (event) => {
+            if (event.target instanceof HTMLAnchorElement) opened.push(event.target.textContent ?? '');
+            event.preventDefault();
+        },
+        { capture: true },
+    );
+    const press = (key: string) =>
+        act(async () => {
+            (document.activeElement ?? document.body).dispatchEvent(
+                new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+            );
+        });
     const selected = () => container.querySelector('[data-selected]')?.querySelector('[data-post-link]')?.textContent;
 
     await press('ArrowDown');
@@ -141,7 +205,11 @@ test('the arrows and j/k walk the posts from the primary ones down, and Enter op
     expect(selected()).toBe('Primary post');
 
     const last = [...container.querySelectorAll('[data-post]')].at(-1)!;
-    await act(async () => last.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: 40, clientY: 40 })));
+    await act(async () =>
+        last.dispatchEvent(
+            new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: 40, clientY: 40 }),
+        ),
+    );
     expect(selected()).toBe('Second ordinary post');
     await press('Enter');
     expect(opened).toEqual(['Second ordinary post']);
@@ -158,7 +226,18 @@ test('a reader with no feeds gets the first-run state even when the server has n
 test('a reader with only a newsletter gets the quiet-day state', async () => {
     const text = await emptyDigest({
         feeds: Response.json([]),
-        newsletters: Response.json({ active: [{ id: 'n1', title: 'Example Publication', senderAddress: 'news@publication.example.com', primary: false, tags: [] }], stopped: [] }),
+        newsletters: Response.json({
+            active: [
+                {
+                    id: 'n1',
+                    title: 'Example Publication',
+                    senderAddress: 'news@publication.example.com',
+                    primary: false,
+                    tags: [],
+                },
+            ],
+            stopped: [],
+        }),
     });
     expect(text).toContain('A quiet day.');
 });
@@ -175,15 +254,27 @@ test('a failed feed list offers a retry instead of guessing which empty state ap
 
 test('an empty day keeps the digest skeleton while a sync is still collecting, then shows what arrived', async () => {
     let calls = 0;
-    globalThis.fetch = Object.assign(async () => {
-        calls += 1;
-        return Response.json(calls === 1
-            ? { date: '2026-10-29', entries: [], hasActiveJob: true }
-            : { date: '2026-10-29', entries: [feedEntry('arrived', 'Freshly collected post', false)], hasActiveJob: false });
-    }, { preconnect: realFetch.preconnect });
+    globalThis.fetch = Object.assign(
+        async () => {
+            calls += 1;
+            return Response.json(
+                calls === 1
+                    ? { date: '2026-10-29', entries: [], hasActiveJob: true }
+                    : {
+                          date: '2026-10-29',
+                          entries: [feedEntry('arrived', 'Freshly collected post', false)],
+                          hasActiveJob: false,
+                      },
+            );
+        },
+        { preconnect: realFetch.preconnect },
+    );
     const container = document.createElement('div');
     const root = createRoot(container);
-    cleanup = () => { root.unmount(); container.remove(); };
+    cleanup = () => {
+        root.unmount();
+        container.remove();
+    };
     await act(async () => root.render(<Digest />));
     await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
     expect(calls).toBe(1);
@@ -200,29 +291,41 @@ test('adding a first source never flashes the quiet-day copy before the digest r
     let feeds: unknown[] = [];
     let digestCalls = 0;
     let answerDigest = () => {};
-    globalThis.fetch = Object.assign(async (input: RequestInfo | URL) => {
-        const path = new URL(String(input), 'http://app.example.com').pathname;
-        if (path === '/api/subscriptions') return Response.json(feeds);
-        if (path === '/api/newsletters') return Response.json({ active: [], stopped: [] });
-        digestCalls += 1;
-        if (digestCalls === 1) return Response.json({ date: '2026-10-29', entries: [], hasActiveJob: false });
-        await new Promise<void>((resolve) => { answerDigest = resolve; });
-        return Response.json({ date: '2026-10-29', entries: [], hasActiveJob: true });
-    }, { preconnect: realFetch.preconnect });
+    globalThis.fetch = Object.assign(
+        async (input: RequestInfo | URL) => {
+            const path = new URL(String(input), 'http://app.example.com').pathname;
+            if (path === '/api/subscriptions') return Response.json(feeds);
+            if (path === '/api/newsletters') return Response.json({ active: [], stopped: [] });
+            digestCalls += 1;
+            if (digestCalls === 1) return Response.json({ date: '2026-10-29', entries: [], hasActiveJob: false });
+            await new Promise<void>((resolve) => {
+                answerDigest = resolve;
+            });
+            return Response.json({ date: '2026-10-29', entries: [], hasActiveJob: true });
+        },
+        { preconnect: realFetch.preconnect },
+    );
     const { subscriptionChanges } = await import('@/lib/add-source');
     const container = document.createElement('div');
     const root = createRoot(container);
-    cleanup = () => { root.unmount(); container.remove(); };
+    cleanup = () => {
+        root.unmount();
+        container.remove();
+    };
     await act(async () => root.render(<Digest />));
     await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
     expect(container.textContent).toContain('Nothing to read yet.');
 
     feeds = [feedEntry('first', 'Example Publication', false)];
-    await act(async () => { subscriptionChanges.dispatchEvent(new Event('change')); });
+    await act(async () => {
+        subscriptionChanges.dispatchEvent(new Event('change'));
+    });
     await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
     expect(container.textContent).not.toContain('A quiet day.');
 
-    await act(async () => { answerDigest(); });
+    await act(async () => {
+        answerDigest();
+    });
     await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
 });

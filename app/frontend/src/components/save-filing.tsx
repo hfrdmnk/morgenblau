@@ -31,22 +31,36 @@ function SavedFiling({ save, tags }: { save: EntrySave; tags: string[] }) {
                 <Frame align="center" direction="row" gap="m" justify="between" wrap>
                     <Frame align="center" direction="row" gap="s">
                         <CheckIcon size="md" tone="success-icon" />
-                        <Text as="h2" id="save-filing" size="sm" weight="medium">Saved to Library</Text>
+                        <Text as="h2" id="save-filing" size="sm" weight="medium">
+                            Saved to Library
+                        </Text>
                     </Frame>
                     <Frame align="center" direction="row" gap="m">
                         {!editing ? (
                             <>
-                                <Button onClick={() => setEditing(true)} size="bare" variant="nav">Add tags</Button>
+                                <Button onClick={() => setEditing(true)} size="bare" variant="nav">
+                                    Add tags
+                                </Button>
                                 <Separator />
                             </>
                         ) : null}
-                        <Button onClick={() => announceRemove(save, tags)} size="bare" variant="nav">Remove</Button>
+                        <Button onClick={() => announceRemove(save, tags)} size="bare" variant="nav">
+                            Remove
+                        </Button>
                     </Frame>
                 </Frame>
                 {editing ? (
-                    <Frame maxWidth="sm" paddingTop="2xl"><SaveTagEditor inputRef={input} save={save} /></Frame>
+                    <Frame maxWidth="sm" paddingTop="2xl">
+                        <SaveTagEditor inputRef={input} save={save} />
+                    </Frame>
                 ) : tags.length ? (
-                    <Frame paddingTop="m"><TagChips inputRef={input} onRemove={(tag) => save.setTags(tags.filter((other) => other !== tag))} tags={tags} /></Frame>
+                    <Frame paddingTop="m">
+                        <TagChips
+                            inputRef={input}
+                            onRemove={(tag) => save.setTags(tags.filter((other) => other !== tag))}
+                            tags={tags}
+                        />
+                    </Frame>
                 ) : null}
             </Frame>
         </Frame>

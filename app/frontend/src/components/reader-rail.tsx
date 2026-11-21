@@ -78,7 +78,10 @@ function SaveButton({ save, side }: { save: EntrySave; side: TooltipSide }) {
     );
 }
 
-const COPY_LINK_FAILURE = { title: 'Couldn’t copy the link', description: 'Open the original and copy its address instead.' };
+const COPY_LINK_FAILURE = {
+    title: 'Couldn’t copy the link',
+    description: 'Open the original and copy its address instead.',
+};
 
 const COPY_LINK = {
     idle: { label: 'Copy link', icon: CopyIcon, tone: 'idle', announcement: '' },

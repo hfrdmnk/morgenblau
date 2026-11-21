@@ -32,7 +32,15 @@ export function Toaster() {
     );
 }
 
-export function LinkToast({ title, description, onClick }: { title: string; description: string; onClick: () => void }) {
+export function LinkToast({
+    title,
+    description,
+    onClick,
+}: {
+    title: string;
+    description: string;
+    onClick: () => void;
+}) {
     return (
         <button
             // Sonner draws the card around custom content; the button fills it, padding included, so the whole card is the target.

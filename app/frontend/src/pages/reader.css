@@ -17,8 +17,12 @@
     margin-block: 1.4em;
 }
 
-.reader-body > :first-child { margin-top: 0; }
-.reader-body > :last-child { margin-bottom: 0; }
+.reader-body > :first-child {
+    margin-top: 0;
+}
+.reader-body > :last-child {
+    margin-bottom: 0;
+}
 
 .reader-body :where(h1, h2, h3, h4, h5, h6) {
     margin-block: 2em 0.75em;
@@ -27,11 +31,21 @@
     text-wrap: balance;
 }
 
-.reader-body :where(h1, h2) { font-size: var(--text-2xl); }
-.reader-body h3 { font-size: var(--text-xl); }
-.reader-body :where(h4, h5, h6) { font-size: var(--text-lg); }
-.reader-body :where(strong, b) { font-weight: 600; }
-.reader-body :where(em, i) { font-style: italic; }
+.reader-body :where(h1, h2) {
+    font-size: var(--text-2xl);
+}
+.reader-body h3 {
+    font-size: var(--text-xl);
+}
+.reader-body :where(h4, h5, h6) {
+    font-size: var(--text-lg);
+}
+.reader-body :where(strong, b) {
+    font-weight: 600;
+}
+.reader-body :where(em, i) {
+    font-style: italic;
+}
 
 .reader-body a {
     text-decoration: underline;
@@ -39,10 +53,20 @@
     text-underline-offset: 0.2em;
 }
 
-.reader-body ul { list-style: disc; padding-left: 1.5em; }
-.reader-body ol { list-style: decimal; padding-left: 1.5em; }
-.reader-body li { margin-block: 0.4em; }
-.reader-body li > :where(ul, ol) { margin-block: 0.5em; }
+.reader-body ul {
+    list-style: disc;
+    padding-left: 1.5em;
+}
+.reader-body ol {
+    list-style: decimal;
+    padding-left: 1.5em;
+}
+.reader-body li {
+    margin-block: 0.4em;
+}
+.reader-body li > :where(ul, ol) {
+    margin-block: 0.5em;
+}
 
 .reader-body blockquote {
     border-left: 2px solid var(--border);
@@ -59,10 +83,17 @@
 }
 
 .reader-body img:not([src]),
-.reader-body img[src=''] { display: none; }
+.reader-body img[src=''] {
+    display: none;
+}
 
-.reader-body figure img { margin-bottom: 0.5em; }
-.reader-body :where(figcaption, small) { font-size: var(--text-sm); color: var(--muted-foreground); }
+.reader-body figure img {
+    margin-bottom: 0.5em;
+}
+.reader-body :where(figcaption, small) {
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+}
 .reader-body pre {
     overflow-x: auto;
     padding: 1em;
@@ -71,14 +102,37 @@
     font-size: var(--text-sm);
     line-height: 1.6;
 }
-.reader-body :not(pre) > code { background: var(--muted); padding: 0.1em 0.25em; border-radius: 0.2em; }
-.reader-body table { display: block; max-width: 100%; overflow-x: auto; font-size: var(--text-base); }
-.reader-body :where(th, td) { padding: 0.5em 0.75em; border-bottom: 1px solid var(--border); text-align: left; }
-.reader-body th { font-weight: 500; }
-.reader-body hr { margin-block: 2em; border-color: var(--border); }
+.reader-body :not(pre) > code {
+    background: var(--muted);
+    padding: 0.1em 0.25em;
+    border-radius: 0.2em;
+}
+.reader-body table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    font-size: var(--text-base);
+}
+.reader-body :where(th, td) {
+    padding: 0.5em 0.75em;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+}
+.reader-body th {
+    font-weight: 500;
+}
+.reader-body hr {
+    margin-block: 2em;
+    border-color: var(--border);
+}
 
-.reader-body[data-size='compact'] { font-size: var(--text-base); }
-.reader-body[data-size='compact'] :is(h1, h2, h3, h4, h5, h6) { font-size: var(--text-lg); font-weight: 600; }
+.reader-body[data-size='compact'] {
+    font-size: var(--text-base);
+}
+.reader-body[data-size='compact'] :is(h1, h2, h3, h4, h5, h6) {
+    font-size: var(--text-lg);
+    font-weight: 600;
+}
 
 .reader-transcript {
     display: grid;
@@ -89,8 +143,12 @@
     overflow-wrap: anywhere;
 }
 
-.reader-transcript[data-font='serif'] { font-family: var(--font-serif); }
-.reader-transcript[data-font='mono'] { font-family: var(--font-duo); }
+.reader-transcript[data-font='serif'] {
+    font-family: var(--font-serif);
+}
+.reader-transcript[data-font='mono'] {
+    font-family: var(--font-duo);
+}
 
 .reader-transcript li {
     display: grid;
@@ -104,7 +162,9 @@
 }
 
 /* While the player is stuck to the top, a passage reached by the keys must land below it. */
-.reader-transcript[data-stuck] li { scroll-margin-top: calc(var(--reader-player-height, 0px) + 0.75rem); }
+.reader-transcript[data-stuck] li {
+    scroll-margin-top: calc(var(--reader-player-height, 0px) + 0.75rem);
+}
 
 /* Playing is a bar, selection is the list's grey row, so the two read apart when they sit on different passages. */
 .reader-transcript li::before {
@@ -118,7 +178,9 @@
     transition: opacity var(--motion-duration-ui) ease;
 }
 
-.reader-transcript li[aria-current]::before { opacity: 1; }
+.reader-transcript li[aria-current]::before {
+    opacity: 1;
+}
 
 .reader-transcript :where(button, span) {
     justify-self: start;
@@ -128,7 +190,9 @@
     color: var(--muted-foreground);
 }
 
-.reader-transcript li[aria-current] :where(button, span) { color: var(--foreground); }
+.reader-transcript li[aria-current] :where(button, span) {
+    color: var(--foreground);
+}
 
 .reader-transcript button {
     position: relative;
@@ -146,10 +210,17 @@
     transform: translate(-50%, -50%);
 }
 
-.reader-transcript button:hover { color: var(--foreground); }
+.reader-transcript button:hover {
+    color: var(--foreground);
+}
 
 /* On narrow screens the time sits on its own line, tight to its passage, and passages part further from each other. */
 @media (max-width: 40rem) {
-    .reader-transcript { gap: 1rem; }
-    .reader-transcript li { grid-template-columns: 1fr; row-gap: 0.125rem; }
+    .reader-transcript {
+        gap: 1rem;
+    }
+    .reader-transcript li {
+        grid-template-columns: 1fr;
+        row-gap: 0.125rem;
+    }
 }

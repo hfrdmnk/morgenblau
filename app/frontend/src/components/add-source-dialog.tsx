@@ -17,7 +17,16 @@ import { toast } from 'sonner';
 import { useLocation } from 'wouter';
 
 import { GenerateFeed, GenerateOffer } from '@/components/generate-feed';
-import { CheckIcon, ChevronDownIcon, CloseIcon, EnterIcon, ExternalLinkIcon, LoadingIcon, MoreIcon, PlusIcon } from '@/components/icons';
+import {
+    CheckIcon,
+    ChevronDownIcon,
+    CloseIcon,
+    EnterIcon,
+    ExternalLinkIcon,
+    LoadingIcon,
+    MoreIcon,
+    PlusIcon,
+} from '@/components/icons';
 import { NewsletterAddress } from '@/components/newsletter-address';
 import { PersonAvatar } from '@/components/person-avatar';
 import { PublicDataHint } from '@/components/public-data-hint';
@@ -26,7 +35,14 @@ import { DeleteNewsletterDialog, RemoveDialog } from '@/components/source-remova
 import { TagChips, TagInput } from '@/components/tag-input';
 import { Button } from '@/components/ui/button';
 import { DescriptionList } from '@/components/ui/description-list';
-import { DrawerBackdrop, DrawerContent, DrawerFooter, DrawerHandle, DrawerPopup, DrawerViewport } from '@/components/ui/drawer';
+import {
+    DrawerBackdrop,
+    DrawerContent,
+    DrawerFooter,
+    DrawerHandle,
+    DrawerPopup,
+    DrawerViewport,
+} from '@/components/ui/drawer';
 import { InputGroup, InputGroupButton, InputGroupInput } from '@/components/ui/input-group';
 import { Link } from '@/components/ui/link';
 import { NameField } from '@/components/ui/name-field';
@@ -98,17 +114,27 @@ const SCREEN = {
 // rkey is the subscription a feed screen was opened with; site is absent when it was opened from a profile's follows.
 type Screen =
     | { kind: 'feed'; candidate: SourceCandidate; site?: SiteResult; rkey?: string }
-    | { kind: 'edit'; source: FeedSource; onChanged: () => void; onRemoved: () => void; removedFocus?: RefObject<HTMLElement | null> }
-    | { kind: 'newsletter'; source: NewsletterSource; stopped: boolean; onChanged: () => void; onRemoved: () => void; removedFocus?: RefObject<HTMLElement | null> }
+    | {
+          kind: 'edit';
+          source: FeedSource;
+          onChanged: () => void;
+          onRemoved: () => void;
+          removedFocus?: RefObject<HTMLElement | null>;
+      }
+    | {
+          kind: 'newsletter';
+          source: NewsletterSource;
+          stopped: boolean;
+          onChanged: () => void;
+          onRemoved: () => void;
+          removedFocus?: RefObject<HTMLElement | null>;
+      }
     | { kind: 'post'; candidate: SourceCandidate; post: PreviewPost }
     | { kind: 'profile'; site: SiteResult; profile: SiteProfile }
     | { kind: 'generated'; url: string; step: GenerationStep };
 
 type Discovery =
-    | { stage: 'idle' }
-    | { stage: 'loading' }
-    | { stage: 'found'; site: SiteResult }
-    | { stage: 'error'; error: string };
+    { stage: 'idle' } | { stage: 'loading' } | { stage: 'found'; site: SiteResult } | { stage: 'error'; error: string };
 
 type Sheet = {
     instant: boolean;
@@ -135,19 +161,34 @@ export function AddSourceDialog({ trigger, initialUrl }: { trigger?: ReactElemen
             onOpenChange={setOpen}
             open={open}
             saving={saving}
-            trigger={initialUrl !== undefined ? undefined : trigger ?? (
-                <Button aria-label="Add a source" size="icon-sm" variant="subtle">
-                    <PlusIcon size="xl" />
-                </Button>
-            )}
+            trigger={
+                initialUrl !== undefined
+                    ? undefined
+                    : (trigger ?? (
+                          <Button aria-label="Add a source" size="icon-sm" variant="subtle">
+                              <PlusIcon size="xl" />
+                          </Button>
+                      ))
+            }
         >
-            <SheetBody initialUrl={initialUrl} inputRef={inputRef} onClose={() => setOpen(false)} onSavingChange={setSaving} saving={saving} />
+            <SheetBody
+                initialUrl={initialUrl}
+                inputRef={inputRef}
+                onClose={() => setOpen(false)}
+                onSavingChange={setSaving}
+                saving={saving}
+            />
         </SheetDrawer>
     );
 }
 
 // The same sheet as Add a source, opened on one of the reader's feeds to rename, retag or re-point it.
-export function EditSourceSheet({ source, onChanged, onRemoved = onChanged, removedFocus }: {
+export function EditSourceSheet({
+    source,
+    onChanged,
+    onRemoved = onChanged,
+    removedFocus,
+}: {
     source: FeedSource;
     onChanged: () => void;
     onRemoved?: () => void;
@@ -157,7 +198,13 @@ export function EditSourceSheet({ source, onChanged, onRemoved = onChanged, remo
 }
 
 // The same sheet for a newsletter: rename, retag, stop or resume, and unsubscribe or delete it.
-export function EditNewsletterSheet({ source, stopped, onChanged, onRemoved = onChanged, removedFocus }: {
+export function EditNewsletterSheet({
+    source,
+    stopped,
+    onChanged,
+    onRemoved = onChanged,
+    removedFocus,
+}: {
     source: NewsletterSource;
     stopped: boolean;
     onChanged: () => void;
@@ -175,18 +222,25 @@ function EditSheet({ root }: { root: Extract<Screen, { kind: 'edit' | 'newslette
             onOpenChange={setOpen}
             open={open}
             saving={saving}
-            trigger={(
+            trigger={
                 <Button aria-label={`Edit ${screenTitle(root)}`} size="icon-sm" variant="subtle">
                     <MoreIcon size="xl" />
                 </Button>
-            )}
+            }
         >
             <SheetBody onClose={() => setOpen(false)} onSavingChange={setSaving} root={root} saving={saving} />
         </SheetDrawer>
     );
 }
 
-function SheetDrawer({ open, saving, trigger, initialFocus, onOpenChange, children }: {
+function SheetDrawer({
+    open,
+    saving,
+    trigger,
+    initialFocus,
+    onOpenChange,
+    children,
+}: {
     open: boolean;
     saving: boolean;
     trigger?: ReactElement;
@@ -289,10 +343,14 @@ function SheetBody({
         onSavingChange,
         record: (key, rkey) => setSubscriptions((previous) => new Map(previous).set(key, rkey)),
         announce: (rkey, description) =>
-            announceSourceAdded(rkey, (to) => {
-                onClose();
-                navigate(to);
-            }, description),
+            announceSourceAdded(
+                rkey,
+                (to) => {
+                    onClose();
+                    navigate(to);
+                },
+                description,
+            ),
         generate: (url) => void generation.generate(url),
         pointAt: generation.pointAt,
     };
@@ -333,8 +391,9 @@ function SheetBody({
                 top={top}
             />
             <DrawerContent>
-                {inputRef ? <ScreenTransition active={!screen} focusOnMount={false} instant={sheet.instant}>
-                    <SearchScreen
+                {inputRef ? (
+                    <ScreenTransition active={!screen} focusOnMount={false} instant={sheet.instant}>
+                        <SearchScreen
                             discovery={discovery}
                             inputRef={inputRef}
                             onChange={(value) => {
@@ -349,9 +408,15 @@ function SheetBody({
                             sheet={sheet}
                             url={url}
                         />
-                </ScreenTransition> : null}
+                    </ScreenTransition>
+                ) : null}
                 {stack.map((entry, index) => (
-                    <ScreenTransition active={index === stack.length - 1} focusOnMount instant={sheet.instant} key={entry.id}>
+                    <ScreenTransition
+                        active={index === stack.length - 1}
+                        focusOnMount
+                        instant={sheet.instant}
+                        key={entry.id}
+                    >
                         <ScreenView form={formOf(entry)} name={nameOf(entry)} screen={entry.screen} sheet={sheet} />
                     </ScreenTransition>
                 ))}
@@ -361,7 +426,16 @@ function SheetBody({
 }
 
 // The name a nameable screen will save sits in the header; its length error sits just under it.
-function SheetHeader({ top, subscriptions, nameOf, formOf, canGoBack, saving, onBack, onName }: {
+function SheetHeader({
+    top,
+    subscriptions,
+    nameOf,
+    formOf,
+    canGoBack,
+    saving,
+    onBack,
+    onName,
+}: {
     top?: { id: number; screen: Screen };
     subscriptions: Map<string, string | null>;
     nameOf: (entry: { id: number; screen: Screen }) => string;
@@ -371,7 +445,10 @@ function SheetHeader({ top, subscriptions, nameOf, formOf, canGoBack, saving, on
     onBack: () => void;
     onName: (id: number, name: string) => void;
 }) {
-    const named = top && nameable(top.screen, subscriptions) ? { id: top.id, name: nameOf(top), form: formOf(top), screen: top.screen } : undefined;
+    const named =
+        top && nameable(top.screen, subscriptions)
+            ? { id: top.id, name: nameOf(top), form: formOf(top), screen: top.screen }
+            : undefined;
     const hinted = named && nameTooLong(named.name, named.screen);
     return (
         <>
@@ -406,9 +483,7 @@ function SheetHeader({ top, subscriptions, nameOf, formOf, canGoBack, saving, on
                 ) : (
                     <SheetTitle inset={!canGoBack} screen={top?.screen} />
                 )}
-                <Drawer.Close
-                    render={<Button aria-label="Close" disabled={saving} size="icon" variant="quiet" />}
-                >
+                <Drawer.Close render={<Button aria-label="Close" disabled={saving} size="icon" variant="quiet" />}>
                     <CloseIcon size="xl" />
                 </Drawer.Close>
             </Frame>
@@ -439,7 +514,11 @@ function useScreenStack(root?: Screen) {
         pop: () => setStack(stack.slice(0, -1)),
         // Only one generation runs at a time, so its steps land on whichever generated screen is open.
         showGeneration: (step: GenerationStep) =>
-            setStack((previous) => previous.map((entry) => (entry.screen.kind === 'generated' ? { ...entry, screen: { ...entry.screen, step } } : entry))),
+            setStack((previous) =>
+                previous.map((entry) =>
+                    entry.screen.kind === 'generated' ? { ...entry, screen: { ...entry.screen, step } } : entry,
+                ),
+            ),
     };
 }
 
@@ -470,12 +549,20 @@ function screenTitle(screen: Screen) {
     if (screen.kind === 'edit') return feedSourceName(screen.source);
     if (screen.kind === 'newsletter') return newsletterName(screen.source);
     if (screen.kind === 'post') return screen.post.title || 'Untitled';
-    if (screen.kind === 'generated') return screen.step.step === 'preview' ? screen.step.source.title || displayURL(screen.step.source.siteUrl) : displayURL(screen.url);
+    if (screen.kind === 'generated')
+        return screen.step.step === 'preview'
+            ? screen.step.source.title || displayURL(screen.step.source.siteUrl)
+            : displayURL(screen.url);
     return 'Profile';
 }
 
 // Focus follows the screen, since the row or button that opened it is gone. A screen that is covered waits at the pop offset, so it returns from the left.
-function ScreenTransition({ active, instant, focusOnMount, children }: {
+function ScreenTransition({
+    active,
+    instant,
+    focusOnMount,
+    children,
+}: {
     active: boolean;
     instant: boolean;
     focusOnMount: boolean;
@@ -505,7 +592,8 @@ function ScreenTransition({ active, instant, focusOnMount, children }: {
 // Only a screen that will save a name lets the reader type one.
 function nameable(screen: Screen, subscriptions: Map<string, string | null>) {
     if (screen.kind === 'edit' || screen.kind === 'newsletter') return true;
-    if (screen.kind === 'generated') return screen.step.step === 'preview' && generatedVerdict(screen.step.source).subscribable;
+    if (screen.kind === 'generated')
+        return screen.step.step === 'preview' && generatedVerdict(screen.step.source).subscribable;
     if (screen.kind !== 'feed') return false;
     const status = candidateStatus(screen.candidate, screen.site, subscriptions, screen.rkey);
     return !status.rkey && !status.note;
@@ -517,7 +605,14 @@ function nameTooLong(name: string, screen: Screen) {
 }
 
 // The name sits in the header, outside its screen's form, so form ties Enter to that form's save.
-function NameInput({ value, form, invalid, inset, disabled, onChange }: {
+function NameInput({
+    value,
+    form,
+    invalid,
+    inset,
+    disabled,
+    onChange,
+}: {
     value: string;
     form: string;
     invalid: boolean;
@@ -546,15 +641,37 @@ function nameHintId(form: string) {
 
 function ScreenView({ screen, form, name, sheet }: { screen: Screen; form: string; name: string; sheet: Sheet }) {
     const tooLong = nameTooLong(name, screen);
-    if (screen.kind === 'feed') return <FeedScreen candidate={screen.candidate} form={form} known={screen.rkey} name={name} nameTooLong={tooLong} sheet={sheet} site={screen.site} />;
-    if (screen.kind === 'edit') return <EditScreen form={form} name={name} nameTooLong={tooLong} screen={screen} sheet={sheet} />;
-    if (screen.kind === 'newsletter') return <NewsletterScreen form={form} name={name} nameTooLong={tooLong} screen={screen} sheet={sheet} />;
+    if (screen.kind === 'feed')
+        return (
+            <FeedScreen
+                candidate={screen.candidate}
+                form={form}
+                known={screen.rkey}
+                name={name}
+                nameTooLong={tooLong}
+                sheet={sheet}
+                site={screen.site}
+            />
+        );
+    if (screen.kind === 'edit')
+        return <EditScreen form={form} name={name} nameTooLong={tooLong} screen={screen} sheet={sheet} />;
+    if (screen.kind === 'newsletter')
+        return <NewsletterScreen form={form} name={name} nameTooLong={tooLong} screen={screen} sheet={sheet} />;
     if (screen.kind === 'post') return <PostScreen post={screen.post} />;
-    if (screen.kind === 'generated') return <GeneratedScreen form={form} name={name} nameTooLong={tooLong} screen={screen} sheet={sheet} />;
+    if (screen.kind === 'generated')
+        return <GeneratedScreen form={form} name={name} nameTooLong={tooLong} screen={screen} sheet={sheet} />;
     return <ProfileScreen profile={screen.profile} sheet={sheet} site={screen.site} />;
 }
 
-function SearchScreen({ inputRef, url, discovery, sheet, onChange, onSubmit, onReset }: {
+function SearchScreen({
+    inputRef,
+    url,
+    discovery,
+    sheet,
+    onChange,
+    onSubmit,
+    onReset,
+}: {
     inputRef: RefObject<HTMLInputElement | null>;
     url: string;
     discovery: Discovery;
@@ -569,26 +686,44 @@ function SearchScreen({ inputRef, url, discovery, sheet, onChange, onSubmit, onR
                 <Drawer.Description render={<Text size="sm" tone="muted" />}>
                     Paste a site, blog, or YouTube channel.
                 </Drawer.Description>
-                <UrlForm discovery={discovery} inputRef={inputRef} onChange={onChange} onSubmit={onSubmit} saving={sheet.saving} url={url} />
+                <UrlForm
+                    discovery={discovery}
+                    inputRef={inputRef}
+                    onChange={onChange}
+                    onSubmit={onSubmit}
+                    saving={sheet.saving}
+                    url={url}
+                />
             </Frame>
             <Frame>
                 {discovery.stage === 'loading' ? <Pending label="Looking for feeds" /> : null}
                 {discovery.stage === 'found' ? (
                     <Frame gap="l">
-                        <Text role="status" visuallyHidden>{foundFeeds(discovery.site)}</Text>
+                        <Text role="status" visuallyHidden>
+                            {foundFeeds(discovery.site)}
+                        </Text>
                         <SiteResults sheet={sheet} site={discovery.site} />
                         <Button disabled={sheet.saving} onClick={onReset} size="text" variant="quiet">
                             Add a newsletter instead
                         </Button>
                     </Frame>
                 ) : null}
-                {discovery.stage === 'idle' || discovery.stage === 'error' ? <NewsletterAddress onNavigate={sheet.close} /> : null}
+                {discovery.stage === 'idle' || discovery.stage === 'error' ? (
+                    <NewsletterAddress onNavigate={sheet.close} />
+                ) : null}
             </Frame>
         </Frame>
     );
 }
 
-function UrlForm({ inputRef, url, discovery, saving, onChange, onSubmit }: {
+function UrlForm({
+    inputRef,
+    url,
+    discovery,
+    saving,
+    onChange,
+    onSubmit,
+}: {
     inputRef: RefObject<HTMLInputElement | null>;
     url: string;
     discovery: Discovery;
@@ -600,7 +735,9 @@ function UrlForm({ inputRef, url, discovery, saving, onChange, onSubmit }: {
     const invalid = discovery.stage === 'error';
     return (
         <Frame as="form" gap="m" onSubmit={onSubmit}>
-            <Text as="label" htmlFor="source-url" visuallyHidden>Website or feed URL</Text>
+            <Text as="label" htmlFor="source-url" visuallyHidden>
+                Website or feed URL
+            </Text>
             <InputGroup>
                 <InputGroupInput
                     aria-describedby={invalid ? 'discovery-error' : undefined}
@@ -617,12 +754,19 @@ function UrlForm({ inputRef, url, discovery, saving, onChange, onSubmit }: {
                     spellCheck={false}
                     value={url}
                 />
-                <InputGroupButton aria-busy={loading} aria-label="Find feeds" disabled={saving || loading || !url.trim()} type="submit">
+                <InputGroupButton
+                    aria-busy={loading}
+                    aria-label="Find feeds"
+                    disabled={saving || loading || !url.trim()}
+                    type="submit"
+                >
                     {loading ? <LoadingIcon spin /> : <EnterIcon />}
                 </InputGroupButton>
             </InputGroup>
             {discovery.stage === 'error' ? (
-                <Text id="discovery-error" role="alert" size="sm" tone="destructive">{discovery.error}</Text>
+                <Text id="discovery-error" role="alert" size="sm" tone="destructive">
+                    {discovery.error}
+                </Text>
             ) : null}
         </Frame>
     );
@@ -664,20 +808,28 @@ function SiteResults({ site, sheet }: { site: SiteResult; sheet: Sheet }) {
                         <Frame align="center" as="span" direction="row" gap="m">
                             <PersonAvatar seed={siteHost(site.url)} size="lg" />
                             <Frame as="span" minWidth={0}>
-                                <Text as="span" size="sm" truncate weight="medium">{profileName(profile, site)}</Text>
+                                <Text as="span" size="sm" truncate weight="medium">
+                                    {profileName(profile, site)}
+                                </Text>
                                 <Text as="span" size="xs" tone="subtle" truncate>
-                                    {profile.following?.length ? `Profile · follows ${profile.following.length} sites` : 'Profile'}
+                                    {profile.following?.length
+                                        ? `Profile · follows ${profile.following.length} sites`
+                                        : 'Profile'}
                                 </Text>
                             </Frame>
                         </Frame>
                         {summary ? (
-                            <Text as="span" lineClamp={2} size="sm" tone="muted" wrap="pretty">{summary}</Text>
+                            <Text as="span" lineClamp={2} size="sm" tone="muted" wrap="pretty">
+                                {summary}
+                            </Text>
                         ) : null}
                     </Row>
                 </Frame>
             ) : null}
             <Frame gap="2xs">
-                <Text id={feedsLabel} size="xs" tone="muted">Available feeds</Text>
+                <Text id={feedsLabel} size="xs" tone="muted">
+                    Available feeds
+                </Text>
                 <Frame aria-labelledby={feedsLabel} as="ul">
                     {site.candidates.map((candidate) => {
                         const status = candidateStatus(candidate, site, sheet.subscriptions);
@@ -689,8 +841,12 @@ function SiteResults({ site, sheet }: { site: SiteResult; sheet: Sheet }) {
                                 onClick={() => sheet.push({ kind: 'feed', candidate, site })}
                                 trailing={status.rkey ? <CheckIcon size="md" tone="success" /> : undefined}
                             >
-                                <Text as="span" size="sm" title={title} truncate weight="medium">{title}</Text>
-                                <Text as="span" size="xs" tone="subtle" truncate>{status.note ?? feedMeta(candidate)}</Text>
+                                <Text as="span" size="sm" title={title} truncate weight="medium">
+                                    {title}
+                                </Text>
+                                <Text as="span" size="xs" tone="subtle" truncate>
+                                    {status.note ?? feedMeta(candidate)}
+                                </Text>
                             </Row>
                         );
                     })}
@@ -709,32 +865,52 @@ function feedMeta(candidate: SourceCandidate) {
     return candidate.kind === 'standardfeed' ? `Standardfeed · ${location}` : location;
 }
 
-function candidateStatus(candidate: SourceCandidate, site: SiteResult | undefined, subscriptions: Map<string, string | null>, known?: string) {
+function candidateStatus(
+    candidate: SourceCandidate,
+    site: SiteResult | undefined,
+    subscriptions: Map<string, string | null>,
+    known?: string,
+) {
     const key = sourceKey(candidate);
     const rkey = subscriptions.has(key)
         ? subscriptions.get(key)
         : (known ?? site?.existingSubscriptions.find((sub) => sub.feedUrl === key)?.rkey);
     if (rkey) return { rkey, note: 'In your sources' };
     if (followsSibling(candidate, site, subscriptions))
-        return { rkey: undefined, note: `You follow this site through its ${candidate.kind === 'standardfeed' ? 'RSS feed' : 'Standardfeed publication'}` };
+        return {
+            rkey: undefined,
+            note: `You follow this site through its ${candidate.kind === 'standardfeed' ? 'RSS feed' : 'Standardfeed publication'}`,
+        };
     return { rkey: undefined, note: undefined };
 }
 
 // A site is followed through its RSS feed or its Standardfeed publication, never both.
-function followsSibling(candidate: SourceCandidate, site: SiteResult | undefined, subscriptions: Map<string, string | null>) {
+function followsSibling(
+    candidate: SourceCandidate,
+    site: SiteResult | undefined,
+    subscriptions: Map<string, string | null>,
+) {
     const native = candidate.kind === 'standardfeed';
     const siblings = (site?.candidates ?? [])
         .filter((other) => (other.kind === 'standardfeed') !== native)
         .map((other) => sourceKey(other));
     const existing = new Set(site?.existingSubscriptions.map((sub) => sub.feedUrl));
-    const followedSibling = siblings.some((other) => (subscriptions.has(other) ? Boolean(subscriptions.get(other)) : existing.has(other)));
+    const followedSibling = siblings.some((other) =>
+        subscriptions.has(other) ? Boolean(subscriptions.get(other)) : existing.has(other),
+    );
     // subscribedVia may name a feed this lookup didn't list; one it did list is covered above, including its removal here.
     const followedElsewhere = Boolean(candidate.subscribedVia) && !siblings.some((other) => existing.has(other));
     return followedSibling || followedElsewhere;
 }
 
 // gap separates the lines of a row's text: a title and its meta sit close, a summary further apart.
-function Row({ onClick, label, trailing, gap = '3xs', children }: {
+function Row({
+    onClick,
+    label,
+    trailing,
+    gap = '3xs',
+    children,
+}: {
     onClick: () => void;
     label?: string;
     trailing?: ReactNode;
@@ -744,7 +920,9 @@ function Row({ onClick, label, trailing, gap = '3xs', children }: {
     return (
         <Frame as="li">
             <RowButton aria-label={label} onClick={onClick}>
-                <Frame as="span" gap={gap} grow minWidth={0}>{children}</Frame>
+                <Frame as="span" gap={gap} grow minWidth={0}>
+                    {children}
+                </Frame>
                 {trailing ?? <ChevronDownIcon rotate={270} size="md" tone="subtle" />}
             </RowButton>
         </Frame>
@@ -783,7 +961,10 @@ function useSheetMutation(sheet: Sheet) {
         try {
             await action();
         } catch (problem) {
-            setError({ message: describeMutationError(problem, failed), reauth: classifyMutationError(problem) === 'reauth' });
+            setError({
+                message: describeMutationError(problem, failed),
+                reauth: classifyMutationError(problem) === 'reauth',
+            });
         } finally {
             sheet.onSavingChange(false);
         }
@@ -798,7 +979,15 @@ function useSheetMutation(sheet: Sheet) {
     return { run, errorLine };
 }
 
-function FeedScreen({ candidate, site, known, form, name, nameTooLong, sheet }: {
+function FeedScreen({
+    candidate,
+    site,
+    known,
+    form,
+    name,
+    nameTooLong,
+    sheet,
+}: {
     candidate: SourceCandidate;
     site?: SiteResult;
     known?: string;
@@ -811,7 +1000,8 @@ function FeedScreen({ candidate, site, known, form, name, nameTooLong, sheet }: 
     const shorts = useShortsChoice(candidate.feedUrl);
     // Saves are recorded under the candidate's key, so the channel reads as followed whichever of its feeds was added.
     const source = useMemo<SourceCandidate>(
-        () => (candidate.kind !== 'standardfeed' && shorts.feedUrl ? { ...candidate, feedUrl: shorts.feedUrl } : candidate),
+        () =>
+            candidate.kind !== 'standardfeed' && shorts.feedUrl ? { ...candidate, feedUrl: shorts.feedUrl } : candidate,
         [candidate, shorts.feedUrl],
     );
     const { run, errorLine } = useSheetMutation(sheet);
@@ -820,9 +1010,15 @@ function FeedScreen({ candidate, site, known, form, name, nameTooLong, sheet }: 
 
     function save(options: SourceOptions) {
         void run(async () => {
-            const { rkey } = await addSource(source, { ...options, title: renamed ? name.trim() || undefined : undefined });
+            const { rkey } = await addSource(source, {
+                ...options,
+                title: renamed ? name.trim() || undefined : undefined,
+            });
             sheet.record(sourceKey(candidate), rkey);
-            sheet.announce(rkey, youtubeDown ? 'Waiting on YouTube. Its videos arrive once YouTube is back.' : undefined);
+            sheet.announce(
+                rkey,
+                youtubeDown ? 'Waiting on YouTube. Its videos arrive once YouTube is back.' : undefined,
+            );
             sheet.pop();
         }, 'The save couldn’t be confirmed.');
     }
@@ -837,23 +1033,46 @@ function FeedScreen({ candidate, site, known, form, name, nameTooLong, sheet }: 
 
     return (
         <Frame gap="3xl">
-            <Text size="xs" title={sourceLocation(source)} tone="subtle" truncate>{feedMeta(source)}</Text>
-            <PostPreview candidate={source} disabled={sheet.saving} onOpen={(post) => sheet.push({ kind: 'post', candidate: source, post })} onYouTubeDown={() => setYouTubeDown(true)} />
+            <Text size="xs" title={sourceLocation(source)} tone="subtle" truncate>
+                {feedMeta(source)}
+            </Text>
+            <PostPreview
+                candidate={source}
+                disabled={sheet.saving}
+                onOpen={(post) => sheet.push({ kind: 'post', candidate: source, post })}
+                onYouTubeDown={() => setYouTubeDown(true)}
+            />
             {status.rkey ? (
                 <>
                     <Frame align="center" background="background" direction="row" gap="s" padding="l" radius="lg">
                         <CheckIcon size="md" tone="success" />
-                        <Text size="sm" tone="muted">{status.note}</Text>
+                        <Text size="sm" tone="muted">
+                            {status.note}
+                        </Text>
                     </Frame>
                     {errorLine}
-                    <SheetAction busyLabel="Removing source" onClick={() => remove(status.rkey)} saving={sheet.saving} variant="secondary">
+                    <SheetAction
+                        busyLabel="Removing source"
+                        onClick={() => remove(status.rkey)}
+                        saving={sheet.saving}
+                        variant="secondary"
+                    >
                         Remove from sources
                     </SheetAction>
                 </>
             ) : status.note ? (
                 <Notice>{status.note}</Notice>
             ) : (
-                <SourceForm action="Add to sources" busyLabel="Adding source" errorLine={errorLine} id={form} nameTooLong={nameTooLong} onSave={save} saving={sheet.saving} secondary={<PublicDataHint centered />}>
+                <SourceForm
+                    action="Add to sources"
+                    busyLabel="Adding source"
+                    errorLine={errorLine}
+                    id={form}
+                    nameTooLong={nameTooLong}
+                    onSave={save}
+                    saving={sheet.saving}
+                    secondary={<PublicDataHint centered />}
+                >
                     <ShortsSwitch choice={shorts} disabled={sheet.saving} />
                 </SourceForm>
             )}
@@ -862,7 +1081,13 @@ function FeedScreen({ candidate, site, known, form, name, nameTooLong, sheet }: 
 }
 
 // The add closes the sheet: the feed is the site's only one, so there is nothing left to pick.
-function GeneratedScreen({ screen, form, name, nameTooLong, sheet }: {
+function GeneratedScreen({
+    screen,
+    form,
+    name,
+    nameTooLong,
+    sheet,
+}: {
     screen: Extract<Screen, { kind: 'generated' }>;
     form: string;
     name: string;
@@ -874,7 +1099,10 @@ function GeneratedScreen({ screen, form, name, nameTooLong, sheet }: {
 
     function save(source: SourceCandidate, options: SourceOptions) {
         void run(async () => {
-            const { rkey } = await addSource(source, { ...options, title: renamed ? name.trim() || undefined : undefined });
+            const { rkey } = await addSource(source, {
+                ...options,
+                title: renamed ? name.trim() || undefined : undefined,
+            });
             sheet.announce(rkey, 'New posts appear in your newspaper as the site publishes them.');
             sheet.close();
         }, 'The save couldn’t be confirmed.');
@@ -903,7 +1131,13 @@ function GeneratedScreen({ screen, form, name, nameTooLong, sheet }: {
     );
 }
 
-function EditScreen({ screen, form, name, nameTooLong, sheet }: {
+function EditScreen({
+    screen,
+    form,
+    name,
+    nameTooLong,
+    sheet,
+}: {
     screen: Extract<Screen, { kind: 'edit' }>;
     form: string;
     name: string;
@@ -915,9 +1149,10 @@ function EditScreen({ screen, form, name, nameTooLong, sheet }: {
     const shorts = useShortsChoice(standard ? undefined : source.feedUrl);
     const feedUrl = shorts.feedUrl ?? source.feedUrl;
     const candidate = useMemo<SourceCandidate>(
-        () => (standard
-            ? { kind: 'standardfeed', publication: source.publication ?? source.feedUrl, siteUrl: source.siteUrl }
-            : { feedUrl, siteUrl: source.siteUrl }),
+        () =>
+            standard
+                ? { kind: 'standardfeed', publication: source.publication ?? source.feedUrl, siteUrl: source.siteUrl }
+                : { feedUrl, siteUrl: source.siteUrl },
         [standard, source.publication, source.feedUrl, source.siteUrl, feedUrl],
     );
     const { run, errorLine } = useSheetMutation(sheet);
@@ -953,8 +1188,14 @@ function EditScreen({ screen, form, name, nameTooLong, sheet }: {
 
     return (
         <Frame gap="3xl">
-            <Text size="xs" title={sourceLocation(candidate)} tone="subtle" truncate>{feedMeta(candidate)}</Text>
-            <PostPreview candidate={candidate} disabled={sheet.saving} onOpen={(post) => sheet.push({ kind: 'post', candidate, post })} />
+            <Text size="xs" title={sourceLocation(candidate)} tone="subtle" truncate>
+                {feedMeta(candidate)}
+            </Text>
+            <PostPreview
+                candidate={candidate}
+                disabled={sheet.saving}
+                onOpen={(post) => sheet.push({ kind: 'post', candidate, post })}
+            />
             <SourceForm
                 action="Save changes"
                 busyLabel="Saving source"
@@ -965,11 +1206,17 @@ function EditScreen({ screen, form, name, nameTooLong, sheet }: {
                 nameTooLong={nameTooLong}
                 onSave={save}
                 saving={sheet.saving}
-                secondary={(
-                    <Button disabled={sheet.saving} onClick={() => setRemoving(true)} size="lg" type="button" variant="destructive">
+                secondary={
+                    <Button
+                        disabled={sheet.saving}
+                        onClick={() => setRemoving(true)}
+                        size="lg"
+                        type="button"
+                        variant="destructive"
+                    >
                         Delete source
                     </Button>
-                )}
+                }
             >
                 <ShortsSwitch choice={shorts} disabled={sheet.saving} />
             </SourceForm>
@@ -988,7 +1235,13 @@ function EditScreen({ screen, form, name, nameTooLong, sheet }: {
     );
 }
 
-function NewsletterScreen({ screen, form, name, nameTooLong, sheet }: {
+function NewsletterScreen({
+    screen,
+    form,
+    name,
+    nameTooLong,
+    sheet,
+}: {
     screen: Extract<Screen, { kind: 'newsletter' }>;
     form: string;
     name: string;
@@ -1029,7 +1282,9 @@ function NewsletterScreen({ screen, form, name, nameTooLong, sheet }: {
 
     return (
         <Frame gap="3xl">
-            <Text size="xs" title={source.senderAddress} tone="subtle" truncate>{source.senderAddress}</Text>
+            <Text size="xs" title={source.senderAddress} tone="subtle" truncate>
+                {source.senderAddress}
+            </Text>
             {stopped ? <Notice>Stopped. New mail from this sender is discarded until you resume it.</Notice> : null}
             <SourceForm
                 action="Save changes"
@@ -1039,24 +1294,54 @@ function NewsletterScreen({ screen, form, name, nameTooLong, sheet }: {
                 id={form}
                 initial={{ tags: source.tags, primary: source.primary }}
                 nameTooLong={nameTooLong}
-                onSave={(options) => write(() => editNewsletter(editable, changeFor(options)), 'Newsletter updated', 'The change couldn’t be confirmed.')}
+                onSave={(options) =>
+                    write(
+                        () => editNewsletter(editable, changeFor(options)),
+                        'Newsletter updated',
+                        'The change couldn’t be confirmed.',
+                    )
+                }
                 saving={sheet.saving}
-                secondary={(
+                secondary={
                     <>
                         {stopped ? (
-                            <Button disabled={sheet.saving} onClick={() => write(() => resumeNewsletter(editable), 'Newsletter resumed', 'Couldn’t resume this newsletter.')} size="lg" type="button" variant="secondary">
+                            <Button
+                                disabled={sheet.saving}
+                                onClick={() =>
+                                    write(
+                                        () => resumeNewsletter(editable),
+                                        'Newsletter resumed',
+                                        'Couldn’t resume this newsletter.',
+                                    )
+                                }
+                                size="lg"
+                                type="button"
+                                variant="secondary"
+                            >
                                 Resume newsletter
                             </Button>
                         ) : (
-                            <Button disabled={sheet.saving} onClick={() => setDialog('stop')} size="lg" type="button" variant="secondary">
+                            <Button
+                                disabled={sheet.saving}
+                                onClick={() => setDialog('stop')}
+                                size="lg"
+                                type="button"
+                                variant="secondary"
+                            >
                                 Stop newsletter
                             </Button>
                         )}
-                        <Button disabled={sheet.saving} onClick={() => setDialog('delete')} size="lg" type="button" variant="destructive">
+                        <Button
+                            disabled={sheet.saving}
+                            onClick={() => setDialog('delete')}
+                            size="lg"
+                            type="button"
+                            variant="destructive"
+                        >
                             {source.canUnsubscribe ? 'Unsubscribe and delete' : 'Delete newsletter'}
                         </Button>
                     </>
-                )}
+                }
             />
             <RemoveDialog
                 onChanged={onChanged}
@@ -1087,12 +1372,26 @@ function NewsletterScreen({ screen, form, name, nameTooLong, sheet }: {
 function Notice({ children }: { children: ReactNode }) {
     return (
         <Frame background="background" padding="l" radius="lg">
-            <Text size="sm" tone="muted">{children}</Text>
+            <Text size="sm" tone="muted">
+                {children}
+            </Text>
         </Frame>
     );
 }
 
-function SourceForm({ id, action, busyLabel, nameTooLong, initial = { tags: [], primary: false }, changed, secondary, saving, errorLine, onSave, children }: {
+function SourceForm({
+    id,
+    action,
+    busyLabel,
+    nameTooLong,
+    initial = { tags: [], primary: false },
+    changed,
+    secondary,
+    saving,
+    errorLine,
+    onSave,
+    children,
+}: {
     id: string;
     action: string;
     secondary?: ReactNode;
@@ -1135,7 +1434,13 @@ function SourceForm({ id, action, busyLabel, nameTooLong, initial = { tags: [], 
                     overlong={overlong}
                     tags={tags}
                 />
-                {tags.length ? <TagChips inputRef={tagInput} onRemove={(tag) => setTags(tags.filter((other) => other !== tag))} tags={tags} /> : null}
+                {tags.length ? (
+                    <TagChips
+                        inputRef={tagInput}
+                        onRemove={(tag) => setTags(tags.filter((other) => other !== tag))}
+                        tags={tags}
+                    />
+                ) : null}
             </Frame>
             {children}
             <OptionSwitch
@@ -1160,7 +1465,15 @@ function SourceForm({ id, action, busyLabel, nameTooLong, initial = { tags: [], 
 }
 
 // error and secondary ride in the same sticky footer, so a screen taller than the sheet never hides them behind it.
-function SheetAction({ saving, busyLabel, disabled = false, error, secondary, children, ...props }: Omit<ComponentProps<typeof Button>, 'disabled'> & {
+function SheetAction({
+    saving,
+    busyLabel,
+    disabled = false,
+    error,
+    secondary,
+    children,
+    ...props
+}: Omit<ComponentProps<typeof Button>, 'disabled'> & {
     saving: boolean;
     busyLabel: string;
     disabled?: boolean;
@@ -1174,9 +1487,13 @@ function SheetAction({ saving, busyLabel, disabled = false, error, secondary, ch
                 {saving ? (
                     <>
                         <LoadingIcon spin />
-                        <Text as="span" visuallyHidden>{busyLabel}</Text>
+                        <Text as="span" visuallyHidden>
+                            {busyLabel}
+                        </Text>
                     </>
-                ) : children}
+                ) : (
+                    children
+                )}
             </Button>
             {secondary}
         </DrawerFooter>
@@ -1193,12 +1510,19 @@ function postDate(value?: string) {
     return (date.getFullYear() === new Date().getFullYear() ? POST_DAY : POST_DATE).format(date);
 }
 
-const SAMPLE_POSTS: PreviewPost[] = ['A sample post title of typical length', 'A shorter sample title', 'Another sample post title'].map((title) => (
-    { title, publishedAt: '2026-01-01T00:00:00Z' }
-));
+const SAMPLE_POSTS: PreviewPost[] = [
+    'A sample post title of typical length',
+    'A shorter sample title',
+    'Another sample post title',
+].map((title) => ({ title, publishedAt: '2026-01-01T00:00:00Z' }));
 
 // A save pops its feed screen when it lands, so nothing may open on top of it meanwhile.
-function PostPreview({ candidate, disabled, onOpen, onYouTubeDown }: {
+function PostPreview({
+    candidate,
+    disabled,
+    onOpen,
+    onYouTubeDown,
+}: {
     candidate: SourceCandidate;
     disabled: boolean;
     onOpen: (post: PreviewPost) => void;
@@ -1222,34 +1546,48 @@ function PostPreview({ candidate, disabled, onOpen, onYouTubeDown }: {
     }, [candidate]);
     return (
         <Frame aria-labelledby={label} as="section" gap="s">
-            <Text as="h3" id={label} size="xs" tone="muted">Latest posts</Text>
+            <Text as="h3" id={label} size="xs" tone="muted">
+                Latest posts
+            </Text>
             {/* Room for three posts while they load; an error is one line and needs none. */}
             <RowSpace reserve={posts === 'loading' || Array.isArray(posts)}>
                 <Skeleton
                     data={Array.isArray(posts) ? posts : null}
-                    error={posts === 'failed' ? <PreviewNote>Recent posts couldn’t be loaded.</PreviewNote>
-                        : posts === 'youtubeDown' ? (
+                    error={
+                        posts === 'failed' ? (
+                            <PreviewNote>Recent posts couldn’t be loaded.</PreviewNote>
+                        ) : posts === 'youtubeDown' ? (
                             <PreviewNote outage>
-                                YouTube’s feeds are down right now, so videos can’t be previewed. Following the channel still works: its videos arrive once YouTube is back.
+                                YouTube’s feeds are down right now, so videos can’t be previewed. Following the channel
+                                still works: its videos arrive once YouTube is back.
                             </PreviewNote>
-                        ) : undefined}
+                        ) : undefined
+                    }
                     label="Loading latest posts"
                     sample={SAMPLE_POSTS}
                 >
-                    {(items) => items.length ? (
-                        <Frame as="ol">
-                            {items.map((post, index) => (
-                                <Frame as="li" key={index}>
-                                    <RowButton disabled={disabled} onClick={() => onOpen(post)} size="compact">
-                                        <Text as="span" title={post.title} truncate>{post.title || 'Untitled'}</Text>
-                                        <Text as="span" numeric="tabular" size="xs" tone="subtle">{postDate(post.publishedAt)}</Text>
-                                    </RowButton>
-                                </Frame>
-                            ))}
-                        </Frame>
-                    ) : (
-                        <PreviewNote>Nothing published yet. New posts reach your newspaper as they appear.</PreviewNote>
-                    )}
+                    {(items) =>
+                        items.length ? (
+                            <Frame as="ol">
+                                {items.map((post, index) => (
+                                    <Frame as="li" key={index}>
+                                        <RowButton disabled={disabled} onClick={() => onOpen(post)} size="compact">
+                                            <Text as="span" title={post.title} truncate>
+                                                {post.title || 'Untitled'}
+                                            </Text>
+                                            <Text as="span" numeric="tabular" size="xs" tone="subtle">
+                                                {postDate(post.publishedAt)}
+                                            </Text>
+                                        </RowButton>
+                                    </Frame>
+                                ))}
+                            </Frame>
+                        ) : (
+                            <PreviewNote>
+                                Nothing published yet. New posts reach your newspaper as they appear.
+                            </PreviewNote>
+                        )
+                    }
                 </Skeleton>
             </RowSpace>
         </Frame>
@@ -1260,7 +1598,9 @@ function PostPreview({ candidate, disabled, onOpen, onYouTubeDown }: {
 function PreviewNote({ outage = false, children }: { outage?: boolean; children: ReactNode }) {
     return (
         <Frame paddingTop="m">
-            <Text as={outage ? 'em' : 'p'} size="sm" tone="muted" wrap={outage ? 'pretty' : undefined}>{children}</Text>
+            <Text as={outage ? 'em' : 'p'} size="sm" tone="muted" wrap={outage ? 'pretty' : undefined}>
+                {children}
+            </Text>
         </Frame>
     );
 }
@@ -1277,17 +1617,27 @@ function PostScreen({ post }: { post: PreviewPost }) {
     const date = postDate(post.publishedAt);
     return (
         <Frame as="article" gap="3xl">
-            {date ? <Text size="xs" tone="subtle">{date}</Text> : null}
+            {date ? (
+                <Text size="xs" tone="subtle">
+                    {date}
+                </Text>
+            ) : null}
             <ArticleBody body={body} hasNotice={Boolean(notice)} original={original} pending={pending} url={post.url} />
             {original && body && !extracted ? (
                 <Frame align="start" gap="m">
-                    <Text size="sm" tone="muted">Only seeing part of the article?</Text>
+                    <Text size="sm" tone="muted">
+                        Only seeing part of the article?
+                    </Text>
                     <Button disabled={pending} onClick={() => void loadFull(original)} variant="secondary">
                         {pending ? 'Loading full article…' : 'Load full article'}
                     </Button>
                 </Frame>
             ) : null}
-            {notice ? <Text role="status" size="sm" tone="muted">{notice}</Text> : null}
+            {notice ? (
+                <Text role="status" size="sm" tone="muted">
+                    {notice}
+                </Text>
+            ) : null}
             {original ? (
                 <Link href={original} rel="noopener noreferrer" target="_blank" variant="external">
                     Read original
@@ -1341,7 +1691,13 @@ function useArticle(original: string | null, summary: string) {
     return { body, extracted, pending, notice, loadFull };
 }
 
-function ArticleBody({ body, url, original, pending, hasNotice }: {
+function ArticleBody({
+    body,
+    url,
+    original,
+    pending,
+    hasNotice,
+}: {
     body: string;
     url?: string;
     original: string | null;
@@ -1360,19 +1716,30 @@ function ArticleBody({ body, url, original, pending, hasNotice }: {
         return (
             <Skeleton label="Loading article">
                 <ReaderBody data-font={font}>
-                    <Text>A paragraph of sample text that stands in for the article while it loads, running across a few lines.</Text>
+                    <Text>
+                        A paragraph of sample text that stands in for the article while it loads, running across a few
+                        lines.
+                    </Text>
                 </ReaderBody>
             </Skeleton>
         );
     if (hasNotice) return null;
     return (
         <Text tone="muted">
-            {original ? 'There is no readable content here. Open the original to continue.' : 'No content is available for this post.'}
+            {original
+                ? 'There is no readable content here. Open the original to continue.'
+                : 'No content is available for this post.'}
         </Text>
     );
 }
 
-function OptionSwitch({ label, description, checked, disabled, onChange }: {
+function OptionSwitch({
+    label,
+    description,
+    checked,
+    disabled,
+    onChange,
+}: {
     label: string;
     description: string;
     checked: boolean;
@@ -1383,8 +1750,12 @@ function OptionSwitch({ label, description, checked, disabled, onChange }: {
     return (
         <Frame align="center" direction="row" gap="l" justify="between">
             <SwitchLabel htmlFor={id}>
-                <Text as="span" display="block" size="sm" weight="medium">{label}</Text>
-                <Text as="span" display="block" size="xs" tone="muted">{description}</Text>
+                <Text as="span" display="block" size="sm" weight="medium">
+                    {label}
+                </Text>
+                <Text as="span" display="block" size="xs" tone="muted">
+                    {description}
+                </Text>
             </SwitchLabel>
             <Switch checked={checked} disabled={disabled} id={id} onCheckedChange={onChange} />
         </Frame>
@@ -1405,15 +1776,25 @@ function ProfileScreen({ profile, site, sheet }: { profile: SiteProfile; site: S
             <Frame align="center" direction="row" gap="l">
                 <PersonAvatar seed={siteHost(site.url)} size="xl" />
                 <Frame minWidth={0}>
-                    <Text size="xl" truncate weight="medium">{name}</Text>
-                    <Text size="sm" tone="subtle" truncate>{displayURL(site.url)}</Text>
+                    <Text size="xl" truncate weight="medium">
+                        {name}
+                    </Text>
+                    <Text size="sm" tone="subtle" truncate>
+                        {displayURL(site.url)}
+                    </Text>
                 </Frame>
             </Frame>
-            {profile.summary ? <Text tone="muted" wrap="pretty">{profile.summary}</Text> : null}
+            {profile.summary ? (
+                <Text tone="muted" wrap="pretty">
+                    {profile.summary}
+                </Text>
+            ) : null}
             {profile.aboutHtml ? <ProfileAbout html={profile.aboutHtml} /> : null}
             {profile.contact?.length ? (
                 <Frame aria-labelledby="profile-contact" as="section" gap="m">
-                    <Text as="h3" id="profile-contact" size="xs" tone="muted">Contact</Text>
+                    <Text as="h3" id="profile-contact" size="xs" tone="muted">
+                        Contact
+                    </Text>
                     <DescriptionList>
                         {profile.contact.map((contact) => (
                             <Frame gap="3xs" key={contact.value} minWidth={0}>
@@ -1438,29 +1819,45 @@ function ProfileScreen({ profile, site, sheet }: { profile: SiteProfile; site: S
             ) : null}
             {profile.following?.length ? (
                 <Frame aria-labelledby="profile-following" as="section" gap="m">
-                    <Text as="h3" id="profile-following" size="xs" tone="muted">Follows {profile.following.length} sites</Text>
+                    <Text as="h3" id="profile-following" size="xs" tone="muted">
+                        Follows {profile.following.length} sites
+                    </Text>
                     <Frame gap="s">
-                    <Frame as="ul">
-                        {(showAllFollows ? profile.following : profile.following.slice(0, PROFILE_PREVIEW_COUNT)).map((follow) => {
-                            const candidate: SourceCandidate = { feedUrl: follow.feedUrl, title: follow.title || undefined, siteUrl: follow.siteUrl };
-                            const status = candidateStatus(candidate, undefined, sheet.subscriptions, follow.rkey);
-                            const title = sourceTitle(candidate);
-                            return (
-                                <Row
-                                    key={follow.feedUrl}
-                                    label={status.rkey ? `${title}, ${status.note}` : undefined}
-                                    onClick={() => sheet.push({ kind: 'feed', candidate, rkey: follow.rkey })}
-                                    trailing={status.rkey ? <CheckIcon size="md" tone="success" /> : undefined}
-                                >
-                                    <Text as="span" size="sm" title={title} truncate weight="medium">{title}</Text>
-                                    <Text as="span" size="xs" tone="subtle" truncate>{feedMeta(candidate)}</Text>
-                                </Row>
-                            );
-                        })}
-                    </Frame>
-                    {profile.following.length > PROFILE_PREVIEW_COUNT ? (
-                        <ShowMoreButton expanded={showAllFollows} onToggle={() => setShowAllFollows(!showAllFollows)} />
-                    ) : null}
+                        <Frame as="ul">
+                            {(showAllFollows
+                                ? profile.following
+                                : profile.following.slice(0, PROFILE_PREVIEW_COUNT)
+                            ).map((follow) => {
+                                const candidate: SourceCandidate = {
+                                    feedUrl: follow.feedUrl,
+                                    title: follow.title || undefined,
+                                    siteUrl: follow.siteUrl,
+                                };
+                                const status = candidateStatus(candidate, undefined, sheet.subscriptions, follow.rkey);
+                                const title = sourceTitle(candidate);
+                                return (
+                                    <Row
+                                        key={follow.feedUrl}
+                                        label={status.rkey ? `${title}, ${status.note}` : undefined}
+                                        onClick={() => sheet.push({ kind: 'feed', candidate, rkey: follow.rkey })}
+                                        trailing={status.rkey ? <CheckIcon size="md" tone="success" /> : undefined}
+                                    >
+                                        <Text as="span" size="sm" title={title} truncate weight="medium">
+                                            {title}
+                                        </Text>
+                                        <Text as="span" size="xs" tone="subtle" truncate>
+                                            {feedMeta(candidate)}
+                                        </Text>
+                                    </Row>
+                                );
+                            })}
+                        </Frame>
+                        {profile.following.length > PROFILE_PREVIEW_COUNT ? (
+                            <ShowMoreButton
+                                expanded={showAllFollows}
+                                onToggle={() => setShowAllFollows(!showAllFollows)}
+                            />
+                        ) : null}
                     </Frame>
                 </Frame>
             ) : null}

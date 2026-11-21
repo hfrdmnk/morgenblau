@@ -16,5 +16,9 @@ export function PublicDataHint({ centered = false }: { centered?: boolean }) {
 export function PdsLink() {
     const profile = useAppProfile();
     if (profile.kind !== 'ready') return 'PDS';
-    return <Link href={`https://pds.ls/at://${profile.profile.did}`} rel="noopener noreferrer" target="_blank">PDS</Link>;
+    return (
+        <Link href={`https://pds.ls/at://${profile.profile.did}`} rel="noopener noreferrer" target="_blank">
+            PDS
+        </Link>
+    );
 }

@@ -8,11 +8,7 @@ afterEach(() => {
     globalThis.fetch = realFetch;
 });
 
-function stubFetch(
-    implementation: (
-        ...args: Parameters<typeof fetch>
-    ) => ReturnType<typeof fetch>,
-) {
+function stubFetch(implementation: (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>) {
     globalThis.fetch = Object.assign(implementation, {
         preconnect: realFetch.preconnect,
     });
@@ -32,7 +28,14 @@ test('confirmed added, updated and unchanged imports notify; failed imports do n
             await importSources(sources.slice(0, 1), new AbortController().signal, () => {});
         }
         expect(notifications).toBe(3);
-        stubFetch(async () => Response.json({ added: 0, updated: 0, unchanged: 0, failures: [{ feedUrl: sources[0].feedUrl, message: 'Unavailable' }] }));
+        stubFetch(async () =>
+            Response.json({
+                added: 0,
+                updated: 0,
+                unchanged: 0,
+                failures: [{ feedUrl: sources[0].feedUrl, message: 'Unavailable' }],
+            }),
+        );
         await importSources(sources.slice(0, 1), new AbortController().signal, () => {});
         expect(notifications).toBe(3);
     } finally {
@@ -53,11 +56,7 @@ test('imports sequential five-source batches and aggregates distinct outcomes', 
             failures: [],
         });
     });
-    const result = await importSources(
-        sources,
-        new AbortController().signal,
-        (done) => progress.push(done),
-    );
+    const result = await importSources(sources, new AbortController().signal, (done) => progress.push(done));
     expect(lengths).toEqual([5, 5, 2]);
     expect(progress).toEqual([5, 10, 12]);
     expect(result).toEqual({
@@ -81,11 +80,7 @@ test('partial failure retries only failed and unattempted sources', async () => 
             failures: [{ feedUrl: sources[2].feedUrl, message: 'Unavailable' }],
         });
     });
-    const result = await importSources(
-        sources,
-        new AbortController().signal,
-        () => {},
-    );
+    const result = await importSources(sources, new AbortController().signal, () => {});
     expect(calls).toBe(1);
     expect(result.remaining).toEqual([sources[2], ...sources.slice(5)]);
     expect(result.imported).toEqual([sources[0], sources[1], sources[3], sources[4]]);
@@ -111,11 +106,7 @@ test('lost batch response retains all uncertain sources without losing earlier s
         });
     });
     try {
-        const result = await importSources(
-            sources,
-            new AbortController().signal,
-            () => {},
-        );
+        const result = await importSources(sources, new AbortController().signal, () => {});
         expect(calls).toBe(2);
         expect(notifications).toBe(1);
         expect(result.added).toBe(5);

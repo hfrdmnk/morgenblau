@@ -8,7 +8,14 @@ export type ReaderEntry = {
     publishedAt: string;
     body: string | null;
     metadata?: string | null;
-    source: { kind?: string; id?: string; rkey?: string; title: string | null; siteUrl: string | null; feedUrl?: string };
+    source: {
+        kind?: string;
+        id?: string;
+        rkey?: string;
+        title: string | null;
+        siteUrl: string | null;
+        feedUrl?: string;
+    };
     newsletter?: {
         messageId: string;
         senderName: string | null;
@@ -21,9 +28,13 @@ export type ReaderEntry = {
 };
 
 // The choice applies to this one message, which comes back with its images allowed.
-export async function allowRemoteImages(entry: ReaderEntry, newsletter: NonNullable<ReaderEntry['newsletter']>): Promise<ReaderEntry> {
+export async function allowRemoteImages(
+    entry: ReaderEntry,
+    newsletter: NonNullable<ReaderEntry['newsletter']>,
+): Promise<ReaderEntry> {
     const result = await api<{ body: string; remoteImagesAllowed: boolean; hasBlockedRemoteImages: boolean }>(
-        `/api/newsletters/messages/${encodeURIComponent(newsletter.messageId)}/images`, { method: 'POST' },
+        `/api/newsletters/messages/${encodeURIComponent(newsletter.messageId)}/images`,
+        { method: 'POST' },
     );
     return { ...entry, body: result.body, newsletter: { ...newsletter, ...result } };
 }
@@ -43,7 +54,9 @@ export function readerContentURL(value: string, base: string): string {
 
 // A stored entry's images load through the app so publishers never see the reader's address. The proxy matches the raw src
 // against the stored article, so it gets the attribute unresolved. The add-source preview has no stored entry and loads images directly.
-export function readerBody(entry: Pick<ReaderEntry, 'body' | 'url' | 'contentType' | 'newsletter'> & { entrySlug?: string }): string {
+export function readerBody(
+    entry: Pick<ReaderEntry, 'body' | 'url' | 'contentType' | 'newsletter'> & { entrySlug?: string },
+): string {
     const body = entry.body || '';
     const base = httpURL(entry.url);
     if (entry.newsletter || entry.contentType === 'newsletter' || (!base && !entry.entrySlug)) return body;
@@ -55,7 +68,10 @@ export function readerBody(entry: Pick<ReaderEntry, 'body' | 'url' | 'contentTyp
         for (const element of template.content.querySelectorAll(`[${attribute}]`)) {
             const value = element.getAttribute(attribute)!;
             if (entry.entrySlug && attribute === 'src' && element.localName === 'img') {
-                element.setAttribute('src', `/api/entries/${encodeURIComponent(entry.entrySlug)}/images?src=${encodeURIComponent(value)}`);
+                element.setAttribute(
+                    'src',
+                    `/api/entries/${encodeURIComponent(entry.entrySlug)}/images?src=${encodeURIComponent(value)}`,
+                );
             } else if (base) {
                 element.setAttribute(attribute, readerContentURL(value, base));
             }
@@ -82,9 +98,10 @@ export function youtubeID(value?: string | null): string | null {
     let id: string | null = null;
     if (host === 'youtu.be') id = url.pathname.slice(1);
     if (['youtube.com', 'www.youtube.com', 'm.youtube.com', 'www.youtube-nocookie.com'].includes(host)) {
-        id = url.pathname === '/watch'
-            ? url.searchParams.get('v')
-            : /^\/(?:shorts|embed|live)\/([^/]+)\/?$/.exec(url.pathname)?.[1] ?? null;
+        id =
+            url.pathname === '/watch'
+                ? url.searchParams.get('v')
+                : (/^\/(?:shorts|embed|live)\/([^/]+)\/?$/.exec(url.pathname)?.[1] ?? null);
     }
     return id && /^[\w-]{11}$/.test(id) ? id : null;
 }
@@ -92,7 +109,10 @@ export function youtubeID(value?: string | null): string | null {
 export function entryExcerpt(body: string | null): string {
     const template = document.createElement('template');
     template.innerHTML = body || '';
-    for (const block of template.content.querySelectorAll('p, div, li, br, h1, h2, h3, h4, h5, h6, blockquote, figcaption')) block.after(' ');
+    for (const block of template.content.querySelectorAll(
+        'p, div, li, br, h1, h2, h3, h4, h5, h6, blockquote, figcaption',
+    ))
+        block.after(' ');
     return template.content.textContent.replace(/\s+/g, ' ').trim().slice(0, 300);
 }
 
@@ -106,9 +126,10 @@ export function readerMetadata(raw?: string | null): {
         const type = typeof data?.enclosure?.type === 'string' ? data.enclosure.type.toLowerCase() : '';
         return {
             ...(typeof data?.author === 'string' && { author: data.author }),
-            ...(url && type.startsWith('video/') && {
-                video: { url, type },
-            }),
+            ...(url &&
+                type.startsWith('video/') && {
+                    video: { url, type },
+                }),
         };
     } catch {
         return {};
@@ -116,7 +137,11 @@ export function readerMetadata(raw?: string | null): {
 }
 
 export function sourceActionLabel(entry: ReaderEntry): string {
-    const labels: Record<string, string> = { newsletter: 'Open web version', video: 'Watch at source', microblog: 'View original post' };
+    const labels: Record<string, string> = {
+        newsletter: 'Open web version',
+        video: 'Watch at source',
+        microblog: 'View original post',
+    };
     const isYoutube = entry.contentType === 'video' && youtubeID(entry.url);
-    return isYoutube ? 'Watch on YouTube' : labels[entry.contentType] ?? 'Read original';
+    return isYoutube ? 'Watch on YouTube' : (labels[entry.contentType] ?? 'Read original');
 }

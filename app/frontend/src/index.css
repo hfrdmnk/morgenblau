@@ -193,9 +193,7 @@
     --motion-duration-fast: 120ms;
     --motion-duration-ui: 160ms;
     --motion-duration-overlay: 240ms;
-    --popover-shadow:
-        0 8px 24px -8px oklch(0.216 0.006 56.043 / 0.16),
-        0 2px 6px -2px oklch(0.216 0.006 56.043 / 0.08);
+    --popover-shadow: 0 8px 24px -8px oklch(0.216 0.006 56.043 / 0.16), 0 2px 6px -2px oklch(0.216 0.006 56.043 / 0.08);
     --radius: 0.45rem;
 }
 
@@ -240,9 +238,7 @@
     --sidebar-ring: oklch(0.923 0.003 48.717);
     --selection: oklch(from var(--color-atmosphere-blue) calc(l - 0.05) c calc(h + 7) / 0.8);
     --selection-foreground: oklch(from var(--color-atmosphere-blue) 0.97 0.02 calc(h - 7));
-    --popover-shadow:
-        0 12px 32px -8px oklch(0 0 0 / 0.56),
-        0 3px 8px -2px oklch(0 0 0 / 0.4);
+    --popover-shadow: 0 12px 32px -8px oklch(0 0 0 / 0.56), 0 3px 8px -2px oklch(0 0 0 / 0.4);
 }
 
 @layer base {
@@ -400,7 +396,9 @@
             color-mix(in oklch, var(--btn-from), black 10%) 0%,
             color-mix(in oklch, var(--btn-surface), black 10%) 100%
         );
-        mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+        mask:
+            linear-gradient(#000 0 0) content-box exclude,
+            linear-gradient(#000 0 0);
     }
 }
 

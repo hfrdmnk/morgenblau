@@ -2,13 +2,13 @@
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
   "duplicates": {
     // CSS declares one @font-face per font subset, so blocks sharing family, style and weight can't be deduplicated.
-    "ignore": ["src/assets/fonts/fonts.css"]
+    "ignore": ["src/assets/fonts/fonts.css"],
   },
   "overrides": [
     {
       // Primitives ship their full API surface; unwired subcomponents are intentional
       "files": ["src/components/ui/**"],
-      "rules": { "unused-exports": "off", "unused-types": "off" }
-    }
-  ]
+      "rules": { "unused-exports": "off", "unused-types": "off" },
+    },
+  ],
 }

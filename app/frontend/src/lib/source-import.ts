@@ -60,10 +60,7 @@ export async function importSources(
                 return outcome;
             }
         } catch (error) {
-            outcome.error = describeMutationError(
-                error,
-                'The connection was interrupted. You can retry safely.',
-            );
+            outcome.error = describeMutationError(error, 'The connection was interrupted. You can retry safely.');
             outcome.remaining = sources.slice(offset);
             return outcome;
         }

@@ -34,8 +34,17 @@ export function Source() {
             >
                 {(data) => (
                     <>
-                        <FeedSourceHeader onChanged={source.refresh} onRemoved={() => navigate(PATHS.sources)} source={data} />
-                        <SourceEntries empty="No posts have arrived from this source yet." from={sourceHref(rkey)} state={entries} title="Posts" />
+                        <FeedSourceHeader
+                            onChanged={source.refresh}
+                            onRemoved={() => navigate(PATHS.sources)}
+                            source={data}
+                        />
+                        <SourceEntries
+                            empty="No posts have arrived from this source yet."
+                            from={sourceHref(rkey)}
+                            state={entries}
+                            title="Posts"
+                        />
                     </>
                 )}
             </Skeleton>
@@ -44,11 +53,26 @@ export function Source() {
 }
 
 const SAMPLE_SOURCE: FeedSourceDetail = {
-    rkey: 'sample', title: 'Example Publication', feedUrl: 'https://example.com/feed.xml', siteUrl: 'https://example.com',
-    primary: false, fetchStatus: 'ready', frequency: 'weekly', totalEntries: 12, lastPublishedAt: '2026-01-01T00:00:00Z',
+    rkey: 'sample',
+    title: 'Example Publication',
+    feedUrl: 'https://example.com/feed.xml',
+    siteUrl: 'https://example.com',
+    primary: false,
+    fetchStatus: 'ready',
+    frequency: 'weekly',
+    totalEntries: 12,
+    lastPublishedAt: '2026-01-01T00:00:00Z',
 };
 
-function FeedSourceHeader({ source, onChanged, onRemoved }: { source: FeedSourceDetail; onChanged: () => void; onRemoved: () => void }) {
+function FeedSourceHeader({
+    source,
+    onChanged,
+    onRemoved,
+}: {
+    source: FeedSourceDetail;
+    onChanged: () => void;
+    onRemoved: () => void;
+}) {
     const site = feedSite(source);
     const title = feedTitle(source);
     return (
@@ -56,7 +80,12 @@ function FeedSourceHeader({ source, onChanged, onRemoved }: { source: FeedSource
             facts={feedFacts(source)}
             health={<SourceHealth source={source} />}
             icon={source.faviconUrl}
-            identity={<><SiteLink url={site} />{source.generated ? <GeneratedMark size="md" /> : null}</>}
+            identity={
+                <>
+                    <SiteLink url={site} />
+                    {source.generated ? <GeneratedMark size="md" /> : null}
+                </>
+            }
             menu={<EditSourceSheet onChanged={onChanged} onRemoved={onRemoved} source={source} />}
             primary={source.primary}
             tags={source.tags}
@@ -66,7 +95,12 @@ function FeedSourceHeader({ source, onChanged, onRemoved }: { source: FeedSource
 }
 
 function SiteLink({ url }: { url: string }) {
-    if (!httpURL(url)) return <Text as="span" break="all">{displayURL(url)}</Text>;
+    if (!httpURL(url))
+        return (
+            <Text as="span" break="all">
+                {displayURL(url)}
+            </Text>
+        );
     return (
         <Text as="span" break="all">
             <Link href={url} rel="noopener noreferrer" target="_blank" variant="underline">

@@ -1,7 +1,21 @@
 // Rules that keep markup on the design system: containers and text go through Frame and Text, controls through
 // Button and Link, and only the primitives in src/components/ui/ and src/design/ write class strings.
 
-const FRAME = ['div', 'section', 'nav', 'header', 'footer', 'main', 'aside', 'article', 'ul', 'ol', 'li', 'form', 'fieldset'];
+const FRAME = [
+    'div',
+    'section',
+    'nav',
+    'header',
+    'footer',
+    'main',
+    'aside',
+    'article',
+    'ul',
+    'ol',
+    'li',
+    'form',
+    'fieldset',
+];
 const TEXT = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'code', 'strong', 'em', 'time', 'small', 'dt', 'dd'];
 
 const REPLACEMENTS = {
@@ -22,7 +36,9 @@ const noRawElements = {
     create(context) {
         return {
             JSXOpeningElement(node) {
-                const use = isMotionElement(node.name) ? '<MotionFrame> from @/design/motion' : Object.hasOwn(REPLACEMENTS, node.name.name) && REPLACEMENTS[node.name.name];
+                const use = isMotionElement(node.name)
+                    ? '<MotionFrame> from @/design/motion'
+                    : Object.hasOwn(REPLACEMENTS, node.name.name) && REPLACEMENTS[node.name.name];
                 if (!use) return;
                 context.report({
                     node,

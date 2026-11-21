@@ -70,7 +70,10 @@ export function FeedbackDialog() {
         setSending(true);
         setError(null);
         try {
-            await sendFeedback(message.trim(), attachments.map((a) => a.file));
+            await sendFeedback(
+                message.trim(),
+                attachments.map((a) => a.file),
+            );
             urls.current.forEach((url) => URL.revokeObjectURL(url));
             urls.current.clear();
             setAttachments([]);
@@ -79,7 +82,9 @@ export function FeedbackDialog() {
             setOpen(false);
             toast.success('Feedback sent. Thank you.');
         } catch (failure) {
-            setError(describeMutationError(failure, 'Couldn’t send your feedback. Check your connection and try again.'));
+            setError(
+                describeMutationError(failure, 'Couldn’t send your feedback. Check your connection and try again.'),
+            );
         } finally {
             setSending(false);
         }
@@ -156,11 +161,22 @@ function acceptImages(current: Attachment[], incoming: File[]) {
         bytes += file.size;
         accepted.push(file);
     }
-    return { accepted, refused: images.length < incoming.length ? 'Only PNG, JPEG, GIF and WebP images can be attached.' : null };
+    return {
+        accepted,
+        refused: images.length < incoming.length ? 'Only PNG, JPEG, GIF and WebP images can be attached.' : null,
+    };
 }
 
 // Thumbnails above the text, the way a chat composer shows what it will send.
-function AttachmentList({ attachments, disabled, onRemove }: { attachments: Attachment[]; disabled: boolean; onRemove: (gone: Attachment) => void }) {
+function AttachmentList({
+    attachments,
+    disabled,
+    onRemove,
+}: {
+    attachments: Attachment[];
+    disabled: boolean;
+    onRemove: (gone: Attachment) => void;
+}) {
     const reduceMotion = useReducedMotion();
     return (
         <AnimatePresence initial={false}>
@@ -190,7 +206,12 @@ function AttachmentList({ attachments, disabled, onRemove }: { attachments: Atta
                                 exit={reduceMotion ? undefined : { opacity: 0, scale: 0.96 }}
                                 transition={THUMB}
                             >
-                                <AttachmentThumb disabled={disabled} name={a.file.name} onRemove={() => onRemove(a)} src={a.url} />
+                                <AttachmentThumb
+                                    disabled={disabled}
+                                    name={a.file.name}
+                                    onRemove={() => onRemove(a)}
+                                    src={a.url}
+                                />
                             </MotionFrame>
                         ))}
                     </AnimatePresence>
@@ -200,7 +221,15 @@ function AttachmentList({ attachments, disabled, onRemove }: { attachments: Atta
     );
 }
 
-function ComposerActions({ canSend, onFiles, sending }: { canSend: boolean; onFiles: (files: Iterable<File>) => void; sending: boolean }) {
+function ComposerActions({
+    canSend,
+    onFiles,
+    sending,
+}: {
+    canSend: boolean;
+    onFiles: (files: Iterable<File>) => void;
+    sending: boolean;
+}) {
     const fileRef = useRef<HTMLInputElement>(null);
     return (
         <Frame align="center" direction="row" gap="s" justify="between" paddingBottom="s" paddingX="s">

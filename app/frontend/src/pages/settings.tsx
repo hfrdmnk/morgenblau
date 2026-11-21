@@ -16,18 +16,26 @@ export function Settings() {
     return (
         <DataSettings>
             <Frame gap="5xl">
-                <Text as="h1" size="2xl" weight="medium">General settings</Text>
+                <Text as="h1" size="2xl" weight="medium">
+                    General settings
+                </Text>
                 <Frame maxWidth="xl" gap="5xl">
                     {/* The legend sits outside a fieldset's flex box, so the gap starts below the hint. */}
                     <Frame as="fieldset" gap="xl">
                         <legend>
-                            <Text as="span" display="block" size="lg" weight="medium">Reader font</Text>
+                            <Text as="span" display="block" size="lg" weight="medium">
+                                Reader font
+                            </Text>
                         </legend>
                         <Frame paddingTop="2xs">
                             {fontError ? (
-                                <Text role="alert" size="sm" tone="destructive">{fontError}</Text>
+                                <Text role="alert" size="sm" tone="destructive">
+                                    {fontError}
+                                </Text>
                             ) : (
-                                <Text size="sm" tone="muted">Saved on this device.</Text>
+                                <Text size="sm" tone="muted">
+                                    Saved on this device.
+                                </Text>
                             )}
                         </Frame>
                         <Frame gap="m">
@@ -40,17 +48,48 @@ export function Settings() {
                                         checked={readerFont === font}
                                         onChange={() => setReaderFont(font)}
                                     >
-                                        <Text as="span" aria-hidden="true" size="3xl" truncate family={SPECIMEN_FAMILY[font]}>
-                                            Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk Ll Mm Nn Oo Pp Qq Rr Ss Tt Uu Vv Ww Xx Yy Zz
+                                        <Text
+                                            as="span"
+                                            aria-hidden="true"
+                                            size="3xl"
+                                            truncate
+                                            family={SPECIMEN_FAMILY[font]}
+                                        >
+                                            Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk Ll Mm Nn Oo Pp Qq Rr Ss Tt Uu Vv Ww Xx Yy
+                                            Zz
                                         </Text>
-                                        <Text as="span" size="sm" weight="medium">{readerFontLabels[font]}</Text>
+                                        <Text as="span" size="sm" weight="medium">
+                                            {readerFontLabels[font]}
+                                        </Text>
                                     </RadioCard>
                                 ))}
                             </Frame>
                             <Text size="xs" tone="subtle">
-                                Geist is designed by <Link href="https://vercel.com" rel="noopener noreferrer" target="_blank">Vercel<Text as="span" visuallyHidden> (opens in a new tab)</Text></Link>,
-                                Newsreader by <Link href="https://productiontype.com" rel="noopener noreferrer" target="_blank">Production Type<Text as="span" visuallyHidden> (opens in a new tab)</Text></Link> and
-                                iA Writer Duo by <Link href="https://ia.net" rel="noopener noreferrer" target="_blank">Information Architects<Text as="span" visuallyHidden> (opens in a new tab)</Text></Link>.
+                                Geist is designed by{' '}
+                                <Link href="https://vercel.com" rel="noopener noreferrer" target="_blank">
+                                    Vercel
+                                    <Text as="span" visuallyHidden>
+                                        {' '}
+                                        (opens in a new tab)
+                                    </Text>
+                                </Link>
+                                , Newsreader by{' '}
+                                <Link href="https://productiontype.com" rel="noopener noreferrer" target="_blank">
+                                    Production Type
+                                    <Text as="span" visuallyHidden>
+                                        {' '}
+                                        (opens in a new tab)
+                                    </Text>
+                                </Link>{' '}
+                                and iA Writer Duo by{' '}
+                                <Link href="https://ia.net" rel="noopener noreferrer" target="_blank">
+                                    Information Architects
+                                    <Text as="span" visuallyHidden>
+                                        {' '}
+                                        (opens in a new tab)
+                                    </Text>
+                                </Link>
+                                .
                             </Text>
                         </Frame>
                     </Frame>

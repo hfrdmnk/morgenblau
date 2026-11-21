@@ -28,23 +28,33 @@ async function mount() {
     const container = document.createElement('div');
     const root = createRoot(container);
     await act(async () => root.render(<Probe />));
-    cleanup = () => { root.unmount(); container.remove(); };
+    cleanup = () => {
+        root.unmount();
+        container.remove();
+    };
     return container;
 }
 
 test('health polling preserves the list through a network failure, observes recovery, and stops on unmount', async () => {
     let calls = 0;
     let recovered = false;
-    globalThis.fetch = Object.assign(async () => {
-        if (++calls === 2) throw new TypeError('Network error');
-        return Response.json({ fetchStatus: recovered ? 'ready' : 'unavailable' });
-    }, { preconnect: realFetch.preconnect });
+    globalThis.fetch = Object.assign(
+        async () => {
+            if (++calls === 2) throw new TypeError('Network error');
+            return Response.json({ fetchStatus: recovered ? 'ready' : 'unavailable' });
+        },
+        { preconnect: realFetch.preconnect },
+    );
     const container = await mount();
     expect(container.textContent).toBe('unavailable');
-    await act(async () => { await Bun.sleep(15); });
+    await act(async () => {
+        await Bun.sleep(15);
+    });
     expect(container.textContent).toBe('unavailable');
     recovered = true;
-    await act(async () => { await Bun.sleep(40); });
+    await act(async () => {
+        await Bun.sleep(40);
+    });
     expect(container.textContent).toBe('ready');
     act(() => cleanup());
     cleanup = () => {};
@@ -56,9 +66,13 @@ test('health polling preserves the list through a network failure, observes reco
 
 test('subscription changes cancel old health requests and ignore their late responses', async () => {
     const requests: { signal: AbortSignal; resolve: (response: Response) => void }[] = [];
-    globalThis.fetch = Object.assign((_url: Parameters<typeof fetch>[0], init?: RequestInit) => new Promise<Response>((resolve) => {
-        requests.push({ signal: init!.signal!, resolve });
-    }), { preconnect: realFetch.preconnect });
+    globalThis.fetch = Object.assign(
+        (_url: Parameters<typeof fetch>[0], init?: RequestInit) =>
+            new Promise<Response>((resolve) => {
+                requests.push({ signal: init!.signal!, resolve });
+            }),
+        { preconnect: realFetch.preconnect },
+    );
     const container = await mount();
     await act(async () => subscriptionChanges.dispatchEvent(new Event('change')));
     expect(requests[0].signal.aborted).toBe(true);
@@ -73,21 +87,30 @@ test('subscription changes cancel old health requests and ignore their late resp
 
 test('a new path never shows the previous source, even when its request fails', async () => {
     const requests: { url: string; resolve: (response: Response) => void }[] = [];
-    globalThis.fetch = Object.assign((url: Parameters<typeof fetch>[0]) => new Promise<Response>((resolve) => {
-        requests.push({ url: String(url), resolve });
-    }), { preconnect: realFetch.preconnect });
+    globalThis.fetch = Object.assign(
+        (url: Parameters<typeof fetch>[0]) =>
+            new Promise<Response>((resolve) => {
+                requests.push({ url: String(url), resolve });
+            }),
+        { preconnect: realFetch.preconnect },
+    );
     function Detail({ path }: { path: string }) {
         const state = useSources<{ title: string }>(path);
         return <p>{state.status === 'loaded' ? state.data.title : state.status}</p>;
     }
     const container = document.createElement('div');
     const root = createRoot(container);
-    cleanup = () => { root.unmount(); container.remove(); };
+    cleanup = () => {
+        root.unmount();
+        container.remove();
+    };
     await act(async () => root.render(<Detail path="/api/subscriptions/a" />));
     await act(async () => requests[0].resolve(Response.json({ title: 'Example Publication' })));
     expect(container.textContent).toBe('Example Publication');
     await act(async () => root.render(<Detail path="/api/subscriptions/b" />));
     expect(container.textContent).toBe('loading');
-    await act(async () => requests[1].resolve(Response.json({ code: 'internal_error', message: 'internal error' }, { status: 500 })));
+    await act(async () =>
+        requests[1].resolve(Response.json({ code: 'internal_error', message: 'internal error' }, { status: 500 })),
+    );
     expect(container.textContent).toBe('error');
 });

@@ -28,14 +28,25 @@ export function NewsletterSource() {
         <SourceDetailPage>
             <Skeleton
                 data={loaded}
-                error={source.status === 'error' ? <SourceUnavailable label="this newsletter" state={source} /> : undefined}
+                error={
+                    source.status === 'error' ? <SourceUnavailable label="this newsletter" state={source} /> : undefined
+                }
                 label="Loading this newsletter"
                 sample={SAMPLE_NEWSLETTER}
             >
                 {(data) => (
                     <>
                         <NewsletterHeader onChanged={refresh} onRemoved={() => navigate(PATHS.sources)} source={data} />
-                        <SourceEntries empty={data.status === 'stopped' ? 'Unsaved issues were removed when this newsletter stopped.' : 'No issues have arrived yet.'} from={newsletterSourceHref(id)} state={entries} title="Issues" />
+                        <SourceEntries
+                            empty={
+                                data.status === 'stopped'
+                                    ? 'Unsaved issues were removed when this newsletter stopped.'
+                                    : 'No issues have arrived yet.'
+                            }
+                            from={newsletterSourceHref(id)}
+                            state={entries}
+                            title="Issues"
+                        />
                     </>
                 )}
             </Skeleton>
@@ -44,17 +55,47 @@ export function NewsletterSource() {
 }
 
 const SAMPLE_NEWSLETTER: NewsletterSourceDetail = {
-    id: 'sample', title: 'Example Newsletter', senderAddress: 'hello@example.com', senderName: null, primary: false, canUnsubscribe: false, tags: [],
-    status: 'active', lastReceivedAt: '2026-01-01T00:00:00Z', frequency: 'weekly', issueCount: 12,
+    id: 'sample',
+    title: 'Example Newsletter',
+    senderAddress: 'hello@example.com',
+    senderName: null,
+    primary: false,
+    canUnsubscribe: false,
+    tags: [],
+    status: 'active',
+    lastReceivedAt: '2026-01-01T00:00:00Z',
+    frequency: 'weekly',
+    issueCount: 12,
 };
 
-function NewsletterHeader({ source, onChanged, onRemoved }: { source: NewsletterSourceDetail; onChanged: () => void; onRemoved: () => void }) {
+function NewsletterHeader({
+    source,
+    onChanged,
+    onRemoved,
+}: {
+    source: NewsletterSourceDetail;
+    onChanged: () => void;
+    onRemoved: () => void;
+}) {
     const title = newsletterTitle(source);
     return (
         <SourceHeader
             facts={newsletterFacts(source)}
-            menu={<EditNewsletterSheet onChanged={onChanged} onRemoved={onRemoved} source={source} stopped={source.status === 'stopped'} />}
-            identity={title === source.senderAddress ? null : <Text as="span" break="all">{source.senderAddress}</Text>}
+            menu={
+                <EditNewsletterSheet
+                    onChanged={onChanged}
+                    onRemoved={onRemoved}
+                    source={source}
+                    stopped={source.status === 'stopped'}
+                />
+            }
+            identity={
+                title === source.senderAddress ? null : (
+                    <Text as="span" break="all">
+                        {source.senderAddress}
+                    </Text>
+                )
+            }
             primary={source.status === 'active' && source.primary}
             tags={source.tags}
             title={title}

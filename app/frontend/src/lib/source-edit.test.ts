@@ -1,6 +1,17 @@
 import { afterEach, expect, test } from 'bun:test';
 
-import { addTags, canAddTags, hasOverlongTag, editNewsletter, removeSource, resumeNewsletter, titleTooLong, unsubscribeNewsletter, deleteNewsletter, type EditableSource } from './source-edit';
+import {
+    addTags,
+    canAddTags,
+    hasOverlongTag,
+    editNewsletter,
+    removeSource,
+    resumeNewsletter,
+    titleTooLong,
+    unsubscribeNewsletter,
+    deleteNewsletter,
+    type EditableSource,
+} from './source-edit';
 
 const realFetch = globalThis.fetch;
 let requests: { url: string; method: string; body: unknown }[] = [];
@@ -9,7 +20,11 @@ function record(status = 200) {
     requests = [];
     globalThis.fetch = Object.assign(
         async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
-            requests.push({ url: String(url), method: init?.method ?? 'GET', body: init?.body ? JSON.parse(String(init.body)) : undefined });
+            requests.push({
+                url: String(url),
+                method: init?.method ?? 'GET',
+                body: init?.body ? JSON.parse(String(init.body)) : undefined,
+            });
             return status === 204 ? new Response(null, { status }) : Response.json({}, { status });
         },
         { preconnect: realFetch.preconnect },
@@ -22,7 +37,12 @@ afterEach(() => {
 
 const feed: EditableSource = { kind: 'feed', rkey: '3kexample', title: 'Example Publication', tags: ['tech'] };
 const newsletter = {
-    kind: 'newsletter', id: 'nl-1', title: 'Example Letter', tags: ['weekly', 'design'], stopped: false, canUnsubscribe: true,
+    kind: 'newsletter',
+    id: 'nl-1',
+    title: 'Example Letter',
+    tags: ['weekly', 'design'],
+    stopped: false,
+    canUnsubscribe: true,
 } as const satisfies EditableSource;
 
 test('a newsletter edit patches only the fields that changed', async () => {

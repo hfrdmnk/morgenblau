@@ -1,9 +1,4 @@
-import {
-    MAX_PATCHES,
-    MODES,
-    type SmearConfig,
-    planScene,
-} from './smear-config';
+import { MAX_PATCHES, MODES, type SmearConfig, planScene } from './smear-config';
 import { generatePalette } from './smear-palette';
 
 const VERTEX = `#version 300 es
@@ -225,12 +220,7 @@ function compile(gl: WebGL2RenderingContext, fragment: string): WebGLProgram {
 
 type Uniforms = Record<string, number | number[] | Float32Array>;
 
-function setUniforms(
-    gl: WebGL2RenderingContext,
-    program: WebGLProgram,
-    uniforms: Uniforms,
-    ints: Set<string>,
-): void {
+function setUniforms(gl: WebGL2RenderingContext, program: WebGLProgram, uniforms: Uniforms, ints: Set<string>): void {
     for (const [name, value] of Object.entries(uniforms)) {
         const location = gl.getUniformLocation(program, name);
         if (!location) continue;
@@ -251,12 +241,7 @@ function setUniforms(
     }
 }
 
-const INT_UNIFORMS = new Set([
-    'uPatchCount',
-    'uMode',
-    'uSamples',
-    'uScene',
-]);
+const INT_UNIFORMS = new Set(['uPatchCount', 'uMode', 'uSamples', 'uScene']);
 
 export type SmearRenderer = {
     canvas: HTMLCanvasElement;
@@ -290,10 +275,7 @@ export function createSmearRenderer(canvas: HTMLCanvasElement): SmearRenderer {
         const { flow, scene, color, backdrop, finish } = config;
         const palette = generatePalette(config.seed, color);
         const aspect = [width / minSide, height / minSide];
-        const toImage = (x: number, y: number) => [
-            (x - 0.5) * aspect[0]!,
-            (y - 0.5) * aspect[1]!,
-        ];
+        const toImage = (x: number, y: number) => [(x - 0.5) * aspect[0]!, (y - 0.5) * aspect[1]!];
 
         const angle = (flow.angle * Math.PI) / 180;
         const dir = [Math.cos(angle), -Math.sin(angle)];
@@ -303,10 +285,7 @@ export function createSmearRenderer(canvas: HTMLCanvasElement): SmearRenderer {
 
         const halfLength = flow.smearLength / 2;
         const reachPx = halfLength * 1.2 * minSide;
-        const marginPx = Math.min(
-            Math.ceil(reachPx + 4),
-            Math.floor((maxTexture - Math.max(width, height)) / 2),
-        );
+        const marginPx = Math.min(Math.ceil(reachPx + 4), Math.floor((maxTexture - Math.max(width, height)) / 2));
         const samples = Math.min(320, Math.max(4, Math.ceil(reachPx / 1.25)));
 
         const shared: Uniforms = {
@@ -344,21 +323,12 @@ export function createSmearRenderer(canvas: HTMLCanvasElement): SmearRenderer {
         const colors = [palette.ground, ...palette.field];
         const patches = new Float32Array(MAX_PATCHES * 4);
         plan.patches.forEach((patch, index) => {
-            patches.set(
-                [...toImage(patch.x, patch.y), patch.radius, patch.color],
-                index * 4,
-            );
+            patches.set([...toImage(patch.x, patch.y), patch.radius, patch.color], index * 4);
         });
         const accentSize = 0.04 + 0.12 * color.accentAmount;
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-        gl.framebufferTexture2D(
-            gl.FRAMEBUFFER,
-            gl.COLOR_ATTACHMENT0,
-            gl.TEXTURE_2D,
-            sceneTexture,
-            0,
-        );
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sceneTexture, 0);
         gl.viewport(0, 0, textureWidth, textureHeight);
         gl.useProgram(sceneProgram);
         setUniforms(
@@ -372,14 +342,8 @@ export function createSmearRenderer(canvas: HTMLCanvasElement): SmearRenderer {
                 uColors: new Float32Array(colors.flat()),
                 uLightColor: palette.light,
                 uAccentColor: palette.accent,
-                uLightMass: [
-                    ...toImage(scene.lightX, scene.lightY),
-                    scene.lightSize,
-                ],
-                uAccentMass: [
-                    ...toImage(plan.accent.x, plan.accent.y),
-                    accentSize,
-                ],
+                uLightMass: [...toImage(scene.lightX, scene.lightY), scene.lightSize],
+                uAccentMass: [...toImage(plan.accent.x, plan.accent.y), accentSize],
                 uAccentAmount: color.accentAmount,
             },
             INT_UNIFORMS,

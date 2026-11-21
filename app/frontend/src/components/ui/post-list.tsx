@@ -16,10 +16,12 @@ function PostList({ children, arrowsOnly = false }: { children: ReactNode; arrow
         let source: 'pointer' | 'keys' | null = null;
         let pointer = { x: -1, y: -1 };
         // Sample rows mount inert while a skeleton shows.
-        const rows = () => [...list.querySelectorAll<HTMLElement>('[data-post]')].filter((row) => !row.closest('[inert]'));
+        const rows = () =>
+            [...list.querySelectorAll<HTMLElement>('[data-post]')].filter((row) => !row.closest('[inert]'));
         const selected = () => list.querySelector<HTMLElement>('[data-post][data-selected]');
         const link = (row: HTMLElement) => row.querySelector<HTMLElement>('[data-post-link]')!;
-        const rowOf = (target: EventTarget | null) => (target instanceof Element ? target.closest<HTMLElement>('[data-post]') : null);
+        const rowOf = (target: EventTarget | null) =>
+            target instanceof Element ? target.closest<HTMLElement>('[data-post]') : null;
         function select(row: HTMLElement | null, by: typeof source) {
             const current = selected();
             if (current !== row) current?.removeAttribute('data-selected');
@@ -48,7 +50,9 @@ function PostList({ children, arrowsOnly = false }: { children: ReactNode; arrow
         // A focused post link would open itself, but the pointer may have selected another row since.
         function open(event: KeyboardEvent) {
             const current = selected();
-            const onPostOrPage = event.target === document.body || (event.target instanceof Element && event.target.matches('[data-post-link]'));
+            const onPostOrPage =
+                event.target === document.body ||
+                (event.target instanceof Element && event.target.matches('[data-post-link]'));
             if (!current || !onPostOrPage) return;
             event.preventDefault();
             link(current).click();
@@ -69,12 +73,18 @@ function PostList({ children, arrowsOnly = false }: { children: ReactNode; arrow
             if (row) select(row, 'keys');
         }
         function onFocusOut(event: FocusEvent) {
-            if (source === 'keys' && !(event.relatedTarget instanceof Node && list.contains(event.relatedTarget))) select(null, null);
+            if (source === 'keys' && !(event.relatedTarget instanceof Node && list.contains(event.relatedTarget)))
+                select(null, null);
         }
         // The whole row reads as the post, so a click anywhere on it opens the post, except on the row's own controls.
         function onClick(event: MouseEvent) {
             const row = rowOf(event.target);
-            if (!row || (event.target instanceof Element && event.target.closest('a, button')) || !document.getSelection()?.isCollapsed) return;
+            if (
+                !row ||
+                (event.target instanceof Element && event.target.closest('a, button')) ||
+                !document.getSelection()?.isCollapsed
+            )
+                return;
             link(row).click();
         }
 
@@ -116,30 +126,57 @@ const postRowVariants = cva('', {
     defaultVariants: { size: 'default' },
 });
 
-function PostRow({ as: Row = 'div', size, children }: { as?: 'div' | 'li'; children: ReactNode } & VariantProps<typeof postRowVariants>) {
-    return <Row data-post="" data-slot="post-row" className={postRowVariants({ size })}>{children}</Row>;
+function PostRow({
+    as: Row = 'div',
+    size,
+    children,
+}: { as?: 'div' | 'li'; children: ReactNode } & VariantProps<typeof postRowVariants>) {
+    return (
+        <Row data-post="" data-slot="post-row" className={postRowVariants({ size })}>
+            {children}
+        </Row>
+    );
 }
 
 // A source's folded posts, hanging from a rule that lines up under its favicon.
 function FoldedPosts({ children }: { children: ReactNode }) {
-    return <ol data-slot="folded-posts" className="ml-1.75 flex flex-col gap-5 border-l border-border pt-5 pl-4.25">{children}</ol>;
+    return (
+        <ol data-slot="folded-posts" className="ml-1.75 flex flex-col gap-5 border-l border-border pt-5 pl-4.25">
+            {children}
+        </ol>
+    );
 }
 
 type FeatureImage = { href: string; src: string; onError: () => void };
 
 // A primary post: source, headline and excerpt stack; the image leads on phones and sits beside the headline from sm up, where the
 // last row takes the image's extra height so the excerpt stays under its headline.
-function FeaturePost({ source, headline, excerpt, image }: { source: ReactNode; headline: ReactNode; excerpt?: ReactNode; image?: FeatureImage | null }) {
+function FeaturePost({
+    source,
+    headline,
+    excerpt,
+    image,
+}: {
+    source: ReactNode;
+    headline: ReactNode;
+    excerpt?: ReactNode;
+    image?: FeatureImage | null;
+}) {
     return (
         <div
             data-post=""
             data-slot="feature-post"
-            className={cn('-m-3 flex flex-col gap-3 p-3', image && 'sm:grid sm:grid-cols-(--grid-trailing) sm:grid-rows-(--grid-feature-rows) sm:gap-x-8')}
+            className={cn(
+                '-m-3 flex flex-col gap-3 p-3',
+                image && 'sm:grid sm:grid-cols-(--grid-trailing) sm:grid-rows-(--grid-feature-rows) sm:gap-x-8',
+            )}
         >
             <div className="min-w-0 self-start sm:col-start-1 sm:row-start-1">{source}</div>
             {/* On the heading itself: an em letter-spacing set here would resolve against this wrapper's size, not the heading's. */}
             <div className="*:tracking-tight sm:col-start-1 sm:row-start-2">{headline}</div>
-            {excerpt ? <div className="max-w-(--excerpt-measure) self-start sm:col-start-1 sm:row-start-3">{excerpt}</div> : null}
+            {excerpt ? (
+                <div className="max-w-(--excerpt-measure) self-start sm:col-start-1 sm:row-start-3">{excerpt}</div>
+            ) : null}
             {image ? (
                 // The headline already carries the link for assistive tech; the image is a second, pointer-only way in.
                 <RouterLink
@@ -148,7 +185,14 @@ function FeaturePost({ source, headline, excerpt, image }: { source: ReactNode; 
                     href={image.href}
                     tabIndex={-1}
                 >
-                    <img alt="" className="size-full object-cover" decoding="async" loading="lazy" onError={image.onError} src={image.src} />
+                    <img
+                        alt=""
+                        className="size-full object-cover"
+                        decoding="async"
+                        loading="lazy"
+                        onError={image.onError}
+                        src={image.src}
+                    />
                 </RouterLink>
             ) : null}
         </div>

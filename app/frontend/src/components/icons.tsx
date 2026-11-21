@@ -61,7 +61,13 @@ export type IconProps = Omit<CentralIconProps, 'className' | 'style' | 'size'> &
 const rotations = { 90: 'rotate-90', 180: 'rotate-180', 270: '-rotate-90' };
 
 function iconClass({ size, tone, spin, rotate }: Pick<IconProps, 'size' | 'tone' | 'spin' | 'rotate'>) {
-    return cn('shrink-0', size && sizes[size], tone && tones[tone], spin && 'motion-safe:animate-spin', rotate && rotations[rotate]);
+    return cn(
+        'shrink-0',
+        size && sizes[size],
+        tone && tones[tone],
+        spin && 'motion-safe:animate-spin',
+        rotate && rotations[rotate],
+    );
 }
 
 function icon(Glyph: typeof IconSunrise) {
@@ -122,7 +128,10 @@ export function DigestActiveIcon({ size, tone, spin, rotate, ...props }: IconPro
 const markHeights = { md: 'h-4', xl: 'h-5', '2xl': 'h-6' };
 
 // Sized by height, on the icon scale; the width follows the mark's proportions.
-export function MorgenblauMark({ size = '2xl', ...props }: Omit<ComponentProps<'svg'>, 'className' | 'style' | 'size'> & { size?: keyof typeof markHeights }) {
+export function MorgenblauMark({
+    size = '2xl',
+    ...props
+}: Omit<ComponentProps<'svg'>, 'className' | 'style' | 'size'> & { size?: keyof typeof markHeights }) {
     return (
         <svg aria-hidden className={markHeights[size]} focusable={false} viewBox="0 0 224 144" {...props}>
             <path

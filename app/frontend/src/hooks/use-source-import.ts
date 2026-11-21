@@ -2,11 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { api, describeMutationError } from '@/lib/api';
-import {
-    importSources,
-    type ImportOutcome,
-    type ImportPlan,
-} from '@/lib/source-import';
+import { importSources, type ImportOutcome, type ImportPlan } from '@/lib/source-import';
 
 export type ImportState =
     | { kind: 'idle' }
@@ -20,17 +16,14 @@ type ImportProvider = 'opml' | 'youtube' | 'skyreader' | 'glean';
 
 async function prepareImportBody(provider: ImportProvider, file?: File) {
     const field = provider === 'youtube' ? 'csv' : 'opml';
-    if (file && file.size > 512 * 1024)
-        throw new Error(`${field.toUpperCase()} files must be smaller than 512 KB.`);
+    if (file && file.size > 512 * 1024) throw new Error(`${field.toUpperCase()} files must be smaller than 512 KB.`);
     return { provider, [field]: await file?.text() };
 }
 
 function preparationError(error: unknown) {
     return describeMutationError(
         error,
-        error instanceof Error
-            ? error.message
-            : 'Could not read these sources. Please try again.',
+        error instanceof Error ? error.message : 'Could not read these sources. Please try again.',
     );
 }
 
@@ -51,14 +44,11 @@ export function useSourceImport() {
         request.current = controller;
         setState({ kind: 'preparing', provider });
         try {
-            const plan = await api<ImportPlan>(
-                '/api/subscriptions/import/prepare',
-                {
-                    method: 'POST',
-                    body: await prepareImportBody(provider, file),
-                    signal: controller.signal,
-                },
-            );
+            const plan = await api<ImportPlan>('/api/subscriptions/import/prepare', {
+                method: 'POST',
+                body: await prepareImportBody(provider, file),
+                signal: controller.signal,
+            });
             controller.signal.throwIfAborted();
             setState(confirmPlan(plan));
         } catch (error) {
@@ -72,7 +62,10 @@ export function useSourceImport() {
     async function startImport(
         plan: ImportPlan,
         previous: Pick<ImportOutcome, 'added' | 'updated' | 'unchanged' | 'imported'> = {
-            added: 0, updated: 0, unchanged: 0, imported: [],
+            added: 0,
+            updated: 0,
+            unchanged: 0,
+            imported: [],
         },
     ) {
         if (request.current) return;
@@ -83,17 +76,13 @@ export function useSourceImport() {
             completed: 0,
             total: plan.sources.length,
         });
-        const outcome = await importSources(
-            plan.sources,
-            controller.signal,
-            (completed) => {
-                setState({
-                    kind: 'importing',
-                    completed,
-                    total: plan.sources.length,
-                });
-            },
-        );
+        const outcome = await importSources(plan.sources, controller.signal, (completed) => {
+            setState({
+                kind: 'importing',
+                completed,
+                total: plan.sources.length,
+            });
+        });
         request.current = null;
         if (controller.signal.aborted) return;
         const combined = {

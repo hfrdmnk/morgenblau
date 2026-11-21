@@ -54,10 +54,7 @@ export type SourceEntry = {
     publishedAt: string;
 };
 
-type State<T> =
-    | { status: 'loading' }
-    | { status: 'loaded'; data: T }
-    | { status: 'error'; notFound?: boolean };
+type State<T> = { status: 'loading' } | { status: 'loaded'; data: T } | { status: 'error'; notFound?: boolean };
 
 export function useSources<T>(path: string, pollInterval = 0) {
     // Keyed by path so a page reused for another source never shows the previous one's data.
@@ -79,9 +76,11 @@ export function useSources<T>(path: string, pollInterval = 0) {
             } catch (error) {
                 if (!controller.signal.aborted) {
                     const notFound = error instanceof ApiError && error.status === 404;
-                    setState((previous) => previous.status === 'loaded' && previous.path === path && !notFound
-                        ? previous
-                        : { status: 'error', notFound, path });
+                    setState((previous) =>
+                        previous.status === 'loaded' && previous.path === path && !notFound
+                            ? previous
+                            : { status: 'error', notFound, path },
+                    );
                 }
             } finally {
                 if (pollInterval > 0 && !controller.signal.aborted) {

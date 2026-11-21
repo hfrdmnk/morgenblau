@@ -72,12 +72,10 @@ export const SIZE_PRESETS = {
 
 export const MAX_PATCHES = 16;
 
-function defaults<T extends Record<string, Bound>>(
-    group: T,
-): { [K in keyof T]: number } {
-    return Object.fromEntries(
-        Object.entries(group).map(([key, bound]) => [key, bound.default]),
-    ) as { [K in keyof T]: number };
+function defaults<T extends Record<string, Bound>>(group: T): { [K in keyof T]: number } {
+    return Object.fromEntries(Object.entries(group).map(([key, bound]) => [key, bound.default])) as {
+        [K in keyof T]: number;
+    };
 }
 
 export const DEFAULT_CONFIG: SmearConfig = {
@@ -118,24 +116,16 @@ function clampNumber(value: unknown, bound: Bound): number {
     return Math.min(bound.max, Math.max(bound.min, value));
 }
 
-function clampGroup<T extends Record<string, Bound>>(
-    value: unknown,
-    group: T,
-): { [K in keyof T]: number } {
+function clampGroup<T extends Record<string, Bound>>(value: unknown, group: T): { [K in keyof T]: number } {
     const source = isRecord(value) ? value : {};
-    return Object.fromEntries(
-        Object.entries(group).map(([key, bound]) => [
-            key,
-            clampNumber(source[key], bound),
-        ]),
-    ) as { [K in keyof T]: number };
+    return Object.fromEntries(Object.entries(group).map(([key, bound]) => [key, clampNumber(source[key], bound)])) as {
+        [K in keyof T]: number;
+    };
 }
 
 function clampSize(value: unknown): number {
     if (typeof value !== 'number' || !Number.isFinite(value)) return 1080;
-    return Math.round(
-        Math.min(SIZE_BOUNDS.max, Math.max(SIZE_BOUNDS.min, value)),
-    );
+    return Math.round(Math.min(SIZE_BOUNDS.max, Math.max(SIZE_BOUNDS.min, value)));
 }
 
 export function normalizeConfig(value: unknown): SmearConfig {
@@ -148,9 +138,7 @@ export function normalizeConfig(value: unknown): SmearConfig {
     return {
         version: SMEAR_CONFIG_VERSION,
         seed,
-        mode: MODES.includes(source.mode as Mode)
-            ? (source.mode as Mode)
-            : DEFAULT_CONFIG.mode,
+        mode: MODES.includes(source.mode as Mode) ? (source.mode as Mode) : DEFAULT_CONFIG.mode,
         size: {
             width: clampSize(size.width ?? DEFAULT_CONFIG.size.width),
             height: clampSize(size.height ?? DEFAULT_CONFIG.size.height),
@@ -175,9 +163,7 @@ export function configForSeed(config: SmearConfig, seed: number): SmearConfig {
         const values = next[group] as Record<string, number>;
         for (const [key, bound] of Object.entries(BOUNDS[group])) {
             const value = bound.min + random() * (bound.max - bound.min);
-            values[key] = Number(
-                (bound.min + Math.round((value - bound.min) / bound.step) * bound.step).toFixed(4),
-            );
+            values[key] = Number((bound.min + Math.round((value - bound.min) / bound.step) * bound.step).toFixed(4));
         }
     }
     return next;

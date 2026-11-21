@@ -4,13 +4,7 @@ import { DownloadIcon, SettingsIcon, ShieldIcon, UploadIcon } from '@/components
 import { PersonAvatar } from '@/components/person-avatar';
 import { Button } from '@/components/ui/button';
 import { MenuLink, MenuList, MenuPopup } from '@/components/ui/menu';
-import {
-    Popover,
-    PopoverDescription,
-    PopoverHeader,
-    PopoverTitle,
-    PopoverTrigger,
-} from '@/components/ui/popover';
+import { Popover, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
 import { Frame } from '@/design/frame';
 import { Text } from '@/design/text';
 import type { AppProfile } from '@/lib/app-profile-context';
@@ -22,24 +16,20 @@ export function AccountMenu({ profile }: { profile: AppProfile }) {
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger
-                render={
-                    <Button
-                        variant="ghost"
-                        size="avatar"
-                        aria-label="Open account menu"
-                    />
-                }
-            >
+            <PopoverTrigger render={<Button variant="ghost" size="avatar" aria-label="Open account menu" />}>
                 <PersonAvatar seed={profile.did} src={profile.avatar} />
             </PopoverTrigger>
             <MenuPopup align="end" onKeyDown={moveThroughItems}>
                 <PopoverHeader>
                     <PopoverTitle>
-                        <Text as="span" display="block" truncate>{accountName}</Text>
+                        <Text as="span" display="block" truncate>
+                            {accountName}
+                        </Text>
                     </PopoverTitle>
                     <PopoverDescription>
-                        <Text as="span" display="block" truncate>@{profile.handle}</Text>
+                        <Text as="span" display="block" truncate>
+                            @{profile.handle}
+                        </Text>
                     </PopoverDescription>
                 </PopoverHeader>
                 <MenuList aria-label="Account">

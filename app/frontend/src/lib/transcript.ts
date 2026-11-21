@@ -1,8 +1,7 @@
 export type TranscriptCue = { start: number; duration: number; text: string };
 
 export type Transcript =
-    | { status: 'none' }
-    | { status: 'ready'; language: string; kind: 'manual' | 'asr'; cues: TranscriptCue[] };
+    { status: 'none' } | { status: 'ready'; language: string; kind: 'manual' | 'asr'; cues: TranscriptCue[] };
 
 export type TranscriptParagraph = { start: number; text: string };
 
@@ -18,7 +17,8 @@ export function groupCues(cues: TranscriptCue[]): TranscriptParagraph[] {
     for (const cue of cues) {
         if (current) {
             const span = cue.start - current.start;
-            const sentenceDone = SENTENCE_END.test(current.lines.at(-1) ?? '') && current.end - current.start >= SENTENCE_MS;
+            const sentenceDone =
+                SENTENCE_END.test(current.lines.at(-1) ?? '') && current.end - current.start >= SENTENCE_MS;
             if (sentenceDone || cue.start - current.end > PAUSE_MS || span >= MAX_MS) {
                 paragraphs.push({ start: current.start, text: current.lines.join(' ') });
                 current = null;

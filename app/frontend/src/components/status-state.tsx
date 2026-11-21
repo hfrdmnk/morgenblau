@@ -16,21 +16,20 @@ type StateFrameProps = StatusStateProps & {
     role?: 'alert' | 'status';
 };
 
-function StateFrame({
-    action,
-    description,
-    icon,
-    role,
-    title,
-    tone = 'default',
-}: StateFrameProps) {
+function StateFrame({ action, description, icon, role, title, tone = 'default' }: StateFrameProps) {
     return (
         <Frame align="center" gap="m" justify="center" minHeight="state" paddingX="2xl" paddingY="4xl" role={role}>
-            <Text as="span" tone={tone === 'error' ? 'destructive' : 'muted'}>{icon}</Text>
+            <Text as="span" tone={tone === 'error' ? 'destructive' : 'muted'}>
+                {icon}
+            </Text>
             <Frame gap="2xs" maxWidth="sm">
-                <Text align="center" weight="medium">{title}</Text>
+                <Text align="center" weight="medium">
+                    {title}
+                </Text>
                 {description ? (
-                    <Text align="center" size="sm" tone="muted" wrap="pretty">{description}</Text>
+                    <Text align="center" size="sm" tone="muted" wrap="pretty">
+                        {description}
+                    </Text>
                 ) : null}
             </Frame>
             {action ? <Frame paddingTop="2xs">{action}</Frame> : null}
@@ -39,14 +38,7 @@ function StateFrame({
 }
 
 function LoadingState({ title, ...props }: Omit<StatusStateProps, 'action'>) {
-    return (
-        <StateFrame
-            title={title}
-            icon={<LoadingIcon size="2xl" spin />}
-            role="status"
-            {...props}
-        />
-    );
+    return <StateFrame title={title} icon={<LoadingIcon size="2xl" spin />} role="status" {...props} />;
 }
 
 function EmptyState(props: StatusStateProps) {
@@ -54,14 +46,7 @@ function EmptyState(props: StatusStateProps) {
 }
 
 function ErrorState(props: StatusStateProps) {
-    return (
-        <StateFrame
-            icon={<AlertIcon size="2xl" />}
-            role="alert"
-            tone="error"
-            {...props}
-        />
-    );
+    return <StateFrame icon={<AlertIcon size="2xl" />} role="alert" tone="error" {...props} />;
 }
 
 export { EmptyState, ErrorState, LoadingState };

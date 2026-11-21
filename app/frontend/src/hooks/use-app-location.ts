@@ -26,10 +26,7 @@ export function useAppLocation(options?: { ssrPath?: string }) {
         window.scrollTo(0, state.scrollY ?? 0);
     };
 
-    return [location, navigateWithScrollReset] as [
-        typeof location,
-        typeof navigateWithScrollReset,
-    ];
+    return [location, navigateWithScrollReset] as [typeof location, typeof navigateWithScrollReset];
 }
 
 export function useNavigationScrollRestoration() {

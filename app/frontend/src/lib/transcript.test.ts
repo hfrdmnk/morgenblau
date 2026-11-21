@@ -13,7 +13,10 @@ test('a sentence ends a paragraph only once the paragraph has run a while', () =
         cue(16000, 'This starts the second one.'),
     ]);
     expect(paragraphs).toEqual([
-        { start: 0, text: 'Short opener. Still the first paragraph, and it keeps going. A sentence after twelve seconds.' },
+        {
+            start: 0,
+            text: 'Short opener. Still the first paragraph, and it keeps going. A sentence after twelve seconds.',
+        },
         { start: 16000, text: 'This starts the second one.' },
     ]);
 });
@@ -30,7 +33,11 @@ test('a long pause or the cap breaks a paragraph without punctuation', () => {
 });
 
 test('the active paragraph is the last one that started', () => {
-    const paragraphs = [{ start: 4000, text: 'a' }, { start: 10000, text: 'b' }, { start: 60000, text: 'c' }];
+    const paragraphs = [
+        { start: 4000, text: 'a' },
+        { start: 10000, text: 'b' },
+        { start: 60000, text: 'c' },
+    ];
     expect(activeIndex(paragraphs, 3999)).toBe(-1);
     expect(activeIndex(paragraphs, 4000)).toBe(0);
     expect(activeIndex(paragraphs, 9999)).toBe(0);

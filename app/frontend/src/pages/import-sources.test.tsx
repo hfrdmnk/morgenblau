@@ -39,42 +39,58 @@ function feed(source: ImportSource, fetchStatus: FeedSource['fetchStatus']): Fee
 }
 
 async function click(name: string) {
-    const control = [...document.querySelectorAll<HTMLElement>('button, [role="button"]')]
-        .find((element) => element.textContent?.trim() === name);
+    const control = [...document.querySelectorAll<HTMLElement>('button, [role="button"]')].find(
+        (element) => element.textContent?.trim() === name,
+    );
     expect(control).toBeDefined();
     await act(async () => control!.click());
 }
 
 async function importReceipt(sources: ImportSource[], feeds: FeedSource[], failedSources: ImportSource[] = []) {
     const batches: ImportSource[][] = [];
-    globalThis.fetch = Object.assign(async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
-        switch (String(url)) {
-            case '/api/subscriptions/import/prepare':
-                return Response.json({ sources, warnings: [] });
-            case '/api/subscriptions/import': {
-                const batch: ImportSource[] = JSON.parse(String(init?.body)).sources;
-                batches.push(batch);
-                return Response.json({
-                    added: batch.length - failedSources.length, updated: 0, unchanged: 0,
-                    failures: failedSources.map((source) => ({ feedUrl: source.feedUrl, message: 'Subscription could not be saved.' })),
-                });
+    globalThis.fetch = Object.assign(
+        async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+            switch (String(url)) {
+                case '/api/subscriptions/import/prepare':
+                    return Response.json({ sources, warnings: [] });
+                case '/api/subscriptions/import': {
+                    const batch: ImportSource[] = JSON.parse(String(init?.body)).sources;
+                    batches.push(batch);
+                    return Response.json({
+                        added: batch.length - failedSources.length,
+                        updated: 0,
+                        unchanged: 0,
+                        failures: failedSources.map((source) => ({
+                            feedUrl: source.feedUrl,
+                            message: 'Subscription could not be saved.',
+                        })),
+                    });
+                }
+                case '/api/subscriptions':
+                    return Response.json(feeds);
+                default:
+                    throw new Error(`Unexpected request: ${String(url)}`);
             }
-            case '/api/subscriptions':
-                return Response.json(feeds);
-            default:
-                throw new Error(`Unexpected request: ${String(url)}`);
-        }
-    }, { preconnect: realFetch.preconnect });
+        },
+        { preconnect: realFetch.preconnect },
+    );
     const location = memoryLocation({ path: '/settings/import', record: true });
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
-    cleanup = () => { root.unmount(); container.remove(); };
-    await act(async () => root.render(
-        <AppProfileContext.Provider value={{ kind: 'loading' }}>
-            <Router hook={location.hook}><ImportSources /></Router>
-        </AppProfileContext.Provider>,
-    ));
+    cleanup = () => {
+        root.unmount();
+        container.remove();
+    };
+    await act(async () =>
+        root.render(
+            <AppProfileContext.Provider value={{ kind: 'loading' }}>
+                <Router hook={location.hook}>
+                    <ImportSources />
+                </Router>
+            </AppProfileContext.Provider>,
+        ),
+    );
     await click('Import from Skyreader');
     await click('Import sources');
     expect(document.querySelector('[role="dialog"]')).not.toBeNull();
@@ -84,8 +100,15 @@ async function importReceipt(sources: ImportSource[], feeds: FeedSource[], faile
 test('the rendered receipt lists only unavailable confirmed imports, in import order', async () => {
     const { batches } = await importReceipt(
         [healthy, firstUnavailable, secondUnavailable, waiting, failed, unattempted],
-        [feed(failed, 'unavailable'), feed(secondUnavailable, 'unavailable'), feed(unrelated, 'unavailable'),
-            feed(healthy, 'ready'), feed(waiting, 'waiting'), feed(firstUnavailable, 'unavailable'), feed(unattempted, 'unavailable')],
+        [
+            feed(failed, 'unavailable'),
+            feed(secondUnavailable, 'unavailable'),
+            feed(unrelated, 'unavailable'),
+            feed(healthy, 'ready'),
+            feed(waiting, 'waiting'),
+            feed(firstUnavailable, 'unavailable'),
+            feed(unattempted, 'unavailable'),
+        ],
         [failed],
     );
     const dialog = document.querySelector('[role="dialog"]')!;
@@ -95,19 +118,22 @@ test('the rendered receipt lists only unavailable confirmed imports, in import o
     await click('Posts not fetching for 2 sources');
     const panel = dialog.querySelector('[data-slot="accordion-content"]')!;
     expect([...panel.querySelectorAll('li')].map((item) => item.textContent)).toEqual([
-        'First Unavailable Example Publication', 'Second Unavailable Example Publication',
+        'First Unavailable Example Publication',
+        'Second Unavailable Example Publication',
     ]);
     expect(dialog.textContent).toContain('Retry remaining sources');
 });
 
 test('a single unavailable import has singular wording, and View sources closes and navigates', async () => {
     const { container, location } = await importReceipt(
-        [firstUnavailable], [feed(unrelated, 'unavailable'), feed(firstUnavailable, 'unavailable')],
+        [firstUnavailable],
+        [feed(unrelated, 'unavailable'), feed(firstUnavailable, 'unavailable')],
     );
     expect(document.querySelector('[role="dialog"]')!.textContent).toContain('Subscriptions saved');
     await click('Posts not fetching for 1 source');
-    expect([...document.querySelectorAll('[data-slot="accordion-content"] li')].map((item) => item.textContent))
-        .toEqual(['First Unavailable Example Publication']);
+    expect(
+        [...document.querySelectorAll('[data-slot="accordion-content"] li')].map((item) => item.textContent),
+    ).toEqual(['First Unavailable Example Publication']);
     await click('View sources');
     expect(location.history).toEqual(['/settings/import', '/sources']);
     expect(document.querySelector('[role="dialog"]')).toBeNull();

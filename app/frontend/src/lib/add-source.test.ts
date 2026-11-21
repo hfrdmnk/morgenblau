@@ -26,8 +26,7 @@ afterEach(() => {
 
 function respond(handler: (url: string, init?: RequestInit) => Response) {
     globalThis.fetch = Object.assign(
-        async (url: Parameters<typeof fetch>[0], init?: RequestInit) =>
-            handler(String(url), init),
+        async (url: Parameters<typeof fetch>[0], init?: RequestInit) => handler(String(url), init),
         {
             preconnect: realFetch.preconnect,
         },
@@ -51,9 +50,9 @@ test('discovery rejects non-web schemes without sending a request', async () => 
     respond(() => {
         throw new Error('must not request');
     });
-    await expect(
-        discoverSources('javascript:alert(1)', new AbortController().signal),
-    ).rejects.toThrow('Enter a website or feed URL.');
+    await expect(discoverSources('javascript:alert(1)', new AbortController().signal)).rejects.toThrow(
+        'Enter a website or feed URL.',
+    );
 });
 
 test('keeps RSS titles, sends options only when set, and does not otherwise customize native publications', async () => {
@@ -104,9 +103,7 @@ test('notifies after each confirmed addition, including before a partial failure
     try {
         await addSource({ feedUrl: 'https://example.com/first.xml' });
         await addSource({ feedUrl: 'https://example.com/second.xml' });
-        await expect(
-            addSource({ feedUrl: 'https://example.com/third.xml' }),
-        ).rejects.toThrow('Unavailable');
+        await expect(addSource({ feedUrl: 'https://example.com/third.xml' })).rejects.toThrow('Unavailable');
         expect(observed).toEqual([1, 2]);
     } finally {
         subscriptionChanges.removeEventListener('change', listener);
@@ -121,9 +118,7 @@ test('does not notify when the subscription response cannot be confirmed', async
         throw new TypeError('Network failure');
     });
     try {
-        await expect(
-            addSource({ feedUrl: 'https://example.com/rss' }),
-        ).rejects.toThrow('Network failure');
+        await expect(addSource({ feedUrl: 'https://example.com/rss' })).rejects.toThrow('Network failure');
         expect(notifications).toBe(0);
     } finally {
         subscriptionChanges.removeEventListener('change', listener);
@@ -154,22 +149,16 @@ test('newsletter address reuses an existing address without a mutation', async (
         expect(init?.method).toBe('GET');
         return Response.json({ address: 'reader@news.example.com' });
     });
-    expect(await newsletterAddress(new AbortController().signal)).toBe(
-        'reader@news.example.com',
-    );
+    expect(await newsletterAddress(new AbortController().signal)).toBe('reader@news.example.com');
 });
 
 test('a missing address does not make the dialog provision an account', async () => {
     const methods: unknown[] = [];
     respond((_url, init) => {
         methods.push(init?.method);
-        return Response.json(
-            init?.method === 'POST' ? { address: 'new@news.example.com' } : {},
-        );
+        return Response.json(init?.method === 'POST' ? { address: 'new@news.example.com' } : {});
     });
-    expect(
-        await newsletterAddress(new AbortController().signal),
-    ).toBeUndefined();
+    expect(await newsletterAddress(new AbortController().signal)).toBeUndefined();
     expect(methods).toEqual(['GET']);
 });
 
@@ -189,22 +178,13 @@ test('newsletter read failure does not attempt to create an address', async () =
         methods.push(init?.method);
         return Response.json({ message: 'Unavailable' }, { status: 503 });
     });
-    await expect(
-        newsletterAddress(new AbortController().signal),
-    ).rejects.toThrow('Unavailable');
+    await expect(newsletterAddress(new AbortController().signal)).rejects.toThrow('Unavailable');
     expect(methods).toEqual(['GET']);
 });
 
 test('subscription permission failure preserves the reauthentication signal', async () => {
-    respond(() =>
-        Response.json(
-            { code: 'reauth_required', message: 'Sign in again' },
-            { status: 403 },
-        ),
-    );
-    await expect(
-        addSource({ feedUrl: 'https://example.com/rss' }),
-    ).rejects.toMatchObject({ isReauth: true });
+    respond(() => Response.json({ code: 'reauth_required', message: 'Sign in again' }, { status: 403 }));
+    await expect(addSource({ feedUrl: 'https://example.com/rss' })).rejects.toMatchObject({ isReauth: true });
 });
 
 const generated = {
@@ -215,9 +195,7 @@ const generated = {
     health: 'ok' as const,
     healthReason: '',
     needsAnchor: false,
-    items: [
-        { url: 'https://news.example.com/posts/first', title: 'First post', date: '2026-10-09T08:00:00Z' },
-    ],
+    items: [{ url: 'https://news.example.com/posts/first', title: 'First post', date: '2026-10-09T08:00:00Z' }],
     itemCount: 12,
 };
 
@@ -263,15 +241,23 @@ test('generation failures read calmly by cause, in house copy', () => {
     expect(generationError(new ApiError(500, 'internal_error', 'internal error'))).toBe(
         'Couldn’t generate a feed. Try again.',
     );
-    expect(generationError(new ApiError(400, 'invalid_request', 'Enter a web address that starts with http:// or https://'))).toBe(
-        'Enter a website URL.',
-    );
+    expect(
+        generationError(
+            new ApiError(400, 'invalid_request', 'Enter a web address that starts with http:// or https://'),
+        ),
+    ).toBe('Enter a website URL.');
     expect(generationError(new TypeError('Failed to fetch'))).toBe('Couldn’t generate a feed. Try again.');
 });
 
 test('a site that builds its posts in the browser says so and offers no retry', () => {
-    const built = new ApiError(422, 'browser_built', "This site builds its post list in the browser, so Morgenblau can't follow it yet.");
-    expect(generationError(built)).toBe('This site builds its post list in the browser, so Morgenblau can’t follow it yet.');
+    const built = new ApiError(
+        422,
+        'browser_built',
+        "This site builds its post list in the browser, so Morgenblau can't follow it yet.",
+    );
+    expect(generationError(built)).toBe(
+        'This site builds its post list in the browser, so Morgenblau can’t follow it yet.',
+    );
     expect(canRetryGeneration(built)).toBe(false);
     expect(generationError(new ApiError(502, '', "Couldn't read that page"))).toBe('Couldn’t read that page.');
 });
@@ -289,15 +275,39 @@ test('only a passing fault offers to generate again', () => {
 
 test('a generated feed is offered by its health', () => {
     expect(generatedVerdict(generated)).toEqual({ subscribable: true, askAnchor: false, blocked: false });
-    expect(generatedVerdict({ ...generated, needsAnchor: true })).toEqual({ subscribable: true, askAnchor: true, blocked: false });
-    expect(generatedVerdict({ ...generated, health: 'needs_attention' })).toEqual({ subscribable: true, askAnchor: true, blocked: false });
-    expect(generatedVerdict({ ...generated, health: 'blocked_by_site', needsAnchor: true })).toEqual({ subscribable: false, askAnchor: false, blocked: true });
-    expect(generatedVerdict({ ...generated, health: 'broken', items: [], itemCount: 0 })).toEqual({ subscribable: false, askAnchor: true, blocked: false });
-    expect(generatedVerdict({ ...generated, items: [], itemCount: 0 })).toEqual({ subscribable: false, askAnchor: true, blocked: false });
+    expect(generatedVerdict({ ...generated, needsAnchor: true })).toEqual({
+        subscribable: true,
+        askAnchor: true,
+        blocked: false,
+    });
+    expect(generatedVerdict({ ...generated, health: 'needs_attention' })).toEqual({
+        subscribable: true,
+        askAnchor: true,
+        blocked: false,
+    });
+    expect(generatedVerdict({ ...generated, health: 'blocked_by_site', needsAnchor: true })).toEqual({
+        subscribable: false,
+        askAnchor: false,
+        blocked: true,
+    });
+    expect(generatedVerdict({ ...generated, health: 'broken', items: [], itemCount: 0 })).toEqual({
+        subscribable: false,
+        askAnchor: true,
+        blocked: false,
+    });
+    expect(generatedVerdict({ ...generated, items: [], itemCount: 0 })).toEqual({
+        subscribable: false,
+        askAnchor: true,
+        blocked: false,
+    });
 });
 
 test('a shared feed that failed its last poll still offers the posts it serves', () => {
-    expect(generatedVerdict({ ...generated, health: 'broken' })).toEqual({ subscribable: true, askAnchor: true, blocked: false });
+    expect(generatedVerdict({ ...generated, health: 'broken' })).toEqual({
+        subscribable: true,
+        askAnchor: true,
+        blocked: false,
+    });
 });
 
 async function limitedBy(code: string, retryAfter: string | null) {
@@ -344,7 +354,11 @@ test('a generated feed subscribes through the ordinary add path with its title a
     });
     await addSource(generatedCandidate(generated));
     expect(bodies).toEqual([
-        { feedUrl: 'https://app.example.com/feed/abc', title: 'Example Publication', siteUrl: 'https://news.example.com/' },
+        {
+            feedUrl: 'https://app.example.com/feed/abc',
+            title: 'Example Publication',
+            siteUrl: 'https://news.example.com/',
+        },
     ]);
 });
 
@@ -373,15 +387,9 @@ test('only a bad post address is the reader’s to fix', () => {
 });
 
 test('a post that left the feed as it was says so calmly, by cause', () => {
-    expect(anchorRejection('not_on_page')).toBe(
-        'That post isn’t linked on this page. The feed stays as it was.',
-    );
-    expect(anchorRejection('not_confirmed')).toBe(
-        'That post didn’t help. The feed stays as it was.',
-    );
-    expect(anchorRejection('no_better')).toBe(
-        'That post didn’t help. The feed stays as it was.',
-    );
+    expect(anchorRejection('not_on_page')).toBe('That post isn’t linked on this page. The feed stays as it was.');
+    expect(anchorRejection('not_confirmed')).toBe('That post didn’t help. The feed stays as it was.');
+    expect(anchorRejection('no_better')).toBe('That post didn’t help. The feed stays as it was.');
 });
 
 test('a change that re-points a feed notifies again once its fetch has landed', async () => {
@@ -395,9 +403,12 @@ test('a change that re-points a feed notifies again once its fetch has landed', 
     });
     subscriptionChanges.addEventListener('change', count);
     try {
-        await editSource('rkey-1', { feedUrl: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv' });
+        await editSource('rkey-1', {
+            feedUrl: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv',
+        });
         expect(changes).toBe(1);
-        for (let tries = 0; tries < 50 && changes < 2; tries++) await new Promise((resolve) => setTimeout(resolve, 100));
+        for (let tries = 0; tries < 50 && changes < 2; tries++)
+            await new Promise((resolve) => setTimeout(resolve, 100));
         expect(polled).toEqual(['/api/jobs/job-1', '/api/jobs/job-1']);
         expect(changes).toBe(2);
     } finally {

@@ -26,7 +26,13 @@ export function SaveTagEditor({ save, inputRef }: { save: EntrySave; inputRef: R
                 suggestionsPath="/api/saves/tags"
                 tags={tags}
             />
-            {tags.length ? <TagChips inputRef={inputRef} onRemove={(tag) => save.setTags(tags.filter((other) => other !== tag))} tags={tags} /> : null}
+            {tags.length ? (
+                <TagChips
+                    inputRef={inputRef}
+                    onRemove={(tag) => save.setTags(tags.filter((other) => other !== tag))}
+                    tags={tags}
+                />
+            ) : null}
         </Frame>
     );
 }

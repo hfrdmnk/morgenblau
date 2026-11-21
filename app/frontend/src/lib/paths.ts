@@ -22,9 +22,7 @@ export const APP_MODES = [
 ] as const;
 
 export function appMode(path: string) {
-    return APP_MODES.find(({ href }) =>
-        path === href || (href !== PATHS.digest && path.startsWith(`${href}/`)),
-    );
+    return APP_MODES.find(({ href }) => path === href || (href !== PATHS.digest && path.startsWith(`${href}/`)));
 }
 
 export function isSettingsPath(path: string): boolean {

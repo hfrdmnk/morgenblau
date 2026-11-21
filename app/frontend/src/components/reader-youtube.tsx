@@ -21,9 +21,23 @@ export function ReaderYouTube({ entrySlug, videoID, title }: { entrySlug: string
     return (
         <Frame gap="4xl" paddingBottom="4xl">
             <PlayerSlot playing={player.playing} ref={playerBox}>
-                <VideoEmbed ref={frame} src={youtubeEmbedURL(videoID)} title={title} allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" />
+                <VideoEmbed
+                    ref={frame}
+                    src={youtubeEmbedURL(videoID)}
+                    title={title}
+                    allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                    allowFullScreen
+                    referrerPolicy="strict-origin-when-cross-origin"
+                />
             </PlayerSlot>
-            {transcript?.status === 'ready' ? <ReaderTranscript kind={transcript.kind} paragraphs={groupCues(transcript.cues)} player={player} playerBox={playerBox} /> : null}
+            {transcript?.status === 'ready' ? (
+                <ReaderTranscript
+                    kind={transcript.kind}
+                    paragraphs={groupCues(transcript.cues)}
+                    player={player}
+                    playerBox={playerBox}
+                />
+            ) : null}
         </Frame>
     );
 }
@@ -33,14 +47,21 @@ function useTranscript(entrySlug: string): Transcript | null {
     const [transcript, setTranscript] = useState<Transcript | null>(null);
     useEffect(() => {
         const controller = new AbortController();
-        api<Transcript>(`/api/entries/${encodeURIComponent(entrySlug)}/transcript`, { method: 'POST', signal: controller.signal })
-            .then(setTranscript, () => undefined);
+        api<Transcript>(`/api/entries/${encodeURIComponent(entrySlug)}/transcript`, {
+            method: 'POST',
+            signal: controller.signal,
+        }).then(setTranscript, () => undefined);
         return () => controller.abort();
     }, [entrySlug]);
     return transcript;
 }
 
-function ReaderTranscript({ paragraphs, kind, player, playerBox }: {
+function ReaderTranscript({
+    paragraphs,
+    kind,
+    player,
+    playerBox,
+}: {
     paragraphs: TranscriptParagraph[];
     kind: 'manual' | 'asr';
     player: YouTubePlayer;
@@ -50,19 +71,25 @@ function ReaderTranscript({ paragraphs, kind, player, playerBox }: {
     const list = useRef<HTMLOListElement>(null);
     // Nothing is marked until the video has started, so an untouched transcript reads as plain text.
     const started = player.playing || player.currentTime > 0;
-    const active = useMemo(() => (started ? activeIndex(paragraphs, player.currentTime) : -1), [paragraphs, started, player.currentTime]);
+    const active = useMemo(
+        () => (started ? activeIndex(paragraphs, player.currentTime) : -1),
+        [paragraphs, started, player.currentTime],
+    );
     const previous = useRef(active);
     // Scrolling waits for playback: a seek moves the time before the player pins, and scrolling the unpinned player away stops it from starting.
     useEffect(() => {
         const before = previous.current;
         previous.current = active;
-        if (player.playing && list.current && active >= 0) follow(list.current.children, before, active, playerBox.current);
+        if (player.playing && list.current && active >= 0)
+            follow(list.current.children, before, active, playerBox.current);
     }, [active, player.playing, playerBox]);
     return (
         <Frame aria-labelledby="transcript-title" as="section" gap="2xl">
             <Text as="h2" id="transcript-title" size="sm" tone="muted">
                 <Frame align="baseline" as="span" direction="row" gap="m">
-                    <Text as="span" tone="foreground" weight="medium">Transcript</Text>
+                    <Text as="span" tone="foreground" weight="medium">
+                        Transcript
+                    </Text>
                     {kind === 'asr' ? <Text as="span">Auto-generated</Text> : null}
                 </Frame>
             </Text>

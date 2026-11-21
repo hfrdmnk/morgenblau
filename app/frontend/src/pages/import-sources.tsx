@@ -3,12 +3,7 @@ import { useRef } from 'react';
 
 import { UploadIcon } from '@/components/icons';
 import { PublicDataHint } from '@/components/public-data-hint';
-import {
-    Accordion,
-    AccordionContent,
-    AccordionItem,
-    AccordionTrigger,
-} from '@/components/ui/accordion';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { BulletItem, BulletList } from '@/components/ui/bullet-list';
 import { Button } from '@/components/ui/button';
 import { DialogBackdrop, DialogPopup } from '@/components/ui/dialog';
@@ -28,8 +23,7 @@ export function ImportSources() {
     const input = useRef<HTMLInputElement>(null);
     useDocumentTitle('Import sources');
     const busy = state.kind === 'preparing' || state.kind === 'importing';
-    const preparingProvider =
-        state.kind === 'preparing' ? state.provider : null;
+    const preparingProvider = state.kind === 'preparing' ? state.provider : null;
     const failure = (provider: string) =>
         state.kind === 'failed' && state.provider === provider ? state.message : null;
 
@@ -37,11 +31,12 @@ export function ImportSources() {
         <DataSettings>
             <Frame gap="5xl">
                 <Frame gap="m">
-                    <Text as="h1" size="2xl" weight="medium">Import sources</Text>
+                    <Text as="h1" size="2xl" weight="medium">
+                        Import sources
+                    </Text>
                     <Frame maxWidth="xl">
                         <Text tone="muted">
-                            Bring your feeds with you. Folders become tags, and sources you
-                            already follow are kept.
+                            Bring your feeds with you. Folders become tags, and sources you already follow are kept.
                         </Text>
                     </Frame>
                 </Frame>
@@ -53,9 +48,8 @@ export function ImportSources() {
                                 From an OPML file
                             </Text>
                             <Text size="sm" tone="muted">
-                                Upload an export from Reeder, NetNewsWire, or another
-                                RSS reader. A feed in several folders gets each folder’s
-                                tag.
+                                Upload an export from Reeder, NetNewsWire, or another RSS reader. A feed in several
+                                folders gets each folder’s tag.
                             </Text>
                         </Frame>
                         <input
@@ -71,15 +65,9 @@ export function ImportSources() {
                             }}
                         />
                         <Frame align="start" gap="s">
-                            <Button
-                                variant="secondary"
-                                disabled={busy}
-                                onClick={() => input.current?.click()}
-                            >
+                            <Button variant="secondary" disabled={busy} onClick={() => input.current?.click()}>
                                 <UploadIcon />
-                                {preparingProvider === 'opml'
-                                    ? 'Loading'
-                                    : 'Choose OPML file'}
+                                {preparingProvider === 'opml' ? 'Loading' : 'Choose OPML file'}
                             </Button>
                             <ImportError message={failure('opml')} />
                         </Frame>
@@ -98,8 +86,8 @@ export function ImportSources() {
                                 From another app
                             </Text>
                             <Text size="sm" tone="muted">
-                                Read the subscriptions on your current ATProto account.
-                                Your sources in the other app stay unchanged.
+                                Read the subscriptions on your current ATProto account. Your sources in the other app
+                                stay unchanged.
                             </Text>
                         </Frame>
                         <Frame gap="xl">
@@ -108,8 +96,7 @@ export function ImportSources() {
                                     {
                                         provider: 'skyreader',
                                         name: 'Skyreader',
-                                        description:
-                                            'RSS feeds, categories, and tags',
+                                        description: 'RSS feeds, categories, and tags',
                                     },
                                     {
                                         provider: 'glean',
@@ -139,9 +126,7 @@ export function ImportSources() {
                                             disabled={busy}
                                             onClick={() => void prepare(provider)}
                                         >
-                                            {preparingProvider === provider
-                                                ? 'Loading'
-                                                : `Import from ${name}`}
+                                            {preparingProvider === provider ? 'Loading' : `Import from ${name}`}
                                         </Button>
                                         <ImportError message={failure(provider)} end />
                                     </Frame>
@@ -152,9 +137,8 @@ export function ImportSources() {
                 </Frame>
                 <Frame maxWidth="lg">
                     <Text size="xs" tone="subtle">
-                        Imported feed subscriptions are public records on your PDS, like
-                        sources you add in Morgenblau. Newsletters and native
-                        Standardfeed subscriptions are not imported here.
+                        Imported feed subscriptions are public records on your PDS, like sources you add in Morgenblau.
+                        Newsletters and native Standardfeed subscriptions are not imported here.
                     </Text>
                 </Frame>
             </Frame>
@@ -163,12 +147,7 @@ export function ImportSources() {
                 state={state}
                 onCancel={cancel}
                 onConfirm={(plan) => void startImport(plan)}
-                onRetry={(outcome) =>
-                    void startImport(
-                        { sources: outcome.remaining, warnings: [] },
-                        outcome,
-                    )
-                }
+                onRetry={(outcome) => void startImport({ sources: outcome.remaining, warnings: [] }, outcome)}
             />
         </DataSettings>
     );
@@ -268,11 +247,7 @@ function ImportDialog({
             <Dialog.Portal>
                 <DialogBackdrop />
                 <DialogPopup size="md" short>
-                    <ImportDialogContent
-                        state={state}
-                        onConfirm={onConfirm}
-                        onRetry={onRetry}
-                    />
+                    <ImportDialogContent state={state} onConfirm={onConfirm} onRetry={onRetry} />
                 </DialogPopup>
             </Dialog.Portal>
         </Dialog.Root>
@@ -297,22 +272,12 @@ function ImportDialogContent({
     return (
         <Frame gap="2xl">
             <Frame gap="m">
-                <Dialog.Title render={<Text as="h2" size="lg" weight="medium" />}>
-                    Importing sources
-                </Dialog.Title>
-                <Dialog.Description
-                    render={<Text size="sm" tone="muted" />}
-                    role="status"
-                >
-                    {state.completed} of {state.total} processed. Keep this
-                    page open.
+                <Dialog.Title render={<Text as="h2" size="lg" weight="medium" />}>Importing sources</Dialog.Title>
+                <Dialog.Description render={<Text size="sm" tone="muted" />} role="status">
+                    {state.completed} of {state.total} processed. Keep this page open.
                 </Dialog.Description>
             </Frame>
-            <ProgressBar
-                value={state.completed}
-                max={state.total}
-                aria-label="Sources processed"
-            />
+            <ProgressBar value={state.completed} max={state.total} aria-label="Sources processed" />
         </Frame>
     );
 }
@@ -330,32 +295,34 @@ function ImportReceipt({ outcome, onRetry }: { outcome: ImportOutcome; onRetry: 
                         <Dialog.Description render={<Text size="sm" tone="muted" />}>
                             {paused
                                 ? 'Successfully imported subscriptions are saved.'
-                                : 'Your subscriptions are saved.'} Their posts are checked separately.
-                            You can close this window; collection continues automatically.
+                                : 'Your subscriptions are saved.'}{' '}
+                            Their posts are checked separately. You can close this window; collection continues
+                            automatically.
                         </Dialog.Description>
                     </Frame>
                 )}
                 <ImportResult outcome={outcome} onRetry={onRetry} />
             </Frame>
             <Frame direction="row" justify="end" gap="s">
-                <Dialog.Close nativeButton={false} render={<Button variant="ghost" nativeButton={false} render={<Link href={PATHS.sources} variant="plain" />} />}>
+                <Dialog.Close
+                    nativeButton={false}
+                    render={
+                        <Button
+                            variant="ghost"
+                            nativeButton={false}
+                            render={<Link href={PATHS.sources} variant="plain" />}
+                        />
+                    }
+                >
                     View sources
                 </Dialog.Close>
-                <Dialog.Close render={<Button variant="secondary" />}>
-                    Done
-                </Dialog.Close>
+                <Dialog.Close render={<Button variant="secondary" />}>Done</Dialog.Close>
             </Frame>
         </Frame>
     );
 }
 
-function ImportConfirmation({
-    plan,
-    onConfirm,
-}: {
-    plan: ImportPlan;
-    onConfirm: () => void;
-}) {
+function ImportConfirmation({ plan, onConfirm }: { plan: ImportPlan; onConfirm: () => void }) {
     const count = plan.sources.length;
     return (
         <Frame gap="2xl">
@@ -365,22 +332,18 @@ function ImportConfirmation({
                         Import {count} {count === 1 ? 'source' : 'sources'}?
                     </Dialog.Title>
                     <Dialog.Description render={<Text size="sm" tone="muted" />}>
-                        New sources will be added. Existing sources keep their titles
-                        and primary status; incoming tags are merged with yours.
+                        New sources will be added. Existing sources keep their titles and primary status; incoming tags
+                        are merged with yours.
                     </Dialog.Description>
                 </Frame>
                 {plan.warnings.length > 0 && (
                     <Accordion tone="muted">
                         <AccordionItem value="warnings">
-                            <AccordionTrigger>
-                                Import warnings ({plan.warnings.length})
-                            </AccordionTrigger>
+                            <AccordionTrigger>Import warnings ({plan.warnings.length})</AccordionTrigger>
                             <AccordionContent>
                                 <BulletList>
                                     {plan.warnings.map((warning, index) => (
-                                        <BulletItem key={index}>
-                                            {warning}
-                                        </BulletItem>
+                                        <BulletItem key={index}>{warning}</BulletItem>
                                     ))}
                                 </BulletList>
                             </AccordionContent>
@@ -390,39 +353,31 @@ function ImportConfirmation({
                 <PublicDataHint />
             </Frame>
             <Frame direction="row" justify="end" gap="s">
-                <Dialog.Close render={<Button variant="ghost" />}>
-                    Cancel
-                </Dialog.Close>
+                <Dialog.Close render={<Button variant="ghost" />}>Cancel</Dialog.Close>
                 <Button onClick={onConfirm}>Import sources</Button>
             </Frame>
         </Frame>
     );
 }
 
-function ImportResult({
-    outcome,
-    onRetry,
-}: {
-    outcome: ImportOutcome;
-    onRetry: () => void;
-}) {
+function ImportResult({ outcome, onRetry }: { outcome: ImportOutcome; onRetry: () => void }) {
     return (
         <Frame gap="m">
             <Text size="sm" tone="muted">
-                {outcome.added} added, {outcome.updated} updated,{' '}
-                {outcome.unchanged} already up to date.
+                {outcome.added} added, {outcome.updated} updated, {outcome.unchanged} already up to date.
             </Text>
             {outcome.error && (
-                <Text size="sm" tone="destructive">{outcome.error}</Text>
+                <Text size="sm" tone="destructive">
+                    {outcome.error}
+                </Text>
             )}
             <ImportFailures failures={outcome.failures} />
             {outcome.imported.length > 0 && <ImportCollection sources={outcome.imported} />}
             {outcome.remaining.length > 0 && (
                 <>
                     <Text size="sm" tone="muted">
-                        Sources still to check: {outcome.remaining.length}.
-                        Successful imports are kept; retrying will not duplicate
-                        them.
+                        Sources still to check: {outcome.remaining.length}. Successful imports are kept; retrying will
+                        not duplicate them.
                     </Text>
                     <Frame direction="row">
                         <Button variant="secondary" onClick={onRetry}>
@@ -442,7 +397,11 @@ function ImportCollection({ sources }: { sources: ImportSource[] }) {
             loading: 'Checking posts…',
             error: 'Couldn’t check post availability. Your subscriptions are saved.',
         };
-        return <Text role="status" size="sm" tone="muted">{messages[state.status]}</Text>;
+        return (
+            <Text role="status" size="sm" tone="muted">
+                {messages[state.status]}
+            </Text>
+        );
     }
     const byURL = new Map(state.data.map((source) => [source.feedUrl, source]));
     const unavailable = sources.filter((source) => byURL.get(source.feedUrl)?.fetchStatus === 'unavailable');
@@ -456,9 +415,7 @@ function ImportCollection({ sources }: { sources: ImportSource[] }) {
                 <AccordionContent>
                     <BulletList>
                         {unavailable.map((source) => (
-                            <BulletItem key={source.feedUrl}>
-                                {source.title || source.feedUrl}
-                            </BulletItem>
+                            <BulletItem key={source.feedUrl}>{source.title || source.feedUrl}</BulletItem>
                         ))}
                     </BulletList>
                 </AccordionContent>

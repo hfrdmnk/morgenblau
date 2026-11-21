@@ -20,7 +20,12 @@ function AdminBanner({ children }: { children: ReactNode }) {
 
 // A brand-mark or back link on the left, the page's own navigation in the middle, account controls on the right.
 function AppHeaderBar(props: Omit<ComponentProps<'header'>, 'className' | 'style'>) {
-    return <header className="app-header grid grid-cols-(--grid-trailing) items-start gap-y-6 px-5 select-none sm:px-8 md:grid-cols-3 md:px-14" {...props} />;
+    return (
+        <header
+            className="app-header grid grid-cols-(--grid-trailing) items-start gap-y-6 px-5 select-none sm:px-8 md:grid-cols-3 md:px-14"
+            {...props}
+        />
+    );
 }
 
 function ModeNav(props: Omit<ComponentProps<'nav'>, 'className' | 'style'>) {
@@ -28,7 +33,13 @@ function ModeNav(props: Omit<ComponentProps<'nav'>, 'className' | 'style'>) {
 }
 
 // The artwork shows only in the phone tab bar; the current mode's takes the brand blue.
-function ModeLink({ href, current, artwork, children, ...props }: Omit<ComponentProps<'a'>, 'className' | 'style'> & {
+function ModeLink({
+    href,
+    current,
+    artwork,
+    children,
+    ...props
+}: Omit<ComponentProps<'a'>, 'className' | 'style'> & {
     href: string;
     current: boolean;
     artwork: ReactNode;
@@ -47,11 +58,18 @@ function ModeLink({ href, current, artwork, children, ...props }: Omit<Component
 }
 
 // A touch-sized tab on the phone, where the tabs sit in their own row; on wider screens the row's gap spaces them.
-function SettingsTab({ href, current, ...props }: Omit<ComponentProps<'a'>, 'className' | 'style'> & { href: string; current: boolean }) {
+function SettingsTab({
+    href,
+    current,
+    ...props
+}: Omit<ComponentProps<'a'>, 'className' | 'style'> & { href: string; current: boolean }) {
     return (
         <RouterLink
             aria-current={current ? 'page' : undefined}
-            className={cn('inline-flex min-h-11 items-center px-3.5 text-sm md:px-0', current ? 'text-foreground' : 'text-muted-foreground hover:text-foreground')}
+            className={cn(
+                'inline-flex min-h-11 items-center px-3.5 text-sm md:px-0',
+                current ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+            )}
             href={href}
             {...props}
         />
@@ -65,11 +83,22 @@ function DayStepper(props: Omit<ComponentProps<'nav'>, 'className' | 'style'>) {
 
 // The desktop row of days; the selected one sits in the centre column, which the mask in `.digest-date-nav` relies on.
 function DateStrip(props: Omit<ComponentProps<'nav'>, 'className' | 'style'>) {
-    return <nav className="digest-date-nav hidden grid-cols-7 items-start gap-3.5 font-book md:mt-2.25 md:grid" {...props} />;
+    return (
+        <nav
+            className="digest-date-nav hidden grid-cols-7 items-start gap-3.5 font-book md:mt-2.25 md:grid"
+            {...props}
+        />
+    );
 }
 
 // Each column is as wide as two digits; a flex column centres the month even where it is wider than that.
-function DateStripDay({ href, day, month, selected, ...props }: Omit<ComponentProps<'a'>, 'className' | 'style' | 'children'> & {
+function DateStripDay({
+    href,
+    day,
+    month,
+    selected,
+    ...props
+}: Omit<ComponentProps<'a'>, 'className' | 'style' | 'children'> & {
     href: string;
     day: string;
     month: string;
@@ -78,7 +107,10 @@ function DateStripDay({ href, day, month, selected, ...props }: Omit<ComponentPr
     return (
         <RouterLink
             aria-current={selected ? 'date' : undefined}
-            className={cn('flex w-5 flex-col items-center text-sm hover:text-foreground', selected ? 'text-primary' : 'text-muted-foreground')}
+            className={cn(
+                'flex w-5 flex-col items-center text-sm hover:text-foreground',
+                selected ? 'text-primary' : 'text-muted-foreground',
+            )}
             href={href}
             {...props}
         >
@@ -102,4 +134,16 @@ function PagePlaceholder(props: Omit<ComponentProps<'main'>, 'className' | 'styl
     return <main className="page-placeholder" {...props} />;
 }
 
-export { AdminBanner, AppHeaderBar, AppShellLayout, DateStrip, DateStripDay, DateStripSpacer, DayStepper, ModeLink, ModeNav, PagePlaceholder, SettingsTab };
+export {
+    AdminBanner,
+    AppHeaderBar,
+    AppShellLayout,
+    DateStrip,
+    DateStripDay,
+    DateStripSpacer,
+    DayStepper,
+    ModeLink,
+    ModeNav,
+    PagePlaceholder,
+    SettingsTab,
+};

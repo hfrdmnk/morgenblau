@@ -117,8 +117,12 @@ function HandleField() {
                             <ComboboxItem key={actor.did} value={actor} padded>
                                 <PersonAvatar size="sm" seed={actor.did} src={actor.avatar} />
                                 <Frame as="span" minWidth={0}>
-                                    <Text as="span" truncate weight="medium">{actor.displayName || actor.handle}</Text>
-                                    <Text as="span" truncate tone="subtle">@{actor.handle}</Text>
+                                    <Text as="span" truncate weight="medium">
+                                        {actor.displayName || actor.handle}
+                                    </Text>
+                                    <Text as="span" truncate tone="subtle">
+                                        @{actor.handle}
+                                    </Text>
                                 </Frame>
                             </ComboboxItem>
                         )}
@@ -130,7 +134,9 @@ function HandleField() {
                     <Frame paddingTop="3xs">
                         <AlertIcon size="md" tone="destructive" />
                     </Frame>
-                    <Text size="sm" tone="destructive">{error}</Text>
+                    <Text size="sm" tone="destructive">
+                        {error}
+                    </Text>
                 </Frame>
             ) : null}
         </Frame>
@@ -194,7 +200,9 @@ function DevelopmentLogin() {
 
     return (
         <Frame as="aside" gap="m" radius="xl" background="muted" padding="l" aria-label="Development login">
-            <Text size="sm" weight="medium">Development account</Text>
+            <Text size="sm" weight="medium">
+                Development account
+            </Text>
             <Text size="sm" tone="muted">
                 Uses the server’s configured account. Changes write to its real PDS.
             </Text>

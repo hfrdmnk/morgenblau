@@ -68,7 +68,9 @@ test('sends the message, the page details and only the images that can be attach
 
     await openWithDraft('  The digest skipped Tuesday.  ', [screenshot, notes]);
     expect(document.querySelectorAll('[aria-label="Attached images"] img')).toHaveLength(1);
-    expect(document.querySelector('[role="alert"]')?.textContent).toBe('Only PNG, JPEG, GIF and WebP images can be attached.');
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(
+        'Only PNG, JPEG, GIF and WebP images can be attached.',
+    );
 
     await submit();
     await settle();
@@ -82,7 +84,11 @@ test('sends the message, the page details and only the images that can be attach
 
 test('a failed send keeps the draft and says why', async () => {
     globalThis.fetch = Object.assign(
-        async () => Response.json({ code: 'upstream_error', message: 'Couldn’t send your feedback. Try again in a moment.' }, { status: 502 }),
+        async () =>
+            Response.json(
+                { code: 'upstream_error', message: 'Couldn’t send your feedback. Try again in a moment.' },
+                { status: 502 },
+            ),
         { preconnect: realFetch.preconnect },
     );
     const screenshot = new File([new Uint8Array([137, 80, 78, 71])], 'digest.png', { type: 'image/png' });
@@ -93,5 +99,7 @@ test('a failed send keeps the draft and says why', async () => {
 
     expect(textarea.value).toBe('The digest skipped Tuesday.');
     expect(document.querySelectorAll('[aria-label="Attached images"] img')).toHaveLength(1);
-    expect(document.querySelector('[role="alert"]')?.textContent).toBe('Couldn’t send your feedback. Try again in a moment.');
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(
+        'Couldn’t send your feedback. Try again in a moment.',
+    );
 });
