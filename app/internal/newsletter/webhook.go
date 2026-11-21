@@ -29,8 +29,28 @@ const (
 )
 
 type webhookEnvelope struct {
-	To   []string `json:"to"`
-	From string   `json:"from"`
+	To   recipientList `json:"rcpt_to"`
+	From string        `json:"mail_from"`
+}
+
+// recipientList takes rcpt_to as PostShiba's docs show it, one address, or as a list of them.
+type recipientList []string
+
+func (l *recipientList) UnmarshalJSON(data []byte) error {
+	var one string
+	if json.Unmarshal(data, &one) == nil {
+		*l = nil
+		if one != "" {
+			*l = recipientList{one}
+		}
+		return nil
+	}
+	var many []string
+	if err := json.Unmarshal(data, &many); err != nil {
+		return err
+	}
+	*l = many
+	return nil
 }
 
 // NewPostShibaHandler receives the sendgrid_parse webhook of a PostShiba catch-all inbox: the raw message in "email" and the SMTP envelope in "envelope".

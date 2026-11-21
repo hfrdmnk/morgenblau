@@ -35,7 +35,7 @@ func testWebhookStoresRawMessage(t *testing.T, encoding string) {
 	raw := "From: Example Publication <issues@example.com>\r\nSubject: Issue 1\r\nContent-Type: text/plain\r\n\r\nBody with + & = %41 and\r\nCRLF lines\r\n"
 	form := url.Values{
 		"email":    {raw},
-		"envelope": {`{"to":["` + strings.ToUpper(alice) + `","unknown@news.example","` + bob + `"],"from":"bounce@example.com"}`},
+		"envelope": {`{"rcpt_to":["` + strings.ToUpper(alice) + `","unknown@news.example","` + bob + `"],"mail_from":"bounce@example.com"}`},
 		"subject":  {"Issue 1"},
 	}
 	body, contentType := form.Encode(), "application/x-www-form-urlencoded"
@@ -75,7 +75,7 @@ func testWebhookStoresRawMessage(t *testing.T, encoding string) {
 func TestPostShibaWebhookRefusesUnsignedStaleAndTamperedRequests(t *testing.T) {
 	service, reader, _ := newTestService(t)
 	address, _ := service.CreateAddress(context.Background(), "did:plc:alice")
-	body := url.Values{"email": {"From: issues@example.com\r\n\r\nBody\r\n"}, "envelope": {`{"to":["` + address + `"],"from":"bounce@example.com"}`}}.Encode()
+	body := url.Values{"email": {"From: issues@example.com\r\n\r\nBody\r\n"}, "envelope": {`{"rcpt_to":["` + address + `"],"mail_from":"bounce@example.com"}`}}.Encode()
 	now := testNow
 	for _, tc := range []struct {
 		name   string
@@ -111,7 +111,7 @@ func TestPostShibaWebhookRefusesUnsignedStaleAndTamperedRequests(t *testing.T) {
 
 func TestPostShibaWebhookAcknowledgesMailForUnknownAddressesWithoutStoringIt(t *testing.T) {
 	service, reader, _ := newTestService(t)
-	form := url.Values{"email": {"From: issues@example.com\r\n\r\nBody\r\n"}, "envelope": {`{"to":["unknown@news.example","someone@other.example"],"from":"bounce@example.com"}`}}
+	form := url.Values{"email": {"From: issues@example.com\r\n\r\nBody\r\n"}, "envelope": {`{"rcpt_to":["unknown@news.example","someone@other.example"],"mail_from":"bounce@example.com"}`}}
 	if status := postWebhook(t, service, signedWebhook(form.Encode(), testNow, testWebhookSecret)); status != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204 so PostShiba stops retrying", status)
 	}
@@ -123,7 +123,7 @@ func TestPostShibaWebhookAcknowledgesMailForUnknownAddressesWithoutStoringIt(t *
 func TestPostShibaWebhookRejectsMalformedAndOversizedMessages(t *testing.T) {
 	service, reader, _ := newTestService(t)
 	address, _ := service.CreateAddress(context.Background(), "did:plc:alice")
-	envelope := `{"to":["` + address + `"],"from":"bounce@example.com"}`
+	envelope := `{"rcpt_to":["` + address + `"],"mail_from":"bounce@example.com"}`
 	for _, tc := range []struct {
 		name   string
 		form   url.Values
@@ -149,13 +149,30 @@ func TestPostShibaWebhookRejectsMalformedAndOversizedMessages(t *testing.T) {
 	}
 }
 
+// PostShiba's docs show rcpt_to as one address, not a list.
+func TestPostShibaWebhookAcceptsASingleRecipientAddress(t *testing.T) {
+	service, reader, _ := newTestService(t)
+	address, _ := service.CreateAddress(context.Background(), "did:plc:alice")
+	form := url.Values{"email": {"From: issues@example.com\r\n\r\nBody\r\n"}, "envelope": {`{"rcpt_to":"` + address + `","mail_from":"bounce@example.com","plus_tag":null}`}}
+	if status := postWebhook(t, service, signedWebhook(form.Encode(), testNow, testWebhookSecret)); status != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", status)
+	}
+	var recipient string
+	if err := reader.QueryRow(`SELECT recipient FROM newsletter_receipts WHERE did = 'did:plc:alice'`).Scan(&recipient); err != nil {
+		t.Fatalf("no receipt stored: %v", err)
+	}
+	if recipient != address {
+		t.Fatalf("recipient = %q, want %q", recipient, address)
+	}
+}
+
 func TestPostShibaWebhookAsksForARetryWhenTheReceiptCannotCommit(t *testing.T) {
 	service, _, writer := newTestService(t)
 	address, _ := service.CreateAddress(context.Background(), "did:plc:alice")
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	form := url.Values{"email": {"From: issues@example.com\r\n\r\nBody\r\n"}, "envelope": {`{"to":["` + address + `"],"from":"bounce@example.com"}`}}
+	form := url.Values{"email": {"From: issues@example.com\r\n\r\nBody\r\n"}, "envelope": {`{"rcpt_to":["` + address + `"],"mail_from":"bounce@example.com"}`}}
 	if status := postWebhook(t, service, signedWebhook(form.Encode(), testNow, testWebhookSecret)); status != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503 so PostShiba retries", status)
 	}
