@@ -14,7 +14,7 @@ paths:
 
 ## Design system
 
-- Markup outside `src/components/ui/` and `src/design/` is `Frame`, `Text`, `MotionFrame` and components; their props take tokens from `src/design/tokens.ts`, never class strings. `eslint/design-system.js` and the token rules in `eslint.config.js` enforce it. `/__dev/styleguide` renders every token.
+- Markup outside `src/components/ui/` and `src/design/` is `Frame`, `Text`, `MotionFrame` and components; their props take tokens from `src/design/tokens.ts`, never class strings. The rules in `eslint/design-system.js` enforce it, with their cases in `eslint/design-system.test.ts`. `/__dev/styleguide` renders every token.
 - When no token or variant fits, add one: a token to `tokens.ts` (then `bun run design:tokens`), a value with both themes to `src/index.css`, or a variant to the component in `src/components/ui/`. Never reach for an exception.
 - Class strings in `src/components/ui/` follow the same token rules: no arbitrary values or properties, opacity modifiers, `dark:` or palette colours. A one-off value becomes a CSS variable in `src/index.css` read with `prop-(--name)`, and a multi-declaration recipe becomes an `@utility` there.
 - Every exception is a commented `files` glob in `eslint.config.js`; inline disables already fail. A growing list means the design system is missing something.

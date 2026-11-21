@@ -11,7 +11,7 @@ Help article: none
 - `date-nav` the header's `Digest date` navigation (`DigestDateNav` in `frontend/src/components/app-header.tsx`, only on `/`) links three days before the selected day and up to three after it, never past today (`digestDateRange` in `frontend/src/lib/digest-dates.ts`); the selected one has `aria-current="date"`.
 - `fold` a source with several entries on one day shows its latest in place and folds the rest beneath it behind `Show <n> more from <source>` (`+<n> more`, `aria-expanded`); the open group stays open when the reader comes back from a folded post (SPEC.md, Digest and Reader; `MoreFromSource` in `frontend/src/pages/digest.tsx`).
 - `day-keys` on `/`, `ArrowLeft`/`ArrowRight` (or `h`/`l`) move one day and `Shift+T` goes to today; past today an info toast answers instead. `Shift+D`/`Shift+S`/`Shift+L` switch modes anywhere signed in (`APP_MODES` in `frontend/src/lib/paths.ts`); `shortcutKey` in `frontend/src/lib/shortcuts.ts` leaves keys alone in text fields and dialogs.
-- `post-keys` on `/` and the source pages, `ArrowDown`/`ArrowUp` (or `j`/`k`) select the next/previous post, hovering selects too, and `Enter` opens the selected one (`PostList` in `frontend/src/components/item-list.tsx`).
+- `post-keys` on `/` and the source pages, `ArrowDown`/`ArrowUp` (or `j`/`k`) select the next/previous post, hovering selects too, and `Enter` opens the selected one (`PostList` in `frontend/src/components/ui/post-list.tsx`).
 - `digest-api` `GET /api/digest?date=&timezone=` returns `{date, entries, hasActiveJob}`. It does not clamp a future date (it answers that day, empty); a bad `date` or unknown `timezone` is `400`.
 - `entry-api` `GET /api/entries/{slug}` returns one entry (feed entry or newsletter message) for the reader.
 

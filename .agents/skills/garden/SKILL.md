@@ -110,7 +110,7 @@ cd frontend
 Dead code (`.summary` holds the counts per kind):
 
 - **Unused exports, types and enum members** are mechanical once `fallow dead-code --trace <file>:<export>` shows no reference. Preview with `fallow fix --dry-run --no-create-config`. When the preview edits only source files, apply it with `fallow fix --yes --no-create-config`; when it also touches `package.json` or config, make the source edits by hand instead.
-- **Unused files** are mechanical when `git grep -n <basename without extension>` finds no reference outside the file itself (`components.json` aliases, `index.html`, `vite.config.ts` and dynamic imports included). Remove them with `git rm`.
+- **Unused files** are mechanical when `git grep -n <basename without extension>` finds no reference outside the file itself (`index.html`, `vite.config.ts` and dynamic imports included). Remove them with `git rm`.
 - **Stale suppressions** are mechanical: delete only the suppression comment fallow names, then rerun dead-code to confirm nothing new surfaced.
 - Unused class members, dependencies, unresolved or unlisted imports, cycles and boundary violations are judgment.
 

@@ -41,36 +41,6 @@ const transitionRules = [
     },
 ];
 
-const classString = (pattern, message) => ({
-    selector: `:matches(Literal[value=${pattern}], TemplateElement[value.raw=${pattern}])`,
-    message,
-});
-
-// Only the primitives write class strings; these keep the ones in src/components/ui/ and src/design/ on the tokens.
-const tokenRules = [
-    classString(
-        String.raw`/(^|\s)dark:/`,
-        'Give the token both theme values in src/index.css instead of a dark: variant: the .dark class swaps every variable, so no component needs a second styling pass.',
-    ),
-    classString(
-        String.raw`/\b(bg|text|border|ring|fill|stroke|outline|decoration|divide|from|via|to)-((slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}|white|black)\b/`,
-        'Use a semantic color token from src/index.css, not a raw palette color: a palette value carries no decision about what it is for.',
-    ),
-    classString(
-        String.raw`/\b(bg|text|border|ring|fill|stroke|outline|decoration|divide)-[a-z-]+\/\d+/`,
-        'Name the translucent color as its own token in src/index.css instead of an opacity modifier, so it has a value in both themes.',
-    ),
-    // A bracket followed by a colon is a state variant, such as data-[side=top]:, which selects rather than decides a value.
-    classString(
-        String.raw`/\b(?!transition-)[a-z][a-z-]*-\[[^\[\]\s]*\](?!:)/`,
-        'Add a token instead of an arbitrary value: an arbitrary value is a decision no one else can reuse.',
-    ),
-    classString(
-        String.raw`/(^|[\s:])\[-*[a-z][a-z-]*:/`,
-        'Add a token or an @utility in src/index.css instead of an arbitrary property: an arbitrary property is a decision no one else can reuse.',
-    ),
-];
-
 const designImports = [
     {
         name: 'cn',
@@ -132,8 +102,9 @@ export default defineConfig([
                         'Call api() from src/lib/api.ts: it parses the {code, message} error body and throws ApiError, which reauth and form errors depend on.',
                 })),
             ],
-            'no-restricted-syntax': ['error', ...loadingRules, ...transitionRules, ...skeletonRules, ...tokenRules],
+            'no-restricted-syntax': ['error', ...loadingRules, ...transitionRules, ...skeletonRules],
             'design-system/no-raw-elements': 'error',
+            'design-system/token-classes': 'error',
             'design-system/no-style-props': 'error',
             'no-restricted-imports': [
                 'error',
@@ -165,6 +136,7 @@ export default defineConfig([
             'no-restricted-imports': 'off',
             'design-system/no-style-props': 'off',
             'no-restricted-syntax': ['error', ...loadingRules, ...transitionRules, ...skeletonRules],
+            'design-system/token-classes': ['error', { allowDark: true }],
             'react-refresh/only-export-components': ['error', { allowConstantExport: true, extraHOCs: ['icon'] }],
         },
     },
@@ -172,6 +144,16 @@ export default defineConfig([
         // api() itself, and tests that stub fetch beneath it.
         files: ['src/lib/api.ts', 'src/**/*.test.{ts,tsx}'],
         rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' },
+    },
+    {
+        // Frame and Text are where token props become the className they hand to the element.
+        files: ['src/design/**'],
+        rules: { 'design-system/no-style-props': 'off' },
+    },
+    {
+        // The rule tests hold the class strings they check the rules against.
+        files: ['eslint/**'],
+        rules: { 'design-system/token-classes': 'off' },
     },
     {
         // Test harnesses render throwaway markup around the component under test; it never ships.
@@ -182,7 +164,7 @@ export default defineConfig([
         // The primitives: the components that own class strings, held to the same tokens as everything else.
         files: ['src/components/ui/**'],
         rules: {
-            'no-restricted-syntax': ['error', ...loadingRules, ...tokenRules],
+            'no-restricted-syntax': ['error', ...loadingRules],
             'design-system/no-raw-elements': 'off',
             'design-system/no-style-props': 'off',
             'no-restricted-imports': [

@@ -34,10 +34,11 @@ type LinkProps = Omit<ComponentProps<'a'>, 'className' | 'style'> & { href: stri
         typeof linkVariants
     >;
 
-// App paths navigate in place through the router; anything else, such as an external page or a #fragment, is a plain anchor.
+// App paths navigate in place through the router; anything else, such as an external page, a #fragment or a link that opens
+// another tab, is a plain anchor: wouter navigates in place on click and ignores target.
 function Link({ variant, state, ...props }: LinkProps) {
     const className = linkVariants({ variant }) || undefined;
-    if (props.href.startsWith('/'))
+    if (props.href.startsWith('/') && !props.href.startsWith('//') && !props.target)
         return <RouterLink data-slot="link" className={className} state={state} {...props} />;
     return <a data-slot="link" className={className} {...props} />;
 }
