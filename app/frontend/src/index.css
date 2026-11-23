@@ -525,8 +525,9 @@ html:has(.admin-banner) {
     inset-inline: 1rem;
     bottom: var(--app-mode-nav-inset);
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    max-width: 22rem;
+    /* Like iOS's floating tab bar: each tab keeps its own width and the capsule hugs them, so three tabs sit together in the middle. */
+    grid-template-columns: repeat(3, 5.5rem);
+    width: fit-content;
     margin-inline: auto;
     padding: 0.5rem 0.25rem;
     border: 1px solid color-mix(in oklab, var(--popover) 65%, transparent);
