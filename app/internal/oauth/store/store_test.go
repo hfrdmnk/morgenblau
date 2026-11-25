@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/json"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -379,7 +380,7 @@ func TestSession_DataBlobIsEncrypted(t *testing.T) {
 	if err := row.Scan(&raw); err != nil {
 		t.Fatal(err)
 	}
-	if bytes.HasPrefix(raw, []byte("{")) {
+	if json.Valid(raw) {
 		t.Errorf("session blob is plaintext JSON at rest: %s", raw[:min(40, len(raw))])
 	}
 	if bytes.Contains(raw, []byte(in.AccessToken)) || bytes.Contains(raw, []byte(in.RefreshToken)) {
