@@ -155,7 +155,7 @@ const faqSchema = {
 					<p>My vision is that Morgenblau doesn’t just turn into another RSS reader. It should become the app for all those people who feel burnt out from modern-day social media feeds that are noisy, depressing and never-ending.</p>
 					<p>The old web, the interesting bloggers, the small authentic creators: they are still out there and creating original content every day. You just have to rediscover them.</p>
 					<p>Morgenblau helps you with that.</p>
-					<img class="signature" src="/signature.svg" width="98" height="93" alt="Dominik’s signature" loading="lazy" />
+					<svg class="signature" viewBox="0 0 98 93" width="98" height="93" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" role="img" aria-label="Dominik’s signature"><path d="M26.0649 20.0533C27.3182 24.3144 31.8299 42.1106 29.5741 48.8782" /><path d="M1 42.6115C2.0026 35.3426 19.6232 19.2463 25.0625 15.2905C30.5768 11.2802 55.1406 -3.75858 65.668 2.50731C78.5768 10.1906 19.2975 69.6818 15.7884 74.6948C12.2793 79.7078 5.51172 85.2221 5.51172 91.4884" /><path d="M64.415 32.5858C62.6604 31.3326 59.9033 31.0819 57.3968 36.0949C54.8903 41.108 57.1461 44.1158 59.1513 43.3638C61.1565 42.6119 64.6656 37.5989 63.4123 35.343" /><path d="M69.6783 33.3378C69.6783 34.3404 69.177 40.8573 71.4329 40.6066C73.6887 40.356 78.4511 33.8391 79.7044 33.8391C80.9576 33.8391 81.7096 36.3456 82.9629 36.3456C84.2161 36.3456 87.2239 34.591 87.9759 34.8417C88.7278 35.0923 90.733 36.5962 91.7356 36.5962C92.5377 36.5962 94.075 35.0923 94.7434 34.3404" /><path d="M95.9966 20.0533C96.7485 19.552 96.9998 17.5468 96.9998 16.7948" /></svg>
 				</div>
 			</section>
 
@@ -284,9 +284,7 @@ const faqSchema = {
 	.dog figcaption { bottom: 8%; right: calc(100% + 8px); width: 100%; align-items: flex-end; justify-content: flex-end; gap: 2px; text-align: right; transform: rotate(-3deg); }
 	.dog svg { margin-bottom: 0.6em; }
 	.note p { color: var(--foreground); font: 400 19px/1.65 var(--serif); }
-	.signature { width: 88px; height: auto; }
-	/* The signature is an <img>, so its ink can't follow currentColor; inverting and turning the hue back keeps it warm. */
-	@media (prefers-color-scheme: dark) { .signature { filter: invert(1) hue-rotate(180deg); } }
+	.signature { display: block; width: 88px; height: auto; color: oklch(from var(--foreground) l c h / 0.85); }
 
 	.cta { min-height: calc(100svh - 2 * var(--panel-gap)); padding: 0 clamp(20px, 5vw, 64px); }
 	.cta::before { background: linear-gradient(to top, oklch(0.15 0.03 290 / 0.5), oklch(0.15 0.03 290 / 0.2) 50%, oklch(0.15 0.03 290 / 0)); }
