@@ -113,6 +113,8 @@ export default defineConfig(({ mode }) => {
                     ],
                 },
                 workbox: {
+                    // The empty and error states' art is a CSS background, so an offline error screen needs it precached.
+                    globPatterns: ['**/*.{js,wasm,css,html,webp}'],
                     // Document requests must reach the server for session redirects.
                     globIgnores: ['**/index.html'],
                     navigateFallback: null,

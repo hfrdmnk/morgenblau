@@ -19,9 +19,23 @@ import { displayURL, groupByInitial } from '@/lib/source-display';
 
 type RemovedFocus = RefObject<HTMLHeadingElement | null>;
 
+type Feeds = ReturnType<typeof useSources<FeedSource[]>>;
+type Newsletters = ReturnType<typeof useSources<{ active: NewsletterSource[]; stopped: NewsletterSource[] }>>;
+
+const IMPORT_ACTION = (
+    <Button render={<Link href={PATHS.import} variant="plain" />} nativeButton={false} variant="ghost">
+        Import feeds
+    </Button>
+);
+
 export function Sources() {
     const heading = useRef<HTMLHeadingElement>(null);
+    const feeds = useSources<FeedSource[]>('/api/subscriptions', 15_000);
+    const newsletters = useSources<{ active: NewsletterSource[]; stopped: NewsletterSource[] }>('/api/newsletters');
     useDocumentTitle('Sources');
+    // Sections hold their skeletons until both lists answer, so a new account never sees a section's empty state
+    // flash before the page-wide one replaces it.
+    const settled = feeds.status !== 'loading' && newsletters.status !== 'loading';
     return (
         <Frame
             as="main"
@@ -35,12 +49,35 @@ export function Sources() {
             <Text as="h1" visuallyHidden ref={heading} tabIndex={-1}>
                 Sources
             </Text>
-            <TooltipProvider>
-                <FeedList removedFocus={heading} />
-                <NewsletterList removedFocus={heading} />
-            </TooltipProvider>
+            {sourceCount(feeds, newsletters) === 0 ? (
+                <EmptyState
+                    symbol="streams"
+                    title="No sources yet."
+                    description="Feeds you add and newsletters sent to your private address will gather here."
+                    action={IMPORT_ACTION}
+                />
+            ) : (
+                <TooltipProvider>
+                    <FeedList removedFocus={heading} settled={settled} state={feeds} />
+                    <NewsletterList removedFocus={heading} settled={settled} state={newsletters} />
+                </TooltipProvider>
+            )}
         </Frame>
     );
+}
+
+// A section's skeleton data, held back until both lists have answered.
+function settledData<T>(
+    state: { status: 'loading' } | { status: 'loaded'; data: T } | { status: 'error' },
+    settled: boolean,
+) {
+    return settled && state.status === 'loaded' ? state.data : null;
+}
+
+// Null until both lists load; stopped newsletters count, since the page still lists them.
+function sourceCount(feeds: Feeds, newsletters: Newsletters): number | null {
+    if (feeds.status !== 'loaded' || newsletters.status !== 'loaded') return null;
+    return feeds.data.length + newsletters.data.active.length + newsletters.data.stopped.length;
 }
 
 const SAMPLE_FEEDS: FeedSource[] = [
@@ -66,12 +103,11 @@ const SAMPLE_NEWSLETTERS: NewsletterSource[] = ['Example Newsletter', 'Sample Di
     tags: [],
 }));
 
-function FeedList({ removedFocus }: { removedFocus: RemovedFocus }) {
-    const state = useSources<FeedSource[]>('/api/subscriptions', 15_000);
+function FeedList({ removedFocus, settled, state }: { removedFocus: RemovedFocus; settled: boolean; state: Feeds }) {
     return (
         <PageSection title="Feeds">
             <Skeleton
-                data={state.status === 'loaded' ? state.data : null}
+                data={settledData(state, settled)}
                 error={state.status === 'error' ? <ListError label="feeds" retry={state.retry} /> : undefined}
                 label="Loading feeds"
                 sample={SAMPLE_FEEDS}
@@ -113,15 +149,7 @@ function FeedList({ removedFocus }: { removedFocus: RemovedFocus }) {
                             symbol="streams"
                             title="No feeds yet."
                             description="Add a blog, a YouTube channel or a podcast, and its posts will gather in your digest."
-                            action={
-                                <Button
-                                    render={<Link href={PATHS.import} variant="plain" />}
-                                    nativeButton={false}
-                                    variant="ghost"
-                                >
-                                    Import feeds
-                                </Button>
-                            }
+                            action={IMPORT_ACTION}
                         />
                     )
                 }
@@ -130,26 +158,31 @@ function FeedList({ removedFocus }: { removedFocus: RemovedFocus }) {
     );
 }
 
-function NewsletterList({ removedFocus }: { removedFocus: RemovedFocus }) {
-    const state = useSources<{ active: NewsletterSource[]; stopped: NewsletterSource[] }>('/api/newsletters');
+function NewsletterList({
+    removedFocus,
+    settled,
+    state,
+}: {
+    removedFocus: RemovedFocus;
+    settled: boolean;
+    state: Newsletters;
+}) {
     return (
         <>
             <PageSection title="Newsletters">
                 <Skeleton
-                    data={state.status === 'loaded' ? state.data.active : null}
+                    data={settledData(state, settled)}
                     error={state.status === 'error' ? <ListError label="newsletters" retry={state.retry} /> : undefined}
                     label="Loading newsletters"
-                    sample={SAMPLE_NEWSLETTERS}
+                    sample={{ active: SAMPLE_NEWSLETTERS, stopped: [] }}
                 >
-                    {(active) =>
-                        active.length ? (
-                            <NewsletterRows onChanged={state.refresh} removedFocus={removedFocus} sources={active} />
-                        ) : (
-                            <Text size="sm" tone="muted">
-                                Newsletters appear here when mail arrives at your private address.
-                            </Text>
-                        )
-                    }
+                    {(newsletters) => (
+                        <ActiveNewsletters
+                            newsletters={newsletters}
+                            onChanged={state.refresh}
+                            removedFocus={removedFocus}
+                        />
+                    )}
                 </Skeleton>
             </PageSection>
             {state.status === 'loaded' ? (
@@ -160,6 +193,33 @@ function NewsletterList({ removedFocus }: { removedFocus: RemovedFocus }) {
                 />
             ) : null}
         </>
+    );
+}
+
+// With only stopped newsletters the section keeps a quiet line: "No newsletters yet." would contradict the list below.
+function ActiveNewsletters({
+    newsletters: { active, stopped },
+    onChanged,
+    removedFocus,
+}: {
+    newsletters: { active: NewsletterSource[]; stopped: NewsletterSource[] };
+    onChanged: () => void;
+    removedFocus: RemovedFocus;
+}) {
+    if (active.length) return <NewsletterRows onChanged={onChanged} removedFocus={removedFocus} sources={active} />;
+    if (stopped.length) {
+        return (
+            <Text size="sm" tone="muted">
+                Newsletters appear here when mail arrives at your private address.
+            </Text>
+        );
+    }
+    return (
+        <EmptyState
+            symbol="streams"
+            title="No newsletters yet."
+            description="Newsletters appear here when mail arrives at your private address."
+        />
     );
 }
 
