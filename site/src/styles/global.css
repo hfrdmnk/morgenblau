@@ -35,6 +35,23 @@
     color-scheme: light;
 }
 
+@media (prefers-color-scheme: dark) {
+    :root {
+        --background: oklch(0.147 0.004 49.25);
+        --foreground: oklch(0.97 0.001 106.424);
+        --popover: oklch(0.216 0.006 56.043);
+        --primary: oklch(0.923 0.003 48.717);
+        --primary-foreground: oklch(0.216 0.006 56.043);
+        --secondary: oklch(0.268 0.007 34.298);
+        --muted-foreground: oklch(0.869 0.005 56.366);
+        --subtle-foreground: oklch(0.553 0.013 58.071);
+        --input: oklch(0.25 0.007 45);
+        --line: oklch(0.97 0.001 106.424 / 0.1);
+        --popover-shadow: 0 12px 32px -8px oklch(0 0 0 / 0.56), 0 3px 8px -2px oklch(0 0 0 / 0.4);
+        color-scheme: dark;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     :root {
         --motion-fast: 0ms;
@@ -107,7 +124,7 @@ a {
     }
 }
 .button.on-color {
-    color: var(--foreground);
+    color: oklch(0.216 0.006 56.043);
     background: oklch(0.99 0.001 100);
 }
 @media (hover: hover) and (pointer: fine) {

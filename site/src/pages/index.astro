@@ -53,7 +53,8 @@ const faqSchema = {
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<link rel="icon" href="/favicon.ico" />
 		<link rel="me" href="https://mastodon.social/@dominikhofer_me" />
-		<meta name="theme-color" content="#ffffff" />
+		<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+		<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0c0a09" />
 		<meta property="og:type" content="website" />
 		<meta property="og:site_name" content="Morgenblau" />
 		<meta property="og:title" content={title} />
@@ -284,6 +285,8 @@ const faqSchema = {
 	.dog svg { margin-bottom: 0.6em; }
 	.note p { color: var(--foreground); font: 400 19px/1.65 var(--serif); }
 	.signature { width: 88px; height: auto; }
+	/* The signature is an <img>, so its ink can't follow currentColor; inverting and turning the hue back keeps it warm. */
+	@media (prefers-color-scheme: dark) { .signature { filter: invert(1) hue-rotate(180deg); } }
 
 	.cta { min-height: calc(100svh - 2 * var(--panel-gap)); padding: 0 clamp(20px, 5vw, 64px); }
 	.cta::before { background: linear-gradient(to top, oklch(0.15 0.03 290 / 0.5), oklch(0.15 0.03 290 / 0.2) 50%, oklch(0.15 0.03 290 / 0)); }

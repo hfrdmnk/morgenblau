@@ -107,6 +107,9 @@ function sourceLabel(source: HeroSource): string {
 		-webkit-user-select: none;
 		user-select: none;
 	}
+	@media (prefers-color-scheme: dark) {
+		.screen { --border: oklch(0.374 0.01 67.558); --muted: oklch(0.216 0.006 56.043); }
+	}
 	svg { display: block; }
 	img { display: block; max-width: none; }
 	.truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
