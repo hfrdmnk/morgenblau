@@ -3,15 +3,15 @@
     --sans: 'Geist Variable', system-ui, sans-serif;
     --serif: 'Newsreader Variable', Georgia, serif;
     --hand: 'Reenie Beanie', cursive;
-    --background: oklch(0.97 0.001 106.424);
+    --background: oklch(1 0 0);
     --foreground: oklch(0.216 0.006 56.043);
     --popover: oklch(1 0 0);
     --primary: oklch(0.268 0.007 34.298);
     --primary-foreground: oklch(0.985 0.001 106.423);
-    --secondary: oklch(0.923 0.003 48.717);
+    --secondary: oklch(0.97 0.001 106.424);
     --muted-foreground: oklch(0.444 0.011 73.639);
     --subtle-foreground: oklch(0.53 0.01 56.259);
-    --input: oklch(0.955 0.002 77);
+    --input: oklch(0.985 0.001 106.423);
     --line: oklch(0.216 0.006 56.043 / 0.1);
     --atmosphere-blue: oklch(57.2% 0.251 256.1);
     --radius: 0.45rem;
@@ -20,7 +20,9 @@
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
     --motion-fast: 120ms;
     --motion-overlay: 240ms;
-    --popover-shadow: 0 8px 24px -8px oklch(0.216 0.006 56.043 / 0.16), 0 2px 6px -2px oklch(0.216 0.006 56.043 / 0.08);
+    --popover-shadow:
+        0 0 0 1px oklch(0.216 0.006 56.043 / 0.08), 0 8px 24px -8px oklch(0.216 0.006 56.043 / 0.16),
+        0 2px 6px -2px oklch(0.216 0.006 56.043 / 0.08);
     --panel-gap: clamp(12px, 2.4vw, 36px);
     --panel-radius: clamp(16px, 2vw, 28px);
     --scrim: oklch(0.18 0.03 255);

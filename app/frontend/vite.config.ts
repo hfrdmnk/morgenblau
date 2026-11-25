@@ -101,8 +101,8 @@ export default defineConfig(({ mode }) => {
                     short_name: 'Morgenblau',
                     description: 'A personal daily newspaper',
                     // Installed Android apps also paint the strip behind the gesture bar with these, in both color schemes.
-                    theme_color: '#f5f5f4',
-                    background_color: '#f5f5f4',
+                    theme_color: '#ffffff',
+                    background_color: '#ffffff',
                     display: 'standalone',
                     start_url: '/',
                     scope: '/',

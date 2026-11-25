@@ -139,22 +139,22 @@
 :root,
 .light {
     color-scheme: light;
-    --background: oklch(0.97 0.001 106.424);
+    --background: oklch(1 0 0);
     --foreground: oklch(0.216 0.006 56.043);
-    --card: oklch(0.97 0.001 106.424);
+    --card: oklch(1 0 0);
     --card-foreground: oklch(0.268 0.007 34.298);
     --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.268 0.007 34.298);
     --primary: oklch(0.268 0.007 34.298);
     --primary-foreground: oklch(0.985 0.001 106.423);
-    --secondary: oklch(0.923 0.003 48.717);
+    --secondary: oklch(0.97 0.001 106.424);
     --secondary-foreground: oklch(0.268 0.007 34.298);
-    --muted: oklch(0.923 0.003 48.717);
+    --muted: oklch(0.97 0.001 106.424);
     /* A panel that sits quietly on the page, such as the reader's blocked-images notice. */
     --muted-soft: color-mix(in oklab, var(--muted) 60%, transparent);
     --muted-foreground: oklch(0.444 0.011 73.639);
     --subtle-foreground: oklch(0.53 0.01 56.259);
-    --accent: oklch(0.869 0.005 56.366);
+    --accent: oklch(0.923 0.003 48.717);
     --accent-foreground: oklch(0.268 0.007 34.298);
     --destructive: oklch(0.5 0.245 27.325);
     --destructive-foreground: oklch(0.985 0.001 106.423);
@@ -169,8 +169,8 @@
     --source-primary: oklch(0.8 0.165 84);
     --source-generated: oklch(0.6 0.22 300);
     --neutral: oklch(62.3% 0.214 259.815);
-    --border: oklch(0.869 0.005 56.366);
-    --input: oklch(0.955 0.002 77);
+    --border: oklch(0.923 0.003 48.717);
+    --input: oklch(0.985 0.001 106.423);
     --outline: oklch(from var(--foreground) l c h / 0.3);
     --ring: var(--outline);
     --chart-1: oklch(0.869 0.005 56.366);
@@ -178,13 +178,13 @@
     --chart-3: oklch(0.444 0.011 73.639);
     --chart-4: oklch(0.374 0.01 67.558);
     --chart-5: oklch(0.268 0.007 34.298);
-    --sidebar: oklch(0.97 0.001 106.424);
+    --sidebar: oklch(1 0 0);
     --sidebar-foreground: oklch(0.268 0.007 34.298);
     --sidebar-primary: oklch(0.268 0.007 34.298);
     --sidebar-primary-foreground: oklch(0.985 0.001 106.423);
-    --sidebar-accent: oklch(0.869 0.005 56.366);
+    --sidebar-accent: oklch(0.923 0.003 48.717);
     --sidebar-accent-foreground: oklch(0.268 0.007 34.298);
-    --sidebar-border: oklch(0.869 0.005 56.366);
+    --sidebar-border: oklch(0.923 0.003 48.717);
     --sidebar-ring: oklch(0.268 0.007 34.298);
     --atmosphere-blue-off: oklch(78.4% 0.165 220.2);
     /* Lighter steps of a cool ramp turn their hue down and darker steps turn it up, so the pair stays in the blue's family. */
@@ -193,7 +193,9 @@
     --motion-duration-fast: 120ms;
     --motion-duration-ui: 160ms;
     --motion-duration-overlay: 240ms;
-    --popover-shadow: 0 8px 24px -8px oklch(0.216 0.006 56.043 / 0.16), 0 2px 6px -2px oklch(0.216 0.006 56.043 / 0.08);
+    --popover-shadow:
+        0 0 0 1px oklch(0.216 0.006 56.043 / 0.08), 0 8px 24px -8px oklch(0.216 0.006 56.043 / 0.16),
+        0 2px 6px -2px oklch(0.216 0.006 56.043 / 0.08);
     --radius: 0.45rem;
 }
 
