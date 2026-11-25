@@ -8,6 +8,7 @@ const SUBSCRIPTION = 'blue.morgen.feed.subscription';
 const USER_AGENT = 'Mozilla/5.0 (compatible; Morgenblau/0.1; +https://morgen.blue)';
 const ZONE = 'Europe/Zurich';
 const FETCH_TIMEOUT_MS = 10_000;
+const ACCOUNT_ATTEMPTS = 3;
 const MAX_ICON_BYTES = 256 * 1024;
 
 export type HeroSource = {
@@ -113,7 +114,7 @@ function zurichMidnight(year: number, month: number, date: number): Date {
 }
 
 async function resolvePDS(did: string): Promise<string> {
-    const doc = await (await get(`https://plc.directory/${did}`, 'application/json')).json();
+    const doc = await retry(async () => (await get(`https://plc.directory/${did}`, 'application/json')).json());
     const service = doc.service?.find((s: { id: string }) => s.id === '#atproto_pds');
     if (!service) throw new Error(`no PDS for ${did}`);
     return service.serviceEndpoint;
@@ -123,12 +124,14 @@ async function listSubscriptions(pds: string): Promise<Subscription[]> {
     const subscriptions: Subscription[] = [];
     let cursor = '';
     do {
-        const page = await (
-            await get(
-                `${pds}/xrpc/com.atproto.repo.listRecords?repo=${ACCOUNT}&collection=${SUBSCRIPTION}&limit=100&cursor=${cursor}`,
-                'application/json',
-            )
-        ).json();
+        const page = await retry(async () =>
+            (
+                await get(
+                    `${pds}/xrpc/com.atproto.repo.listRecords?repo=${ACCOUNT}&collection=${SUBSCRIPTION}&limit=100&cursor=${cursor}`,
+                    'application/json',
+                )
+            ).json(),
+        );
         for (const { value } of page.records) {
             // Standardfeed sidecars carry no feed URL; the account follows none, so they are left out.
             if (value.source?.$type !== `${SUBSCRIPTION}#rssFeed`) continue;
@@ -145,15 +148,19 @@ async function listSubscriptions(pds: string): Promise<Subscription[]> {
 }
 
 async function loadAvatar(pds: string): Promise<string | null> {
-    const profile = await (
-        await get(
-            `${pds}/xrpc/com.atproto.repo.getRecord?repo=${ACCOUNT}&collection=app.bsky.actor.profile&rkey=self`,
-            'application/json',
-        )
-    ).json();
+    const profile = await retry(async () =>
+        (
+            await get(
+                `${pds}/xrpc/com.atproto.repo.getRecord?repo=${ACCOUNT}&collection=app.bsky.actor.profile&rkey=self`,
+                'application/json',
+            )
+        ).json(),
+    );
     const cid = profile.value?.avatar?.ref?.$link;
     if (!cid) return null;
-    const blob = await bytes(await get(`${pds}/xrpc/com.atproto.sync.getBlob?did=${ACCOUNT}&cid=${cid}`, 'image/*'));
+    const blob = await retry(async () =>
+        bytes(await get(`${pds}/xrpc/com.atproto.sync.getBlob?did=${ACCOUNT}&cid=${cid}`, 'image/*')),
+    );
     return dataURI('image/webp', await sharp(blob).resize(80, 80).webp().toBuffer());
 }
 
@@ -347,6 +354,18 @@ async function get(url: string, accept: string): Promise<Response> {
     });
     if (!response.ok || !isPublicURL(new URL(response.url))) throw new Error(`${url}: ${response.status}`);
     return response;
+}
+
+// The hero cannot render without the account's own records, so one slow PLC or PDS answer is retried rather than failing the build; feeds and icons stay best effort.
+async function retry<T>(load: () => Promise<T>): Promise<T> {
+    for (let attempt = 1; ; attempt++) {
+        try {
+            return await load();
+        } catch (error) {
+            if (attempt === ACCOUNT_ATTEMPTS) throw error;
+            await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+        }
+    }
 }
 
 async function bytes(response: Response, max = 8 * 1024 * 1024): Promise<Buffer> {
