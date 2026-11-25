@@ -57,7 +57,7 @@ function ModeLink({
     );
 }
 
-// A touch-sized tab on the phone, where the tabs sit in their own row; on wider screens the row's gap spaces them.
+// Touch-tall, with no side padding, so the first label starts on the page's edge like the logo and content around it.
 function SettingsTab({
     href,
     current,
@@ -67,7 +67,7 @@ function SettingsTab({
         <RouterLink
             aria-current={current ? 'page' : undefined}
             className={cn(
-                'inline-flex min-h-11 items-center px-3.5 text-sm md:px-0',
+                'inline-flex min-h-11 items-center text-sm',
                 current ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
             )}
             href={href}
@@ -76,9 +76,15 @@ function SettingsTab({
     );
 }
 
-// The phone's day control: an arrow either side of the date, each a 44px touch target.
+// The phone's day control: an arrow either side of the date, each a 44px touch target. The row bleeds into the gutter by the
+// space around each arrow, so the arrows themselves line up with the page's edges.
 function DayStepper(props: Omit<ComponentProps<'nav'>, 'className' | 'style'>) {
-    return <nav className="grid min-h-11 grid-cols-(--grid-stepper) items-center gap-1 text-sm md:hidden" {...props} />;
+    return (
+        <nav
+            className="-mx-3.5 grid min-h-11 grid-cols-(--grid-stepper) items-center gap-1 text-sm md:hidden"
+            {...props}
+        />
+    );
 }
 
 // The desktop row of days; the selected one sits in the centre column, which the mask in `.digest-date-nav` relies on.

@@ -33,7 +33,8 @@ const buttonVariants = cva(
                 'icon-sm': 'relative size-8 rounded-sm before:absolute before:-inset-1.5',
                 'icon-sm-round': 'relative size-8 rounded-full before:absolute before:-inset-1.5',
                 'icon-lg': 'size-11',
-                avatar: 'size-10 rounded-full p-1',
+                // The account avatar ends the header row, so it bleeds its padding and the picture, not its fill, meets the page's edge.
+                avatar: '-me-1 size-10 rounded-full p-1',
                 'icon-xs': 'relative size-5 rounded-full before:absolute before:-inset-1',
                 // A pill in a line of text: its fill reaches past the line without making it taller; pill-start lines its label up with the text above.
                 pill: '-my-1 gap-1 rounded-full px-2 py-1',

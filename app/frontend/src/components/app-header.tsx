@@ -154,7 +154,7 @@ function SettingsNav({ location }: { location: string }) {
             colSpan={{ base: 2, md: 1 }}
             colStart={{ md: 2 }}
             direction="row"
-            gap={{ base: 's', md: '2xl' }}
+            gap="2xl"
             justifySelf={{ md: 'center' }}
             rowStart={{ base: 2, md: 1 }}
         >
