@@ -4,6 +4,7 @@ import { TagChips, TagInput } from '@/components/tag-input';
 import { Frame } from '@/design/frame';
 import { useSaveState } from '@/hooks/use-entry-save';
 import type { EntrySave } from '@/lib/entry-save';
+import { visibleTags } from '@/lib/library';
 import { addTags, canAddTags, hasOverlongTag } from '@/lib/source-edit';
 
 export function SaveTagEditor({ save, inputRef }: { save: EntrySave; inputRef: RefObject<HTMLInputElement | null> }) {
@@ -26,11 +27,11 @@ export function SaveTagEditor({ save, inputRef }: { save: EntrySave; inputRef: R
                 suggestionsPath="/api/saves/tags"
                 tags={tags}
             />
-            {tags.length ? (
+            {visibleTags(tags).length ? (
                 <TagChips
                     inputRef={inputRef}
                     onRemove={(tag) => save.setTags(tags.filter((other) => other !== tag))}
-                    tags={tags}
+                    tags={visibleTags(tags)}
                 />
             ) : null}
         </Frame>

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"golang.org/x/net/html"
 
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
@@ -34,6 +35,10 @@ type SaveWire struct {
 	TargetURL string   `json:"targetUrl,omitempty"`
 	EntrySlug string   `json:"entrySlug,omitempty"`
 	Tags      []string `json:"tags,omitempty"`
+	// The Library's view of a cached entry: who published it and how long it takes to read.
+	Source      *SourceMeta `json:"source,omitempty"`
+	ContentType string      `json:"contentType,omitempty"`
+	Minutes     int         `json:"minutes,omitempty"`
 }
 
 // SavesIndexReader is the slice of db.Queries the saves handlers use for reads.
@@ -54,12 +59,15 @@ type newsletterSaveLister interface {
 }
 
 type newsletterSaveWire struct {
-	Kind      string   `json:"kind"`
-	ID        string   `json:"id"`
-	CreatedAt string   `json:"createdAt"`
-	Title     string   `json:"title,omitempty"`
-	EntrySlug string   `json:"entrySlug"`
-	Tags      []string `json:"tags,omitempty"`
+	Kind      string     `json:"kind"`
+	ID        string     `json:"id"`
+	MessageID string     `json:"messageId"`
+	CreatedAt string     `json:"createdAt"`
+	Title     string     `json:"title,omitempty"`
+	EntrySlug string     `json:"entrySlug"`
+	Tags      []string   `json:"tags,omitempty"`
+	Source    SourceMeta `json:"source"`
+	Minutes   int        `json:"minutes,omitempty"`
 }
 
 // --- POST /api/saves ---
@@ -316,9 +324,19 @@ func SavesTagsHandler(reader saveTagsReader, privateListers ...newsletterSaveTag
 			}
 			lists = append(lists, private)
 		}
-		writeJSON(w, tagsResponse{Tags: distinctTags(lists...)})
+		suggestions := []string{}
+		for _, tag := range distinctTags(lists...) {
+			if !strings.EqualFold(tag, archivedTag) {
+				suggestions = append(suggestions, tag)
+			}
+		}
+		writeJSON(w, tagsResponse{Tags: suggestions})
 	})
 }
+
+// archivedTag files a save in the Library's Archive; a save without it is still to read. It is an ordinary record tag so the state
+// travels with the reader's data, but it is never offered as a tag to add.
+const archivedTag = "archived"
 
 // --- GET /api/saves ---
 
@@ -352,9 +370,12 @@ func SavesListHandler(reader SavesIndexReader, privateListers ...newsletterSaveL
 				return
 			}
 			for _, item := range items {
+				sourceTitle := item.SourceTitle
 				out = append(out, datedSave{created: item.CreatedAt, value: newsletterSaveWire{
-					Kind: "newsletter", ID: item.ID, CreatedAt: item.CreatedAt.Format(time.RFC3339),
+					Kind: "newsletter", ID: item.ID, MessageID: item.MessageID, CreatedAt: item.CreatedAt.Format(time.RFC3339),
 					Title: item.Title, EntrySlug: item.EntrySlug, Tags: item.Tags,
+					Source:  SourceMeta{Kind: "newsletter", ID: item.SourceID, Title: &sourceTitle},
+					Minutes: readingMinutes(item.Text),
 				}})
 			}
 		}
@@ -373,7 +394,7 @@ func saveListRowToWire(row db.ListUserSavesRow) SaveWire {
 	if feedURL == "" {
 		feedURL = derefStr(row.EntryFeedUrl)
 	}
-	return SaveWire{
+	wire := SaveWire{
 		URI:       row.AtUri,
 		Rkey:      row.Rkey,
 		ItemURL:   row.ItemUrl,
@@ -383,6 +404,67 @@ func saveListRowToWire(row db.ListUserSavesRow) SaveWire {
 		TargetURL: derefStr(row.EntryUrl),
 		EntrySlug: derefStr(row.EntrySlug),
 		Tags:      tags.Unmarshal(row.Tags),
+	}
+	if row.EntrySlug == nil {
+		return wire
+	}
+	source := buildSourceMeta(derefStr(row.EntryFeedUrl), displayTitle(row.SubscriptionTitle, row.CatalogTitle), row.FeedSiteUrl, row.FeedIconUrl)
+	source.Rkey = derefStr(row.SubscriptionRkey)
+	wire.Source = &source
+	wire.ContentType = derefStr(row.EntryContentType)
+	body := derefStr(row.EntryExtractedBody)
+	if body == "" {
+		body = derefStr(row.EntryContentHtml)
+	}
+	// A video's description is no measure of how long it plays.
+	if wire.ContentType != "video" {
+		wire.Minutes = readingMinutes(htmlText(body))
+	}
+	return wire
+}
+
+const wordsPerMinute = 220
+
+// blockElements end a run of text, so their boundaries read as spaces rather than gluing two words together.
+var blockElements = map[string]bool{
+	"p": true, "div": true, "li": true, "br": true, "h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
+	"blockquote": true, "figcaption": true, "tr": true, "td": true, "th": true, "pre": true, "section": true, "article": true,
+}
+
+// readingMinutes rounds up, so any text takes at least a minute.
+func readingMinutes(text string) int {
+	return (len(strings.Fields(text)) + wordsPerMinute - 1) / wordsPerMinute
+}
+
+func htmlText(body string) string {
+	var b strings.Builder
+	skip := 0
+	z := html.NewTokenizer(strings.NewReader(body))
+	for {
+		switch z.Next() {
+		case html.ErrorToken:
+			return b.String()
+		case html.TextToken:
+			if skip == 0 {
+				b.WriteString(z.Token().Data)
+			}
+		case html.StartTagToken, html.SelfClosingTagToken:
+			name, _ := z.TagName()
+			switch tag := string(name); {
+			case tag == "script" || tag == "style":
+				skip++
+			case blockElements[tag]:
+				b.WriteByte(' ')
+			}
+		case html.EndTagToken:
+			name, _ := z.TagName()
+			switch tag := string(name); {
+			case (tag == "script" || tag == "style") && skip > 0:
+				skip--
+			case blockElements[tag]:
+				b.WriteByte(' ')
+			}
+		}
 	}
 }
 

@@ -1,4 +1,5 @@
-import { parseDigestDate } from '@/lib/digest-dates';
+import { parseDigestDate, toDateKey } from '@/lib/digest-dates';
+import type { SaveState } from '@/lib/library';
 
 export const PATHS = {
     login: '/login',
@@ -60,6 +61,27 @@ const SOURCE_PAGE = /^\/sources\/(?:newsletters\/)?[^/?#\\]+$/;
 // `from` arrives in the URL, so only a source page path is trusted as a link target.
 export function sourceOrigin(from: string | null): string | null {
     return from && SOURCE_PAGE.test(from) ? from : null;
+}
+
+export function libraryHref(tab: SaveState = 'queue'): string {
+    return tab === 'queue' ? PATHS.library : `${PATHS.library}?tab=${tab}`;
+}
+
+const LIBRARY_PAGE = /^\/library(?:\?tab=archived)?$/;
+
+// Like sourceOrigin: only a Library tab the app itself links to is trusted as the way back.
+function libraryOrigin(from: string | null): string | null {
+    return from && LIBRARY_PAGE.test(from) ? from : null;
+}
+
+// The reader returns to the source page or Library tab it was opened from, and otherwise to the digest day `from` names.
+export function readerBack(from: string | null): { href: string; label: string } {
+    const source = sourceOrigin(from);
+    if (source) return { href: source, label: 'Back to source' };
+    const library = libraryOrigin(from);
+    if (library) return { href: library, label: 'Back to library' };
+    const date = parseDigestDate(from);
+    return { href: digestHref(date ? toDateKey(date) : undefined), label: 'Back to digest' };
 }
 
 export function digestHref(date?: string): string {

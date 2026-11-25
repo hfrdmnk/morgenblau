@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 
-import { CheckIcon } from '@/components/icons';
 import { SaveTagEditor } from '@/components/save-tags';
 import { announceRemove } from '@/lib/save-announce';
 import { TagChips } from '@/components/tag-input';
@@ -10,6 +9,7 @@ import { Frame } from '@/design/frame';
 import { Text } from '@/design/text';
 import { useSaveState } from '@/hooks/use-entry-save';
 import type { EntrySave } from '@/lib/entry-save';
+import { saveState, visibleTags, withState, type SaveState } from '@/lib/library';
 
 // The end of a saved article is where it gets filed; an unsaved one ends without asking.
 export function SaveFiling({ save }: { save: EntrySave }) {
@@ -17,8 +17,17 @@ export function SaveFiling({ save }: { save: EntrySave }) {
     return saved ? <SavedFiling save={save} tags={tags} /> : null;
 }
 
-// Unmounts with the save, so a re-save starts closed however it was removed.
+const FILED: Record<SaveState, string> = { queue: 'Saved to Library', archived: 'Archived' };
+const NEXT: Record<SaveState, { label: string; state: SaveState }> = {
+    queue: { label: 'Archive', state: 'archived' },
+    archived: { label: 'Read again later', state: 'queue' },
+};
+
+// Unmounts with the save, so a re-save starts closed however it was removed. The end of the article is where a save is
+// finished with: one line names where it is and offers what to do next, and the rail's bookmark already shows that it is saved.
 function SavedFiling({ save, tags }: { save: EntrySave; tags: string[] }) {
+    const state = saveState(tags);
+    const next = NEXT[state];
     const [editing, setEditing] = useState(false);
     const input = useRef<HTMLInputElement>(null);
     useEffect(() => {
@@ -26,43 +35,56 @@ function SavedFiling({ save, tags }: { save: EntrySave; tags: string[] }) {
     }, [editing]);
 
     return (
-        <Frame paddingTop="6xl">
-            <Frame aria-labelledby="save-filing" as="section" border="top" paddingTop="3xl">
-                <Frame align="center" direction="row" gap="m" justify="between" wrap>
-                    <Frame align="center" direction="row" gap="s">
-                        <CheckIcon size="md" tone="success-icon" />
-                        <Text as="h2" id="save-filing" size="sm" weight="medium">
-                            Saved to Library
-                        </Text>
-                    </Frame>
+        <Frame paddingTop="5xl">
+            <Frame aria-label={FILED[state]} as="section" border="top" gap="l" paddingTop="3xl">
+                <Frame align="center" direction="row" gapX="m" gapY="xs" wrap>
+                    <Text as="span" size="sm" tone="subtle">
+                        {FILED[state]}
+                    </Text>
                     <Frame align="center" direction="row" gap="m">
-                        {!editing ? (
-                            <>
-                                <Button onClick={() => setEditing(true)} size="bare" variant="nav">
-                                    Add tags
-                                </Button>
-                                <Separator />
-                            </>
-                        ) : null}
+                        <Button onClick={() => save.setTags(withState(tags, next.state))} size="bare" variant="nav">
+                            {next.label}
+                        </Button>
+                        <Separator />
+                        <Button disabled={editing} onClick={() => setEditing(true)} size="bare" variant="nav">
+                            {visibleTags(tags).length ? 'Edit tags' : 'Add tags'}
+                        </Button>
+                        <Separator />
                         <Button onClick={() => announceRemove(save, tags)} size="bare" variant="nav">
-                            Remove
+                            Remove from Library
                         </Button>
                     </Frame>
                 </Frame>
-                {editing ? (
-                    <Frame maxWidth="sm" paddingTop="2xl">
-                        <SaveTagEditor inputRef={input} save={save} />
-                    </Frame>
-                ) : tags.length ? (
-                    <Frame paddingTop="m">
-                        <TagChips
-                            inputRef={input}
-                            onRemove={(tag) => save.setTags(tags.filter((other) => other !== tag))}
-                            tags={tags}
-                        />
-                    </Frame>
-                ) : null}
+                <SavedTags editing={editing} input={input} save={save} tags={tags} />
             </Frame>
         </Frame>
+    );
+}
+
+function SavedTags({
+    save,
+    tags,
+    editing,
+    input,
+}: {
+    save: EntrySave;
+    tags: string[];
+    editing: boolean;
+    input: RefObject<HTMLInputElement | null>;
+}) {
+    const shown = visibleTags(tags);
+    if (editing)
+        return (
+            <Frame maxWidth="sm">
+                <SaveTagEditor inputRef={input} save={save} />
+            </Frame>
+        );
+    if (!shown.length) return null;
+    return (
+        <TagChips
+            inputRef={input}
+            onRemove={(tag) => save.setTags(tags.filter((other) => other !== tag))}
+            tags={shown}
+        />
     );
 }

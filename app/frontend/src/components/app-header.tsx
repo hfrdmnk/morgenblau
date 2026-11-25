@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { useLocation } from 'wouter';
 import { useSearch } from 'wouter/use-browser-location';
 
@@ -24,7 +24,7 @@ import {
     DayStepper,
     ModeLink,
     ModeNav,
-    SettingsTab,
+    PageTab,
 } from '@/components/ui/app-chrome';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -35,13 +35,19 @@ import type { AppNavigationState } from '@/hooks/use-app-location';
 import { useAppProfile } from '@/hooks/use-app-profile';
 import { useHeightProperty } from '@/hooks/use-height-property';
 import { addCalendarDays, digestDateRange, selectedDigestDate, startOfToday, toDateKey } from '@/lib/digest-dates';
-import { APP_MODES, appMode, digestHref, isSettingsPath, PATHS } from '@/lib/paths';
+import { libraryTab } from '@/lib/library';
+import { APP_MODES, appMode, digestHref, isSettingsPath, libraryHref, PATHS } from '@/lib/paths';
 
 const artwork = {
     [PATHS.digest]: { Icon: DigestIcon, ActiveIcon: DigestActiveIcon },
     [PATHS.sources]: { Icon: SourcesIcon, ActiveIcon: SourcesActiveIcon },
     [PATHS.library]: { Icon: LibraryIcon, ActiveIcon: LibraryActiveIcon },
 } as const;
+
+const libraryTabs = [
+    { label: 'To read', tab: 'queue' },
+    { label: 'Archive', tab: 'archived' },
+] as const;
 
 const settingsTabs = [
     { label: 'General', href: PATHS.general },
@@ -86,6 +92,7 @@ export function AppHeader() {
                 )}
                 {location === PATHS.digest ? <DigestDateNav /> : null}
                 {isSettingsPath(location) ? <SettingsNav location={location} /> : null}
+                {location === PATHS.library ? <LibraryNav /> : null}
                 <Frame
                     align="center"
                     colStart={{ base: 2, md: 3 }}
@@ -144,12 +151,12 @@ function SettingsReturnLink() {
     );
 }
 
-function SettingsNav({ location }: { location: string }) {
-    const selected = location === PATHS.settings ? PATHS.general : location;
+// A page's own sections sit in the header's middle column on wide screens and take a row of their own on the phone.
+function PageNav({ label, children }: { label: string; children: ReactNode }) {
     return (
         <Frame
             align="center"
-            aria-label="Settings"
+            aria-label={label}
             as="nav"
             colSpan={{ base: 2, md: 1 }}
             colStart={{ md: 2 }}
@@ -158,12 +165,34 @@ function SettingsNav({ location }: { location: string }) {
             justifySelf={{ md: 'center' }}
             rowStart={{ base: 2, md: 1 }}
         >
-            {settingsTabs.map(({ label, href }) => (
-                <SettingsTab current={selected === href} href={href} key={href}>
-                    {label}
-                </SettingsTab>
-            ))}
+            {children}
         </Frame>
+    );
+}
+
+function SettingsNav({ location }: { location: string }) {
+    const selected = location === PATHS.settings ? PATHS.general : location;
+    return (
+        <PageNav label="Settings">
+            {settingsTabs.map(({ label, href }) => (
+                <PageTab current={selected === href} href={href} key={href}>
+                    {label}
+                </PageTab>
+            ))}
+        </PageNav>
+    );
+}
+
+function LibraryNav() {
+    const selected = libraryTab(useSearch());
+    return (
+        <PageNav label="Library">
+            {libraryTabs.map(({ label, tab }) => (
+                <PageTab current={selected === tab} href={libraryHref(tab)} key={tab}>
+                    {label}
+                </PageTab>
+            ))}
+        </PageNav>
     );
 }
 

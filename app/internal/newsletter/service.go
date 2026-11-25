@@ -429,7 +429,7 @@ func (s *Service) ListSaves(ctx context.Context, did string) ([]SaveItem, error)
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, SaveItem{ID: row.ID, MessageID: row.MessageID, CreatedAt: created, Title: deref(row.Title), EntrySlug: row.EntrySlug, ReceivedAt: received, SourceTitle: row.SourceTitle, Tags: parseTags(row.Tags)})
+		items = append(items, SaveItem{ID: row.ID, MessageID: row.MessageID, CreatedAt: created, Title: deref(row.Title), EntrySlug: row.EntrySlug, ReceivedAt: received, SourceID: row.SourceID, SourceTitle: row.SourceTitle, Text: deref(row.BodyText), Tags: parseTags(row.Tags)})
 	}
 	return items, nil
 }

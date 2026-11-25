@@ -1,7 +1,16 @@
 import { useId, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
-import { ArrowRightIcon, CheckIcon, ExternalLinkIcon, LoadingIcon } from '@/components/icons';
+import {
+    ArchiveIcon,
+    ArrowRightIcon,
+    CheckIcon,
+    CopyIcon,
+    ExternalLinkIcon,
+    LoadingIcon,
+    TrashIcon,
+} from '@/components/icons';
+import { ItemList, ListItem } from '@/components/item-list';
 import { EmptyState, ErrorState, LoadingState } from '@/components/status-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,6 +23,13 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuSeparator,
+    ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { Input } from '@/components/ui/input';
 import { Link } from '@/components/ui/link';
 import {
@@ -24,6 +40,7 @@ import {
     PopoverTitle,
     PopoverTrigger,
 } from '@/components/ui/popover';
+import { PostList } from '@/components/ui/post-list';
 import { SpecimenAside, SpecimenStrip, StateSpecimen, Swatch, ThemeScope } from '@/components/ui/specimen';
 import { Textarea } from '@/components/ui/textarea';
 import { Frame } from '@/design/frame';
@@ -327,6 +344,38 @@ function ButtonSpecimens() {
     );
 }
 
+function ContextMenuSpecimen() {
+    return (
+        <Frame gap="m">
+            <Caption>Context menu: right click or long-press the row</Caption>
+            <ContextMenu>
+                <ContextMenuTrigger>
+                    <PostList>
+                        <ItemList>
+                            <ListItem href="#buttons" meta="Example Publication · 4 min" title="A saved post" />
+                        </ItemList>
+                    </PostList>
+                </ContextMenuTrigger>
+                <ContextMenuContent>
+                    <ContextMenuItem>
+                        <ArchiveIcon />
+                        Archive
+                    </ContextMenuItem>
+                    <ContextMenuItem>
+                        <CopyIcon />
+                        Copy link
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem tone="destructive">
+                        <TrashIcon />
+                        Remove from Library
+                    </ContextMenuItem>
+                </ContextMenuContent>
+            </ContextMenu>
+        </Frame>
+    );
+}
+
 function FormSpecimens() {
     const errorId = useId();
     const successId = useId();
@@ -615,6 +664,9 @@ export function Styleguide() {
                                 </Frame>
                             </Frame>
                         </Frame>
+                        <ThemePair>
+                            <ContextMenuSpecimen />
+                        </ThemePair>
                     </Section>
 
                     <Section

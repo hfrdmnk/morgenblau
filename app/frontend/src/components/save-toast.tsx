@@ -6,14 +6,19 @@ import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { Frame } from '@/design/frame';
 import { Text } from '@/design/text';
+import { useSaveState } from '@/hooks/use-entry-save';
 import { useShortcuts } from '@/hooks/use-shortcuts';
 import type { EntrySave } from '@/lib/entry-save';
+import { saveState, withState } from '@/lib/library';
 
 // Tagging is offered, never asked for: the field opens on "Add tags" or T, so saving never takes the reader's keys.
 export function SaveToast({ save, onHold }: { save: EntrySave; onHold: (held: boolean) => void }) {
     const [open, setOpen] = useState(false);
     const input = useRef<HTMLInputElement>(null);
-    useShortcuts({ t: () => setOpen(true) });
+    const { tags } = useSaveState(save);
+    // Saving something already read files it straight away, so the archive is one key away instead of a scroll to the article's end.
+    const archive = () => save.setTags(withState(tags, 'archived'));
+    useShortcuts({ t: () => setOpen(true), 'Shift+A': archive });
     useEffect(() => {
         if (open) input.current?.focus();
     }, [open]);
@@ -30,11 +35,7 @@ export function SaveToast({ save, onHold }: { save: EntrySave; onHold: (held: bo
         >
             <Frame align="center" direction="row" gap="m">
                 <CheckIcon size="md" tone="success-icon" />
-                <Frame grow>
-                    <Text as="span" weight="medium">
-                        Saved to Library
-                    </Text>
-                </Frame>
+                <ToastTitle archive={archive} archived={saveState(tags) === 'archived'} />
                 {!open ? (
                     <Button aria-keyshortcuts="t" onClick={() => setOpen(true)} size="inline" variant="quiet">
                         Add tags
@@ -44,5 +45,23 @@ export function SaveToast({ save, onHold }: { save: EntrySave; onHold: (held: bo
             </Frame>
             {open ? <SaveTagEditor inputRef={input} save={save} /> : null}
         </Frame>
+    );
+}
+
+function ToastTitle({ archived, archive }: { archived: boolean; archive: () => void }) {
+    return (
+        <>
+            <Frame grow>
+                <Text as="span" weight="medium">
+                    {archived ? 'Saved to Archive' : 'Saved to Library'}
+                </Text>
+            </Frame>
+            {archived ? null : (
+                <Button aria-keyshortcuts="Shift+A" onClick={archive} size="inline" variant="quiet">
+                    Archive
+                    <Kbd hideOnTouch>⇧A</Kbd>
+                </Button>
+            )}
+        </>
     );
 }

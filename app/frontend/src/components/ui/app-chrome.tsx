@@ -57,8 +57,9 @@ function ModeLink({
     );
 }
 
-// Touch-tall, with no side padding, so the first label starts on the page's edge like the logo and content around it.
-function SettingsTab({
+// A page's own sections, such as Settings' or the Library's: touch-tall, with no side padding, so the first label starts on the page's
+// edge like the logo and content around it.
+function PageTab({
     href,
     current,
     ...props
@@ -136,10 +137,6 @@ function DateStripSpacer() {
     );
 }
 
-function PagePlaceholder(props: Omit<ComponentProps<'main'>, 'className' | 'style'>) {
-    return <main className="page-placeholder" {...props} />;
-}
-
 export {
     AdminBanner,
     AppHeaderBar,
@@ -150,6 +147,5 @@ export {
     DayStepper,
     ModeLink,
     ModeNav,
-    PagePlaceholder,
-    SettingsTab,
+    PageTab,
 };
