@@ -3,6 +3,8 @@ import { useRef, type ReactNode, type RefObject } from 'react';
 import { EditNewsletterSheet, EditSourceSheet } from '@/components/add-source-dialog';
 import { FeedHealth, GeneratedNote } from '@/components/feed-health';
 import { ItemList, ListError, ListItem } from '@/components/item-list';
+import { EmptyState } from '@/components/status-state';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Link } from '@/components/ui/link';
 import { PageSection } from '@/components/page-section';
@@ -107,13 +109,20 @@ function FeedList({ removedFocus }: { removedFocus: RemovedFocus }) {
                             )}
                         />
                     ) : (
-                        <Text size="sm" tone="muted">
-                            No feeds yet.{' '}
-                            <Link href={PATHS.import} variant="underline">
-                                Import feeds
-                            </Link>{' '}
-                            to get started.
-                        </Text>
+                        <EmptyState
+                            symbol="streams"
+                            title="No feeds yet."
+                            description="Add a blog, a YouTube channel or a podcast, and its posts will gather in your digest."
+                            action={
+                                <Button
+                                    render={<Link href={PATHS.import} variant="plain" />}
+                                    nativeButton={false}
+                                    variant="ghost"
+                                >
+                                    Import feeds
+                                </Button>
+                            }
+                        />
                     )
                 }
             </Skeleton>

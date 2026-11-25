@@ -14,6 +14,7 @@ export function NotFound() {
                 Page not found
             </Text>
             <EmptyState
+                symbol="loop"
                 title="Page not found"
                 description="This address doesn’t lead to anything in Morgenblau."
                 action={

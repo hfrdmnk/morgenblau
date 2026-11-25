@@ -16,7 +16,6 @@ import { IconCircleInfo as CentralInfoIcon } from '@central-icons-react/round-ou
 import { IconCrossLarge as CentralCloseIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconCrossLarge';
 import { IconDotGrid1x3Horizontal as CentralMoreIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconDotGrid1x3Horizontal';
 import { IconExclamationTriangle as CentralAlertIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconExclamationTriangle';
-import { IconInboxEmpty as CentralInboxIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconInboxEmpty';
 import { IconLayersThree as CentralSourcesActiveIcon } from '@central-icons-react/round-filled-radius-2-stroke-1.5/IconLayersThree';
 import { IconLayersThree as CentralSourcesIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLayersThree';
 import { IconLoader as CentralLoadingIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLoader';
@@ -96,7 +95,6 @@ export const CloseIcon = icon(CentralCloseIcon);
 export const MoreIcon = icon(CentralMoreIcon);
 export const AlertIcon = icon(CentralAlertIcon);
 export const SourcesIcon = icon(CentralSourcesIcon);
-export const InboxIcon = icon(CentralInboxIcon);
 export const LoadingIcon = icon(CentralLoadingIcon);
 export const PenIcon = icon(CentralPenIcon);
 export const PlusIcon = icon(CentralPlusIcon);

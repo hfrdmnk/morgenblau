@@ -197,6 +197,9 @@
         0 0 0 1px oklch(0.216 0.006 56.043 / 0.08), 0 8px 24px -8px oklch(0.216 0.006 56.043 / 0.16),
         0 2px 6px -2px oklch(0.216 0.006 56.043 / 0.08);
     --radius: 0.45rem;
+    --state-art-digest: url('./assets/states/digest-light.webp');
+    --state-art-sources: url('./assets/states/sources-light.webp');
+    --state-art-library: url('./assets/states/library-light.webp');
 }
 
 .dark {
@@ -241,6 +244,9 @@
     --selection: oklch(from var(--color-atmosphere-blue) calc(l - 0.05) c calc(h + 7) / 0.8);
     --selection-foreground: oklch(from var(--color-atmosphere-blue) 0.97 0.02 calc(h - 7));
     --popover-shadow: 0 12px 32px -8px oklch(0 0 0 / 0.56), 0 3px 8px -2px oklch(0 0 0 / 0.4);
+    --state-art-digest: url('./assets/states/digest-dark.webp');
+    --state-art-sources: url('./assets/states/sources-dark.webp');
+    --state-art-library: url('./assets/states/library-dark.webp');
 }
 
 @layer base {
@@ -406,6 +412,42 @@
 
 @utility btn-surface-* {
     --btn-surface: --value(--color-*);
+}
+
+/* A page state's symbol: its mode's smear art seen through the shape. Each shape is half a viewBox unit per pixel, so every symbol keeps the logo's bar weight. */
+@utility state-symbol {
+    background-image: var(--state-art);
+    background-size: cover;
+    background-position: center;
+    mask-size: 100% 100%;
+}
+
+@utility state-symbol-calm {
+    --state-art: var(--state-art-digest);
+    mask-image: url('./assets/states/calm.svg');
+    width: 7rem;
+    height: 5.5rem;
+}
+
+@utility state-symbol-streams {
+    --state-art: var(--state-art-sources);
+    mask-image: url('./assets/states/streams.svg');
+    width: 6rem;
+    height: 6rem;
+}
+
+@utility state-symbol-shelf {
+    --state-art: var(--state-art-library);
+    mask-image: url('./assets/states/shelf.svg');
+    width: 5.875rem;
+    height: 5.875rem;
+}
+
+@utility state-symbol-loop {
+    --state-art: var(--state-art-digest);
+    mask-image: url('./assets/states/loop.svg');
+    width: 5.5rem;
+    height: 5.5rem;
 }
 
 /* Base UI's drawer sets the swipe variables: the backdrop fades as the popup follows the finger, and a release finishes at the swipe's speed. */

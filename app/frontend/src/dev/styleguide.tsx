@@ -24,6 +24,7 @@ import {
     PopoverTitle,
     PopoverTrigger,
 } from '@/components/ui/popover';
+import { StateSymbol } from '@/components/ui/state-symbol';
 import { SpecimenAside, SpecimenStrip, StateSpecimen, Swatch, ThemeScope } from '@/components/ui/specimen';
 import { Textarea } from '@/components/ui/textarea';
 import { Frame } from '@/design/frame';
@@ -689,7 +690,7 @@ export function Styleguide() {
                     <Section
                         id="states"
                         title="Loading, empty, and error"
-                        description="Page states use concise copy, one clear recovery action where useful, and no decorative containers."
+                        description="Page states use concise copy, one clear recovery action where useful, and no decorative containers. Empty and error states carry their mode’s symbol, painted with its art."
                     >
                         <SpecimenStrip>
                             <LoadingState
@@ -697,6 +698,7 @@ export function Styleguide() {
                                 description="This should only take a moment."
                             />
                             <EmptyState
+                                symbol="calm"
                                 title="No entries for this day"
                                 description="Choose another day or add a source."
                                 action={<Button variant="secondary">Add a source</Button>}
@@ -707,6 +709,11 @@ export function Styleguide() {
                                 action={<Button variant="secondary">Try again</Button>}
                             />
                         </SpecimenStrip>
+                        <Frame direction="row" wrap align="end" gap="3xl">
+                            {(['calm', 'streams', 'shelf', 'loop'] as const).map((shape) => (
+                                <StateSymbol key={shape} shape={shape} />
+                            ))}
+                        </Frame>
                     </Section>
 
                     <Section

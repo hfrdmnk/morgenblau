@@ -215,10 +215,17 @@ function EmptyDigest({ digest }: { digest: DigestData }) {
 
 function EmptyDigestState({ noSources }: { noSources: boolean }) {
     if (!noSources) {
-        return <EmptyState title="A quiet day." description="None of your sources published anything on this day." />;
+        return (
+            <EmptyState
+                symbol="calm"
+                title="A quiet day."
+                description="None of your sources published anything on this day."
+            />
+        );
     }
     return (
         <EmptyState
+            symbol="calm"
             title={`${greeting(new Date())}. Nothing to read yet.`}
             description="Tell Morgenblau what you like to read, and new posts will gather here as they’re published."
             action={<AddSourceDialog trigger={<Button>Add your first source</Button>} />}

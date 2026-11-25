@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
-import { AlertIcon, InboxIcon, LoadingIcon } from '@/components/icons';
+import { LoadingIcon } from '@/components/icons';
+import { StateSymbol, type StateSymbolShape } from '@/components/ui/state-symbol';
 import { Frame } from '@/design/frame';
 import { Text } from '@/design/text';
 
@@ -12,16 +13,14 @@ type StatusStateProps = {
 
 type StateFrameProps = StatusStateProps & {
     icon: ReactNode;
-    tone?: 'default' | 'error';
+    gap: 'm' | 'xl';
     role?: 'alert' | 'status';
 };
 
-function StateFrame({ action, description, icon, role, title, tone = 'default' }: StateFrameProps) {
+function StateFrame({ action, description, gap, icon, role, title }: StateFrameProps) {
     return (
-        <Frame align="center" gap="m" justify="center" minHeight="state" paddingX="2xl" paddingY="4xl" role={role}>
-            <Text as="span" tone={tone === 'error' ? 'destructive' : 'muted'}>
-                {icon}
-            </Text>
+        <Frame align="center" gap={gap} justify="center" minHeight="state" paddingX="2xl" paddingY="4xl" role={role}>
+            {icon}
             <Frame gap="2xs" maxWidth="sm">
                 <Text align="center" weight="medium">
                     {title}
@@ -38,15 +37,23 @@ function StateFrame({ action, description, icon, role, title, tone = 'default' }
 }
 
 function LoadingState({ title, ...props }: Omit<StatusStateProps, 'action'>) {
-    return <StateFrame title={title} icon={<LoadingIcon size="2xl" spin />} role="status" {...props} />;
+    return (
+        <StateFrame
+            title={title}
+            icon={<LoadingIcon size="2xl" spin tone="muted" />}
+            gap="m"
+            role="status"
+            {...props}
+        />
+    );
 }
 
-function EmptyState(props: StatusStateProps) {
-    return <StateFrame icon={<InboxIcon size="2xl" />} {...props} />;
+function EmptyState({ symbol, ...props }: StatusStateProps & { symbol: StateSymbolShape }) {
+    return <StateFrame icon={<StateSymbol shape={symbol} />} gap="xl" {...props} />;
 }
 
 function ErrorState(props: StatusStateProps) {
-    return <StateFrame icon={<AlertIcon size="2xl" />} role="alert" tone="error" {...props} />;
+    return <StateFrame icon={<StateSymbol shape="loop" />} gap="xl" role="alert" {...props} />;
 }
 
 export { EmptyState, ErrorState, LoadingState };
