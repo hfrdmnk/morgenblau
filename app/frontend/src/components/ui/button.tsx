@@ -17,6 +17,7 @@ const buttonVariants = cva(
                 quiet: 'text-muted-foreground hover:bg-secondary hover:text-foreground aria-expanded:bg-secondary',
                 subtle: 'text-subtle-foreground hover:bg-secondary hover:text-foreground aria-expanded:bg-secondary',
                 nav: 'text-muted-foreground hover:text-foreground disabled:text-subtle-foreground',
+                link: 'underline decoration-border underline-offset-4 hover:text-foreground hover:decoration-current',
                 disclosure:
                     'text-muted-foreground hover:bg-foreground-faint hover:text-foreground aria-expanded:bg-foreground-faint aria-expanded:text-foreground [&_svg]:transition-transform [&_svg]:duration-(--motion-duration-ui) [&_svg]:ease-(--ease-out) motion-reduce:[&_svg]:transition-none',
                 destructive: `${raised} btn-surface-destructive-tint text-destructive`,

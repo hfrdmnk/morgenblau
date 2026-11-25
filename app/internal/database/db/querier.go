@@ -112,10 +112,10 @@ type Querier interface {
 	ListNewsletterSources(ctx context.Context, arg ListNewsletterSourcesParams) ([]ListNewsletterSourcesRow, error)
 	ListPublicFollowingSources(ctx context.Context, did string) ([]ListPublicFollowingSourcesRow, error)
 	ListUserSaveTags(ctx context.Context, did string) ([]*string, error)
-	// Newest first. The entry join resolves title/slug/target for saves whose entry
-	// is still cached; url is not unique in feed_entries, so the newest matching
-	// entry is picked by id rather than joined on url directly, which would fan one
-	// save out into a row per feed carrying the same link.
+	// Newest first. The entry join resolves title/slug/target, body and source for
+	// saves whose entry is still cached; url is not unique in feed_entries, so the
+	// newest matching entry is picked by id rather than joined on url directly,
+	// which would fan one save out into a row per feed carrying the same link.
 	ListUserSaves(ctx context.Context, did string) ([]ListUserSavesRow, error)
 	// Snapshot of a user's local save index, used by sync_user to diff against the
 	// PDS and reconcile inserts/deletes.

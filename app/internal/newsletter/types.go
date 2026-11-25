@@ -95,7 +95,9 @@ type SaveItem struct {
 	Title       string
 	EntrySlug   string
 	ReceivedAt  time.Time
+	SourceID    string
 	SourceTitle string
+	Text        string
 	Tags        []string
 }
 

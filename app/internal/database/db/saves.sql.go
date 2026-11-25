@@ -108,34 +108,52 @@ SELECT
     e.title AS entry_title,
     e.entry_slug AS entry_slug,
     e.url AS entry_url,
-    e.feed_url AS entry_feed_url
+    e.feed_url AS entry_feed_url,
+    e.content_html AS entry_content_html,
+    e.extracted_body AS entry_extracted_body,
+    e.content_type AS entry_content_type,
+    f.title AS catalog_title,
+    f.site_url AS feed_site_url,
+    f.icon_url AS feed_icon_url,
+    us.title AS subscription_title,
+    us.rkey AS subscription_rkey
 FROM user_saves s
 LEFT JOIN feed_entries e ON e.id = (
     SELECT id FROM feed_entries WHERE url = s.item_url ORDER BY published_at DESC LIMIT 1
 )
+LEFT JOIN feeds f ON f.feed_url = e.feed_url
+LEFT JOIN user_subscriptions us ON us.did = s.did AND us.feed_url = e.feed_url
 WHERE s.did = ?
 ORDER BY s.created_at DESC, s.rkey DESC
 `
 
 type ListUserSavesRow struct {
-	Did          string  `json:"did"`
-	Rkey         string  `json:"rkey"`
-	AtUri        string  `json:"at_uri"`
-	ItemUrl      string  `json:"item_url"`
-	FeedUrl      *string `json:"feed_url"`
-	CreatedAt    string  `json:"created_at"`
-	UpdatedAt    string  `json:"updated_at"`
-	Tags         *string `json:"tags"`
-	EntryTitle   *string `json:"entry_title"`
-	EntrySlug    *string `json:"entry_slug"`
-	EntryUrl     *string `json:"entry_url"`
-	EntryFeedUrl *string `json:"entry_feed_url"`
+	Did                string  `json:"did"`
+	Rkey               string  `json:"rkey"`
+	AtUri              string  `json:"at_uri"`
+	ItemUrl            string  `json:"item_url"`
+	FeedUrl            *string `json:"feed_url"`
+	CreatedAt          string  `json:"created_at"`
+	UpdatedAt          string  `json:"updated_at"`
+	Tags               *string `json:"tags"`
+	EntryTitle         *string `json:"entry_title"`
+	EntrySlug          *string `json:"entry_slug"`
+	EntryUrl           *string `json:"entry_url"`
+	EntryFeedUrl       *string `json:"entry_feed_url"`
+	EntryContentHtml   *string `json:"entry_content_html"`
+	EntryExtractedBody *string `json:"entry_extracted_body"`
+	EntryContentType   *string `json:"entry_content_type"`
+	CatalogTitle       *string `json:"catalog_title"`
+	FeedSiteUrl        *string `json:"feed_site_url"`
+	FeedIconUrl        *string `json:"feed_icon_url"`
+	SubscriptionTitle  *string `json:"subscription_title"`
+	SubscriptionRkey   *string `json:"subscription_rkey"`
 }
 
-// Newest first. The entry join resolves title/slug/target for saves whose entry
-// is still cached; url is not unique in feed_entries, so the newest matching
-// entry is picked by id rather than joined on url directly, which would fan one
-// save out into a row per feed carrying the same link.
+// Newest first. The entry join resolves title/slug/target, body and source for
+// saves whose entry is still cached; url is not unique in feed_entries, so the
+// newest matching entry is picked by id rather than joined on url directly,
+// which would fan one save out into a row per feed carrying the same link.
 func (q *Queries) ListUserSaves(ctx context.Context, did string) ([]ListUserSavesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listUserSaves, did)
 	if err != nil {
@@ -158,6 +176,14 @@ func (q *Queries) ListUserSaves(ctx context.Context, did string) ([]ListUserSave
 			&i.EntrySlug,
 			&i.EntryUrl,
 			&i.EntryFeedUrl,
+			&i.EntryContentHtml,
+			&i.EntryExtractedBody,
+			&i.EntryContentType,
+			&i.CatalogTitle,
+			&i.FeedSiteUrl,
+			&i.FeedIconUrl,
+			&i.SubscriptionTitle,
+			&i.SubscriptionRkey,
 		); err != nil {
 			return nil, err
 		}

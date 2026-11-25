@@ -1,5 +1,7 @@
 import { IconMagicWand as CentralGeneratedIcon } from '@central-icons-react/round-filled-radius-2-stroke-1.5/IconMagicWand';
 import { IconStar as CentralPrimaryIcon } from '@central-icons-react/round-filled-radius-2-stroke-1.5/IconStar';
+import { IconArchive as CentralArchiveIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconArchive';
+import { IconArrowRotateCounterClockwise as CentralReadAgainIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconArrowRotateCounterClockwise';
 import { IconArrowUp as CentralArrowUpIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconArrowUp';
 import { IconBubbleText as CentralFeedbackIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconBubbleText';
 import { IconImages2 as CentralImageIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconImages2';
@@ -7,6 +9,7 @@ import { IconArrowCornerDownLeft as CentralEnterIcon } from '@central-icons-reac
 import { IconArrowDownWall as CentralDownloadIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconArrowDownWall';
 import { IconArrowRight as CentralArrowRightIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconArrowRight';
 import { IconArrowUpWall as CentralUploadIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconArrowUpWall';
+import { IconTrashCan as CentralTrashIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconTrashCan';
 import { IconBookmark as CentralBookmarkIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconBookmark';
 import { IconBooks as CentralLibraryActiveIcon } from '@central-icons-react/round-filled-radius-2-stroke-1.5/IconBooks';
 import { IconBooks as CentralLibraryIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconBooks';
@@ -86,6 +89,9 @@ export const DownloadIcon = icon(CentralDownloadIcon);
 export const ArrowRightIcon = icon(CentralArrowRightIcon);
 export const UploadIcon = icon(CentralUploadIcon);
 export const BookmarkIcon = icon(CentralBookmarkIcon);
+export const ArchiveIcon = icon(CentralArchiveIcon);
+export const ReadAgainIcon = icon(CentralReadAgainIcon);
+export const TrashIcon = icon(CentralTrashIcon);
 export const LibraryIcon = icon(CentralLibraryIcon);
 export const CheckIcon = icon(CentralCheckIcon);
 export const ChevronDownIcon = icon(CentralChevronDownIcon);

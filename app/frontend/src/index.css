@@ -478,12 +478,6 @@
     }
 }
 
-.page-placeholder {
-    display: grid;
-    min-height: 100dvh;
-    place-items: center;
-}
-
 :root {
     --grid-sidebar: 11rem minmax(0, 1fr);
     --grid-specimen: 3rem minmax(0, 1fr);
@@ -559,10 +553,6 @@ html:has(.app-banner) {
     padding-bottom: calc(8rem + env(safe-area-inset-bottom));
 }
 
-.app-shell > .page-placeholder {
-    min-height: calc(100dvh - 4rem - env(safe-area-inset-top));
-}
-
 .app-mode-nav {
     position: fixed;
     z-index: 30;
@@ -613,10 +603,6 @@ html:has(.app-banner) {
         width: min(48rem, calc(100% - 20rem));
         padding-top: 6rem;
         padding-bottom: 5rem;
-    }
-
-    .app-shell > .page-placeholder {
-        min-height: calc(100dvh - 5rem);
     }
 
     .app-mode-nav {

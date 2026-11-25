@@ -512,6 +512,9 @@ func TestSaveTagsStayWithTheOwnersSaveAndReachTheReader(t *testing.T) {
 	if err != nil || len(items) != 1 || strings.Join(items[0].Tags, ",") != "read-later,design" {
 		t.Errorf("ListSaves = %+v (%v)", items, err)
 	}
+	if len(items) == 1 && (items[0].SourceID != sourceID || items[0].Text != "body") {
+		t.Errorf("ListSaves source = %q, text = %q; the Library shows the source and measures the text for its reading time", items[0].SourceID, items[0].Text)
+	}
 	if all, err := service.ListSaveTags(ctx, "did:plc:alice"); err != nil || strings.Join(all, ",") != "read-later,design" {
 		t.Errorf("ListSaveTags = %v (%v)", all, err)
 	}

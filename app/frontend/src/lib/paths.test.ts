@@ -1,6 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 
-import { entryHref, entryListPath, newsletterSourceHref, readerSourceHref, sourceHref, sourceOrigin } from './paths';
+import {
+    entryHref,
+    entryListPath,
+    libraryHref,
+    newsletterSourceHref,
+    readerBack,
+    readerSourceHref,
+    sourceHref,
+    sourceOrigin,
+} from './paths';
 
 describe('reader origin', () => {
     test('a source page round-trips through the entry link', () => {
@@ -23,6 +32,23 @@ describe('reader origin', () => {
             '/sources/\\evil.example',
         ]) {
             expect(sourceOrigin(from)).toBeNull();
+        }
+    });
+});
+
+describe('reader back link', () => {
+    test('goes back to the source page, the Library tab or the digest day the entry was opened from', () => {
+        expect(readerBack('/sources/3kexample2a')).toEqual({ href: '/sources/3kexample2a', label: 'Back to source' });
+        expect(readerBack(libraryHref('archived'))).toEqual({
+            href: '/library?tab=archived',
+            label: 'Back to library',
+        });
+        expect(readerBack('2026-10-14')).toEqual({ href: '/?date=2026-10-14', label: 'Back to digest' });
+    });
+
+    test('an unknown origin falls back to today’s digest', () => {
+        for (const from of [null, '/library?tab=kept', '/library?tab=archived&x', '//evil.example/library']) {
+            expect(readerBack(from)).toEqual({ href: '/', label: 'Back to digest' });
         }
     });
 });

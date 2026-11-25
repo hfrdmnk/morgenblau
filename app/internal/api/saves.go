@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"golang.org/x/net/html"
 
 	"morgenblau/internal/atprepo"
 	"morgenblau/internal/database/db"
@@ -23,16 +24,19 @@ import (
 const saveCollection = lexicon.Save
 
 type SaveWire struct {
-	URI       string   `json:"uri,omitempty"`
-	CID       string   `json:"cid,omitempty"`
-	Rkey      string   `json:"rkey"`
-	ItemURL   string   `json:"itemUrl"`
-	FeedURL   string   `json:"feedUrl,omitempty"`
-	CreatedAt string   `json:"createdAt"`
-	Title     string   `json:"title,omitempty"`
-	TargetURL string   `json:"targetUrl,omitempty"`
-	EntrySlug string   `json:"entrySlug,omitempty"`
-	Tags      []string `json:"tags,omitempty"`
+	URI         string      `json:"uri,omitempty"`
+	CID         string      `json:"cid,omitempty"`
+	Rkey        string      `json:"rkey"`
+	ItemURL     string      `json:"itemUrl"`
+	FeedURL     string      `json:"feedUrl,omitempty"`
+	CreatedAt   string      `json:"createdAt"`
+	Title       string      `json:"title,omitempty"`
+	TargetURL   string      `json:"targetUrl,omitempty"`
+	EntrySlug   string      `json:"entrySlug,omitempty"`
+	Tags        []string    `json:"tags,omitempty"`
+	Source      *SourceMeta `json:"source,omitempty"`
+	ContentType string      `json:"contentType,omitempty"`
+	Minutes     int         `json:"minutes,omitempty"`
 }
 
 type SavesIndexReader interface {
@@ -51,12 +55,15 @@ type newsletterSaveLister interface {
 }
 
 type newsletterSaveWire struct {
-	Kind      string   `json:"kind"`
-	ID        string   `json:"id"`
-	CreatedAt string   `json:"createdAt"`
-	Title     string   `json:"title,omitempty"`
-	EntrySlug string   `json:"entrySlug"`
-	Tags      []string `json:"tags,omitempty"`
+	Kind      string     `json:"kind"`
+	ID        string     `json:"id"`
+	MessageID string     `json:"messageId"`
+	CreatedAt string     `json:"createdAt"`
+	Title     string     `json:"title,omitempty"`
+	EntrySlug string     `json:"entrySlug"`
+	Tags      []string   `json:"tags,omitempty"`
+	Source    SourceMeta `json:"source"`
+	Minutes   int        `json:"minutes,omitempty"`
 }
 
 type savesCreateRequest struct {
@@ -298,9 +305,17 @@ func SavesTagsHandler(reader saveTagsReader, privateListers ...newsletterSaveTag
 			}
 			lists = append(lists, private)
 		}
-		writeJSON(w, tagsResponse{Tags: distinctTags(lists...)})
+		suggestions := []string{}
+		for _, tag := range distinctTags(lists...) {
+			if !strings.EqualFold(tag, archivedTag) {
+				suggestions = append(suggestions, tag)
+			}
+		}
+		writeJSON(w, tagsResponse{Tags: suggestions})
 	})
 }
+
+const archivedTag = "archived"
 
 func SavesListHandler(reader SavesIndexReader, privateListers ...newsletterSaveLister) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -331,9 +346,12 @@ func SavesListHandler(reader SavesIndexReader, privateListers ...newsletterSaveL
 				return
 			}
 			for _, item := range items {
+				sourceTitle := item.SourceTitle
 				out = append(out, datedSave{created: item.CreatedAt, value: newsletterSaveWire{
-					Kind: "newsletter", ID: item.ID, CreatedAt: item.CreatedAt.Format(time.RFC3339),
+					Kind: "newsletter", ID: item.ID, MessageID: item.MessageID, CreatedAt: item.CreatedAt.Format(time.RFC3339),
 					Title: item.Title, EntrySlug: item.EntrySlug, Tags: item.Tags,
+					Source:  SourceMeta{Kind: "newsletter", ID: item.SourceID, Title: &sourceTitle},
+					Minutes: readingMinutes(item.Text),
 				}})
 			}
 		}
@@ -351,7 +369,7 @@ func saveListRowToWire(row db.ListUserSavesRow) SaveWire {
 	if feedURL == "" {
 		feedURL = derefStr(row.EntryFeedUrl)
 	}
-	return SaveWire{
+	wire := SaveWire{
 		URI:       row.AtUri,
 		Rkey:      row.Rkey,
 		ItemURL:   row.ItemUrl,
@@ -361,6 +379,64 @@ func saveListRowToWire(row db.ListUserSavesRow) SaveWire {
 		TargetURL: derefStr(row.EntryUrl),
 		EntrySlug: derefStr(row.EntrySlug),
 		Tags:      tags.Unmarshal(row.Tags),
+	}
+	if row.EntrySlug == nil {
+		return wire
+	}
+	source := buildSourceMeta(derefStr(row.EntryFeedUrl), displayTitle(row.SubscriptionTitle, row.CatalogTitle), row.FeedSiteUrl, row.FeedIconUrl)
+	source.Rkey = derefStr(row.SubscriptionRkey)
+	wire.Source = &source
+	wire.ContentType = derefStr(row.EntryContentType)
+	body := derefStr(row.EntryExtractedBody)
+	if body == "" {
+		body = derefStr(row.EntryContentHtml)
+	}
+	if wire.ContentType != "video" {
+		wire.Minutes = readingMinutes(htmlText(body))
+	}
+	return wire
+}
+
+const wordsPerMinute = 220
+
+var blockElements = map[string]bool{
+	"p": true, "div": true, "li": true, "br": true, "h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
+	"blockquote": true, "figcaption": true, "tr": true, "td": true, "th": true, "pre": true, "section": true, "article": true,
+}
+
+func readingMinutes(text string) int {
+	return (len(strings.Fields(text)) + wordsPerMinute - 1) / wordsPerMinute
+}
+
+func htmlText(body string) string {
+	var b strings.Builder
+	skip := 0
+	z := html.NewTokenizer(strings.NewReader(body))
+	for {
+		switch z.Next() {
+		case html.ErrorToken:
+			return b.String()
+		case html.TextToken:
+			if skip == 0 {
+				b.WriteString(z.Token().Data)
+			}
+		case html.StartTagToken, html.SelfClosingTagToken:
+			name, _ := z.TagName()
+			switch tag := string(name); {
+			case tag == "script" || tag == "style":
+				skip++
+			case blockElements[tag]:
+				b.WriteByte(' ')
+			}
+		case html.EndTagToken:
+			name, _ := z.TagName()
+			switch tag := string(name); {
+			case (tag == "script" || tag == "style") && skip > 0:
+				skip--
+			case blockElements[tag]:
+				b.WriteByte(' ')
+			}
+		}
 	}
 }
 

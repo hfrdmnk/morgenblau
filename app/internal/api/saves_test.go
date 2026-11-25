@@ -283,12 +283,28 @@ CREATE TABLE user_saves (
     PRIMARY KEY (did, rkey)
 );
 CREATE TABLE feed_entries (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    feed_url     TEXT NOT NULL,
-    entry_slug   TEXT NOT NULL,
-    url          TEXT NOT NULL,
-    title        TEXT,
-    published_at TEXT NOT NULL
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    feed_url       TEXT NOT NULL,
+    entry_slug     TEXT NOT NULL,
+    url            TEXT NOT NULL,
+    title          TEXT,
+    content_html   TEXT,
+    extracted_body TEXT,
+    content_type   TEXT NOT NULL DEFAULT 'blogpost',
+    published_at   TEXT NOT NULL
+);
+CREATE TABLE feeds (
+    feed_url TEXT PRIMARY KEY,
+    site_url TEXT,
+    title    TEXT,
+    icon_url TEXT
+);
+CREATE TABLE user_subscriptions (
+    did      TEXT NOT NULL,
+    rkey     TEXT NOT NULL,
+    feed_url TEXT NOT NULL,
+    title    TEXT,
+    PRIMARY KEY (did, rkey)
 );
 `
 
@@ -387,6 +403,44 @@ func TestSavesList_DuplicateEntryURLs_OneRowNewestWins(t *testing.T) {
 	}
 	if got[0].Title != "Newer Copy" || got[0].EntrySlug != "shared-new" {
 		t.Errorf("joined entry = %+v, want the newest by published_at", got[0])
+	}
+}
+
+func TestSavesList_CarriesSourceAndReadingTime(t *testing.T) {
+	dbs := openSavesTestDB(t)
+	feed := "https://blog.example.com/feed.xml"
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := dbs.Writer.ExecContext(context.Background(), query, args...); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	exec(`INSERT INTO feeds (feed_url, site_url, title, icon_url) VALUES (?, 'https://blog.example.com', 'Example Publication', 'https://blog.example.com/icon.png')`, feed)
+	exec(`INSERT INTO user_subscriptions (did, rkey, feed_url, title) VALUES ('did:plc:alice', 'sub-alice', ?, 'Alice''s Name For It')`, feed)
+	exec(`INSERT INTO user_subscriptions (did, rkey, feed_url, title) VALUES ('did:plc:bob', 'sub-bob', ?, 'Bob''s Name For It')`, feed)
+	seedSave(t, dbs, "did:plc:alice", "3article", "https://blog.example.com/article", nil, "2026-06-01T00:00:00Z")
+	seedSave(t, dbs, "did:plc:alice", "3video", "https://blog.example.com/video", nil, "2026-06-02T00:00:00Z")
+	long := "<h2>First heading</h2><p>Second" + strings.Repeat(" <em>word</em>", 500) + "</p>"
+	exec(`INSERT INTO feed_entries (feed_url, entry_slug, url, title, content_html, extracted_body, published_at) VALUES (?, 'article', 'https://blog.example.com/article', 'An Article', '<p>Only the teaser.</p>', ?, '2026-06-01T00:00:00Z')`, feed, long)
+	exec(`INSERT INTO feed_entries (feed_url, entry_slug, url, title, content_html, content_type, published_at) VALUES (?, 'video', 'https://blog.example.com/video', 'A Video', '<p>Short.</p>', 'video', '2026-06-02T00:00:00Z')`, feed)
+
+	got := listSaves(t, dbs, "did:plc:alice")
+
+	if len(got) != 2 {
+		t.Fatalf("saves = %+v, want 2", got)
+	}
+	video, article := got[0], got[1]
+	if article.Source == nil || article.Source.Title == nil || *article.Source.Title != "Alice's Name For It" || article.Source.Rkey != "sub-alice" {
+		t.Errorf("source = %+v, want the reader's own subscription title and rkey", article.Source)
+	}
+	if article.Source.FaviconURL == nil || *article.Source.FaviconURL != "https://blog.example.com/icon.png" {
+		t.Errorf("favicon = %v", article.Source.FaviconURL)
+	}
+	if article.Minutes != 3 || article.ContentType != "blogpost" {
+		t.Errorf("minutes = %d, contentType = %q; want 3, blogpost", article.Minutes, article.ContentType)
+	}
+	if video.ContentType != "video" || video.Minutes != 0 {
+		t.Errorf("video = %+v, want contentType video and no minutes", video)
 	}
 }
 

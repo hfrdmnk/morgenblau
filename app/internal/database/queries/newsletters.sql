@@ -239,7 +239,7 @@ WHERE m.did = ?1 AND m.id = ?2
 
 -- name: ListNewsletterSaves :many
 SELECT sv.id, sv.did, sv.message_id, sv.created_at, sv.tags,
-       m.entry_slug, m.title, m.received_at, src.title AS source_title
+       m.entry_slug, m.title, m.received_at, m.body_text, src.id AS source_id, src.title AS source_title
 FROM newsletter_saves sv
 JOIN newsletter_messages m ON m.id = sv.message_id AND m.did = sv.did
 JOIN newsletter_sources src ON src.id = m.source_id AND src.did = m.did

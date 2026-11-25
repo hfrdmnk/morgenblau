@@ -24,8 +24,7 @@ import { useReaderFont } from '@/hooks/use-reader-font';
 import { useModeShortcuts, useShortcuts } from '@/hooks/use-shortcuts';
 import { api, ApiError } from '@/lib/api';
 import { CommandProblem, copied, openInTab, type Command } from '@/lib/commands';
-import { parseDigestDate, toDateKey } from '@/lib/digest-dates';
-import { digestHref, PATHS, readerSourceHref, sourceOrigin } from '@/lib/paths';
+import { PATHS, readerBack, readerSourceHref } from '@/lib/paths';
 import type { EntrySave } from '@/lib/entry-save';
 import {
     allowRemoteImages,
@@ -37,15 +36,13 @@ import {
     youtubeID,
     type ReaderEntry,
 } from '@/lib/reader';
+import { saveState, visibleTags, withState } from '@/lib/library';
 import { announceRemove, announceSave } from '@/lib/save-announce';
 
 export function Entry() {
     const { slug = '' } = useParams<{ slug: string }>();
     const from = new URLSearchParams(useSearch()).get('from');
-    const source = sourceOrigin(from);
-    const date = parseDigestDate(from);
-    const back = source ?? digestHref(date ? toDateKey(date) : undefined);
-    const backLabel = source ? 'Back to source' : 'Back to digest';
+    const { href: back, label: backLabel } = readerBack(from);
     const [, navigate] = useLocation();
     useModeShortcuts();
     const steps = useEntrySteps(slug, from);
@@ -331,13 +328,13 @@ function SaveCommands({ save }: { save: EntrySave }) {
             id: 'entry:tags',
             group: READER,
             label: 'Edit tags',
-            detail: tags.join(', '),
+            detail: visibleTags(tags).join(', '),
             step: {
                 kind: 'tags',
                 title: 'Tags',
-                tags,
+                tags: visibleTags(tags),
                 suggestionsPath: '/api/saves/tags',
-                save: (next) => applied(save.setTags(next)),
+                save: (next) => applied(save.setTags(withState(next, saveState(tags)))),
             },
         },
     ]);
@@ -407,13 +404,13 @@ function ArticleExtraction({
 
 function ExtractPrompt({ pending, onExtract }: { pending: boolean; onExtract: () => void }) {
     return (
-        <Frame align="start" gap="m" paddingTop="5xl">
+        <Frame paddingTop="5xl">
             <Text size="sm" tone="muted">
-                Only seeing part of the article?
+                Only seeing part of the article?{' '}
+                <Button disabled={pending} onClick={onExtract} size="bare" variant="link">
+                    {pending ? 'Loading the full article…' : 'Load the full article'}
+                </Button>
             </Text>
-            <Button disabled={pending} onClick={onExtract} variant="secondary">
-                {pending ? 'Loading full article…' : 'Load full article'}
-            </Button>
         </Frame>
     );
 }

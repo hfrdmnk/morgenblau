@@ -58,7 +58,7 @@ function ModeLink({
     );
 }
 
-function SettingsTab({
+function PageTab({
     href,
     current,
     ...props
@@ -131,10 +131,6 @@ function DateStripSpacer() {
     );
 }
 
-function PagePlaceholder(props: Omit<ComponentProps<'main'>, 'className' | 'style'>) {
-    return <main className="page-placeholder" {...props} />;
-}
-
 export {
     Banner,
     AppHeaderBar,
@@ -145,6 +141,5 @@ export {
     DayStepper,
     ModeLink,
     ModeNav,
-    PagePlaceholder,
-    SettingsTab,
+    PageTab,
 };

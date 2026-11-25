@@ -389,6 +389,18 @@ func TestSavesTags_UnionsURLAndNewsletterSaveTags(t *testing.T) {
 	}
 }
 
+func TestSavesTags_LeaveOutTheArchiveState(t *testing.T) {
+	public := newFakeSavesIndex()
+	public.tags = []*string{strPtr(`["kept","design"]`), strPtr(`["Archived"]`)}
+	private := &fakeNewsletterService{saveTags: []string{"archived", "zines"}}
+	req := withSession(httptest.NewRequest(http.MethodGet, "/api/saves/tags", nil), "did:plc:alice", "sid-1")
+	rr := httptest.NewRecorder()
+	SavesTagsHandler(public, private).ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK || rr.Body.String() != "{\"tags\":[\"design\",\"kept\",\"zines\"]}\n" {
+		t.Fatalf("status = %d, body = %s; only the archive state is not a tag to suggest", rr.Code, rr.Body.String())
+	}
+}
+
 func TestSavesList_AggregatesPrivateNewsletterSaves(t *testing.T) {
 	public := newFakeSavesIndex()
 	public.list = []db.ListUserSavesRow{{
@@ -397,7 +409,8 @@ func TestSavesList_AggregatesPrivateNewsletterSaves(t *testing.T) {
 	}}
 	newsletters := &fakeNewsletterService{saves: []newsletter.SaveItem{{
 		ID: "newsletter-save", MessageID: "message-1", CreatedAt: time.Date(2026, 5, 21, 8, 0, 0, 0, time.UTC),
-		Title: "Issue one", EntrySlug: "letter-1",
+		Title: "Issue one", EntrySlug: "letter-1", SourceID: "source-1", SourceTitle: "Example Newsletter",
+		Text: "Dear reader,\n\nthis week " + strings.Repeat("word ", 300),
 	}}}
 	h := SavesListHandler(public, newsletters)
 	req := withSession(httptest.NewRequest(http.MethodGet, "/api/saves", nil), "did:plc:alice", "sid-1")
@@ -414,11 +427,18 @@ func TestSavesList_AggregatesPrivateNewsletterSaves(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0]["kind"] != "newsletter" || got[0]["id"] != "newsletter-save" || got[0]["entrySlug"] != "letter-1" {
+	if len(got) != 2 || got[0]["kind"] != "newsletter" || got[0]["id"] != "newsletter-save" || got[0]["entrySlug"] != "letter-1" || got[0]["messageId"] != "message-1" {
 		t.Errorf("saves = %+v", got)
 	}
 	if _, leaked := got[0]["itemUrl"]; leaked {
 		t.Errorf("newsletter save leaked public URL fields: %+v", got[0])
+	}
+	source, _ := got[0]["source"].(map[string]any)
+	if source["kind"] != "newsletter" || source["id"] != "source-1" || source["title"] != "Example Newsletter" {
+		t.Errorf("source = %+v, want the newsletter source", got[0]["source"])
+	}
+	if got[0]["minutes"] != float64(2) {
+		t.Errorf("minutes = %v, want 2", got[0]["minutes"])
 	}
 }
 

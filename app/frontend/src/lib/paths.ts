@@ -1,4 +1,5 @@
-import { parseDigestDate } from '@/lib/digest-dates';
+import { parseDigestDate, toDateKey } from '@/lib/digest-dates';
+import type { SaveState } from '@/lib/library';
 
 export const PATHS = {
     login: '/login',
@@ -58,6 +59,25 @@ const SOURCE_PAGE = /^\/sources\/(?:newsletters\/)?[^/?#\\]+$/;
 
 export function sourceOrigin(from: string | null): string | null {
     return from && SOURCE_PAGE.test(from) ? from : null;
+}
+
+export function libraryHref(tab: SaveState = 'queue'): string {
+    return tab === 'queue' ? PATHS.library : `${PATHS.library}?tab=${tab}`;
+}
+
+const LIBRARY_PAGE = /^\/library(?:\?tab=archived)?$/;
+
+function libraryOrigin(from: string | null): string | null {
+    return from && LIBRARY_PAGE.test(from) ? from : null;
+}
+
+export function readerBack(from: string | null): { href: string; label: string } {
+    const source = sourceOrigin(from);
+    if (source) return { href: source, label: 'Back to source' };
+    const library = libraryOrigin(from);
+    if (library) return { href: library, label: 'Back to library' };
+    const date = parseDigestDate(from);
+    return { href: digestHref(date ? toDateKey(date) : undefined), label: 'Back to digest' };
 }
 
 export function digestHref(date?: string): string {
