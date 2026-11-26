@@ -71,7 +71,7 @@ export function useSources<T>(path: string, pollInterval = 0) {
         }
         async function load() {
             try {
-                const data = await api<T>(path, { signal: controller.signal });
+                const data = await api<T>(path, { signal: controller.signal, offline: true });
                 if (!controller.signal.aborted) setState({ status: 'loaded', data, path });
             } catch (error) {
                 if (!controller.signal.aborted) {

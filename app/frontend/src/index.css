@@ -494,7 +494,7 @@
     --grid-usage-row: 2rem 1fr;
     --grid-usage-row-wide: 2rem 1fr repeat(3, 5.5rem);
     --safe-bottom: env(safe-area-inset-bottom);
-    --admin-banner-top: calc(0.5rem + env(safe-area-inset-top));
+    --banner-top: calc(0.5rem + env(safe-area-inset-top));
     --skip-link-top: calc(1rem + env(safe-area-inset-top));
     --dialog-width: calc(100% - 2rem);
     --dialog-max-height: calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
@@ -549,7 +549,7 @@ html:has(.app-header) {
 }
 
 /* Nothing paints into a reserved scrollbar gutter, so admin pages give it up to let the banner reach the edge. */
-html:has(.admin-banner) {
+html:has(.app-banner) {
     scrollbar-gutter: auto;
 }
 

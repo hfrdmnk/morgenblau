@@ -5,12 +5,13 @@ import { useLocation } from 'wouter';
 import { AppHeader } from '@/components/app-header';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ErrorState } from '@/components/status-state';
-import { AdminBanner, AppShellLayout } from '@/components/ui/app-chrome';
+import { AppShellLayout, Banner } from '@/components/ui/app-chrome';
 import { Button } from '@/components/ui/button';
 import { Link } from '@/components/ui/link';
 import { Frame } from '@/design/frame';
 import { useNavigationScrollRestoration } from '@/hooks/use-app-location';
 import { useCommands } from '@/hooks/use-commands';
+import { useOnline } from '@/hooks/use-online';
 import { useModeShortcuts } from '@/hooks/use-shortcuts';
 import { AppProfileContext, loadProfile, type AppProfileState } from '@/lib/app-profile-context';
 import { GO_TO, type Command } from '@/lib/commands';
@@ -20,6 +21,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     const [attempt, setAttempt] = useState(0);
     const [state, setState] = useState<AppProfileState>({ kind: 'loading' });
     const [location, navigate] = useLocation();
+    const online = useOnline();
     useNavigationScrollRestoration();
     useModeShortcuts();
     useCommands(adminCommands(state, navigate));
@@ -64,7 +66,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Link href="#main" variant="skip">
                     Skip to content
                 </Link>
-                {isAdminPath(location) ? <AdminBanner>Admin only</AdminBanner> : null}
+                {isAdminPath(location) ? (
+                    <Banner tone="admin">Admin only</Banner>
+                ) : online ? null : (
+                    <Banner tone="quiet">Can’t connect. Showing what was last loaded.</Banner>
+                )}
                 <AppHeader />
                 <ErrorBoundary key={location}>{children}</ErrorBoundary>
             </AppShellLayout>

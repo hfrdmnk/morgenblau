@@ -115,9 +115,30 @@ export default defineConfig(({ mode }) => {
                 workbox: {
                     // The empty and error states' art is a CSS background, so an offline error screen needs it precached.
                     globPatterns: ['**/*.{js,wasm,css,html,webp}'],
-                    // Document requests must reach the server for session redirects.
-                    globIgnores: ['**/index.html'],
+                    // Documents go to the server, which redirects signed-out readers; the precached shell answers only when the network fails.
+                    directoryIndex: null,
                     navigateFallback: null,
+                    runtimeCaching: [
+                        {
+                            urlPattern: ({ request }) => request.mode === 'navigate',
+                            handler: 'NetworkOnly',
+                            options: { precacheFallback: { fallbackURL: '/index.html' } },
+                        },
+                        {
+                            // The images offline copies show. clearOfflineCopies in src/lib/api.ts deletes this cache with the copies.
+                            urlPattern: ({ sameOrigin, url }) =>
+                                sameOrigin &&
+                                /^\/api\/(entries\/[^/]+\/images?$|favicon$|avatars\/|newsletter-assets\/)/.test(
+                                    url.pathname,
+                                ),
+                            handler: 'CacheFirst',
+                            options: {
+                                cacheName: 'morgenblau-offline-images',
+                                expiration: { maxEntries: 300, maxAgeSeconds: 30 * 24 * 60 * 60 },
+                                cacheableResponse: { statuses: [200] },
+                            },
+                        },
+                    ],
                 },
             }),
         ],

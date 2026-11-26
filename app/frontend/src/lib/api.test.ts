@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { api, ApiError, classifyMutationError, describeMutationError } from './api';
+import { api, ApiError, classifyMutationError, connection, describeMutationError, OFFLINE_IMAGES } from './api';
 
 const realFetch = globalThis.fetch;
 
@@ -120,6 +120,116 @@ describe('api', () => {
         }).catch((e: unknown) => e);
         expect(error).toBeInstanceOf(DOMException);
         expect((error as DOMException).name).toBe('AbortError');
+    });
+});
+
+function stubOffline() {
+    globalThis.fetch = (async () => {
+        throw new TypeError('Failed to fetch');
+    }) as unknown as typeof fetch;
+}
+
+describe('api offline copies', () => {
+    test('an unreachable network answers each read with its own latest copy', async () => {
+        stubFetch(200, { day: 'first' });
+        await api('/api/digest?date=2026-11-24', { offline: true });
+        stubFetch(200, { day: 'second' });
+        await api('/api/digest?date=2026-11-24', { offline: true });
+        stubFetch(200, { day: 'other' });
+        await api('/api/digest?date=2026-11-23', { offline: true });
+
+        stubOffline();
+        expect(await api<unknown>('/api/digest?date=2026-11-24', { offline: true })).toEqual({ day: 'second' });
+        expect(await api<unknown>('/api/digest?date=2026-11-23', { offline: true })).toEqual({ day: 'other' });
+        const unseen = await api('/api/digest?date=2026-11-22', { offline: true }).catch((e: unknown) => e);
+        expect(unseen).toBeInstanceOf(TypeError);
+    });
+
+    test('only reads that ask for it keep or use a copy', async () => {
+        stubFetch(200, { handle: 'reader.example' });
+        await api('/api/profiles/me');
+        await api('/api/saves', { offline: true });
+
+        stubOffline();
+        expect(await api('/api/profiles/me', { offline: true }).catch((e: unknown) => e)).toBeInstanceOf(TypeError);
+        expect(await api('/api/saves').catch((e: unknown) => e)).toBeInstanceOf(TypeError);
+    });
+
+    test('a server failure stays a failure instead of showing the copy', async () => {
+        stubFetch(200, { entries: [] });
+        await api('/api/digest', { offline: true });
+        stubFetch(502);
+        const error = await api('/api/digest', { offline: true }).catch((e: unknown) => e);
+        expect((error as ApiError).status).toBe(502);
+    });
+
+    test('an aborted read rejects as aborted even when a copy exists', async () => {
+        stubFetch(200, { entries: [] });
+        await api('/api/digest', { offline: true });
+        const controller = new AbortController();
+        controller.abort();
+        globalThis.fetch = (async () => {
+            throw new DOMException('aborted', 'AbortError');
+        }) as unknown as typeof fetch;
+        const error = await api('/api/digest', { offline: true, signal: controller.signal }).catch((e: unknown) => e);
+        expect((error as DOMException).name).toBe('AbortError');
+    });
+
+    test('a 401 from any request clears every copy and every kept image', async () => {
+        stubFetch(200, { entries: [] });
+        await api('/api/digest', { offline: true });
+        await (await caches.open(OFFLINE_IMAGES)).put('/api/entries/abc/image', new Response('image'));
+        stubFetch(401, { code: 'unauthenticated' });
+        await api('/api/subscriptions/tags').catch(() => {});
+
+        expect(await (await caches.open(OFFLINE_IMAGES)).match('/api/entries/abc/image')).toBeUndefined();
+        stubOffline();
+        expect(await api('/api/digest', { offline: true }).catch((e: unknown) => e)).toBeInstanceOf(TypeError);
+    });
+
+    test('past 300 copies the one written longest ago goes, and rereading a copy keeps it', async () => {
+        stubFetch(200, { entries: [] });
+        for (let n = 0; n < 300; n++) await api(`/api/entries/e${n}`, { offline: true });
+        await api('/api/entries/e0', { offline: true });
+        await api('/api/entries/e300', { offline: true });
+
+        stubOffline();
+        const read = (n: number) => api(`/api/entries/e${n}`, { offline: true }).catch((e: unknown) => e);
+        expect(await read(1)).toBeInstanceOf(TypeError);
+        expect(await read(0)).toEqual({ entries: [] });
+        expect(await read(2)).toEqual({ entries: [] });
+        expect(await read(300)).toEqual({ entries: [] });
+    });
+
+    test('the connection turns unreachable on a failed request and back on any answer, but not on an abort', async () => {
+        stubFetch(200, { entries: [] });
+        await api('/api/digest', { offline: true });
+        expect(connection.reachable).toBe(true);
+        const changes: boolean[] = [];
+        const record = () => changes.push(connection.reachable);
+        connection.addEventListener('change', record);
+
+        globalThis.fetch = (async () => {
+            throw new DOMException('aborted', 'AbortError');
+        }) as unknown as typeof fetch;
+        const controller = new AbortController();
+        controller.abort();
+        await api('/api/digest', { signal: controller.signal }).catch(() => {});
+        expect(connection.reachable).toBe(true);
+
+        stubOffline();
+        await api('/api/digest', { offline: true });
+        expect(connection.reachable).toBe(false);
+        stubFetch(503);
+        await api('/api/digest').catch(() => {});
+        expect(connection.reachable).toBe(true);
+
+        stubOffline();
+        await api('/api/digest').catch(() => {});
+        dispatchEvent(new Event('online'));
+        expect(connection.reachable).toBe(true);
+        connection.removeEventListener('change', record);
+        expect(changes).toEqual([false, true, false, true]);
     });
 });
 

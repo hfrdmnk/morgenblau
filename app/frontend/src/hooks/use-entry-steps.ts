@@ -11,7 +11,7 @@ import { showShortcutNotice } from '@/lib/shortcuts';
 type ListedEntry = { entrySlug: string };
 
 async function loadSlugs(path: string, signal: AbortSignal): Promise<string[]> {
-    const data = await api<ListedEntry[] | { entries: ListedEntry[] }>(path, { signal });
+    const data = await api<ListedEntry[] | { entries: ListedEntry[] }>(path, { signal, offline: true });
     return (Array.isArray(data) ? data : data.entries).map((entry) => entry.entrySlug);
 }
 

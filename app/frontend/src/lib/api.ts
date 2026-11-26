@@ -38,11 +38,58 @@ type ApiOptions = {
     method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     body?: unknown;
     signal?: AbortSignal;
+    // Keeps the latest answer on this device and returns it when the network is unreachable.
+    offline?: boolean;
 };
 
+// Offline copies belong to the signed-in reader, so every way a session ends clears them before another reader can sign in.
+const OFFLINE_COPIES = 'morgenblau-offline';
+// The service worker keeps the images those copies show here; vite.config.ts names the same cache.
+export const OFFLINE_IMAGES = 'morgenblau-offline-images';
+// Cache Storage lists entries oldest-written first, so the cap drops what the reader opened longest ago.
+const MAX_OFFLINE_COPIES = 300;
+
+export async function clearOfflineCopies(): Promise<void> {
+    await Promise.all([caches.delete(OFFLINE_COPIES), caches.delete(OFFLINE_IMAGES)]);
+}
+
+// Whether the latest request reached the server; while it did not, pages show offline copies.
+export const connection = Object.assign(new EventTarget(), { reachable: true });
+
+function setReachable(reachable: boolean) {
+    if (connection.reachable === reachable) return;
+    connection.reachable = reachable;
+    connection.dispatchEvent(new Event('change'));
+}
+
+// Back on the network, the next request decides; until then the app stops calling itself offline.
+addEventListener('online', () => setReachable(true));
+
+async function keepOfflineCopy(path: string, response: Response) {
+    const cache = await caches.open(OFFLINE_COPIES);
+    await cache.put(path, response);
+    const keys = await cache.keys();
+    await Promise.all(keys.slice(0, -MAX_OFFLINE_COPIES).map((key) => cache.delete(key)));
+}
+
+// Asks the server, and answers from this read's offline copy only when the network is unreachable.
+async function reach(path: string, init: RequestInit, offline: boolean) {
+    try {
+        const response = await fetch(path, init);
+        setReachable(true);
+        return { response, fromCopy: false };
+    } catch (error) {
+        if (init.signal?.aborted) throw error;
+        setReachable(false);
+        const copy = offline ? await (await caches.open(OFFLINE_COPIES)).match(path) : undefined;
+        if (!copy) throw error;
+        return { response: copy, fromCopy: true };
+    }
+}
+
 export async function api<T = undefined>(path: string, options: ApiOptions = {}): Promise<T> {
-    const { method = 'GET', body, signal } = options;
-    const response = await fetch(path, {
+    const { method = 'GET', body, signal, offline = false } = options;
+    const init: RequestInit = {
         method,
         credentials: 'same-origin',
         signal,
@@ -53,7 +100,10 @@ export async function api<T = undefined>(path: string, options: ApiOptions = {})
                   headers: { 'content-type': 'application/json' },
                   body: JSON.stringify(body),
               }),
-    });
+    };
+    const { response, fromCopy } = await reach(path, init, offline);
+    if (response.status === 401) await clearOfflineCopies();
+    if (offline && response.ok && !fromCopy) await keepOfflineCopy(path, response.clone());
     if (!response.ok) {
         const failure = (await response.json().catch(() => null)) as FailureBody | null;
         throw new ApiError(

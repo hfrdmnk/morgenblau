@@ -35,7 +35,7 @@ paths:
 
 ## PWA
 
-- `vite.config.ts` and `src/pwa.test.ts` own static-asset precaching. Offline data sync remains outside scope.
+- `vite.config.ts` and `src/pwa.test.ts` own static-asset precaching, the offline shell and the offline image cache; the service worker stores no other `/api` response. Reads opt into device copies with `api(path, { offline: true })`, under SPEC.md's device-copy rule. Offline mutation sync remains outside scope.
 
 ## Lint
 

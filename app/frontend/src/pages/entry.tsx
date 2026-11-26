@@ -19,6 +19,7 @@ import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useCommands } from '@/hooks/use-commands';
 import { useEntrySave, useSaveState } from '@/hooks/use-entry-save';
 import { useEntrySteps } from '@/hooks/use-entry-steps';
+import { useOnline } from '@/hooks/use-online';
 import { useReaderFont } from '@/hooks/use-reader-font';
 import { useModeShortcuts, useShortcuts } from '@/hooks/use-shortcuts';
 import { api, ApiError } from '@/lib/api';
@@ -94,13 +95,15 @@ function canExtractArticle(entry: ReaderEntry): boolean {
 }
 
 async function loadEntry(slug: string, signal: AbortSignal): Promise<Extract<EntryState, { status: 'loaded' }>> {
-    const entry = await api<ReaderEntry>(`/api/entries/${encodeURIComponent(slug)}`, { signal });
+    const entry = await api<ReaderEntry>(`/api/entries/${encodeURIComponent(slug)}`, { signal, offline: true });
     const state = { status: 'loaded' as const, entry, extracted: false, extractionFailed: false };
     if (!canExtractArticle(entry) || entry.body?.trim()) return state;
     try {
+        // The entry read above keeps its summary-only body, so the extracted article needs its own offline copy.
         state.entry = await api<ReaderEntry>(`/api/entries/${encodeURIComponent(slug)}/extract`, {
             method: 'POST',
             signal,
+            offline: true,
         });
         state.extracted = Boolean(state.entry.body?.trim());
         state.extractionFailed = !state.extracted;
@@ -175,15 +178,22 @@ const SAMPLE_ENTRY: Extract<EntryState, { status: 'loaded' }> = {
     },
 };
 
+const ENTRY_ERRORS: Record<number, [string, string]> = {
+    404: ['Entry unavailable', 'It may have been removed, or its source is no longer in your newspaper.'],
+    401: ['Sign in to read this entry', 'Your session may have ended.'],
+};
+
+function entryErrorText(status: number, online: boolean): [string, string] {
+    return (
+        ENTRY_ERRORS[status] ??
+        (online
+            ? ['This entry could not be loaded', 'Please try again in a moment.']
+            : ['This entry isn’t on this device yet', 'It opens here once you’re connected again.'])
+    );
+}
+
 function EntryError({ status, retry }: { status: number; retry: () => void }) {
-    const messages: Record<number, [string, string]> = {
-        404: ['Entry unavailable', 'It may have been removed, or its source is no longer in your newspaper.'],
-        401: ['Sign in to read this entry', 'Your session may have ended.'],
-    };
-    const [title, description] = messages[status] ?? [
-        'This entry could not be loaded',
-        'Please try again in a moment.',
-    ];
+    const [title, description] = entryErrorText(status, useOnline());
     return (
         <Frame align="start" gap="l" role="alert">
             <Text as="h1" size="3xl" tracking="tight" weight="medium">

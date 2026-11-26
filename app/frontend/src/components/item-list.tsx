@@ -7,6 +7,7 @@ import { GutterMark } from '@/components/ui/source-mark';
 import { SourceIcon } from '@/components/ui/source-icon';
 import { Frame } from '@/design/frame';
 import { Text } from '@/design/text';
+import { useOnline } from '@/hooks/use-online';
 
 export function ItemList({
     children,
@@ -92,10 +93,11 @@ export function ListItem({
 }
 
 export function ListError({ label, retry }: { label: string; retry: () => void }) {
+    const online = useOnline();
     return (
         <Frame align="center" direction="row" gap="l" role="alert" wrap>
             <Text size="sm" tone="muted">
-                Couldn’t load {label}.
+                {online ? `Couldn’t load ${label}.` : `Couldn’t load ${label} without a connection.`}
             </Text>
             <Button onClick={retry} size="sm" variant="secondary">
                 Try again

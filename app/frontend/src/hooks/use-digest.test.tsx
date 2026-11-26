@@ -182,3 +182,25 @@ test('date changes and subscription refreshes discard late responses; unmount st
     expect(requests[2].signal.aborted).toBe(true);
     expect(requests).toHaveLength(3);
 });
+
+test('a day collecting when Morgenblau goes out of reach keeps its copy and backs off from one-second polling', async () => {
+    let offlineCalls = 0;
+    globalThis.fetch = Object.assign(
+        async () => Response.json({ date: '2026-10-08', hasActiveJob: true, entries: [{ title: 'Earlier article' }] }),
+        { preconnect: realFetch.preconnect },
+    );
+    const { container } = await mount();
+    globalThis.fetch = Object.assign(
+        async () => {
+            offlineCalls++;
+            throw new TypeError('Failed to fetch');
+        },
+        { preconnect: realFetch.preconnect },
+    );
+    await act(async () => {
+        await Bun.sleep(4500);
+    });
+    // Retries at 1, 2 and 4 seconds; polling every second would have made four.
+    expect(offlineCalls).toBe(3);
+    expect(container.textContent).toBe('Earlier article');
+});

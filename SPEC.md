@@ -23,7 +23,7 @@ ATProto provides identity and ownership of supported reading records. Social fea
 
 V1 includes daily digests, an in-app reader, RSS/Atom and native Standardfeed subscriptions, inbound email newsletters, OPML import/export, and Library saves with tags. Blog posts, YouTube videos, newsletters, and existing microblog handling are supported. Source tags, save commentary, and custom Views remain in scope.
 
-The app is responsive and installable as a PWA. Offline reading and offline mutation sync are outside v1.
+The app is responsive and installable as a PWA. Without a network it still opens and shows what the reader last loaded on that device (see Device copies under Data Ownership). Offline mutation sync is outside v1.
 
 Sharing, discovery recommendations, following users, public reader profiles, network Library sections, and article social context are excluded. The one public reader surface is the opt-in following list under Sources and Refresh. Jetstream and network-wide ingestion are unnecessary for this scope. Resolving a pasted URL into a subscribable source remains part of adding sources.
 
@@ -148,7 +148,7 @@ Stopping a Newsletter moves it to **Stopped newsletters**, where it can be re-en
 
 **Unsubscribe and delete** is offered once a direct delivery from the source has carried an https `List-Unsubscribe` URL with `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058); a forwarded message's links belong to whoever forwarded it and are never kept. The server sends the one-click POST without following redirects, and deletes the source and its unsaved messages only after a 2xx answer; any other outcome changes nothing and tells the reader. When one-click fails or is not offered, the reader can unsubscribe by hand and then **Delete** the source, which removes it the same way without contacting the sender. Saved messages stay in the Library. A deleted source frees its identity, so later mail from the same sender, whether a late issue or a deliberate re-subscribe, starts a new source.
 
-Newsletter data is scoped to its owner and must never enter the shared feed-content cache. The existing public lexicons remain unchanged for this release.
+Newsletter data is scoped to its owner and must never enter the shared feed-content cache. The reader's own device copies may hold their newsletter messages, under the device-copy rule in Data Ownership. The existing public lexicons remain unchanged for this release.
 
 Owner matching is enforced by both the private service and relational constraints. A newsletter save uses the private path even when its message has a public web-version URL.
 
@@ -205,6 +205,8 @@ Creating a customized Standardfeed subscription commits its existence record and
 **Shared upstream cache:** RSS sources are keyed by canonical feed URL; Standardfeed sources by publication AT-URI. Multiple user subscriptions can reference one source and its entries. RSS polling follows HTTP cache semantics. Native Standardfeed ingestion reconciles publisher documents, including upstream deletions; RSS entries persist because RSS has no equivalent deletion signal. The pipelines live in `app/internal/sync/`. A source nobody follows stops being refreshed at once and is deleted, entries and generated feed included, after a grace that lets a returning reader keep its history; a saved entry keeps its source until read-later gives saves their own copy. `SweepUnfollowedFeeds` in `app/internal/database/` owns the policy.
 
 The shared cache reveals that at least one user has requested a feed, but the API must not expose which other users subscribe to it. Private email data never participates in this deduplication.
+
+**Device copies:** the app keeps the latest answer to each read the reader opened, newsletters included, on that device, and shows it when the network is unreachable. A copy is a cache of a server answer, never an authority: no write reads from it, and every mutation still needs the network. Copies and the images they show are bounded, oldest dropped first. They belong to one signed-in reader: a `401` and the sign-in page, which logout and every sign-in pass through, clear them all. The service worker stores only those images; `api()` in `app/frontend/src/lib/api.ts` owns the copies, the image cache's name and the wipe.
 
 Removing social features stops their runtime reads, writes, and reconciliation. Existing external share, follow, and recommendation records remain untouched. Subscription-sidecar cleanup required by retained Standardfeed behavior remains in place.
 

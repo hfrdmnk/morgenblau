@@ -1,3 +1,4 @@
+import { cva } from 'class-variance-authority';
 import type { ComponentProps, ReactNode } from 'react';
 import { Link as RouterLink } from 'wouter';
 
@@ -10,12 +11,17 @@ function AppShellLayout(props: Omit<ComponentProps<'div'>, 'className' | 'style'
     return <div className="app-shell min-h-dvh bg-background" {...props} />;
 }
 
-function AdminBanner({ children }: { children: ReactNode }) {
-    return (
-        <div className="admin-banner bg-atmosphere-blue px-5 pb-2 pt-(--admin-banner-top) text-center text-sm font-medium text-atmosphere-blue-foreground sm:px-8">
-            {children}
-        </div>
-    );
+const banner = cva('app-banner px-5 pb-2 pt-(--banner-top) text-center text-sm font-medium sm:px-8', {
+    variants: {
+        tone: {
+            admin: 'bg-atmosphere-blue text-atmosphere-blue-foreground',
+            quiet: 'bg-muted text-muted-foreground',
+        },
+    },
+});
+
+function Banner({ tone, children }: { tone: 'admin' | 'quiet'; children: ReactNode }) {
+    return <div className={banner({ tone })}>{children}</div>;
 }
 
 // A brand-mark or back link on the left, the page's own navigation in the middle, account controls on the right.
@@ -141,7 +147,7 @@ function PagePlaceholder(props: Omit<ComponentProps<'main'>, 'className' | 'styl
 }
 
 export {
-    AdminBanner,
+    Banner,
     AppHeaderBar,
     AppShellLayout,
     DateStrip,

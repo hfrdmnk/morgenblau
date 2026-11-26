@@ -26,7 +26,7 @@ function isUnauthorized(error: unknown): boolean {
 
 export async function loadProfile(signal: AbortSignal): Promise<AppProfileState | null> {
     try {
-        const profile = await api<AppProfile>('/api/profiles/me', { signal });
+        const profile = await api<AppProfile>('/api/profiles/me', { signal, offline: true });
         return { kind: 'ready', profile };
     } catch (error) {
         if (isAbortError(error)) {

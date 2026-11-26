@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Frame } from '@/design/frame';
 import { Text } from '@/design/text';
 import { useDocumentTitle } from '@/hooks/use-document-title';
-import { api } from '@/lib/api';
+import { api, clearOfflineCopies } from '@/lib/api';
 import { PATHS } from '@/lib/paths';
 
 const LOGIN_ERRORS: Record<string, string> = {
@@ -22,6 +22,11 @@ const TYPEAHEAD_SEARCH = 'https://typeahead.waow.tech/xrpc/tech.waow.typeahead.s
 export function Login() {
     const [pending, setPending] = useState(false);
     useDocumentTitle('Sign in');
+
+    // Logging out and every sign-in land here, so one reader's offline copies never reach the next.
+    useEffect(() => {
+        void clearOfflineCopies();
+    }, []);
 
     // A page restored from the back-forward cache keeps its pending state, so Back would leave the button stuck.
     useEffect(() => {
