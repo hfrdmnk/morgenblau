@@ -1,59 +1,97 @@
 import { describe, expect, test } from 'bun:test';
 
-import { libraryTab, queueGroups, saveState, visibleTags, withState, type LibrarySave } from '@/lib/library';
+import { groupSaves, librarySort, libraryView, matchesQuery, savedPhrase, type LibrarySave } from '@/lib/library';
 
-describe('Library states as tags', () => {
-    test('a save is to read until it carries the archived tag, in any case', () => {
-        expect(saveState([])).toBe('queue');
-        expect(saveState(['design', 'kept'])).toBe('queue');
-        expect(saveState(['design', 'ARCHIVED'])).toBe('archived');
-    });
+const save = (title: string, createdAt: string, source?: string): LibrarySave => ({
+    rkey: `${title}-${createdAt}`,
+    itemUrl: `https://${source ?? 'example.com'}/${encodeURIComponent(title)}`,
+    createdAt,
+    title,
+});
 
-    test('the state tag never shows as the reader’s own tag', () => {
-        expect(visibleTags(['Archived', 'design', 'kept', 'archived-ideas'])).toEqual([
-            'design',
-            'kept',
-            'archived-ideas',
-        ]);
-    });
+const titles = (groups: ReturnType<typeof groupSaves>) =>
+    groups.map((group) => [group.title, group.saves.map((s) => s.title || 'Untitled')]);
 
-    test('filing replaces the state and keeps the reader’s tags in order', () => {
-        expect(withState(['design', 'Archived', 'cooking'], 'archived')).toEqual(['archived', 'design', 'cooking']);
-        expect(withState(['archived', 'design'], 'queue')).toEqual(['design']);
-        expect(withState([], 'archived')).toEqual(['archived']);
-    });
-
-    test('the tab comes from the URL and falls back to To read', () => {
-        expect(libraryTab('?tab=archived')).toBe('archived');
-        expect(libraryTab('?tab=kept')).toBe('queue');
-        expect(libraryTab('')).toBe('queue');
+describe('Library view and sort', () => {
+    test('the view and sort come from the URL and fall back to the newest saves', () => {
+        expect(libraryView('?view=everything')).toBe('everything');
+        expect(libraryView('?tab=archived')).toBe('recent');
+        expect(libraryView('')).toBe('recent');
+        expect(librarySort('?view=everything&sort=site')).toBe('site');
+        expect(librarySort('?sort=title')).toBe('title');
+        expect(librarySort('?sort=oldest')).toBe('newest');
     });
 });
 
-describe('queue groups', () => {
-    const save = (title: string, extra: { minutes?: number; contentType?: string } = {}): LibrarySave => ({
-        rkey: title,
-        itemUrl: `https://example.com/${title}`,
-        createdAt: '2026-01-01T00:00:00Z',
-        title,
-        ...extra,
+describe('grouping everything', () => {
+    const now = new Date(2026, 10, 27, 12);
+    const saves = [
+        save('zebra crossings', new Date(2026, 10, 20).toISOString(), 'b.example.com'),
+        save('Árbol', new Date(2026, 9, 3).toISOString(), 'a.example.com'),
+        save('apples', new Date(2026, 0, 15).toISOString(), 'b.example.com'),
+        save('', new Date(2025, 11, 30).toISOString(), 'a.example.com'),
+    ];
+
+    test('newest keeps the saved order and names the year only for earlier years', () => {
+        expect(titles(groupSaves(saves, 'newest', now))).toEqual([
+            ['November', ['zebra crossings']],
+            ['October', ['Árbol']],
+            ['January', ['apples']],
+            ['December 2025', ['Untitled']],
+        ]);
     });
 
-    test('reads split at five and fifteen minutes, with videos and unmeasured links after them', () => {
-        const groups = queueGroups([
-            save('link'),
-            save('sixteen', { minutes: 16 }),
-            save('five', { minutes: 5 }),
-            save('video', { contentType: 'video' }),
-            save('six', { minutes: 6 }),
-            save('fifteen', { minutes: 15 }),
+    test('title ignores case and accents, and an untitled save files under U', () => {
+        expect(titles(groupSaves(saves, 'title', now))).toEqual([
+            ['A', ['apples', 'Árbol']],
+            ['U', ['Untitled']],
+            ['Z', ['zebra crossings']],
         ]);
-        expect(groups.map((group) => [group.title, group.saves.map((s) => s.title)])).toEqual([
-            ['Quick reads', ['five']],
-            ['Over coffee', ['six', 'fifteen']],
-            ['Deep dives', ['sixteen']],
-            ['To watch', ['video']],
-            ['Links', ['link']],
+    });
+
+    test('site groups by source and keeps each site’s saves newest first', () => {
+        expect(titles(groupSaves(saves, 'site', now))).toEqual([
+            ['a.example.com', ['Árbol', 'Untitled']],
+            ['b.example.com', ['zebra crossings', 'apples']],
         ]);
+    });
+});
+
+describe('saved phrase', () => {
+    const now = new Date(2026, 10, 27, 9);
+    test('reads as a sentence on either side of each boundary', () => {
+        expect(savedPhrase(new Date(2026, 10, 27, 0, 5).toISOString(), now)).toBe('Saved to your Library today');
+        expect(savedPhrase(new Date(2026, 10, 26, 23, 55).toISOString(), now)).toBe('Saved to your Library yesterday');
+        expect(savedPhrase(new Date(2026, 10, 21, 12).toISOString(), now)).toBe('Saved to your Library 6 days ago');
+        expect(savedPhrase(new Date(2026, 10, 20, 12).toISOString(), now)).toMatch(/^Saved to your Library on \D*20/);
+    });
+});
+
+describe('Library search', () => {
+    const zurich: LibrarySave = {
+        rkey: 'z',
+        itemUrl: 'https://www.notes.example.com/zurich',
+        createdAt: '2026-11-01T00:00:00Z',
+        title: 'Grüße aus Zürich',
+        tags: ['Design-notes', 'travel'],
+        source: { title: 'Example Travel Journal' },
+    };
+    const designed: LibrarySave = { ...zurich, rkey: 'd', title: 'Why design matters', tags: ['design'] };
+
+    test('every word must match, ignoring case and accents, in the title, source, host or tags', () => {
+        expect(matchesQuery(zurich, 'GRÜßE AUS')).toBe(true);
+        expect(matchesQuery(zurich, 'zurich journal')).toBe(true);
+        expect(matchesQuery(zurich, 'zurich weekly')).toBe(false);
+        expect(matchesQuery(zurich, 'notes.example')).toBe(true);
+        expect(matchesQuery(zurich, 'design')).toBe(true);
+        expect(matchesQuery(zurich, '  ')).toBe(true);
+    });
+
+    test('#tag matches that tag exactly, not a word in the title or a longer tag', () => {
+        expect(matchesQuery(designed, '#design')).toBe(true);
+        expect(matchesQuery(zurich, '#design')).toBe(false);
+        expect(matchesQuery({ ...designed, tags: [] }, '#design')).toBe(false);
+        expect(matchesQuery(zurich, '#TRAVEL zürich')).toBe(true);
+        expect(matchesQuery(zurich, '#')).toBe(true);
     });
 });

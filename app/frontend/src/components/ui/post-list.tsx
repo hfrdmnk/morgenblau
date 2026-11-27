@@ -115,7 +115,7 @@ function PostList({ children, arrowsOnly = false }: { children: ReactNode; arrow
 }
 
 // The selection fill bleeds past the row's text, so the text lines up with the rest of the page.
-const postRowVariants = cva('', {
+const postRowVariants = cva('relative', {
     variants: {
         size: {
             default: '-mx-3 -my-2 px-3 py-2',
@@ -135,6 +135,17 @@ function PostRow({
         <Row data-post="" data-slot="post-row" className={postRowVariants({ size })}>
             {children}
         </Row>
+    );
+}
+
+function PostRowActions({ children }: { children: ReactNode }) {
+    return (
+        <div
+            data-slot="post-row-actions"
+            className="pointer-events-none absolute inset-y-0 end-0 flex items-center gap-0.5 rounded-e-lg pe-1.5 ps-12 opacity-0 post-row-actions-fade transition-opacity duration-(--motion-duration-fast) pointer-coarse:hidden focus-within:pointer-events-auto focus-within:opacity-100 in-data-selected:pointer-events-auto in-data-selected:opacity-100"
+        >
+            {children}
+        </div>
     );
 }
 
@@ -199,4 +210,4 @@ function FeaturePost({
     );
 }
 
-export { FeaturePost, FoldedPosts, PostList, PostRow };
+export { FeaturePost, FoldedPosts, PostList, PostRow, PostRowActions };

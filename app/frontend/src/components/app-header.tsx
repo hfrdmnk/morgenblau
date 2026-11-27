@@ -35,7 +35,7 @@ import type { AppNavigationState } from '@/hooks/use-app-location';
 import { useAppProfile } from '@/hooks/use-app-profile';
 import { useHeightProperty } from '@/hooks/use-height-property';
 import { addCalendarDays, digestDateRange, selectedDigestDate, startOfToday, toDateKey } from '@/lib/digest-dates';
-import { libraryTab } from '@/lib/library';
+import { libraryView } from '@/lib/library';
 import { APP_MODES, appMode, digestHref, isSettingsPath, libraryHref, PATHS } from '@/lib/paths';
 
 const artwork = {
@@ -44,9 +44,9 @@ const artwork = {
     [PATHS.library]: { Icon: LibraryIcon, ActiveIcon: LibraryActiveIcon },
 } as const;
 
-const libraryTabs = [
-    { label: 'To read', tab: 'queue' },
-    { label: 'Archive', tab: 'archived' },
+const libraryViews = [
+    { label: 'Recent', view: 'recent' },
+    { label: 'Everything', view: 'everything' },
 ] as const;
 
 const settingsTabs = [
@@ -184,11 +184,11 @@ function SettingsNav({ location }: { location: string }) {
 }
 
 function LibraryNav() {
-    const selected = libraryTab(useSearch());
+    const selected = libraryView(useSearch());
     return (
         <PageNav label="Library">
-            {libraryTabs.map(({ label, tab }) => (
-                <PageTab current={selected === tab} href={libraryHref(tab)} key={tab}>
+            {libraryViews.map(({ label, view }) => (
+                <PageTab current={selected === view} href={libraryHref(view)} key={view}>
                     {label}
                 </PageTab>
             ))}

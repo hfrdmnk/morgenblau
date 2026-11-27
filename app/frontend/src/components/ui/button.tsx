@@ -17,7 +17,7 @@ const buttonVariants = cva(
                 quiet: 'text-muted-foreground hover:bg-secondary hover:text-foreground aria-expanded:bg-secondary',
                 subtle: 'text-subtle-foreground hover:bg-secondary hover:text-foreground aria-expanded:bg-secondary',
                 // Chrome navigation that changes only its colour on hover, like the links around it.
-                nav: 'text-muted-foreground hover:text-foreground disabled:text-subtle-foreground',
+                nav: 'text-muted-foreground hover:text-foreground disabled:text-subtle-foreground aria-pressed:text-foreground',
                 // An action inside a sentence, underlined like the links beside it.
                 link: 'underline decoration-border underline-offset-4 hover:text-foreground hover:decoration-current',
                 // Shows or hides more of a list; open, it keeps the hover look, and its chevron turns with it.

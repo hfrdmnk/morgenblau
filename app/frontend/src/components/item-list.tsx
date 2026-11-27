@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Link } from '@/components/ui/link';
-import { PostRow } from '@/components/ui/post-list';
+import { PostRow, PostRowActions } from '@/components/ui/post-list';
 import { GutterMark } from '@/components/ui/source-mark';
 import { SourceIcon } from '@/components/ui/source-icon';
 import { Frame } from '@/design/frame';
@@ -40,6 +40,7 @@ export function ListItem({
     status,
     note,
     actions,
+    rowActions,
 }: {
     title: string;
     href: string;
@@ -49,6 +50,7 @@ export function ListItem({
     status?: ReactNode;
     note?: ReactNode;
     actions?: ReactNode;
+    rowActions?: ReactNode;
 }) {
     return (
         <Frame align="center" as="li" direction="row" gap="m" minWidth={0}>
@@ -83,6 +85,7 @@ export function ListItem({
                             </Text>
                         ) : null}
                     </Frame>
+                    {rowActions ? <PostRowActions>{rowActions}</PostRowActions> : null}
                 </PostRow>
                 {note}
             </Frame>

@@ -25,10 +25,20 @@ import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-
 import { subscriptionChanges } from '@/lib/add-source';
 import { api, describeMutationError } from '@/lib/api';
 import { AppProfileContext, loadProfile, type AppProfileState } from '@/lib/app-profile-context';
-import { ACTIONS, CommandProblem, copied, GO_TO, pageCommands, type Command, type CommandStep } from '@/lib/commands';
+import {
+    ACTIONS,
+    CommandProblem,
+    copied,
+    GO_TO,
+    openInTab,
+    pageCommands,
+    type Command,
+    type CommandStep,
+} from '@/lib/commands';
 import { addCalendarDays, parseDayQuery, startOfToday, toDateKey } from '@/lib/digest-dates';
 import { downloadOpml } from '@/lib/opml';
-import { APP_MODES, digestHref, newsletterSourceHref, PATHS, sourceHref } from '@/lib/paths';
+import { fold, saveHost, saveKey, saveSourceLabel, saveTitle, type LibrarySave } from '@/lib/library';
+import { APP_MODES, digestHref, libraryHref, newsletterSourceHref, PATHS, saveHref, sourceHref } from '@/lib/paths';
 import { isCommandMenuKey, SHORTCUTS } from '@/lib/shortcuts';
 import { displayURL } from '@/lib/source-display';
 import { addTags, GONE, hasOverlongTag, isGone, MAX_TAG_LENGTH, MAX_TAGS } from '@/lib/source-edit';
@@ -217,7 +227,7 @@ const FROM_QUERY = new Set(['create-tag']);
 // under 0.05, while word starts and substrings score far higher, so the scattered ones are dropped.
 function filter(value: string, search: string, keywords?: string[]) {
     if (FROM_QUERY.has(value)) return 1;
-    const score = defaultFilter(keywords?.join(' ') ?? '', search);
+    const score = defaultFilter(fold(keywords?.join(' ') ?? ''), fold(search));
     return score < 0.05 ? 0 : score;
 }
 
@@ -713,6 +723,7 @@ function useGlobalCommands(onAddSource: (url: string) => void): Command[] {
     const following = usePublicFollowing();
     const feeds = useSources<FeedSource[]>('/api/subscriptions');
     const newsletters = useSources<{ active: NewsletterSource[]; stopped: NewsletterSource[] }>('/api/newsletters');
+    const saves = useSources<LibrarySave[]>('/api/saves');
     const today = startOfToday();
     const go = (href: string) => () => navigate(href);
 
@@ -788,6 +799,21 @@ function useGlobalCommands(onAddSource: (url: string) => void): Command[] {
             run: go(newsletterSourceHref(source.id)),
         })),
     ];
+
+    const library: Command[] = (saves.status === 'loaded' ? saves.data : []).map((save) => {
+        const href = saveHref(save, libraryHref('everything'));
+        const tags = save.tags ?? [];
+        return {
+            id: `save:${saveKey(save)}`,
+            group: 'Library',
+            label: saveTitle(save),
+            detail: saveSourceLabel(save),
+            keywords: [saveHost(save) ?? '', ...tags, ...tags.map((tag) => `#${tag}`)],
+            icon: save.source?.faviconUrl ?? null,
+            searchOnly: true,
+            run: href.startsWith('/') ? go(href) : () => openInTab(href),
+        };
+    });
 
     const actions: Command[] = [
         {
@@ -873,5 +899,5 @@ function useGlobalCommands(onAddSource: (url: string) => void): Command[] {
         { id: 'log-out', group: ACTIONS, label: 'Log out', keywords: ['sign out', 'logout'], run: logOut },
     ];
 
-    return [...navigation, ...actions, ...sources];
+    return [...navigation, ...actions, ...sources, ...library];
 }

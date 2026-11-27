@@ -324,19 +324,9 @@ func SavesTagsHandler(reader saveTagsReader, privateListers ...newsletterSaveTag
 			}
 			lists = append(lists, private)
 		}
-		suggestions := []string{}
-		for _, tag := range distinctTags(lists...) {
-			if !strings.EqualFold(tag, archivedTag) {
-				suggestions = append(suggestions, tag)
-			}
-		}
-		writeJSON(w, tagsResponse{Tags: suggestions})
+		writeJSON(w, tagsResponse{Tags: distinctTags(lists...)})
 	})
 }
-
-// archivedTag files a save in the Library's Archive; a save without it is still to read. It is an ordinary record tag so the state
-// travels with the reader's data, but it is never offered as a tag to add.
-const archivedTag = "archived"
 
 // --- GET /api/saves ---
 

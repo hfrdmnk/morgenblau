@@ -24,7 +24,7 @@ export type ReaderEntry = {
         hasBlockedRemoteImages: boolean;
         remoteImagesAllowed: boolean;
     };
-    savedState?: { kind?: string; id?: string; rkey?: string; tags?: string[] } | null;
+    savedState?: { kind?: string; id?: string; rkey?: string; tags?: string[]; savedAt?: string } | null;
 };
 
 // The choice applies to this one message, which comes back with its images allowed.
