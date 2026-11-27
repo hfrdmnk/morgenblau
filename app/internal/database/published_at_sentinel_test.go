@@ -12,8 +12,6 @@ var (
 	publishedMin        = regexp.MustCompile(`(?i)\bMIN\(\s*(\w+\.)?published_at\b`)
 )
 
-// An undated generated-feed entry stores published_at = ”, which sorts before every date: a window needs a lower
-// bound and a minimum needs NULLIF, or the history entry lands in a digest day or hides the feed's first real date.
 func TestEmptyPublishedAtNeverReachesADigestDay(t *testing.T) {
 	for _, q := range loadSQLQueries(t) {
 		sql := q.sql

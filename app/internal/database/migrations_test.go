@@ -9,7 +9,6 @@ import (
 	"testing"
 )
 
-// A deploy rollback runs one goose down; a Down that misses part of its Up leaves a schema the Up can't be re-applied to.
 func TestEveryMigrationRollsBackCleanly(t *testing.T) {
 	versions, err := filepath.Glob(filepath.Join("migrations", "*.sql"))
 	if err != nil {

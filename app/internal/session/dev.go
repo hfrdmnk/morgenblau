@@ -16,7 +16,6 @@ import (
 	"morgenblau/internal/safehttp"
 )
 
-// A colon cannot occur in Indigo's base64url OAuth session IDs.
 const devSessionPrefix = "dev:"
 
 type DevConfig struct {
@@ -30,7 +29,6 @@ func LoadDevConfig(getenv func(string) string) (*DevConfig, error) {
 	cfg := &DevConfig{PDS: strings.TrimRight(getenv("ATPROTO_PDS"), "/"), Handle: getenv("ATPROTO_HANDLE"), Password: getenv("ATPROTO_PASSWORD")}
 	u, err := url.Parse(cfg.PDS)
 	httpsOrigin := err == nil && u.Scheme == "https" && u.Hostname() != "" && u.User == nil && u.RawQuery == "" && u.Fragment == "" && u.Path == ""
-	// A verify run's throwaway PDS listens on plain HTTP on this machine.
 	if _, _, loopbackErr := safehttp.LoopbackOrigin(cfg.PDS); !httpsOrigin && loopbackErr != nil {
 		return nil, errors.New("development login requires an HTTPS ATPROTO_PDS origin, or plain HTTP on loopback")
 	}
@@ -81,7 +79,6 @@ func (m *Manager) LoginDev(ctx context.Context) (*Session, error) {
 		}
 	}
 	client := atxrpc.New(m.dev.PDS, m.client)
-	// A 307/308 redirect would forward the password-bearing request body.
 	client.Client.CheckRedirect = func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
@@ -90,7 +87,8 @@ func (m *Manager) LoginDev(ctx context.Context) (*Session, error) {
 		Access  string `json:"accessJwt"`
 		Refresh string `json:"refreshJwt"`
 	}
-	// The library login helper cannot accept our guarded client for createSession.
+	// LoginWithPasswordHost builds its own APIClient around the default HTTP client, so createSession goes through our guarded client here.
+	// https://github.com/bluesky-social/indigo/blob/6017e7ee0a79/atproto/atclient/password_auth.go#L253-L255
 	err := client.Post(ctx, "com.atproto.server.createSession", map[string]string{"identifier": m.dev.Handle, "password": m.dev.Password}, &result)
 	if err != nil {
 		return nil, errors.New("could not sign in to development PDS")

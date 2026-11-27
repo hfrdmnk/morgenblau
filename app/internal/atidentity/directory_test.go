@@ -22,7 +22,6 @@ func (s *sentinelTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, errSentinel
 }
 
-// Guarded must route identity HTTP fetches through the injected client; this pins the wiring, since falling back to an unguarded client would defeat the SSRF guard.
 func TestGuarded_UsesInjectedClient(t *testing.T) {
 	tr := &sentinelTransport{}
 	dir := Guarded(&http.Client{Transport: tr})
@@ -35,7 +34,7 @@ func TestGuarded_UsesInjectedClient(t *testing.T) {
 		t.Fatal("expected the sentinel transport to fail resolution")
 	}
 	if !tr.called {
-		t.Fatal("identity resolution did not use the injected client")
+		t.Fatal("identity resolution did not use the injected client; an unguarded client would let did:web and handle lookups reach private networks")
 	}
 }
 
@@ -74,7 +73,6 @@ var (
 	}
 )
 
-// gatedTransport serves testDID's document and testHandle's well-known, holding the first request to gatePath until the test has cancelled that caller.
 type gatedTransport struct {
 	gatePath string
 	gate     sync.Once
@@ -104,7 +102,6 @@ func (g *gatedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}, nil
 }
 
-// A caller that gives up mid-lookup must not leave its cancellation cached as the identity's failure, or as an invalid handle, for the next caller.
 func TestCached_CallerCancelDoesNotPoisonCache(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -139,7 +136,7 @@ func TestCached_CallerCancelDoesNotPoisonCache(t *testing.T) {
 
 			ident, err := tc.lookup(context.Background(), dir)
 			if err != nil {
-				t.Fatalf("lookup after a cancelled caller: %v", err)
+				t.Fatalf("lookup after a cancelled caller: %v; CacheDirectory caches what its inner directory returns for every later caller, so one caller's cancellation must not reach it", err)
 			}
 			if ident.Handle != testHandle {
 				t.Fatalf("handle = %s, want %s", ident.Handle, testHandle)
@@ -148,7 +145,6 @@ func TestCached_CallerCancelDoesNotPoisonCache(t *testing.T) {
 	}
 }
 
-// ctxProbe records the context the inner directory receives.
 type ctxProbe struct{ alive, deadline bool }
 
 func (p *ctxProbe) record(ctx context.Context) (*identity.Identity, error) {
@@ -171,7 +167,6 @@ func (p *ctxProbe) Lookup(ctx context.Context, _ syntax.AtIdentifier) (*identity
 
 func (p *ctxProbe) Purge(context.Context, syntax.AtIdentifier) error { return nil }
 
-// CacheDirectory never calls its inner Lookup, so only a direct call pins that method's detach.
 func TestDetached_InnerContextOutlivesCallerWithDeadline(t *testing.T) {
 	tests := []struct {
 		name   string

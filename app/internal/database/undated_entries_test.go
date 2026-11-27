@@ -8,7 +8,6 @@ import (
 	"morgenblau/internal/database/db"
 )
 
-// Generated web feeds store setup history with an empty published_at; it must reach no digest day and not hide the feed's real dates.
 func TestUndatedEntriesStayOutOfTheDigestAndSourceStats(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "undated.db")
 	runGoose(t, path, "up")

@@ -1,4 +1,3 @@
-// Package atidentity builds an atproto identity directory whose HTTP fetches pass an SSRF guard, since did:web/did:plc/handle well-known lookups resolve attacker-supplied authorities.
 package atidentity
 
 import (
@@ -11,11 +10,8 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 )
 
-// lookupTimeout bounds a lookup that callers can no longer cancel.
 const lookupTimeout = 10 * time.Second
 
-// Guarded mirrors indigo's DefaultDirectory but swaps in client (the safehttp client) for identity HTTP fetches and resolves every handle through DNS.
-// The SSRF guard lives on client's dial Control, so it fires against the resolved peer IP at connect time and defeats DNS rebinding.
 func Guarded(client *http.Client) identity.Directory {
 	return cached(guardedBase(client))
 }
@@ -31,8 +27,7 @@ func guardedBase(client *http.Client) *identity.BaseDirectory {
 			},
 		},
 		TryAuthoritativeDNS: true,
-		// No SkipDNSDomainSuffixes: for a skipped suffix indigo turns a failed well-known lookup into an empty DID with no error.
-		UserAgent: "morgenblau-identity",
+		UserAgent:           "morgenblau-identity",
 	}
 }
 
@@ -40,7 +35,6 @@ func cached(inner identity.Directory) identity.Directory {
 	return identity.NewCacheDirectory(detached{inner}, 250_000, 24*time.Hour, 2*time.Minute, 5*time.Minute)
 }
 
-// detached shields lookups from caller cancellation, because CacheDirectory caches whatever its inner directory returns and shares it with every later caller.
 type detached struct{ inner identity.Directory }
 
 func detach(ctx context.Context) (context.Context, context.CancelFunc) {

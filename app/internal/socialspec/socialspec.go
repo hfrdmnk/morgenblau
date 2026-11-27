@@ -1,4 +1,3 @@
-// Package socialspec reads a site's SocialSpec profile (socialspec.org): /.well-known/about.md, contact.vcf and following.opml.
 package socialspec
 
 import (
@@ -25,7 +24,6 @@ const (
 	maxFollowing = 500
 )
 
-// Profile is what a site says about its author; every part is optional.
 type Profile struct {
 	Name      string    `json:"name,omitempty"`
 	Summary   string    `json:"summary,omitempty"`
@@ -34,21 +32,18 @@ type Profile struct {
 	Following []Follow  `json:"following,omitempty"`
 }
 
-// Contact is an email address or a web link from contact.vcf.
 type Contact struct {
-	Kind      string `json:"kind"` // "email" | "url"
+	Kind      string `json:"kind"`
 	Value     string `json:"value"`
 	Preferred bool   `json:"preferred,omitempty"`
 }
 
-// Follow is one feed from following.opml.
 type Follow struct {
 	Title   string `json:"title"`
 	FeedURL string `json:"feedUrl"`
 	SiteURL string `json:"siteUrl,omitempty"`
 }
 
-// Fetch reads origin's three files concurrently; nil, nil means the site publishes none. client must be the safehttp client: origin comes from the reader.
 func Fetch(ctx context.Context, client *http.Client, origin string) (*Profile, error) {
 	base := strings.TrimSuffix(origin, "/") + "/.well-known/"
 	var (
@@ -60,8 +55,7 @@ func Fetch(ctx context.Context, client *http.Client, origin string) (*Profile, e
 	}
 	wg.Wait()
 
-	// The vCard and OPML parsers reject an HTML fallback page by shape; plain Markdown has no shape to check.
-	if bytes.HasPrefix(bytes.TrimSpace(about), []byte("<")) {
+	if isHTMLPage(about) {
 		about = nil
 	}
 	p := &Profile{Following: following(follow)}
@@ -73,7 +67,6 @@ func Fetch(ctx context.Context, client *http.Client, origin string) (*Profile, e
 	return p, nil
 }
 
-// get treats every failure as absence: each file is optional and a broken one shouldn't hide the others.
 func get(ctx context.Context, client *http.Client, u string) []byte {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -104,7 +97,8 @@ func contact(card []byte) (string, []Contact) {
 	if !strings.Contains(text, "BEGIN:VCARD") {
 		return "", nil
 	}
-	// RFC 6350 folds long lines; a continuation starts with one space or tab.
+	// RFC 6350 folds long lines: a CRLF followed by one space or tab continues the line.
+	// https://www.rfc-editor.org/rfc/rfc6350#section-3.2
 	text = vcardFold.ReplaceAllString(text, "")
 	var (
 		name     string
@@ -183,12 +177,11 @@ var (
 	vcardFold   = regexp.MustCompile(`\r?\n[ \t]`)
 	frontmatter = regexp.MustCompile(`(?s)\A---[ \t]*\r?\n(?:(.*?)\r?\n)?---[ \t]*(?:\r?\n|\z)`)
 	markdown    = goldmark.New(goldmark.WithExtensions(extension.GFM))
-	// Links open outside the app, which would otherwise navigate away from the reader's sheet.
 	aboutPolicy = bluemonday.UGCPolicy().AddTargetBlankToFullyQualifiedLinks(true)
 )
 
-// aboutPage splits about.md into its optional YAML frontmatter summary and its body rendered to sanitized HTML, without H1s.
-// Relative links and images resolve against the file's own URL, so the spec's root-relative /img/... point at the site.
+func isHTMLPage(body []byte) bool { return bytes.HasPrefix(bytes.TrimSpace(body), []byte("<")) }
+
 func aboutPage(md []byte, fileURL string) (summary, html string) {
 	md = bytes.TrimPrefix(md, []byte("\ufeff"))
 	if m := frontmatter.FindSubmatch(md); m != nil {
@@ -222,7 +215,6 @@ func aboutPage(md []byte, fileURL string) (summary, html string) {
 		}
 		return ast.WalkContinue, nil
 	})
-	// An H1 titles the page, which the profile header already does with the author's name.
 	for _, n := range titles {
 		n.Parent().RemoveChild(n.Parent(), n)
 	}

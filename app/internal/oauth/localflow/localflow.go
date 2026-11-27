@@ -1,4 +1,5 @@
-// Package localflow starts atproto OAuth for accounts on a throwaway loopback PDS, which indigo's StartAuthFlow refuses because its resolver accepts only public https hosts.
+// Indigo's StartAuthFlow resolves a PDS's authorization server only for a public https host without a port, so it refuses a loopback PDS.
+// https://github.com/bluesky-social/indigo/blob/6017e7ee0a79/atproto/auth/oauth/resolver.go#L36-L44
 package localflow
 
 import (
@@ -21,13 +22,11 @@ var (
 	errForeignAuthServer = errors.New("the local PDS names an authorization server elsewhere")
 )
 
-// App is indigo's ClientApp with StartAuthFlow taking over for accounts on PDS, the run's loopback PDS; ProcessCallback and Logout stay indigo's.
 type App struct {
 	*oauth.ClientApp
 	PDS string
 }
 
-// StartAuthFlow mirrors indigo's StartAuthFlow after identity lookup, with the loopback-aware resolution below in place of its resolver.
 func (a App) StartAuthFlow(ctx context.Context, identifier string) (string, error) {
 	atid, err := syntax.ParseAtIdentifier(identifier)
 	if err != nil {
@@ -96,7 +95,8 @@ func (a App) getJSON(ctx context.Context, docURL string, out any) error {
 	return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out)
 }
 
-// validateAuthServer checks the issuer, authorize, PAR, token and revocation endpoints, which indigo's AuthServerMetadata.Validate demands be https, against a loopback origin instead, then runs Validate itself on a copy moved to a placeholder https origin for everything else.
+// AuthServerMetadata.Validate requires an https issuer without a port and https endpoints.
+// https://github.com/bluesky-social/indigo/blob/6017e7ee0a79/atproto/auth/oauth/types.go#L205-L215
 func validateAuthServer(meta oauth.AuthServerMetadata, serverURL string) error {
 	_, issuerPort, err := safehttp.LoopbackOrigin(meta.Issuer)
 	if err != nil {

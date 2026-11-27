@@ -28,7 +28,7 @@ func TestNew_SetsMorgenblauUserAgent(t *testing.T) {
 		t.Fatalf("Get: %v", err)
 	}
 	if gotUA != safehttp.UserAgent {
-		t.Errorf("User-Agent = %q, want %q", gotUA, safehttp.UserAgent)
+		t.Errorf("User-Agent = %q, want %q instead of indigo's default", gotUA, safehttp.UserAgent)
 	}
 }
 

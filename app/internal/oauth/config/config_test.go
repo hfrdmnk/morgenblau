@@ -14,7 +14,6 @@ import (
 	"testing"
 )
 
-// genP256B64PEM mirrors the .env.example key generation command (openssl genpkey -algorithm EC | base64).
 func genP256B64PEM(t *testing.T) string {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -168,7 +167,6 @@ func TestLoad_RejectsScopeWithoutAtproto(t *testing.T) {
 	}
 }
 
-// Regression guard: confidential-mode JWKS must publish only the public half, never the private d scalar.
 func TestLoad_PublicJWKSHasNoPrivateMaterial(t *testing.T) {
 	env := baseEnv(t)
 	env["BLUESKY_CLIENT_ID"] = "https://app.example.com/oauth-client-metadata.json"
@@ -206,9 +204,7 @@ func TestLoad_PublicJWKSHasNoPrivateMaterial(t *testing.T) {
 	}
 }
 
-// Pins the parse path: base64 -> PEM -> PKCS8 -> ECDSA P-256 -> atcrypto.
 func TestLoad_KeyRoundTripsThroughECDH(t *testing.T) {
-	// Metadata-URL (confidential) mode carries the private key; loopback (public) does not.
 	env := baseEnv(t)
 	env["BLUESKY_CLIENT_ID"] = "https://app.example.com/oauth-client-metadata.json"
 	env["BLUESKY_REDIRECT"] = "https://app.example.com/oauth/callback"

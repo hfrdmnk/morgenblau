@@ -23,12 +23,12 @@ func TestHasStandardSubscriptionWrite(t *testing.T) {
 	}{
 		{"subscription grant", sessionWith([]string{"atproto", "include:blue.morgen.access", StandardSubscription}), true},
 		{"unrelated repo grant", sessionWith([]string{"atproto", "repo:site.standard.graph.recommend"}), false},
-		{"pre-change grant", sessionWith([]string{"atproto", "include:blue.morgen.access"}), false},
+		{"grant from before the scope was requested, which a refresh never widens", sessionWith([]string{"atproto", "include:blue.morgen.access"}), false},
 		{"nil scopes", sessionWith(nil), false},
 		{"empty string elements", sessionWith([]string{"", ""}), false},
 		{"nil session", nil, false},
 		{"nil data", &session.Session{}, false},
-		{"password authority", password, true},
+		{"password session, whose authority the PDS enforces instead of OAuth scopes", password, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

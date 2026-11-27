@@ -177,7 +177,6 @@ func parseMIMEAtDepth(raw []byte, depth int) (normalizedMail, bool) {
 		result.BodyText = strings.TrimSpace(bluemonday.StrictPolicy().Sanitize(htmlBody))
 	}
 	if len(forwarded) > 0 {
-		// A forward's links unsubscribe whoever forwarded it, never this reader.
 		result.UnsubscribeURL = ""
 	}
 	if len(forwarded) == 1 {
@@ -417,7 +416,6 @@ func parseListID(value string) string {
 	return value
 }
 
-// oneClickUnsubscribeURL returns the https URL an RFC 8058 one-click POST goes to, or "" when the mail offers none.
 func oneClickUnsubscribeURL(listUnsubscribe, listUnsubscribePost string) string {
 	if !strings.EqualFold(strings.TrimSpace(listUnsubscribePost), "List-Unsubscribe=One-Click") {
 		return ""

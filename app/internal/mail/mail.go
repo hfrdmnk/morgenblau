@@ -1,4 +1,3 @@
-// Package mail sends the app's own outgoing messages through an SMTP submission relay.
 package mail
 
 import (
@@ -23,14 +22,15 @@ import (
 	gosmtp "github.com/emersion/go-smtp"
 )
 
+const implicitTLSPort = 465
+
 type Config struct {
 	Host     string
 	Port     int
 	Username string
 	Password string
 	From     netmail.Address
-	// TLS overrides the default verification of Host's certificate.
-	TLS *tls.Config
+	TLS      *tls.Config
 }
 
 type Attachment struct {
@@ -58,7 +58,6 @@ func NewSender(cfg Config) *Sender {
 	}}
 }
 
-// LoadFeedbackConfig reads where feedback goes and the relay it goes through; an unset FEEDBACK_EMAIL turns feedback off.
 func LoadFeedbackConfig(getenv func(string) string) (Config, string, error) {
 	env := func(name string) string { return strings.TrimSpace(getenv(name)) }
 	to := env("FEEDBACK_EMAIL")
@@ -94,7 +93,6 @@ func LoadFeedbackConfig(getenv func(string) string) (Config, string, error) {
 	return cfg, to, nil
 }
 
-// Send uses implicit TLS on port 465 and STARTTLS elsewhere; only a loopback relay, such as a local mail catcher, may skip TLS.
 func (s *Sender) Send(ctx context.Context, m Message) error {
 	raw, err := compose(s.cfg.From, m)
 	if err != nil {
@@ -115,7 +113,7 @@ func (s *Sender) Send(ctx context.Context, m Message) error {
 
 	var c *gosmtp.Client
 	switch {
-	case s.cfg.Port == 465:
+	case s.cfg.Port == implicitTLSPort:
 		c = gosmtp.NewClient(tls.Client(conn, tlsConfig))
 	case isLoopback(s.cfg.Host):
 		c = gosmtp.NewClient(conn)
@@ -194,6 +192,8 @@ func oneLine(s string) string {
 }
 
 // writeBase64 wraps at 76 columns, the line limit RFC 2045 sets for base64 bodies.
+// RFC 2045 limits base64 body lines to 76 characters.
+// https://www.rfc-editor.org/rfc/rfc2045#section-6.8
 func writeBase64(w interface{ Write([]byte) (int, error) }, data []byte) {
 	encoded := base64.StdEncoding.EncodeToString(data)
 	for len(encoded) > 76 {

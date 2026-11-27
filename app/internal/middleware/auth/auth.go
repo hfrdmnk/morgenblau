@@ -1,5 +1,3 @@
-// Package auth wraps an http.Handler with session-cookie gating. Unauthed API
-// paths get 401 (frontend needs a status code); unauthed SPA paths redirect to /login.
 package auth
 
 import (
@@ -20,40 +18,31 @@ type Resumer interface {
 	ResumeSession(ctx context.Context, did syntax.DID, sessionID string) (*session.Session, error)
 }
 
-// SessionLocker serialises the refresh cycle for a single (did, sid); indigo doesn't coalesce refreshes, so concurrent expired-session requests can boot a valid user.
 type SessionLocker interface {
 	LockSession(did syntax.DID, sid string) func()
 }
 
 type Middleware func(http.Handler) http.Handler
 
-// maxAPIBodyBytes caps JSON bodies at 1 MB, clearing the largest legitimate payload (batch subscription create) with headroom.
 const maxAPIBodyBytes = 1 << 20
 
-// maxFeedbackBodyBytes clears the feedback route's 12 MB of images plus the message and multipart framing.
 const maxFeedbackBodyBytes = 13 << 20
 
-// New builds the gating middleware; every path is authed by default except the named public/infra routes, and admin paths admit only admins.
 func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, allowed Allowlist, admins Admins) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
 
-			// Caps bodies before decode so a large payload can't exhaust memory; api.decodeJSON turns the overflow into a 413.
 			if path == "/api/feedback" {
 				r.Body = http.MaxBytesReader(w, r.Body, maxFeedbackBodyBytes)
 			} else if strings.HasPrefix(path, "/api/") {
 				r.Body = http.MaxBytesReader(w, r.Body, maxAPIBodyBytes)
 			}
 
-			// Resume failures (missing, garbage, tampered, dead row) collapse to unauthed; dead-row also clears the cookie so retries don't loop forever.
 			var sess *session.Session
 			didStr, sid, ok := sealer.Get(r)
 			if ok {
 				if did, err := syntax.ParseDID(didStr); err == nil && allowed.Allows(did) {
-					// Only requests that make authenticated PDS calls can trigger a
-					// lazy refresh or DPoP-nonce rotation mid-handler, so only they
-					// hold the lock, spanning next.ServeHTTP so refreshed tokens persist first.
 					if holdsSessionLock(r) {
 						unlock := locker.LockSession(did, sid)
 						defer unlock()
@@ -63,7 +52,6 @@ func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, allowed A
 					case err == nil:
 						sess = s
 					case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-						// Client went away mid-resume; keep the cookie so the next request can retry.
 						slog.Debug("resume session transient", "err", err)
 					default:
 						sealer.Clear(w)
@@ -73,7 +61,6 @@ func New(resumer Resumer, locker SessionLocker, sealer *cookie.Sealer, allowed A
 				}
 			}
 
-			// Before the public and infra exemptions, so no exemption can ever open an admin path.
 			if IsAdminPath(path) {
 				serveAdmin(next, w, r, sess, admins)
 				return
@@ -110,7 +97,6 @@ func refuseUnauthenticated(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
-// serveAdmin hides admin paths from signed-in non-admins: they look exactly like a route that does not exist.
 func serveAdmin(next http.Handler, w http.ResponseWriter, r *http.Request, sess *session.Session, admins Admins) {
 	switch {
 	case sess == nil:
@@ -128,14 +114,12 @@ func serveAdmin(next http.Handler, w http.ResponseWriter, r *http.Request, sess 
 	}
 }
 
-// writeUnauthenticated mirrors api.writeError's {code, message} envelope; api imports this package, so it can't call writeError.
 func writeUnauthenticated(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
 	_, _ = io.WriteString(w, `{"code":"unauthenticated","message":"Your session ended. Sign in again."}`+"\n")
 }
 
-// holdsSessionLock must mirror the PDS-mutating routes in server/routes.go; subscriptions/resolve, /preview and /profile, digest/refresh, and entries/extract don't write to the PDS.
 func holdsSessionLock(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodPost, http.MethodPatch, http.MethodDelete:
@@ -164,9 +148,6 @@ var publicRoutes = map[string]string{
 	"/about": "",
 }
 
-// publicPrefixes are anonymous on purpose: feed readers fetch generated web source feeds without a session.
-// They match websource.FeedPaths; /web/ is the legacy alias existing subscriptions still name.
-// /user/ serves opted-in public following lists to blogrolls and SocialSpec readers.
 var publicPrefixes = []string{
 	"/feed/",
 	"/web/",
@@ -189,12 +170,9 @@ var infraExact = map[string]struct{}{
 	"/oauth/logout":   {},
 }
 
-var infraPrefixes = []string{
-	"/assets/",
-	"/@",             // /@vite/, /@react-refresh, /@id, /@fs (Vite dev)
-	"/node_modules/", // Vite dev
-	"/src/",          // Vite dev
-}
+var viteDevServerPrefixes = []string{"/@", "/node_modules/", "/src/"}
+
+var infraPrefixes = append([]string{"/assets/"}, viteDevServerPrefixes...)
 
 func isInfra(path string) bool {
 	if _, ok := infraExact[path]; ok {
@@ -205,8 +183,6 @@ func isInfra(path string) bool {
 			return true
 		}
 	}
-	// Dotted-last-segment means a root-level static file (/favicon.svg), but API
-	// route values may also contain dots, so they never qualify.
 	if strings.HasPrefix(path, "/api/") {
 		return false
 	}
@@ -219,12 +195,10 @@ func isInfra(path string) bool {
 
 type contextKey struct{}
 
-// WithSession returns a context carrying sess; exported so tests can inject a session without going through the middleware.
 func WithSession(ctx context.Context, sess *session.Session) context.Context {
 	return context.WithValue(ctx, contextKey{}, sess)
 }
 
-// SessionFromContext returns the injected session, nil if absent (shouldn't happen on a gated path behind the middleware).
 func SessionFromContext(ctx context.Context) *session.Session {
 	v, _ := ctx.Value(contextKey{}).(*session.Session)
 	return v

@@ -20,6 +20,8 @@ linters:
       forbid:
         - pattern: '^http\.(DefaultClient|Get|Head|Post|PostForm)$'
           msg: "fetch through internal/safehttp or internal/atidentity: the default client follows attacker-chosen URLs into private networks (SSRF)"
+        - pattern: '^safehttp\.WithAllowLoopback$'
+          msg: "WithAllowLoopback lets fetched URLs reach every service on this machine; outside tests, open only the ports a local PDS and PLC use with safehttp.WithAllowLoopbackPorts"
     staticcheck:
       checks:
         - all

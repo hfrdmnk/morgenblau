@@ -12,15 +12,11 @@ import (
 	"morgenblau/internal/database/db"
 )
 
-// DB holds two connection pools over the same SQLite file: WAL lets readers run concurrently with the single writer, so reads never queue behind a write-heavy sync sweep.
 type DB struct {
-	// Writer is capped at one connection (SQLite serialises writes); BEGIN IMMEDIATE takes the write lock up front.
 	Writer *sql.DB
-	// Reader is a small pool of WAL readers that don't block the writer or each other.
 	Reader *sql.DB
 }
 
-// Open returns a DB backed by DB_PATH (default ./data/morgenblau.db); callers own the lifecycle and should defer Close.
 func Open() (*DB, error) {
 	path := os.Getenv("DB_PATH")
 	if path == "" {
@@ -34,7 +30,6 @@ func Open() (*DB, error) {
 		path,
 	)
 
-	// _txlock=immediate takes the write lock at BEGIN, guarding against an out-of-process writer (goose CLI, sqlite3 shell) grabbing it mid-transaction.
 	writer, err := sql.Open("sqlite", base+"&_txlock=immediate")
 	if err != nil {
 		return nil, err
@@ -51,7 +46,6 @@ func Open() (*DB, error) {
 	return &DB{Writer: writer, Reader: reader}, nil
 }
 
-// Close closes both pools, returning the first error.
 func (d *DB) Close() error {
 	err := d.Writer.Close()
 	if rerr := d.Reader.Close(); err == nil {
@@ -60,8 +54,6 @@ func (d *DB) Close() error {
 	return err
 }
 
-// WithTx runs fn in a single transaction on the writer pool, committing on success and rolling back on error.
-// The transaction holds the sole writer connection: fn must never touch a non-transaction writer Queries, or it deadlocks until the context times out.
 func WithTx(ctx context.Context, w *sql.DB, fn func(*db.Queries) error) error {
 	tx, err := w.BeginTx(ctx, nil)
 	if err != nil {

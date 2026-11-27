@@ -38,7 +38,6 @@ func evalOne(t *testing.T, s site, opts options, e env) result {
 	return got.Results[0]
 }
 
-// tonedListing defeats the extractor: each post link has its own class and category path.
 func tonedListing() string {
 	var b strings.Builder
 	b.WriteString(`<!doctype html><html lang="en"><head><title>Blog</title></head><body><main><div class="feed">`)
@@ -49,7 +48,6 @@ func tonedListing() string {
 	return b.String()
 }
 
-// stubModel picks the first list as judge and returns a CSS recipe as inducer, counting each step's calls.
 type stubModel struct{ judge, induce atomic.Int32 }
 
 func (m *stubModel) Complete(ctx context.Context, p webfeed.Prompt) (string, webfeed.Usage, error) {
@@ -152,7 +150,6 @@ func TestAdvertisedFeedWinsEvenWhenBrokenLikeOnTheServer(t *testing.T) {
 	}
 }
 
-// flakyDoer fails the first request so discovery errors while setup would succeed.
 type flakyDoer struct {
 	once sync.Once
 	next *http.Client

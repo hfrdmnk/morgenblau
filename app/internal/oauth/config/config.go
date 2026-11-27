@@ -1,4 +1,3 @@
-// Package config builds the indigo OAuth client config from environment variables.
 package config
 
 import (
@@ -17,15 +16,13 @@ import (
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 )
 
-// Config is the resolved OAuth client config plus consent-screen metadata and JWKS URI (metadata-URL mode only).
 type Config struct {
 	Indigo     *oauth.ClientConfig
-	JWKSURI    string // advertised in client metadata when non-empty
-	ClientName string // advertised as client_name when non-empty
-	ClientURI  string // advertised as client_uri when non-empty
+	JWKSURI    string
+	ClientName string
+	ClientURI  string
 }
 
-// FromOS reads from the process environment; port is the server's listen port, which names the loopback callback.
 func FromOS(port int) (*Config, error) {
 	keys := []string{
 		"BLUESKY_OAUTH_PRIVATE_KEY",
@@ -42,7 +39,6 @@ func FromOS(port int) (*Config, error) {
 	return Load(env, port)
 }
 
-// Load builds the config from an in-memory env map; empty BLUESKY_CLIENT_ID yields a loopback config, otherwise a metadata-URL config (caller must serve the metadata document).
 func Load(env map[string]string, port int) (*Config, error) {
 	scope := strings.TrimSpace(env["BLUESKY_OAUTH_SCOPE"])
 	if scope == "" {
@@ -98,7 +94,6 @@ func deriveJWKSURI(clientID string) (string, error) {
 	return u.String(), nil
 }
 
-// parsePrivateKey expects the base64-encoded PEM PKCS#8 form (see openssl pkcs8 -topk8 -nocrypt).
 func parsePrivateKey(encoded string) (atcrypto.PrivateKey, error) {
 	encoded = strings.TrimSpace(encoded)
 	if encoded == "" {

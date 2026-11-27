@@ -52,14 +52,12 @@ func (f *sweepFixture) feed(url string) {
 func (f *sweepFixture) subscribe(did, rkey, url string) {
 	f.t.Helper()
 	now := f.stamp(f.start)
-	// Every subscribe path, mirror, reconcile and import alike, upserts the catalog row before the subscription.
 	if err := f.q.UpsertFeed(f.ctx, db.UpsertFeedParams{FeedUrl: url, CreatedAt: now, UpdatedAt: now}); err != nil {
 		f.t.Fatal(err)
 	}
 	f.follow(did, rkey, url)
 }
 
-// follow writes only the subscription row, the second half of a subscribe.
 func (f *sweepFixture) follow(did, rkey, url string) {
 	f.t.Helper()
 	now := f.stamp(f.start)
@@ -126,7 +124,6 @@ func TestSweepDeletesAFeedOnlyAfterItWentUnfollowedForTheWholeGrace(t *testing.T
 	f.subscribe("did:plc:bob", "b1", kept)
 	f.subscribe("did:plc:alice", "a2", dropped)
 	f.unsubscribe("did:plc:alice", "a2")
-	// One of two followers leaving must not orphan the feed.
 	f.unsubscribe("did:plc:bob", "b1")
 
 	marked := f.start.Add(time.Hour)

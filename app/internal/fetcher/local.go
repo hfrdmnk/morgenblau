@@ -8,8 +8,6 @@ import (
 	"net/url"
 )
 
-// WithLocalFeeds answers the feeds isLocal claims from h in process: the safe transport refuses loopback, and in
-// production the request would hairpin out and back. Every other request keeps the safe transport.
 func WithLocalFeeds(isLocal func(*url.URL) bool, h http.Handler) Option {
 	return func(f *Fetcher) {
 		f.localFeeds = &localFeeds{isLocal: isLocal, handler: h}
@@ -31,7 +29,6 @@ func (l localFeeds) RoundTrip(req *http.Request) (*http.Response, error) {
 	return w.response(req), nil
 }
 
-// bufferedResponse collects what a handler writes, bounded by the handler itself since only our own feeds reach it.
 type bufferedResponse struct {
 	header http.Header
 	status int

@@ -1,4 +1,3 @@
-// Package ratelimit caps how often one client may hit a route, for public routes whose requests make the server do remote work.
 package ratelimit
 
 import (
@@ -11,7 +10,6 @@ import (
 	"time"
 )
 
-// Limiter allows each client limit requests per fixed window. Counts reset lazily when a request arrives in a new window, so it needs no background goroutine and holds at most one window of clients.
 type Limiter struct {
 	limit  int
 	window time.Duration
@@ -38,7 +36,6 @@ func (l *Limiter) Wrap(next http.Handler) http.Handler {
 	})
 }
 
-// Allow counts one request for key, or reports how long until the window resets.
 func (l *Limiter) Allow(key string) (time.Duration, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -54,7 +51,6 @@ func (l *Limiter) Allow(key string) (time.Duration, bool) {
 	return 0, true
 }
 
-// ClientIP trusts forwarded addresses only behind Fly; Cloudflare provenance comes from Fly-Client-IP, never the socket address of Fly's proxy.
 func ClientIP(behindFly bool) func(*http.Request) string {
 	return func(r *http.Request) string {
 		if behindFly {

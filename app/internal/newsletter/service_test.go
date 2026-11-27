@@ -3,7 +3,9 @@ package newsletter
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -213,7 +215,6 @@ func TestPatchSourceChangesOnlyTheFieldsItNames(t *testing.T) {
 	if renamed.Title != "Example Letter" || !renamed.Primary || strings.Join(renamed.Tags, ",") != "weekly" {
 		t.Fatalf("after rename = title %q, primary %v, tags %v", renamed.Title, renamed.Primary, renamed.Tags)
 	}
-	// 64 two-byte characters: within the feed tag limit, over the old 80-byte one.
 	accented := strings.Repeat("é", 64)
 	tags := []string{"design", accented}
 	retagged, err := service.PatchSource(ctx, "did:plc:alice", sourceID, SourcePatch{Tags: &tags})
@@ -523,5 +524,37 @@ func TestSaveTagsStayWithTheOwnersSaveAndReachTheReader(t *testing.T) {
 	}
 	if got, err := service.SetSaveTags(ctx, "did:plc:alice", save.ID, nil); err != nil || len(got) != 0 {
 		t.Errorf("clearing tags = %v (%v)", got, err)
+	}
+}
+
+func TestTagLimitsMatchTheSubscriptionAndSaveLexicons(t *testing.T) {
+	for _, record := range []string{"subscription", "save"} {
+		raw, err := os.ReadFile(filepath.Join("..", "..", "lexicons", "blue", "morgen", "feed", record+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var lexicon struct {
+			Defs struct {
+				Main struct {
+					Record struct {
+						Properties struct {
+							Tags struct {
+								MaxLength int `json:"maxLength"`
+								Items     struct {
+									MaxGraphemes int `json:"maxGraphemes"`
+								} `json:"items"`
+							} `json:"tags"`
+						} `json:"properties"`
+					} `json:"record"`
+				} `json:"main"`
+			} `json:"defs"`
+		}
+		if err := json.Unmarshal(raw, &lexicon); err != nil {
+			t.Fatal(err)
+		}
+		tags := lexicon.Defs.Main.Record.Properties.Tags
+		if tags.MaxLength != maxSaveTags || tags.Items.MaxGraphemes != maxTagLength {
+			t.Errorf("%s tags allow %d tags of %d graphemes, newsletters allow %d of %d: newsletter sources and saves must take the same tags as feed subscriptions and URL saves", record, tags.MaxLength, tags.Items.MaxGraphemes, maxSaveTags, maxTagLength)
+		}
 	}
 }

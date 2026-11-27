@@ -6,11 +6,10 @@ import (
 )
 
 var (
-	ErrInvalid      = errors.New("invalid newsletter request")
-	ErrNotFound     = errors.New("newsletter item not found")
-	ErrStorageQuota = errors.New("newsletter storage quota reached")
-	ErrUnavailable  = errors.New("newsletter ingestion is unavailable")
-	// ErrUnsubscribeUnsupported means the source's mail never offered RFC 8058 one-click unsubscribe.
+	ErrInvalid                = errors.New("invalid newsletter request")
+	ErrNotFound               = errors.New("newsletter item not found")
+	ErrStorageQuota           = errors.New("newsletter storage quota reached")
+	ErrUnavailable            = errors.New("newsletter ingestion is unavailable")
 	ErrUnsubscribeUnsupported = errors.New("newsletter offers no one-click unsubscribe")
 )
 
@@ -52,7 +51,6 @@ type SourceGroups struct {
 	Stopped []Source
 }
 
-// SourcePatch changes only the fields it sets, as a feed subscription PATCH does.
 type SourcePatch struct {
 	Title   *string   `json:"title"`
 	Primary *bool     `json:"primary"`

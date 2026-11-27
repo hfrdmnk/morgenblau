@@ -37,8 +37,7 @@ func TestKeyset_SealOpen_RoundTrip(t *testing.T) {
 	}
 }
 
-// Data sealed under the old key must still open once the new key is prepended.
-func TestKeyset_Rotation_OpensWithSecondKey(t *testing.T) {
+func TestKeyset_RotationStillOpensDataSealedUnderTheOldKey(t *testing.T) {
 	oldKey := key(t)
 	newKey := key(t)
 
@@ -69,7 +68,7 @@ func TestKeyset_Rotation_OpensWithSecondKey(t *testing.T) {
 func TestKeyset_TamperedCiphertext_Rejected(t *testing.T) {
 	ks, _ := NewKeyset(key(t))
 	sealed, _ := ks.Seal([]byte("payload"))
-	sealed[len(sealed)-1] ^= 0xff // flip a tag byte
+	sealed[len(sealed)-1] ^= 0xff
 	if _, err := ks.Open(sealed); err == nil {
 		t.Error("tampered ciphertext opened successfully")
 	}

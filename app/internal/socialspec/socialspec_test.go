@@ -85,13 +85,15 @@ func TestFetch_ReadsAllThreeFiles(t *testing.T) {
 			t.Errorf("about html lacks %s:\n%s", want, got.AboutHTML)
 		}
 	}
+	if !strings.Contains(got.AboutHTML, `href="https://chat.example.com/jordan" rel="nofollow noopener" target="_blank"`) {
+		t.Errorf("about html opens links in place, which navigates the app away from the reader's sheet:\n%s", got.AboutHTML)
+	}
 	if strings.Contains(got.AboutHTML, "summary") || strings.Contains(got.AboutHTML, "layout") {
 		t.Errorf("about html shows the frontmatter:\n%s", got.AboutHTML)
 	}
 }
 
-// socialspec.org's own about.md has no frontmatter and is served as text/plain.
-func TestFetch_AboutWithoutFrontmatter(t *testing.T) {
+func TestFetch_AboutServedAsPlainTextWithoutFrontmatter(t *testing.T) {
 	md := "# About Example Publication\n\nA _small_ site.\n\n---\n\nsummary: not frontmatter\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/.well-known/about.md" {
@@ -111,7 +113,7 @@ func TestFetch_AboutWithoutFrontmatter(t *testing.T) {
 	}
 	want := "<p>A <em>small</em> site.</p>\n<hr>\n<p>summary: not frontmatter</p>\n"
 	if got.AboutHTML != want {
-		t.Errorf("about html = %q, want %q", got.AboutHTML, want)
+		t.Errorf("about html = %q, want %q without the H1: the profile header already titles the page with the author's name", got.AboutHTML, want)
 	}
 }
 
@@ -128,8 +130,7 @@ func TestFetch_AboutIsSanitized(t *testing.T) {
 	}
 }
 
-// A file that is only frontmatter still says something about its author.
-func TestFetch_FrontmatterOnlyAbout(t *testing.T) {
+func TestFetch_FrontmatterOnlyAboutStillMakesAProfile(t *testing.T) {
 	md := "\ufeff---\r\nsummary: |\r\n  Walks a lot.\r\n---\r\n"
 	got, err := Fetch(context.Background(), http.DefaultClient, serve(t, map[string]string{"/.well-known/about.md": md}))
 	if err != nil || got == nil {
@@ -147,7 +148,6 @@ func TestFetch_NothingPublishedIsNil(t *testing.T) {
 	}
 }
 
-// Single-page apps answer every path with their HTML shell, which must not read as a profile.
 func TestFetch_IgnoresHTMLFallbacks(t *testing.T) {
 	page := "<!doctype html><html><body>App</body></html>"
 	origin := serve(t, map[string]string{
@@ -157,7 +157,7 @@ func TestFetch_IgnoresHTMLFallbacks(t *testing.T) {
 	})
 	got, err := Fetch(context.Background(), http.DefaultClient, origin)
 	if err != nil || got != nil {
-		t.Fatalf("got %+v, %v; want nil, nil", got, err)
+		t.Fatalf("got %+v, %v; want nil, nil: a single-page app answers every path with its HTML shell, which is not a profile", got, err)
 	}
 }
 

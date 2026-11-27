@@ -8,14 +8,12 @@ import (
 	"testing"
 )
 
-// Private newsletter storage may only depend on the local database; PDS, sync, and feed-cache code stay unreachable.
 var allowedNewsletterInternalDeps = []string{
 	"morgenblau/internal/database",
 	"morgenblau/internal/database/db",
 	"morgenblau/internal/newsletter",
 }
 
-// Every other package that held newsletter values could hand them to the PDS or the shared feed cache.
 var allowedNewsletterImporters = []string{
 	"morgenblau/internal/api",
 	"morgenblau/internal/server",

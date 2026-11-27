@@ -13,7 +13,6 @@ import (
 
 const newsletterQueryFile = "newsletters.sql"
 
-// Every other newsletter query must bind each newsletter table it touches to the caller's DID.
 var unscopedNewsletterQueries = map[string]string{
 	"CountActiveNewsletterSourcesByOwner": "admin usage counts each owner's active newsletters and returns no title, sender or message",
 	"GetNewsletterAddressByLocalPart":     "SMTP routing resolves the owner DID from the inbound local part",
@@ -142,7 +141,6 @@ func ownerScopeProblems(sql string, refs []tableRef) []string {
 	return problems
 }
 
-// An unqualified did refers to the block's single unaliased table, which keys under its own name.
 func didKey(term string, refs []tableRef) string {
 	lower := strings.ToLower(term)
 	switch {

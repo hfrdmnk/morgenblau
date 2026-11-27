@@ -187,7 +187,7 @@ func TestParseMIMEKeepsOneClickUnsubscribeOnlyFromDirectDelivery(t *testing.T) {
 		"one-click with only mailto": {
 			raw: direct("List-Unsubscribe: <mailto:leave@example.com>\r\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n"),
 		},
-		"forwarded issue carries the original reader's link": {
+		"forwarded issue drops the link, which would unsubscribe whoever forwarded it": {
 			raw: []byte("From: Alice <alice@example.net>\r\nSubject: Fwd: Issue\r\nMIME-Version: 1.0\r\n" +
 				"Content-Type: multipart/mixed; boundary=mix\r\n\r\n" +
 				"--mix\r\nContent-Type: text/plain\r\n\r\nLook at this.\r\n" +

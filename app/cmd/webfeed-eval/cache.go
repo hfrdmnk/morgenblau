@@ -16,7 +16,6 @@ import (
 
 const maxCachedBody = 10 << 20
 
-// cachingDoer replays earlier responses from disk so repeated tuning runs do not hammer the sites.
 type cachingDoer struct {
 	dir  string
 	next webfeed.Doer
@@ -51,14 +50,17 @@ func (c cachingDoer) Do(req *http.Request) (*http.Response, error) {
 	if resp.Request != nil && resp.Request.URL != nil {
 		cr.FinalURL = resp.Request.URL.String()
 	}
-	// Refusals and server errors are often transient; replaying them would pin a bad day into every later run.
-	if cacheable := cr.Status < 400 || cr.Status == http.StatusNotFound || cr.Status == http.StatusGone; !cacheable {
+	if !isLastingStatus(cr.Status) {
 		return cr.response(req), nil
 	}
 	if raw, err := json.Marshal(cr); err == nil {
 		_ = os.WriteFile(path, raw, 0o600)
 	}
 	return cr.response(req), nil
+}
+
+func isLastingStatus(status int) bool {
+	return status < 400 || status == http.StatusNotFound || status == http.StatusGone
 }
 
 func (cr cachedResponse) response(req *http.Request) *http.Response {

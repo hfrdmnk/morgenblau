@@ -1,4 +1,3 @@
-// Package store implements indigo's ClientAuthStore over SQLite.
 package store
 
 import (
@@ -16,10 +15,8 @@ import (
 	"morgenblau/internal/secret"
 )
 
-// authRequestTTL: AT Proto spec mandates a 10-minute window for in-flight authorizations.
 const authRequestTTL = 10 * time.Minute
 
-// Store is a SQLite-backed ClientAuthStore with a per-(did, session_id) mutex registry serializing session refresh.
 type Store struct {
 	db     *sql.DB
 	q      *db.Queries
@@ -31,7 +28,6 @@ type Store struct {
 
 var _ oauth.ClientAuthStore = (*Store)(nil)
 
-// New builds a Store; the *sql.DB is borrowed (caller must Close it), and keyset is required.
 func New(database *sql.DB, keyset *secret.Keyset) *Store {
 	return &Store{
 		db:     database,
@@ -45,8 +41,6 @@ func (s *Store) sessionLockKey(did syntax.DID, sid string) string {
 	return did.String() + "\x00" + sid
 }
 
-// LockSession serializes callers for the same (did, sid); different keys run in parallel.
-// Hold it across GetSession -> use -> SaveSession, or concurrent refreshes can clobber each other.
 func (s *Store) LockSession(did syntax.DID, sid string) func() {
 	key := s.sessionLockKey(did, sid)
 	s.mu.Lock()
@@ -145,7 +139,6 @@ func (s *Store) DeleteAuthRequestInfo(ctx context.Context, state string) error {
 	return s.q.DeleteAuthRequest(ctx, state)
 }
 
-// GCExpired deletes expired oauth_auth_requests rows; safe to call concurrently with reads.
 func (s *Store) GCExpired(ctx context.Context) (int64, error) {
 	return s.q.DeleteExpiredAuthRequests(ctx, time.Now().UTC().Format(time.RFC3339Nano))
 }

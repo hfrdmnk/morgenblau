@@ -77,7 +77,6 @@ func TestValidator_Allows(t *testing.T) {
 	}
 }
 
-// Port 0 makes an unblocked dial fail with connection-refused too, so we assert the safehttp: marker to confirm our block fired.
 func TestNewClient_BlocksBlockedIPs(t *testing.T) {
 	cases := []string{
 		"http://127.0.0.1:1/",
@@ -100,13 +99,12 @@ func TestNewClient_BlocksBlockedIPs(t *testing.T) {
 				t.Fatalf("Do(%s) = nil error, expected block", raw)
 			}
 			if !strings.Contains(err.Error(), "safehttp:") {
-				t.Errorf("err = %v, want safehttp: marker", err)
+				t.Errorf("err = %v, want safehttp: marker; an unblocked dial to these ports fails too, so only the marker shows the block fired", err)
 			}
 		})
 	}
 }
 
-// A redirect to a non-http scheme is rejected by CheckRedirect before any dial.
 func TestNewClient_RejectsRedirectToBadScheme(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "file:///etc/passwd", http.StatusFound)
@@ -123,10 +121,8 @@ func TestNewClient_RejectsRedirectToBadScheme(t *testing.T) {
 	}
 }
 
-// The dialer's Control callback runs on every dial, including redirect dials, so a 302 to 127.0.0.1 can't pivot the client.
 func TestNewClient_RejectsRedirectToBlockedIP(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// WithAllowLoopback only opens 127/8, so this private RFC1918 redirect still gets blocked.
 		http.Redirect(w, r, "http://10.0.0.1:1/", http.StatusFound)
 	}))
 	defer srv.Close()
@@ -134,7 +130,7 @@ func TestNewClient_RejectsRedirectToBlockedIP(t *testing.T) {
 	c := NewClient(2*time.Second, 5, WithAllowLoopback())
 	_, err := c.Get(srv.URL)
 	if err == nil {
-		t.Fatal("expected blocked-address error, got nil")
+		t.Fatal("expected blocked-address error, got nil: the dial check must run on redirect dials too, and WithAllowLoopback opens only loopback, not private ranges")
 	}
 	if !strings.Contains(err.Error(), "safehttp:") {
 		t.Errorf("err = %v, want safehttp marker", err)
@@ -144,7 +140,6 @@ func TestNewClient_RejectsRedirectToBlockedIP(t *testing.T) {
 func TestNewClient_RedirectCap(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Always redirect, exceeding the cap.
 		http.Redirect(w, r, "/next"+r.URL.Path, http.StatusFound)
 	})
 	srv := httptest.NewServer(mux)
@@ -160,7 +155,6 @@ func TestNewClient_RedirectCap(t *testing.T) {
 	}
 }
 
-// With no redirects allowed, a 307 is refused before its target sees the re-sent POST body.
 func TestNewClient_ZeroRedirectsSendsNothingToTheTarget(t *testing.T) {
 	var targetHits atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { targetHits.Add(1) }))
@@ -211,7 +205,6 @@ func TestNewClient_DefaultBlocksHTTPTest(t *testing.T) {
 	}
 }
 
-// Sanity: the context flows through so callers can cancel.
 func TestNewClient_ContextCancel(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
@@ -311,7 +304,7 @@ func TestLanguageTag_KeepsOnlyABCP47Shape(t *testing.T) {
 		"-en":               "",
 	} {
 		if got := LanguageTag(in); got != want {
-			t.Errorf("LanguageTag(%q) = %q, want %q", in, got, want)
+			t.Errorf("LanguageTag(%q) = %q, want %q: only a BCP 47 shape may ride from a page into a request header", in, got, want)
 		}
 	}
 }

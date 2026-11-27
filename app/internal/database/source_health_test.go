@@ -104,7 +104,6 @@ func TestCountYouTubeFeedFailuresCountsLiveYouTubeFeedsOnly(t *testing.T) {
 	if _, err := openMigrationDB(t, path).ExecContext(ctx, `UPDATE feeds SET orphaned_at = ? WHERE feed_url LIKE '%orphan%'`, now); err != nil {
 		t.Fatal(err)
 	}
-	// Followed since November 1: one has failed ever since, one last fetched yesterday.
 	if _, err := openMigrationDB(t, path).ExecContext(ctx, `INSERT INTO feeds (feed_url, created_at, updated_at, consecutive_failures, last_fetched_at) VALUES
 		('https://www.youtube.com/feeds/videos.xml?channel_id=UCdeaddeaddeaddeaddeadde', '2026-11-01T08:00:00Z', ?1, 300, NULL),
 		('https://www.youtube.com/feeds/videos.xml?channel_id=UCrecentrecentrecentrece', '2026-11-01T08:00:00Z', ?1, 2, '2026-11-14T08:00:00Z')`, now); err != nil {

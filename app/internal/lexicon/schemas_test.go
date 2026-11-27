@@ -9,7 +9,6 @@ import (
 	"testing"
 )
 
-// lexicons/ is the schema authority; the embedded copies validate PDS writes, so a drifted copy validates against a schema nobody published.
 func TestEmbeddedSchemasMatchTheLexiconsDirectory(t *testing.T) {
 	entries, err := schemaFS.ReadDir("schemas")
 	if err != nil {
@@ -30,7 +29,8 @@ func TestEmbeddedSchemasMatchTheLexiconsDirectory(t *testing.T) {
 			t.Fatal(err)
 		}
 		embedded, authority := decodeSchema(t, embeddedJSON), decodeSchema(t, sourceJSON)
-		// The embedded copy is the published com.atproto.lexicon.schema record, which adds only its $type.
+		// A published com.atproto.lexicon.schema record is the lexicon file plus its $type.
+		// https://atproto.com/specs/lexicon#lexicon-publication-and-resolution
 		delete(embedded, "$type")
 		if !reflect.DeepEqual(embedded, authority) {
 			t.Errorf("schemas/%s differs from %s; lexicons/ is the schema authority, so the runtime validator must embed exactly what it defines", entry.Name(), source)

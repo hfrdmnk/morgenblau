@@ -8,7 +8,6 @@ import (
 	"testing"
 )
 
-// fakeSite is a minimal multi-route httptest server; GET /<path> returns the configured response, missing routes 404.
 type fakeSite struct {
 	*httptest.Server
 	routes map[string]route
@@ -18,7 +17,7 @@ type route struct {
 	status      int
 	contentType string
 	body        string
-	location    string // for redirects
+	location    string
 }
 
 func newFakeSite(routes map[string]route) *fakeSite {
@@ -60,7 +59,7 @@ func TestDiscover(t *testing.T) {
 	cases := []struct {
 		name      string
 		routes    map[string]route
-		wantSlug  string // substring expected in returned URL
+		wantSlug  string
 		wantError bool
 	}{
 		{

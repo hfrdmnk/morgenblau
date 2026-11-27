@@ -10,7 +10,6 @@ import (
 	"testing"
 )
 
-// eachGoFile parses every hand-written Go file under cmd/ and internal/, either the test files or the rest.
 func eachGoFile(t *testing.T, testFiles bool, visit func(path string, fset *token.FileSet, file *ast.File)) {
 	t.Helper()
 	generated := filepath.Join("..", "..", "internal", "database", "db")

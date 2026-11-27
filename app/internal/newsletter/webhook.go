@@ -19,10 +19,8 @@ import (
 )
 
 const (
-	webhookMaxClockSkew = 5 * time.Minute
-	// A body of several megabytes needs longer than the server-wide read and write timeouts.
-	webhookTransferTimeout = 2 * time.Minute
-	// Each request buffers its whole body before the signature can be checked, so few may do it at once.
+	webhookMaxClockSkew       = 5 * time.Minute
+	webhookTransferTimeout    = 2 * time.Minute
 	webhookConcurrentRequests = 2
 )
 
@@ -31,7 +29,8 @@ type webhookEnvelope struct {
 	From string        `json:"mail_from"`
 }
 
-// recipientList takes rcpt_to as PostShiba's docs show it, one address, or as a list of them.
+// PostShiba's inbound payload shows envelope.rcpt_to as one address, not a list.
+// https://www.postshiba.com/learn/inbound-mail
 type recipientList []string
 
 func (l *recipientList) UnmarshalJSON(data []byte) error {
@@ -51,10 +50,8 @@ func (l *recipientList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// NewPostShibaHandler receives the sendgrid_parse webhook of a PostShiba catch-all inbox: the raw message in "email" and the SMTP envelope in "envelope".
 func NewPostShibaHandler(service *Service, secret string, maxMessageBytes int64) http.Handler {
 	slots := make(chan struct{}, webhookConcurrentRequests)
-	// The form percent-encodes the raw message and may repeat its parts in text, html and attachment fields.
 	maxBodyBytes := 4 * maxMessageBytes
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
@@ -120,7 +117,6 @@ func NewPostShibaHandler(service *Service, secret string, maxMessageBytes int64)
 			}
 			recipients = append(recipients, recipient)
 		}
-		// A catch-all inbox accepts every address, so mail for unknown ones is dropped here instead of refused in SMTP.
 		if len(recipients) == 0 {
 			slog.Info("newsletter webhook dropped a message with no known recipient", "recipients", len(envelope.To))
 			w.WriteHeader(http.StatusNoContent)
@@ -137,7 +133,6 @@ func NewPostShibaHandler(service *Service, secret string, maxMessageBytes int64)
 
 var errUnsupportedWebhookType = errors.New("unsupported webhook content type")
 
-// webhookForm reads the text fields of either body PostShiba's docs describe for sendgrid_parse: URL-encoded, or multipart like SendGrid's own.
 func webhookForm(contentType string, body []byte) (url.Values, error) {
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
@@ -157,7 +152,8 @@ func webhookForm(contentType string, body []byte) (url.Values, error) {
 			if err != nil {
 				return nil, err
 			}
-			// Attachments are already inside the raw message in "email".
+			// A sendgrid_parse webhook puts the raw MIME in "email" and sends its files as attachment1, attachment2 and so on.
+			// https://www.postshiba.com/docs/dashboard/receiving/attachments
 			if part.FileName() != "" {
 				continue
 			}
@@ -172,7 +168,8 @@ func webhookForm(contentType string, body []byte) (url.Values, error) {
 	}
 }
 
-// validWebhookSignature checks PostShiba's HMAC-SHA256 of "{timestamp}.{body}"; every retry is signed afresh, so an old timestamp is a replay.
+// PostShiba signs "{timestamp}.{body}" with HMAC-SHA256 and signs every retry with a fresh timestamp.
+// https://www.postshiba.com/docs/webhooks/verify-webhooks-requests
 func validWebhookSignature(secret, timestamp, signature string, body []byte, now time.Time) bool {
 	seconds, err := strconv.ParseInt(timestamp, 10, 64)
 	if err != nil {

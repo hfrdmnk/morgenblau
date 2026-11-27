@@ -35,7 +35,7 @@ func TestHostCooldown_Observe(t *testing.T) {
 		name    string
 		status  int
 		headers map[string]string
-		want    time.Duration // zero means no cooldown
+		want    time.Duration
 	}{
 		{"429 retry-after beats ratelimit-reset", 429, map[string]string{"Retry-After": "60", "ratelimit-reset": epoch(5 * time.Minute)}, time.Minute},
 		{"429 ratelimit-reset beats default", 429, map[string]string{"ratelimit-reset": epoch(2 * time.Minute)}, 2 * time.Minute},
@@ -85,7 +85,7 @@ func TestHostCooldown_ObserveNeverShortensActiveCooldown(t *testing.T) {
 		t.Fatal("Cooling = false, want a cooldown")
 	}
 	if got := until.Sub(testBase); got != 5*time.Minute {
-		t.Errorf("cooldown = %v, want the longer 5m window preserved", got)
+		t.Errorf("cooldown = %v, want the longer 5m window preserved: requests that raced past the check must not shorten a window the host asked for", got)
 	}
 }
 

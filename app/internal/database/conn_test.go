@@ -4,13 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"morgenblau/internal/database/db"
 )
 
-// Minimal feeds table, enough for UpsertFeed / GetFeed.
 const feedsSchema = `
 CREATE TABLE feeds (
     feed_url         TEXT PRIMARY KEY,
@@ -33,7 +34,6 @@ CREATE TABLE feeds (
 
 func openTestDB(t *testing.T) *DB {
 	t.Helper()
-	// A real file (not :memory:): the two pools must share one database.
 	t.Setenv("DB_PATH", filepath.Join(t.TempDir(), "test.db"))
 	dbs, err := Open()
 	if err != nil {
@@ -77,7 +77,6 @@ func TestWithTx_Rollback(t *testing.T) {
 	}
 }
 
-// A deferred FK lets every statement succeed and fails only at COMMIT, the case a closure's nil error cannot vouch for.
 func TestWithTx_CommitErrorPropagates(t *testing.T) {
 	dbs := openTestDB(t)
 	ctx := context.Background()
@@ -99,7 +98,7 @@ END;`); err != nil {
 		t.Fatalf("statement failed before COMMIT: %v", statementErr)
 	}
 	if err == nil {
-		t.Fatal("propagate the COMMIT error from WithTx: sync and mirror callers must not report success for uncommitted data")
+		t.Fatal("propagate the COMMIT error from WithTx: a deferred foreign key fails only at COMMIT, and sync and mirror callers must not report success for uncommitted data")
 	}
 	if _, err := db.New(dbs.Writer).GetFeed(ctx, "https://d.example.com/feed"); !errors.Is(err, sql.ErrNoRows) {
 		t.Errorf("row survived the failed commit: err=%v", err)
@@ -114,9 +113,8 @@ func TestWithTx_ReaderSeesCommit(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// A read begun after the commit must observe it, even across pools (WAL).
 	if _, err := db.New(dbs.Reader).GetFeed(ctx, "https://c.example.com/feed"); err != nil {
-		t.Errorf("reader pool didn't see committed row: %v", err)
+		t.Errorf("reader pool didn't see committed row: %v; a read begun after a commit must observe it across pools", err)
 	}
 }
 
@@ -130,5 +128,37 @@ func TestOpenUsesFullSynchronousDurability(t *testing.T) {
 		if mode != 2 {
 			t.Fatalf("%s synchronous pragma = %d, want FULL (2); acknowledged commits must survive a power loss", name, mode)
 		}
+	}
+}
+
+func TestOpenWriterIsOneConnectionThatWithTxHolds(t *testing.T) {
+	dbs := openTestDB(t)
+	if got := dbs.Writer.Stats().MaxOpenConnections; got != 1 {
+		t.Fatalf("writer pool allows %d connections, want 1: SQLite serialises writes", got)
+	}
+	err := WithTx(context.Background(), dbs.Writer, func(*db.Queries) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+		_, err := db.New(dbs.Writer).GetFeed(ctx, "https://e.example.com/feed")
+		return err
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("writer query inside WithTx = %v, want it to wait for the connection the transaction holds; fn must use only the Queries it is given", err)
+	}
+}
+
+func TestOpenWriterTakesTheWriteLockAtBegin(t *testing.T) {
+	dbs := openTestDB(t)
+	outsider, err := sql.Open("sqlite", "file:"+os.Getenv("DB_PATH")+"?_pragma=busy_timeout(0)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { outsider.Close() })
+	err = WithTx(context.Background(), dbs.Writer, func(*db.Queries) error {
+		_, err := outsider.Exec("BEGIN IMMEDIATE")
+		return err
+	})
+	if err == nil {
+		t.Fatal("another process took the write lock inside WithTx before any write; the writer must BEGIN IMMEDIATE so a goose CLI or sqlite3 shell can't take the lock mid-transaction")
 	}
 }

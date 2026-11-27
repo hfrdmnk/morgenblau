@@ -1,5 +1,3 @@
-// Package safehttp builds *http.Client values that block loopback, link-local,
-// private, multicast, and unspecified addresses so hostile URLs can't pivot into the internal network.
 package safehttp
 
 import (
@@ -15,14 +13,10 @@ import (
 	"time"
 )
 
-// UserAgent identifies Morgenblau's outbound bot traffic so operators can attribute and contact us.
-// It carries no Go-http-client token because some sites refuse every request that does.
 const UserAgent = "Morgenblau/0.1 (+https://app.morgen.blue/about; bot@morgen.blue)"
 
-// languageTag is the BCP 47 shape; anything else must not ride from a page into a request header.
 var languageTag = regexp.MustCompile(`^[A-Za-z]{1,8}(?:-[A-Za-z0-9]{1,8})*$`)
 
-// LanguageTag returns a page's lang value fit for Accept-Language, or "" when it is not a BCP 47 shape.
 func LanguageTag(lang string) string {
 	lang = strings.TrimSpace(lang)
 	if !languageTag.MatchString(lang) {
@@ -31,16 +25,12 @@ func LanguageTag(lang string) string {
 	return lang
 }
 
-// ErrBlockedAddress is returned when a resolved IP fails the safety check.
 var ErrBlockedAddress = errors.New("safehttp: blocked address")
 
-// ErrTooManyRedirects is returned when the redirect chain exceeds the cap.
 var ErrTooManyRedirects = errors.New("safehttp: too many redirects")
 
-// ErrBlockedScheme is returned when a redirect target isn't http or https.
 var ErrBlockedScheme = errors.New("safehttp: blocked scheme")
 
-// Option configures NewClient.
 type Option func(*options)
 
 type options struct {
@@ -48,12 +38,10 @@ type options struct {
 	allowLoopbackPorts map[int]bool
 }
 
-// WithAllowLoopback permits loopback connections; test-only, production never sets this.
 func WithAllowLoopback() Option {
 	return func(o *options) { o.allowLoopback = true }
 }
 
-// WithAllowLoopbackPorts permits loopback connections to the listed ports only, for an APP_ENV=local server talking to a throwaway PDS and PLC on this machine.
 func WithAllowLoopbackPorts(ports ...int) Option {
 	return func(o *options) {
 		if o.allowLoopbackPorts == nil {
@@ -65,7 +53,6 @@ func WithAllowLoopbackPorts(ports ...int) Option {
 	}
 }
 
-// IsLoopbackHost reports whether a URL hostname names this machine without a DNS lookup.
 func IsLoopbackHost(host string) bool {
 	if host == "localhost" {
 		return true
@@ -74,8 +61,6 @@ func IsLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// LoopbackOrigin parses a plain-HTTP origin on this machine with an explicit port, the only shape a verify run's throwaway PDS, PLC or authorization server takes.
-// Loopback origins on the same port are the same server, so callers compare ports, not strings.
 func LoopbackOrigin(raw string) (origin string, port int, err error) {
 	u, err := url.Parse(strings.TrimSuffix(raw, "/"))
 	if err != nil || !strings.EqualFold(u.Scheme, "http") || !IsLoopbackHost(strings.ToLower(u.Hostname())) ||
@@ -89,7 +74,6 @@ func LoopbackOrigin(raw string) (origin string, port int, err error) {
 	return "http://" + strings.ToLower(u.Host), port, nil
 }
 
-// Validator returns an error if ip falls into a disallowed range.
 func Validator(ip net.IP) error {
 	if ip == nil {
 		return fmt.Errorf("%w: nil ip", ErrBlockedAddress)
@@ -112,7 +96,6 @@ func Validator(ip net.IP) error {
 	return nil
 }
 
-// NewClient rejects disallowed peer IPs at TCP-dial time (defeating DNS-rebinding) and caps/revalidates redirects via CheckRedirect.
 func NewClient(timeout time.Duration, maxRedirects int, opts ...Option) *http.Client {
 	cfg := options{}
 	for _, opt := range opts {

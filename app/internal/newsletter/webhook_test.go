@@ -18,7 +18,6 @@ import (
 
 const testWebhookSecret = "example-inbox-webhook-secret"
 
-// PostShiba's docs call the sendgrid_parse body both URL-encoded and multipart, so both must store the same bytes.
 func TestPostShibaWebhookStoresTheRawMessageForEachKnownRecipient(t *testing.T) {
 	for _, encoding := range []string{"urlencoded", "multipart"} {
 		t.Run(encoding, func(t *testing.T) {
@@ -149,7 +148,6 @@ func TestPostShibaWebhookRejectsMalformedAndOversizedMessages(t *testing.T) {
 	}
 }
 
-// PostShiba's docs show rcpt_to as one address, not a list.
 func TestPostShibaWebhookAcceptsASingleRecipientAddress(t *testing.T) {
 	service, reader, _ := newTestService(t)
 	address, _ := service.CreateAddress(context.Background(), "did:plc:alice")
@@ -184,7 +182,6 @@ type webhookRequest struct {
 	body, timestamp, signature, contentType string
 }
 
-// multipartWebhookBody writes the fields the way SendGrid's Inbound Parse does, with a file part ahead of them.
 func multipartWebhookBody(t *testing.T, form url.Values) (string, string) {
 	t.Helper()
 	var buf bytes.Buffer

@@ -7,10 +7,8 @@ import (
 	"testing"
 )
 
-// Each :memory: connection opens its own database, so the reader pool would never see the writer pool's rows.
 func TestStorageTestsUseAFileNotMemory(t *testing.T) {
 	eachGoFile(t, true, func(path string, fset *token.FileSet, file *ast.File) {
-		// This file names the DSN it bans.
 		if strings.HasSuffix(path, "storage_tests_test.go") {
 			return
 		}

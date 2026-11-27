@@ -8,7 +8,6 @@ import (
 	"testing"
 )
 
-// Every other package that held a transcript could hand it to the PDS, a feed or an export.
 var allowedImporters = []string{
 	"morgenblau/internal/api",
 	"morgenblau/internal/server",

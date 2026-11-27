@@ -128,7 +128,6 @@ func TestGC_RetentionWindow(t *testing.T) {
 	j := tr.Create(KindSyncUser, alice, TriggerManual)
 	tr.SetDone(j.ID)
 
-	// Advance clock past retention.
 	now = now.Add(time.Second)
 	tr.GC()
 	if _, err := tr.Get(j.ID, alice); !errors.Is(err, ErrNotFound) {

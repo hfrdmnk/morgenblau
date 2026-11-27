@@ -30,7 +30,6 @@ func TestEveryNewsletterTableIsOwnerScopedBySchema(t *testing.T) {
 				t.Errorf("%s foreign key to %s must map did -> did, got %v; otherwise a row can point at another reader's data (law 3)", table, fk.parent, fk.columns)
 			}
 		}
-		// The address row is the owner root; every other newsletter row hangs off an owned parent.
 		if table != "newsletter_addresses" && parents == 0 {
 			t.Errorf("%s has no owner-scoped foreign key to a newsletter table; the schema must tie every row to its reader (law 3)", table)
 		}

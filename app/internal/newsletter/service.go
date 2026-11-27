@@ -223,7 +223,6 @@ func (s *Service) EnableSource(ctx context.Context, did, id string) (Source, err
 	return s.GetSource(ctx, did, id)
 }
 
-// UnsubscribeURL returns the one-click unsubscribe URL from the source's latest direct delivery that offered one.
 func (s *Service) UnsubscribeURL(ctx context.Context, did, id string) (string, error) {
 	url, err := s.read.GetNewsletterSourceUnsubscribeURL(ctx, db.GetNewsletterSourceUnsubscribeURLParams{Did: did, ID: id})
 	if err != nil {
@@ -235,7 +234,6 @@ func (s *Service) UnsubscribeURL(ctx context.Context, did, id string) (string, e
 	return *url, nil
 }
 
-// DeleteSource removes the source and its unsaved issues; saved issues stay in the Library.
 func (s *Service) DeleteSource(ctx context.Context, did, id string) error {
 	return database.WithTx(ctx, s.writer, func(q *db.Queries) error {
 		deletedAt := formatTime(s.now())
@@ -378,7 +376,6 @@ func (s *Service) DeleteSave(ctx context.Context, did, saveID string) error {
 	})
 }
 
-// SetSaveTags replaces a newsletter save's tags; they never leave Morgenblau's database.
 func (s *Service) SetSaveTags(ctx context.Context, did, saveID string, tags []string) ([]string, error) {
 	cleaned, err := cleanTags(tags)
 	if err != nil {
@@ -401,7 +398,6 @@ func (s *Service) SetSaveTags(ctx context.Context, did, saveID string, tags []st
 	return cleaned, nil
 }
 
-// ListSaveTags returns every tag on the owner's newsletter saves, duplicates included.
 func (s *Service) ListSaveTags(ctx context.Context, did string) ([]string, error) {
 	rows, err := s.read.ListNewsletterSaveTags(ctx, did)
 	if err != nil {
@@ -461,10 +457,8 @@ func (s *Service) GetInlineAsset(ctx context.Context, did, token string) (Inline
 	return InlineAsset{MediaType: row.MediaType, Data: row.Data, ETag: row.ContentHash}, nil
 }
 
-// maxTagLength matches the per-tag limit of feed subscription records, so both kinds of source take the same tags.
 const maxTagLength = 64
 
-// maxSaveTags matches the save record's tag limit, so a newsletter save holds the same tags a URL save can.
 const maxSaveTags = 10
 
 func cleanTags(tags []string) ([]string, error) {
@@ -523,7 +517,6 @@ func deref(value *string) string {
 	return *value
 }
 
-// CountActiveSourcesByOwner returns only counts, keyed by owner DID, for the admin usage page.
 func (s *Service) CountActiveSourcesByOwner(ctx context.Context) (map[string]int64, error) {
 	rows, err := s.read.CountActiveNewsletterSourcesByOwner(ctx)
 	if err != nil {
