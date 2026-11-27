@@ -78,10 +78,8 @@ func TestSubscriptionsResolve_FlagsAGeneratedFeedFollowedAtItsOtherURL(t *testin
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	// The picker matches existing subscriptions to candidates by the candidate's own URL.
-	// The rkey is the stored row's, so the sheet can remove the subscription it found under the alias.
 	if len(got.ExistingSubscriptions) != 1 || got.ExistingSubscriptions[0].FeedURL != current || got.ExistingSubscriptions[0].Rkey != "legacy-rkey" {
-		t.Errorf("existing = %+v, want the candidate %s flagged with rkey legacy-rkey", got.ExistingSubscriptions, current)
+		t.Errorf("existing = %+v, want the candidate %s flagged with rkey legacy-rkey: the picker matches by the candidate's own URL, and removes the subscription by the stored row's rkey", got.ExistingSubscriptions, current)
 	}
 }
 

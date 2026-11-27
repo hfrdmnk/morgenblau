@@ -19,11 +19,10 @@ import (
 	"morgenblau/internal/session"
 )
 
-// fakeSavesIndex covers both the reader and writer slices for saves handlers.
 type fakeSavesIndex struct {
 	mu           sync.Mutex
-	byRkey       map[string]map[string]db.UserSave // did → rkey → row
-	byItemURL    map[string]map[string]db.UserSave // did → itemUrl → row
+	byRkey       map[string]map[string]db.UserSave
+	byItemURL    map[string]map[string]db.UserSave
 	list         []db.ListUserSavesRow
 	tags         []*string
 	deleted      []string
@@ -115,8 +114,6 @@ func (f *fakeSavesIndex) DeleteUserSave(_ context.Context, arg db.DeleteUserSave
 	return nil
 }
 
-// --- POST /api/saves ---
-
 func TestSavesCreate_HappyPath_201(t *testing.T) {
 	idx := newFakeSavesIndex()
 	pds := &fakePDS{}
@@ -198,8 +195,6 @@ func TestSavesCreate_PDSFailure_502(t *testing.T) {
 	}
 }
 
-// --- DELETE /api/saves/{rkey} ---
-
 func TestSavesDelete_HappyPath_204(t *testing.T) {
 	idx := newFakeSavesIndex()
 	idx.seed(db.UserSave{
@@ -275,10 +270,7 @@ func TestSavesCreate_InvalidRecord_500_NoWrite(t *testing.T) {
 	}
 }
 
-// --- GET /api/saves ---
-
-// Mirrors the columns ListUserSaves touches from the user_saves and feed_entries migrations; the join semantics are the point, so the rest is omitted.
-const savesListSchema = `
+const listUserSavesJoinColumnsSchema = `
 CREATE TABLE user_saves (
     did         TEXT NOT NULL,
     rkey        TEXT NOT NULL,
@@ -302,14 +294,13 @@ CREATE TABLE feed_entries (
 
 func openSavesTestDB(t *testing.T) *database.DB {
 	t.Helper()
-	// A real file (not :memory:): the two pools must share one database.
 	t.Setenv("DB_PATH", filepath.Join(t.TempDir(), "test.db"))
 	dbs, err := database.Open()
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() { _ = dbs.Close() })
-	if _, err := dbs.Writer.ExecContext(context.Background(), savesListSchema); err != nil {
+	if _, err := dbs.Writer.ExecContext(context.Background(), listUserSavesJoinColumnsSchema); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
 	return dbs
@@ -414,8 +405,6 @@ func TestSavesList_NoSaves_EmptyArray(t *testing.T) {
 	}
 }
 
-// --- PATCH /api/saves/{rkey} ---
-
 func patchSave(t *testing.T, idx *fakeSavesIndex, pds *fakePDS, did, rkey, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -502,7 +491,6 @@ func TestSavesPatch_WithoutTags_400(t *testing.T) {
 	}
 }
 
-// staleReadPDS lets another client rewrite the record right after the handler reads it.
 type staleReadPDS struct{ *fakePDS }
 
 func (p staleReadPDS) GetRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey syntax.RecordKey) (*atprepo.ListedRecord, error) {

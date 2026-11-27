@@ -8,7 +8,6 @@ import (
 	"morgenblau/internal/feedfinder"
 )
 
-// YouTubeFeedHealth is the shared feed-catalog read behind youtubeDown.
 type YouTubeFeedHealth interface {
 	CountYouTubeFeedFailures(ctx context.Context, failingSince string) (db.CountYouTubeFeedFailuresRow, error)
 }

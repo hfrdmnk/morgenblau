@@ -48,13 +48,17 @@ type fakeTranscriptFetcher struct {
 	err     error
 }
 
-func (f *fakeTranscriptFetcher) Fetch(_ context.Context, videoID string) (youtube.Transcript, error) {
+func (f *fakeTranscriptFetcher) Fetch(ctx context.Context, videoID string) (youtube.Transcript, error) {
 	f.calls.Add(1)
 	if videoID != "dQw4w9WgXcQ" {
 		return youtube.Transcript{}, fmt.Errorf("fetched video %q, want the entry's own", videoID)
 	}
 	if f.release != nil {
-		<-f.release
+		select {
+		case <-f.release:
+		case <-ctx.Done():
+			return youtube.Transcript{}, ctx.Err()
+		}
 	}
 	return f.result, f.err
 }
@@ -136,7 +140,7 @@ func TestEntryTranscript_NoTranscriptIsRecheckedOnlyAfterItsWindow(t *testing.T)
 				t.Fatalf("status = %d %q, body = %s", rr.Code, got.Status, rr.Body)
 			}
 			if fetched := fetcher.calls.Load() == 1; fetched != tc.wantFetch {
-				t.Fatalf("fetched = %v, want %v", fetched, tc.wantFetch)
+				t.Fatalf("fetched = %v, want %v: auto captions appear some time after upload, so a new video without them is asked about again sooner", fetched, tc.wantFetch)
 			}
 		})
 	}
@@ -235,7 +239,6 @@ func TestEntryTranscript_ConcurrentOpensShareOneFetch(t *testing.T) {
 			codes <- rr.Code
 		})
 	}
-	// Let every request reach the shared fetch before YouTube answers.
 	for fetcher.calls.Load() == 0 {
 		time.Sleep(time.Millisecond)
 	}
@@ -250,5 +253,33 @@ func TestEntryTranscript_ConcurrentOpensShareOneFetch(t *testing.T) {
 	}
 	if got := fetcher.calls.Load(); got != 1 {
 		t.Fatalf("YouTube fetches = %d, want 1", got)
+	}
+}
+
+func TestEntryTranscript_ACancelledFirstOpenStillFinishesTheSharedFetch(t *testing.T) {
+	reader := videoEntryReader(time.Now())
+	store := &fakeTranscripts{}
+	fetcher := &fakeTranscriptFetcher{result: sampleTranscript, release: make(chan struct{})}
+	mux := http.NewServeMux()
+	mux.Handle("POST /api/entries/{slug}/transcript", EntryTranscriptHandler(reader, store, store, fetcher))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		req := httptest.NewRequest(http.MethodPost, "/api/entries/abc1234567/transcript", nil).WithContext(ctx)
+		mux.ServeHTTP(httptest.NewRecorder(), withSession(req, "did:plc:alice", "sid-1"))
+	}()
+	for fetcher.calls.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	close(fetcher.release)
+	<-done
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if row := store.rows[reader.entry.ID]; row.Status != "ready" {
+		t.Fatalf("stored %+v after the first opener cancelled, want the fetched transcript: every open sharing that fetch would have failed with it", row)
 	}
 }

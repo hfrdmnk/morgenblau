@@ -26,7 +26,7 @@ func TestImportPrepareYouTubeCSV(t *testing.T) {
 		{FeedURL: "https://www.youtube.com/feeds/videos.xml?channel_id=UCbbbbbbbbbbbbbbbbbbbbbb", SiteURL: "https://www.youtube.com/channel/UCbbbbbbbbbbbbbbbbbbbbbb", Title: `Example "Two"`},
 	}
 	if !reflect.DeepEqual(got.Sources, want) || !reflect.DeepEqual(got.Warnings, []string{"Row 5: invalid YouTube channel ID"}) {
-		t.Fatalf("got %#v, want sources %#v and one warning", got, want)
+		t.Fatalf("got %#v, want sources %#v and one warning; Takeout localizes the header names but keeps the column order", got, want)
 	}
 	if pds.listCalls != 0 || pds.creates != 0 || pds.puts != 0 {
 		t.Fatal("preparing a CSV touched the PDS")

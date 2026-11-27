@@ -10,7 +10,6 @@ import (
 	"testing"
 )
 
-// The frontend keys reauth and form errors off the {code, message} body that respond.go writes; any other error shape reaches it as an unclassified failure.
 func TestAPIErrorsUseTheRespondEnvelope(t *testing.T) {
 	codes := respondCodes(t)
 	files, err := filepath.Glob("*.go")

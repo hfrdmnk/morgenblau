@@ -160,8 +160,8 @@ func TestFeedback_RejectsWhatItCannotSend(t *testing.T) {
 		"not an image":     {feedbackRequest(t, "Hi", nil, feedbackImage{"notes.png", []byte("plain text pretending")}), http.StatusBadRequest},
 		"too many images":  {feedbackRequest(t, "Hi", nil, sixImages...), http.StatusBadRequest},
 		"images too large": {feedbackRequest(t, "Hi", nil,
-			feedbackImage{"a.png", append(append([]byte{}, pngBytes...), make([]byte, maxFeedbackImageBytes/2)...)},
-			feedbackImage{"b.png", append(append([]byte{}, pngBytes...), make([]byte, maxFeedbackImageBytes/2)...)},
+			feedbackImage{"a.png", append(append([]byte{}, pngBytes...), make([]byte, maxFeedbackImagesTotalBytes/2)...)},
+			feedbackImage{"b.png", append(append([]byte{}, pngBytes...), make([]byte, maxFeedbackImagesTotalBytes/2)...)},
 		), http.StatusRequestEntityTooLarge},
 	}
 	for name, tc := range cases {

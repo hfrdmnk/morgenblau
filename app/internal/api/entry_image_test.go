@@ -15,7 +15,6 @@ import (
 	"morgenblau/internal/database/db"
 )
 
-// bandedPNG is green except for a red band across the vertical centre, so a centre crop of a tall image starts red and a top crop starts green.
 func bandedPNG(t *testing.T, w, h int) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, w, h))

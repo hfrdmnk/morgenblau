@@ -12,13 +12,11 @@ import (
 	"testing"
 )
 
-// The reading index is rebuilt from the PDS by internal/sync; the database package holds the transactional mirror helpers.
-var readingIndexWriters = []string{
+var readingIndexOwnerPackages = []string{
 	filepath.Join("internal", "sync"),
 	filepath.Join("internal", "database"),
 }
 
-// Every local write to the reading index must sit in commitThenMirror's mirror closure, which runs only after the PDS commit and never fails the response.
 func TestReadingIndexWritesRunOnlyAsCommitThenMirrorMirrors(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
@@ -33,7 +31,7 @@ func TestReadingIndexWritesRunOnlyAsCommitThenMirrorMirrors(t *testing.T) {
 			}
 			rel, _ := filepath.Rel(root, path)
 			if entry.IsDir() {
-				for _, owner := range readingIndexWriters {
+				for _, owner := range readingIndexOwnerPackages {
 					if rel == owner {
 						return filepath.SkipDir
 					}
@@ -61,7 +59,6 @@ func TestReadingIndexWritesRunOnlyAsCommitThenMirrorMirrors(t *testing.T) {
 	}
 }
 
-// indexWritesOutsideMirrors returns each reading-index write not lexically inside the mirror argument of a commitThenMirror call.
 func indexWritesOutsideMirrors(file *ast.File, writes map[string]bool, mirrored *int) []string {
 	mirrors := map[ast.Node]bool{}
 	var stack []ast.Node
@@ -103,7 +100,6 @@ func isCommitThenMirror(fun ast.Expr) bool {
 	return false
 }
 
-// readingIndexWrites names the queries writing user_subscriptions or user_saves, the Tier-2 UpsertFeed a subscription mirror needs, and the database helpers wrapping them.
 func readingIndexWrites(t *testing.T, root string) map[string]bool {
 	t.Helper()
 	writes := map[string]bool{"UpsertFeed": true}

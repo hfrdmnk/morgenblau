@@ -13,14 +13,11 @@ import (
 	"morgenblau/internal/websource"
 )
 
-// SourcesReader is the narrow read used by the list endpoint; it carries the per-feed entry stats the sources card renders.
 type SourcesReader interface {
 	YouTubeFeedHealth
 	ListUserSourcesWithStats(ctx context.Context, arg db.ListUserSourcesWithStatsParams) ([]db.ListUserSourcesWithStatsRow, error)
 }
 
-// SubscriptionsListHandler returns subscriptions joined with feed metadata; the frequency bucket is computed here, not in SQL, so the rule lives in one place.
-// webFeeds names this server's generated feeds; the zero value marks no subscription as generated.
 func SubscriptionsListHandler(reader SourcesReader, webFeeds websource.FeedPrefixes) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -58,9 +55,6 @@ func SubscriptionsListHandler(reader SourcesReader, webFeeds websource.FeedPrefi
 	})
 }
 
-// --- GET /api/subscriptions/tags ---
-
-// TagsReader is the narrow read used by the "my tags" endpoint.
 type TagsReader interface {
 	ListUserSubscriptionTags(ctx context.Context, did string) ([]*string, error)
 }
@@ -69,7 +63,6 @@ type tagsResponse struct {
 	Tags []string `json:"tags"`
 }
 
-// SubscriptionsTagsHandler returns the distinct, case-insensitively deduped and sorted union of tags across the user's subscriptions, always as a JSON array, never null.
 func SubscriptionsTagsHandler(reader TagsReader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -91,7 +84,6 @@ func SubscriptionsTagsHandler(reader TagsReader) http.Handler {
 	})
 }
 
-// distinctTags merges tag lists case-insensitively, keeping the first spelling, sorted and never nil.
 func distinctTags(lists ...[]string) []string {
 	seen := map[string]struct{}{}
 	out := []string{}

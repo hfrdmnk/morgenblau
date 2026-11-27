@@ -66,8 +66,8 @@ iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAA
 	if entry.Newsletter == nil || !entry.Newsletter.HasBlockedRemoteImages || entry.Newsletter.RemoteImagesAllowed {
 		t.Fatalf("newsletter metadata = %+v", entry.Newsletter)
 	}
-	if entry.Body == nil || strings.Contains(*entry.Body, "https://remote.example.invalid") || !strings.Contains(*entry.Body, "/api/newsletter-assets/") {
-		t.Fatalf("private body = %q", valueOrEmpty(entry.Body))
+	if entry.SanitizedBody == nil || strings.Contains(*entry.SanitizedBody, "https://remote.example.invalid") || !strings.Contains(*entry.SanitizedBody, "/api/newsletter-assets/") {
+		t.Fatalf("private body = %q", valueOrEmpty(entry.SanitizedBody))
 	}
 }
 

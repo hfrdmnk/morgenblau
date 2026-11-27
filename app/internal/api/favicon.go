@@ -14,18 +14,14 @@ import (
 )
 
 const (
-	faviconProxyTimeout = 5 * time.Second
-	// site.standard.publication's icon lexicon says 1MB, but writers don't enforce it (2.4MB observed live);
-	// the cap bounds proxy buffering, not lexicon compliance, so it carries headroom over real-world blobs.
+	faviconProxyTimeout  = 5 * time.Second
 	faviconProxyMaxBytes = 4 * 1024 * 1024
 )
 
-// FaviconReader gates the favicon proxy: only URLs the sync pipeline already stored on a known feed are eligible for streaming.
 type FaviconReader interface {
 	GetFeedIconURL(ctx context.Context, feedURL string) (*string, error)
 }
 
-// FaviconProxyHandler streams a known feed's stored favicon through the Go server so canvas can sample it without accepting an arbitrary upstream URL.
 func FaviconProxyHandler(reader FaviconReader, client *http.Client) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, ok := requireSession(w, r)
@@ -82,7 +78,6 @@ func FaviconProxyHandler(reader FaviconReader, client *http.Client) http.Handler
 			return
 		}
 
-		// A truncated icon renders as a corrupt image and gets cached for 24h, so the cap rejects instead of streaming a partial body.
 		if resp.ContentLength > faviconProxyMaxBytes {
 			writeError(w, http.StatusBadGateway, codeUpstreamError, "bad gateway")
 			return

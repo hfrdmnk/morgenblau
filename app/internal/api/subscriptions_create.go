@@ -20,9 +20,6 @@ import (
 	"morgenblau/internal/tags"
 )
 
-// --- POST /api/subscriptions ---
-
-// addRequest is one source, so a failure never follows a committed sibling: feedUrl (rss) or publication (standardfeed); for standardfeed, empty title/primary/tags mean no sidecar.
 type addRequest struct {
 	FeedURL     string   `json:"feedUrl"`
 	Publication string   `json:"publication"`
@@ -32,33 +29,28 @@ type addRequest struct {
 	Tags        []string `json:"tags"`
 }
 
-// IndexReader is the read slice of *db.Queries, narrow enough for handler tests to stub without sqlite.
 type IndexReader interface {
 	ListUserSubscriptions(ctx context.Context, did string) ([]db.UserSubscription, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error)
 	ListUserSubscriptionsWithSiteURL(ctx context.Context, did string) ([]db.ListUserSubscriptionsWithSiteURLRow, error)
 }
 
-// IndexWriter is the write slice, kept distinct from IndexReader so the GET handler can depend on a narrower interface.
 type IndexWriter interface {
 	UpsertFeed(ctx context.Context, arg db.UpsertFeedParams) error
 	UpsertUserSubscription(ctx context.Context, arg db.UpsertUserSubscriptionParams) error
 }
 
-// FetchDispatcher dispatches fetch_one_feed per subscription, or a sync_user reconcile when local writes diverge from PDS (the source of truth); the returned id lets the client's RefreshPill poll.
 type FetchDispatcher interface {
 	RepairDispatcher
 	StartFetchOneFeed(did syntax.DID, feedURL string) string
 }
 
-// FeedAliases names every URL that serves the same feed as feedURL, so following it at any of them counts; nil means none.
 type FeedAliases func(feedURL string) []string
 
 type subscriptionByFeedURL interface {
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error)
 }
 
-// findSubscription is the reader's subscription to key, or to any alias of it; sql.ErrNoRows when there is none.
 func findSubscription(ctx context.Context, reader subscriptionByFeedURL, did, key string, aliases FeedAliases) (db.UserSubscription, error) {
 	keys := []string{key}
 	if aliases != nil {
@@ -77,7 +69,6 @@ func findSubscription(ctx context.Context, reader subscriptionByFeedURL, did, ke
 	return db.UserSubscription{}, sql.ErrNoRows
 }
 
-// SubscriptionsCreateHandler dedupes, makes one PDS commit, mirrors Tier-2 then Tier-1, then dispatches fetch_one_feed.
 func SubscriptionsCreateHandler(
 	reader IndexReader,
 	writer IndexWriter,
@@ -117,7 +108,6 @@ func SubscriptionsCreateHandler(
 
 		now := time.Now().UTC().Format(time.RFC3339)
 		didStr := sess.Data.AccountDID.String()
-		// The catalog key (feed URL for rss, publication at-uri for standardfeed) keys Tier-2, Tier-1, dedupe, and the fetch job.
 		key := item.FeedURL
 		kind := "rss"
 		if isStandard {
@@ -125,7 +115,6 @@ func SubscriptionsCreateHandler(
 			kind = "standardfeed"
 		}
 
-		// Step 1: dedupe guard.
 		if row, err := findSubscription(r.Context(), reader, didStr, key, aliases); err == nil {
 			writeJSON(w, subscriptionResponse{SubscriptionWire: rowToWire(row)})
 			return
@@ -142,7 +131,6 @@ func SubscriptionsCreateHandler(
 			return
 		}
 
-		// Step 2: validate, then the request's one PDS commit; an already present pair commits nothing and is only mirrored.
 		tagList := normalizeTags(item.Tags)
 		var (
 			commit func() (createdSubscription, bool)
@@ -185,7 +173,6 @@ func SubscriptionsCreateHandler(
 					out.sidecarRkey = &result.SidecarRkey
 					return out, ok
 				}
-				// The existence record is the portable standard subscription. A customized pair is one PDS commit.
 				spec := sidecarWriteSpec{
 					Existence:           map[string]any{"publication": key, "createdAt": now},
 					ExistenceCollection: syntax.NSID(standardfeed.CollectionSubscription),
@@ -206,7 +193,6 @@ func SubscriptionsCreateHandler(
 				return out, ok
 			}
 		} else {
-			// Title was resolver-prefilled client-side; the user may have overridden it before submit.
 			source = sourceUnion(kind, key, item.SiteURL)
 			record := map[string]any{
 				"source":    source,
@@ -237,7 +223,6 @@ func SubscriptionsCreateHandler(
 			}
 		}
 
-		// Step 3: Tier-2 catalog upsert, then Tier-1. Title stays nil on Tier-2; feeds.title is the cached publication name, owned by the fetch pipeline.
 		created, ok := commitThenMirror(r.Context(), disp, sess, "/api/subscriptions: mirror", commit, func(created createdSubscription) error {
 			if err := writer.UpsertFeed(r.Context(), db.UpsertFeedParams{
 				FeedUrl:   key,
@@ -295,12 +280,10 @@ func SubscriptionsCreateHandler(
 			wire.Publication = key
 		}
 
-		// Step 4: dispatch fetch_one_feed (async).
 		writeJSON(w, subscriptionResponse{SubscriptionWire: wire, JobID: disp.StartFetchOneFeed(sess.Data.AccountDID, key)})
 	})
 }
 
-// createdSubscription is what the create commit leaves on the PDS, for the mirror and the response.
 type createdSubscription struct {
 	ref         *atprepo.RecordRef
 	sidecarRkey *string

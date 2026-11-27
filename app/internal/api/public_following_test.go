@@ -61,7 +61,6 @@ func publicStore() *fakePublicFollowing {
 			publicRow("rss", "https://www.youtube.com/feeds/videos.xml?channel_id=UCaaaaaaaaaaaaaaaaaaaaaa", "Example Channel", "https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa", false, "Personal", "Video"),
 			pub,
 			publicRow("rss", "https://untagged.example.com/rss", "", "", true),
-			// A publication whose site URL is not known yet has nothing to link in OPML.
 			publicRow("standardfeed", "at://did:plc:publisher/site.standard.publication/3new", "Unlinked Publication", "", false),
 		}},
 	}

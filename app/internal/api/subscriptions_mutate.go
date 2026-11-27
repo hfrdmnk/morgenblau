@@ -19,14 +19,12 @@ import (
 	"morgenblau/internal/tags"
 )
 
-// IndexRkeyReader adds the rkey lookup and GetFeed (for siteUrl preservation) atop IndexReader.
 type IndexRkeyReader interface {
 	IndexReader
 	GetUserSubscription(ctx context.Context, arg db.GetUserSubscriptionParams) (db.UserSubscription, error)
 	GetFeed(ctx context.Context, feedURL string) (db.Feed, error)
 }
 
-// IndexDeleter is the slice of writes the DELETE handler depends on.
 type IndexDeleter interface {
 	DeleteUserSubscription(ctx context.Context, arg db.DeleteUserSubscriptionParams) error
 }
@@ -38,13 +36,11 @@ type patchRequest struct {
 	FeedURL *string   `json:"feedUrl"`
 }
 
-// subscriptionResponse adds JobID so the client can poll the fetch dispatched by an add or a feed URL change.
 type subscriptionResponse struct {
 	SubscriptionWire
 	JobID string `json:"jobId,omitempty"`
 }
 
-// SubscriptionsPatchHandler updates the subscription in place; a feedUrl change re-points to a new feed, mirroring the add path (Tier-2 upsert plus fetch dispatch).
 func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds atprepo.Writer, disp FetchDispatcher) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -61,7 +57,6 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		row, err := reader.GetUserSubscription(r.Context(), db.GetUserSubscriptionParams{Did: didStr, Rkey: rkey})
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				// 404 for both "doesn't exist" and "exists but isn't yours," to avoid leaking existence.
 				writeError(w, http.StatusNotFound, codeNotFound, "not found")
 				return
 			}
@@ -75,7 +70,6 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			return
 		}
 
-		// A standardfeed source has no feed URL to re-point; its identity is the publication at-uri on the standard record.
 		if row.Kind == "standardfeed" && body.FeedURL != nil {
 			writeError(w, http.StatusBadRequest, codeInvalidRequest, "feed URL cannot be changed for a publication source")
 			return
@@ -84,7 +78,6 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		changed := false
 		newTitle := row.Title
 		if body.Title != nil {
-			// "" is the explicit reset to the feed's own title; whitespace-only is a blank name, rejected like newsletter rename.
 			if *body.Title != "" && strings.TrimSpace(*body.Title) == "" {
 				writeError(w, http.StatusBadRequest, codeInvalidRequest, "title cannot be blank")
 				return
@@ -121,12 +114,10 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		feedChanged := false
 		if body.FeedURL != nil {
 			if candidate := strings.TrimSpace(*body.FeedURL); candidate != "" && candidate != row.FeedUrl {
-				// PATCH re-points to a client-computed URL (e.g. the Shorts toggle) and must stay fast, so this validates format only; a dead-but-well-formed feed surfaces via the dispatched fetch instead.
-				if !isValidFeedURL(candidate) {
+				if !isWellFormedFeedURL(candidate) {
 					writeError(w, http.StatusBadRequest, codeInvalidRequest, "invalid feed URL")
 					return
 				}
-				// Guard against colliding with another of the user's subscriptions; (did, feed_url) is unique.
 				if other, err := reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
 					Did:     didStr,
 					FeedUrl: candidate,
@@ -154,13 +145,11 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		}
 
 		if !changed {
-			// No diff: return the existing record without a PDS hit.
 			writeJSON(w, subscriptionResponse{SubscriptionWire: rowToWire(row)})
 			return
 		}
 
 		if row.Kind == "standardfeed" {
-			// Metadata rides the blue.morgen sidecar; the standard record is never touched, so no scope gate is needed here.
 			now := time.Now().UTC().Format(time.RFC3339)
 			record := map[string]any{
 				"source":    sourceUnion(row.Kind, row.FeedUrl, ""),
@@ -187,10 +176,10 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			}
 			result, ok := commitThenMirror(r.Context(), disp, sess, "/api/subscriptions PATCH: standardfeed Tier-1 upsert", func() (sidecarWriteResult, bool) {
 				return writeSidecarPair(r.Context(), w, sess, pds, sidecarWriteSpec{
-					Sidecar:           record,
-					SidecarCollection: syntax.NSID(subscriptionCollection),
-					SidecarRkey:       existingSidecarRkey,
-					SidecarOp:         "/api/subscriptions PATCH: PDS sidecar write failed",
+					Sidecar:             record,
+					SidecarCollection:   syntax.NSID(subscriptionCollection),
+					ExistingSidecarRkey: existingSidecarRkey,
+					SidecarOp:           "/api/subscriptions PATCH: PDS sidecar write failed",
 				})
 			}, func(result sidecarWriteResult) error {
 				return writer.UpsertUserSubscription(r.Context(), db.UpsertUserSubscriptionParams{
@@ -220,12 +209,10 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			return
 		}
 
-		// PDS putRecord replaces atomically, so the feed's site URL must be re-attached or a metadata edit strips it.
 		siteURL := ""
 		if feed, err := reader.GetFeed(r.Context(), newFeedURL); err == nil {
 			siteURL = derefStr(feed.SiteUrl)
 		}
-		// The Shorts toggle moves between two feeds of one channel, so the new feed keeps the channel page (its @handle) the old one had.
 		if channel := feedfinder.YouTubeChannelURL(newFeedURL); feedChanged && siteURL == "" && channel != "" && channel == feedfinder.YouTubeChannelURL(row.FeedUrl) {
 			if feed, err := reader.GetFeed(r.Context(), row.FeedUrl); err == nil {
 				siteURL = derefStr(feed.SiteUrl)
@@ -261,7 +248,6 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 			}
 			return ref, true
 		}, func(ref *atprepo.RecordRef) error {
-			// Ensure the Tier-2 catalog row exists before Tier-1 references it (feed_url FK), mirroring the POST contract.
 			if feedChanged {
 				if err := writer.UpsertFeed(r.Context(), db.UpsertFeedParams{
 					FeedUrl:   newFeedURL,
@@ -295,20 +281,17 @@ func SubscriptionsPatchHandler(reader IndexRkeyReader, writer IndexWriter, pds a
 		row.AtUri = ref.URI
 		resp := subscriptionResponse{SubscriptionWire: rowToWire(row)}
 		if feedChanged {
-			// The job id lets the client poll /api/jobs/active and refresh once content lands.
 			resp.JobID = disp.StartFetchOneFeed(sess.Data.AccountDID, newFeedURL)
 		}
 		writeJSON(w, resp)
 	})
 }
 
-// RepoWriterLister is the PDS surface the DELETE handler needs: writes plus listing to sweep duplicate standard records.
 type RepoWriterLister interface {
 	atprepo.Writer
 	atprepo.Lister
 }
 
-// SubscriptionsDeleteHandler tombstones the PDS record(s) and removes the Tier-1 row; the Tier-2 feeds row stays since other users may still subscribe.
 func SubscriptionsDeleteHandler(reader IndexRkeyReader, deleter IndexDeleter, pds RepoWriterLister, disp RepairDispatcher) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -354,8 +337,7 @@ func SubscriptionsDeleteHandler(reader IndexRkeyReader, deleter IndexDeleter, pd
 	})
 }
 
-// isValidFeedURL checks format only; resolution goes through the fetcher's safehttp client, which blocks private/loopback targets.
-func isValidFeedURL(raw string) bool {
+func isWellFormedFeedURL(raw string) bool {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return false

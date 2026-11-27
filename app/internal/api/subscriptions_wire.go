@@ -21,7 +21,6 @@ const (
 	sourceTypeStandard     = lexicon.SourceStandard
 )
 
-// sourceUnion rebuilds the record's source variant; the catalog key is the feed URL for rss or publication at-uri for standardfeed, and siteURL rides the rss variant only.
 func sourceUnion(kind, catalogKey, siteURL string) map[string]any {
 	if kind == "standardfeed" {
 		return map[string]any{"$type": sourceTypeStandard, "publication": catalogKey}
@@ -33,7 +32,6 @@ func sourceUnion(kind, catalogKey, siteURL string) map[string]any {
 	return source
 }
 
-// wireKind normalizes kind for the wire; anything but standardfeed, including the pre-migration zero value, reads as rss.
 func wireKind(kind string) string {
 	if kind == "standardfeed" {
 		return "standardfeed"
@@ -48,7 +46,6 @@ func derefStr(s *string) string {
 	return *s
 }
 
-// requireStandardWrite gates standard subscription writes on the session's scope; older sessions get a 403 the frontend turns into a re-auth prompt.
 func requireStandardWrite(w http.ResponseWriter, sess *session.Session) bool {
 	if scopes.HasStandardSubscriptionWrite(sess) {
 		return true
@@ -57,34 +54,29 @@ func requireStandardWrite(w http.ResponseWriter, sess *session.Session) bool {
 	return false
 }
 
-// mutedAfterConsecutiveFailures is the SPEC <feed-sources> failure-handling threshold: 20 consecutive failures silently mutes a feed.
 const mutedAfterConsecutiveFailures = 20
 
-// SubscriptionWire is the on-the-wire shape for GET/POST; POST leaves FaviconURL, Frequency, and LastPublishedAt empty until the client polls GET after the first fetch.
 type SubscriptionWire struct {
-	URI   string         `json:"uri"`
-	CID   string         `json:"cid,omitempty"`
-	Value map[string]any `json:"value"`
-	// Embedded sugar for the frontend so callers don't dig into Value.
-	Rkey            string `json:"rkey"`
-	Kind            string `json:"kind"`
-	FeedURL         string `json:"feedUrl"`
-	Publication     string `json:"publication,omitempty"`
-	Title           string `json:"title,omitempty"`
-	SiteURL         string `json:"siteUrl,omitempty"`
-	FaviconURL      string `json:"faviconUrl,omitempty"`
-	Frequency       string `json:"frequency,omitempty"`
-	LastPublishedAt string `json:"lastPublishedAt,omitempty"`
-	LastFetchedAt   string `json:"lastFetchedAt,omitempty"`
-	FetchStatus     string `json:"fetchStatus,omitempty"`
-	NextFetchAt     string `json:"nextFetchAt,omitempty"`
-	// YouTubeOutage marks an unavailable YouTube feed while YouTube's feed server is down for everyone, so the reader knows nothing is wrong with the channel.
-	YouTubeOutage bool     `json:"youtubeOutage,omitempty"`
-	Muted         bool     `json:"muted,omitempty"`
-	Primary       bool     `json:"primary"`
-	Tags          []string `json:"tags,omitempty"`
-	// Generated is set only for this server's own generated feeds, at /feed/ or the legacy /web/; their health is the generator's, not the fetch's.
-	Generated *GeneratedHealthWire `json:"generated,omitempty"`
+	URI             string               `json:"uri"`
+	CID             string               `json:"cid,omitempty"`
+	Value           map[string]any       `json:"value"`
+	Rkey            string               `json:"rkey"`
+	Kind            string               `json:"kind"`
+	FeedURL         string               `json:"feedUrl"`
+	Publication     string               `json:"publication,omitempty"`
+	Title           string               `json:"title,omitempty"`
+	SiteURL         string               `json:"siteUrl,omitempty"`
+	FaviconURL      string               `json:"faviconUrl,omitempty"`
+	Frequency       string               `json:"frequency,omitempty"`
+	LastPublishedAt string               `json:"lastPublishedAt,omitempty"`
+	LastFetchedAt   string               `json:"lastFetchedAt,omitempty"`
+	FetchStatus     string               `json:"fetchStatus,omitempty"`
+	NextFetchAt     string               `json:"nextFetchAt,omitempty"`
+	YouTubeOutage   bool                 `json:"youtubeOutage,omitempty"`
+	Muted           bool                 `json:"muted,omitempty"`
+	Primary         bool                 `json:"primary"`
+	Tags            []string             `json:"tags,omitempty"`
+	Generated       *GeneratedHealthWire `json:"generated,omitempty"`
 }
 
 type GeneratedHealthWire struct {
@@ -126,7 +118,6 @@ func rowToWire(row db.UserSubscription) SubscriptionWire {
 	return wire
 }
 
-// subscriptionStatsFields is the field set shared by sourceRowToWire and sourceDetailRowToWire, which differ only in their source query (list vs. single-subscription).
 type subscriptionStatsFields struct {
 	Rkey                string
 	AtUri               string
@@ -200,7 +191,6 @@ func subscriptionStatsRowToWire(f subscriptionStatsFields, now time.Time) Subscr
 		title = *f.Title
 	}
 	if title == "" && f.CatalogTitle != nil {
-		// No user override: fall back to the catalog title (cached publication name for standardfeed).
 		title = *f.CatalogTitle
 	}
 	siteURL := ""
@@ -244,7 +234,6 @@ func subscriptionStatsRowToWire(f subscriptionStatsFields, now time.Time) Subscr
 	return wire
 }
 
-// muted counts a YouTube feed's failures only when it failed alone, since YouTube's outages fail every channel for hours; a channel page saying the channel is gone mutes it at once.
 func muted(f subscriptionStatsFields) bool {
 	if feedfinder.IsYouTubeFeedURL(f.FeedUrl) {
 		return f.ChannelGoneAt != nil || f.LoneFailures >= feedfinder.YouTubeMutedAfterLoneFailures
@@ -252,10 +241,8 @@ func muted(f subscriptionStatsFields) bool {
 	return f.ConsecutiveFailures >= mutedAfterConsecutiveFailures
 }
 
-// frequencyBucket: cadence outranks "new" (a daily feed reads daily even if ingestion just started).
-// firstPublishedAt is MIN(published_at) over stored rows, so it reflects our ingestion window, not the feed's real debut.
-func frequencyBucket(firstPublishedAt string, c7, c28, c56, c84 int64, now time.Time) string {
-	if firstPublishedAt == "" {
+func frequencyBucket(oldestStoredPublishedAt string, c7, c28, c56, c84 int64, now time.Time) string {
+	if oldestStoredPublishedAt == "" {
 		return "noPosts"
 	}
 	switch {
@@ -268,7 +255,7 @@ func frequencyBucket(firstPublishedAt string, c7, c28, c56, c84 int64, now time.
 	case c84 >= 2:
 		return "monthly"
 	}
-	if t, err := time.Parse(time.RFC3339, firstPublishedAt); err == nil {
+	if t, err := time.Parse(time.RFC3339, oldestStoredPublishedAt); err == nil {
 		if now.Sub(t) <= 30*24*time.Hour {
 			return "new"
 		}
@@ -287,7 +274,6 @@ func asString(v any) string {
 	}
 }
 
-// siblingKey normalizes a site URL for cross-kind matching (lowercase host minus "www.", plus path minus trailing slash); host+path avoids false matches on shared-host publications like leaflet.pub/<pub>.
 func siblingKey(rawURL string) string {
 	if rawURL == "" {
 		return ""
@@ -326,9 +312,8 @@ func boolToInt64(b bool) int64 {
 }
 
 const maxTags = 10
-const maxTagGraphemes = 64
+const maxTagRunes = 64
 
-// normalizeTags approximates the lexicon's maxGraphemes:64 guard with a rune count (len([]rune)) instead of full Unicode segmentation, close enough without pulling in a dependency.
 func normalizeTags(in []string) []string {
 	if len(in) == 0 {
 		return nil
@@ -337,7 +322,7 @@ func normalizeTags(in []string) []string {
 	seen := make(map[string]struct{}, len(in))
 	for _, t := range in {
 		t = strings.TrimSpace(t)
-		if t == "" || len([]rune(t)) > maxTagGraphemes {
+		if t == "" || len([]rune(t)) > maxTagRunes {
 			continue
 		}
 		key := strings.ToLower(t)

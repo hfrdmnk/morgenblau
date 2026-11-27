@@ -12,7 +12,6 @@ import (
 	"morgenblau/internal/session"
 )
 
-// SessionRepo is the PDS surface the mutation routes share: commits plus the reads they preflight with.
 type SessionRepo interface {
 	atprepo.Writer
 	atprepo.AtomicWriter
@@ -25,14 +24,12 @@ var errCommitAlreadySpent = errors.New("PDS commit refused: a mutation request m
 
 type commitBudgetKey struct{}
 
-// OneCommitPerRequest gives each request through next one PDS commit to spend through a CommitGate.
 func OneCommitPerRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), commitBudgetKey{}, new(atomic.Bool))))
 	})
 }
 
-// CommitGate refuses, before it reaches the PDS, any commit after a request's first and any commit outside OneCommitPerRequest.
 type CommitGate struct {
 	Repo SessionRepo
 }

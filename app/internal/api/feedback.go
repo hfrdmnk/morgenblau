@@ -18,23 +18,19 @@ import (
 )
 
 const (
-	maxFeedbackMessageRunes = 5000
-	maxFeedbackImages       = 5
-	// maxFeedbackImageBytes caps all images together, so the encoded mail stays under common relay limits.
-	maxFeedbackImageBytes = 12 << 20
-	maxFeedbackContext    = 40
-	maxFeedbackValueRunes = 500
+	maxFeedbackMessageRunes     = 5000
+	maxFeedbackImages           = 5
+	maxFeedbackImagesTotalBytes = 12 << 20
+	maxFeedbackContext          = 40
+	maxFeedbackValueRunes       = 500
 )
 
-// The formats every mail client previews inline, by sniffed type; anything else is refused.
-var feedbackImageExtensions = map[string]string{"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp"}
+var mailPreviewableImageExtensions = map[string]string{"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp"}
 
-// FeedbackSender is the slice of *mail.Sender the feedback route uses.
 type FeedbackSender interface {
 	Send(ctx context.Context, m mail.Message) error
 }
 
-// invalidFeedback is a refusal the reader can act on; its text is the response message.
 type invalidFeedback string
 
 func (e invalidFeedback) Error() string { return string(e) }
@@ -47,7 +43,6 @@ type feedback struct {
 	images  []mail.Attachment
 }
 
-// FeedbackHandler mails a reader's message, images and browser details to the owner; a nil sender means FEEDBACK_EMAIL is unset.
 func FeedbackHandler(sender FeedbackSender, to string, profiles ProfileSource, limiter *ratelimit.Limiter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -70,7 +65,7 @@ func FeedbackHandler(sender FeedbackSender, to string, profiles ProfileSource, l
 			var invalid invalidFeedback
 			switch {
 			case errors.As(err, &maxErr) || errors.Is(err, errFeedbackImagesTooLarge):
-				writeError(w, http.StatusRequestEntityTooLarge, codePayloadTooLarge, fmt.Sprintf("Images can add up to %d MB.", maxFeedbackImageBytes>>20))
+				writeError(w, http.StatusRequestEntityTooLarge, codePayloadTooLarge, fmt.Sprintf("Images can add up to %d MB.", maxFeedbackImagesTotalBytes>>20))
 			case errors.As(err, &invalid):
 				writeError(w, http.StatusBadRequest, codeInvalidRequest, invalid.Error())
 			default:
@@ -154,16 +149,16 @@ func readFeedback(r *http.Request) (feedback, error) {
 			if len(fb.images) == maxFeedbackImages {
 				return fb, invalidFeedback(fmt.Sprintf("Attach up to %d images.", maxFeedbackImages))
 			}
-			data, err := io.ReadAll(io.LimitReader(part, int64(maxFeedbackImageBytes-imageBytes+1)))
+			data, err := io.ReadAll(io.LimitReader(part, int64(maxFeedbackImagesTotalBytes-imageBytes+1)))
 			if err != nil {
 				return fb, err
 			}
 			imageBytes += len(data)
-			if imageBytes > maxFeedbackImageBytes {
+			if imageBytes > maxFeedbackImagesTotalBytes {
 				return fb, errFeedbackImagesTooLarge
 			}
 			contentType := http.DetectContentType(data)
-			ext, ok := feedbackImageExtensions[contentType]
+			ext, ok := mailPreviewableImageExtensions[contentType]
 			if !ok {
 				return fb, invalidFeedback("Attach images as PNG, JPEG, GIF or WebP.")
 			}

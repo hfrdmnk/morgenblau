@@ -29,7 +29,6 @@ func (f *fakeWebSources) Create(ctx context.Context, did, listingURL, anchorURL 
 	return f.preview, f.err
 }
 
-// deadlineRecorder is a ResponseWriter that lets http.ResponseController move its write deadline, as the server's does.
 type deadlineRecorder struct {
 	*httptest.ResponseRecorder
 	deadline time.Time

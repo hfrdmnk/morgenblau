@@ -215,11 +215,15 @@ func TestFaviconProxy_RejectsOversizeUnknownLength(t *testing.T) {
 	h.ServeHTTP(rr, faviconRequest())
 
 	if rr.Code != http.StatusBadGateway {
-		t.Errorf("status = %d, want 502", rr.Code)
+		t.Errorf("status = %d, want 502: a truncated icon renders as a corrupt image the browser caches for a day, so an oversized one is refused, not cut", rr.Code)
 	}
 }
 
 func TestFaviconProxy_UnderCap_StreamsIntact(t *testing.T) {
+	const publishedPublicationIconBytes = 2_400_000
+	if faviconProxyMaxBytes <= publishedPublicationIconBytes {
+		t.Fatalf("cap = %d bytes, want above %d: publications publish icons past site.standard.publication's 1MB limit, so the cap bounds proxy buffering, not lexicon compliance", faviconProxyMaxBytes, publishedPublicationIconBytes)
+	}
 	body := make([]byte, faviconProxyMaxBytes-1)
 	for i := range body {
 		body[i] = 0x41

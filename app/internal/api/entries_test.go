@@ -283,8 +283,8 @@ func TestEntryExtract_CachedReturn(t *testing.T) {
 	}
 	var got EntryWire
 	_ = json.Unmarshal(rr.Body.Bytes(), &got)
-	if got.Body == nil || *got.Body != cached {
-		t.Errorf("body = %v, want cached", got.Body)
+	if got.SanitizedBody == nil || *got.SanitizedBody != cached {
+		t.Errorf("body = %v, want cached", got.SanitizedBody)
 	}
 }
 
@@ -293,7 +293,6 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestEntryExtract_PathlessDocument_NoFetch(t *testing.T) {
-	// A path-less document has no URL to fetch; extract must return the entry without any HTTP request (an empty URL would 502).
 	entry := entryFixture()
 	entry.Url = ""
 	fetches := 0
@@ -318,7 +317,7 @@ func TestEntryExtract_PathlessDocument_NoFetch(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
 	if fetches != 0 {
-		t.Errorf("path-less extract made %d HTTP calls, want 0", fetches)
+		t.Errorf("path-less extract made %d HTTP calls, want 0: a standardfeed document without a path has no URL to extract from, and its body was filled at ingest", fetches)
 	}
 	if r.updatedID != 0 {
 		t.Errorf("path-less extract persisted a body (id %d)", r.updatedID)
@@ -378,8 +377,8 @@ func TestEntryExtract_FreshExtraction_Success(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Body == nil || *got.Body != *r.updatedBody {
-		t.Errorf("response body = %v, want persisted extraction", got.Body)
+	if got.SanitizedBody == nil || *got.SanitizedBody != *r.updatedBody {
+		t.Errorf("response body = %v, want persisted extraction", got.SanitizedBody)
 	}
 	if gotUA != safehttp.UserAgent {
 		t.Errorf("User-Agent = %q, want %q", gotUA, safehttp.UserAgent)

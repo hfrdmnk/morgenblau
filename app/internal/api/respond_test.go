@@ -45,7 +45,6 @@ func TestDecodeJSON_OversizedBody413(t *testing.T) {
 	rr := httptest.NewRecorder()
 	oversized := `{"url":"` + strings.Repeat("a", 512) + `"}`
 	r := httptest.NewRequest(http.MethodPost, "/api/x", strings.NewReader(oversized))
-	// Simulate the MaxBytesReader the auth middleware installs, with a tiny cap.
 	r.Body = http.MaxBytesReader(rr, r.Body, 32)
 
 	var body map[string]any

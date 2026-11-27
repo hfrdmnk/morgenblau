@@ -212,13 +212,12 @@ func TestImportChoosesValidDuplicateBeforeInvalidEarlierRecord(t *testing.T) {
 }
 
 func TestImportRecoveredRecordDispatchesFetch(t *testing.T) {
-	// The create committed, but its response and local mirror were lost.
 	record := importRecord(importSource{FeedURL: "https://example.com/feed"}, "2026-01-01T00:00:00Z")
 	pds := &fakePDS{listed: map[string][]atprepo.ListedRecord{subscriptionCollection: {{URI: "at://did:plc:alice/" + subscriptionCollection + "/old", Value: record}}}}
 	disp := &fakeDispatcher{}
 	w := importRequest(t, SubscriptionsImportHandler(newFakeIndex(), pds, disp, nil), map[string]any{"sources": []importSource{{FeedURL: "https://example.com/feed"}}})
 	if w.Code != 200 || len(disp.dispatched) != 1 || pds.creates != 0 {
-		t.Fatalf("recovery did not fetch: %s, dispatched=%v creates=%d", w.Body.String(), disp.dispatched, pds.creates)
+		t.Fatalf("recovery did not fetch: %s, dispatched=%v creates=%d; the earlier create committed but lost its response, mirror and fetch dispatch", w.Body.String(), disp.dispatched, pds.creates)
 	}
 }
 
