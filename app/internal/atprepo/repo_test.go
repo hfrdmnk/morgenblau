@@ -403,7 +403,6 @@ func TestCreateRecord_PropagatesUpstreamError(t *testing.T) {
 	}
 }
 
-// TestListRecords_PagesUntilCursorEmpty checks the pagination contract: an empty page with a non-empty cursor must continue, since stopping early would make the DELETE sweep miss duplicate records.
 func TestListRecords_PagesUntilCursorEmpty(t *testing.T) {
 	page := 0
 	pages := []struct {
@@ -446,7 +445,7 @@ func TestListRecords_PagesUntilCursorEmpty(t *testing.T) {
 		t.Fatalf("ListRecords: %v", err)
 	}
 	if page != len(pages) {
-		t.Errorf("pages fetched = %d, want %d", page, len(pages))
+		t.Errorf("pages fetched = %d, want %d: an empty page with a cursor still set continues, and stopping early would make the DELETE sweep miss duplicate records", page, len(pages))
 	}
 	if len(out) != 2 {
 		t.Fatalf("records = %d, want 2", len(out))

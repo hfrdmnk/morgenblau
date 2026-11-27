@@ -11,7 +11,6 @@ import (
 	"testing"
 )
 
-// The api writes and sync reads blue.morgen records; a literal on one side can drift from the constant on the other.
 func TestBlueMorgenNSIDsComeFromLexiconConstants(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {

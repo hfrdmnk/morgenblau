@@ -1,4 +1,3 @@
-// Package handler exposes the OAuth HTTP handlers: metadata, JWKS, login, callback, and logout.
 package handler
 
 import (
@@ -9,7 +8,6 @@ import (
 	"morgenblau/internal/oauth/config"
 )
 
-// ClientMetadataHandler serves /oauth-client-metadata.json, advertising the JWKS URI when set.
 func ClientMetadataHandler(cfg *config.Config) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		meta := cfg.Indigo.ClientMetadata()
@@ -33,7 +31,6 @@ func ClientMetadataHandler(cfg *config.Config) http.Handler {
 	})
 }
 
-// JWKSHandler serves /oauth-jwks.json, the public half of the configured client signing key.
 func JWKSHandler(cfg *config.Config) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

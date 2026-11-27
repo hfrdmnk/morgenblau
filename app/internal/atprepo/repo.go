@@ -1,4 +1,3 @@
-// Package atprepo wraps authenticated com.atproto.repo.* XRPC endpoints behind typed Go methods.
 package atprepo
 
 import (
@@ -10,7 +9,6 @@ import (
 	"morgenblau/internal/session"
 )
 
-// RkeyFromATURI extracts the rkey segment from an at-uri like at://did:plc:alice/blue.morgen.feed.subscription/3la123.
 func RkeyFromATURI(uri string) string {
 	parts := strings.Split(uri, "/")
 	if len(parts) != 5 || parts[0] != "at:" || parts[1] != "" || parts[2] == "" || parts[3] == "" || parts[4] == "" {
@@ -19,13 +17,11 @@ func RkeyFromATURI(uri string) string {
 	return parts[4]
 }
 
-// RecordRef identifies a PDS-resident record by at-uri + CID.
 type RecordRef struct {
 	URI string `json:"uri"`
 	CID string `json:"cid"`
 }
 
-// RecordWrite is one create, or with Delete one delete, passed to applyWrites.
 type RecordWrite struct {
 	Collection syntax.NSID
 	Rkey       syntax.RecordKey
@@ -33,36 +29,30 @@ type RecordWrite struct {
 	Delete     bool
 }
 
-// Writer is the slice of PDS operations the subscription endpoints use; production wires SessionWriter, tests inject a fake.
 type Writer interface {
 	CreateRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, record map[string]any) (*RecordRef, error)
 	PutRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey string, record map[string]any) (*RecordRef, error)
 	DeleteRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey string) error
 }
 
-// AtomicWriter applies creates and deletes in one repo commit.
 type AtomicWriter interface {
 	ApplyWrites(ctx context.Context, sess *session.Session, writes []RecordWrite) ([]*RecordRef, error)
 }
 
-// RecordGetter fetches one record from the session user's repo.
 type RecordGetter interface {
 	GetRecord(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey syntax.RecordKey) (*ListedRecord, error)
 }
 
-// ListedRecord is one record returned by ListRecords, value left undecoded.
 type ListedRecord struct {
 	URI   string         `json:"uri"`
 	CID   string         `json:"cid"`
 	Value map[string]any `json:"value"`
 }
 
-// Lister pages a collection in the session user's own repo; kept separate from Writer so existing fakes don't grow an unused method.
 type Lister interface {
 	ListRecords(ctx context.Context, sess *session.Session, collection syntax.NSID) ([]ListedRecord, error)
 }
 
-// SessionWriter calls the session's authenticated APIClient.
 type SessionWriter struct{}
 
 type createRecordBody struct {
@@ -195,7 +185,6 @@ type listRecordsResponse struct {
 	Cursor  string         `json:"cursor"`
 }
 
-// ListRecords pages com.atproto.repo.listRecords over the session user's own repo, terminating only on an empty cursor: an empty page with a cursor still set is a valid continuation, and stopping early would truncate the snapshot.
 func (SessionWriter) ListRecords(ctx context.Context, sess *session.Session, collection syntax.NSID) ([]ListedRecord, error) {
 	var (
 		out    []ListedRecord

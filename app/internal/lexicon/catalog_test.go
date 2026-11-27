@@ -152,7 +152,7 @@ func TestValidateRecord(t *testing.T) {
 func TestValidateRecordLenient_AllowsRelaxedDatetime(t *testing.T) {
 	record := map[string]any{
 		"subject":   "did:plc:abc123",
-		"createdAt": "2026-07-09T00:00:00-0000", // legacy offset syntax, not strict RFC-3339
+		"createdAt": "2026-07-09T00:00:00-0000",
 	}
 	if err := ValidateRecord(Follow, record); err == nil {
 		t.Fatalf("ValidateRecord accepted a relaxed datetime, want strict rejection")

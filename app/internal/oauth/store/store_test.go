@@ -20,7 +20,6 @@ import (
 	"morgenblau/internal/secret"
 )
 
-// schemaSQL mirrors internal/database/migrations/*_oauth_tables.sql; inlined to keep the test hermetic.
 const schemaSQL = `
 CREATE TABLE oauth_sessions (
     did         TEXT NOT NULL,
@@ -220,8 +219,7 @@ func TestAuthRequest_Delete(t *testing.T) {
 	}
 }
 
-// Read-time expiry check backs GC-driven cleanup, so callers never consume a stale request.
-func TestAuthRequest_ExpiredNotReturned(t *testing.T) {
+func TestAuthRequest_ExpiredNotReturnedBeforeGCRemovesIt(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()
 	in := sampleAuthRequest("state-old")
@@ -270,8 +268,7 @@ func TestAuthRequest_GCDeletesExpired(t *testing.T) {
 	}
 }
 
-// Two goroutines racing the same key see exactly one refresh; the loser reads the winner's fresh token.
-func TestLockSession_OnlyOneRefresh_SameKey(t *testing.T) {
+func TestLockSession_HeldAcrossGetAndSaveSessionRefreshesOnce(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()
 	in := sampleSession("did:plc:alice", "sid-1")
@@ -297,7 +294,6 @@ func TestLockSession_OnlyOneRefresh_SameKey(t *testing.T) {
 				return
 			}
 			if cur.AccessToken == "stale" {
-				// simulate AS round-trip
 				time.Sleep(20 * time.Millisecond)
 				refreshCount.Add(1)
 				cur.AccessToken = "fresh"
@@ -324,7 +320,6 @@ func TestLockSession_OnlyOneRefresh_SameKey(t *testing.T) {
 	}
 }
 
-// Independent (did, sid) pairs must not serialize their locks.
 func TestLockSession_IndependentKeysRunInParallel(t *testing.T) {
 	s := newStore(t)
 	didA, _ := syntax.ParseDID("did:plc:alice")
@@ -359,9 +354,9 @@ func TestLockSession_IndependentKeysRunInParallel(t *testing.T) {
 	wg.Wait()
 	elapsed := time.Since(t0)
 
-	// Shared locks would force ≥200ms serial; parallel finishes in ~100ms (slack for CI scheduling).
-	if elapsed > 180*time.Millisecond {
-		t.Errorf("independent keys serialized (elapsed %v, holds %v)", elapsed, hold)
+	serial := 2 * hold
+	if elapsed > serial-serial/10 {
+		t.Errorf("independent keys serialized: elapsed %v, want well under the %v one shared lock would take", elapsed, serial)
 	}
 }
 
@@ -388,7 +383,6 @@ func TestSession_DataBlobIsEncrypted(t *testing.T) {
 	}
 }
 
-// Rotated keyset [newKey, oldKey] must still decrypt a session sealed under oldKey (the SESSION_STORE_KEYS rotation path).
 func TestStore_KeyRotation_ReadsOldSession(t *testing.T) {
 	db := newMemDB(t)
 	ctx := context.Background()

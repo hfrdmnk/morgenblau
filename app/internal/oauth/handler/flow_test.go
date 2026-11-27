@@ -16,7 +16,6 @@ import (
 	"morgenblau/internal/oauth/cookie"
 )
 
-// fakeApp implements ClientApp for handler tests: no network, no AS.
 type fakeApp struct {
 	startURL    string
 	startErr    error
@@ -51,7 +50,6 @@ func (f *fakeApp) Logout(_ context.Context, did syntax.DID, sid string) error {
 	return f.logoutErr
 }
 
-// spyLocker records lock acquisitions and whether the lock is currently held.
 type spyLocker struct {
 	calls   int
 	heldNow bool
@@ -167,7 +165,6 @@ func TestCallback_HappyPath_SetsCookie_RedirectsHome(t *testing.T) {
 	if len(cookies) != 1 {
 		t.Fatalf("expected 1 cookie, got %d", len(cookies))
 	}
-	// Round-trip the cookie through the sealer to confirm contents.
 	req2 := httptest.NewRequest(http.MethodGet, "/", nil)
 	req2.AddCookie(cookies[0])
 	gotDID, gotSID, ok := sealer.Get(req2)
@@ -207,7 +204,6 @@ func TestLogout_ClearsCookie_RedirectsToLogin(t *testing.T) {
 	sealer := newSealer(t)
 	h := LogoutHandler(app, sealer, nil)
 
-	// pre-existing session cookie
 	setRR := httptest.NewRecorder()
 	sealer.Set(setRR, "did:plc:abc", "sid-1")
 	cookies := setRR.Result().Cookies()
@@ -231,7 +227,6 @@ func TestLogout_ClearsCookie_RedirectsToLogin(t *testing.T) {
 	if app.logoutSID != "sid-1" {
 		t.Errorf("Logout called with sid = %q", app.logoutSID)
 	}
-	// Should write a clearing cookie (MaxAge < 0).
 	outCookies := rr.Result().Cookies()
 	if len(outCookies) != 1 {
 		t.Fatalf("expected 1 cookie on logout, got %d", len(outCookies))
@@ -260,7 +255,7 @@ func TestLogout_HoldsSessionLockAcrossLogout(t *testing.T) {
 		t.Errorf("LockSession calls = %d, want 1", locker.calls)
 	}
 	if !heldDuringLogout {
-		t.Error("Logout ran without holding the session lock")
+		t.Error("Logout ran without holding the session lock, so an in-flight refresh could save the session row back after Logout deleted it")
 	}
 	if locker.heldNow {
 		t.Error("session lock not released after logout")
