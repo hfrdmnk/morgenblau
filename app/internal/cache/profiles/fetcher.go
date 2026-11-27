@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"morgenblau/internal/atxrpc"
@@ -32,7 +33,11 @@ func (f PDSFetcher) FetchProfile(ctx context.Context, did syntax.DID, pdsEndpoin
 		"collection": "app.bsky.actor.profile",
 		"rkey":       "self",
 	}
-	if err := client.Get(ctx, syntax.NSID("com.atproto.repo.getRecord"), params, &out); err != nil {
+	err := client.Get(ctx, syntax.NSID("com.atproto.repo.getRecord"), params, &out)
+	if isRecordNotFound(err) {
+		return ProfileRecord{}, nil
+	}
+	if err != nil {
 		return ProfileRecord{}, err
 	}
 
@@ -54,6 +59,11 @@ func (f PDSFetcher) FetchProfile(ctx context.Context, did syntax.DID, pdsEndpoin
 		}
 	}
 	return record, nil
+}
+
+func isRecordNotFound(err error) bool {
+	var apiErr *atclient.APIError
+	return errors.As(err, &apiErr) && apiErr.Name == "RecordNotFound"
 }
 
 func buildBlobURL(pdsEndpoint string, did syntax.DID, cid string) string {
