@@ -11,7 +11,6 @@ import (
 	"time"
 )
 
-// testSite is an invented publication served over httptest, recording how it was fetched.
 type testSite struct {
 	t        *testing.T
 	srv      *httptest.Server
@@ -33,7 +32,6 @@ func newTestSite(t *testing.T) *testSite {
 	return s
 }
 
-// unservedTestSite is a testSite with no server yet, for a handler that wraps its serve.
 func unservedTestSite(t *testing.T) *testSite {
 	return &testSite{t: t, pages: map[string]string{}, status: map[string]int{}, hits: map[string]int{}, agents: map[string]bool{}, langs: map[string]string{}}
 }
@@ -91,7 +89,6 @@ func (s *testSite) opts() Options {
 	return Options{Client: s.srv.Client()}
 }
 
-// article is a post page with og:title and a publish date.
 func article(title, ogTitle, published string) string {
 	meta := ""
 	if ogTitle != "" {
@@ -104,7 +101,6 @@ func article(title, ogTitle, published string) string {
 		`<main><article><h1>` + title + `</h1><p>Body text of the post.</p></article></main>` + siteFooter + `</body></html>`
 }
 
-// addBlog serves /blog with n posts and their article pages.
 func (s *testSite) addBlog(n int) {
 	s.set("/blog", page("Blog | Example Publication", siteNav+blogList(n)+siteFooter))
 	for i := range n {

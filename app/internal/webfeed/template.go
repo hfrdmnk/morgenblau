@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-// URLTemplate returns the URL shape a stream is keyed on: lowercase host without "www.", all-digit path segments as #, the last segment as *.
 func URLTemplate(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -20,7 +19,6 @@ func URLTemplate(raw string) string {
 			segs = append(segs, s)
 		}
 	}
-	// A directory's default document is the directory: /post/index.html is /post/.
 	if n := len(segs); n > 0 && defaultDocuments[strings.ToLower(segs[n-1])] {
 		segs = segs[:n-1]
 	}
@@ -38,7 +36,6 @@ func URLTemplate(raw string) string {
 	return host + "/" + strings.Join(segs, "/")
 }
 
-// depthKey groups templates by host and path depth, the templates generalizeTemplates may merge.
 func depthKey(tmpl string) string {
 	return tmpl[:strings.Index(tmpl, "/")+1] + strconv.Itoa(strings.Count(tmpl, "/"))
 }
@@ -55,7 +52,6 @@ func allDigits(s string) bool {
 	return true
 }
 
-// templateFirstSegment is the first path segment of a template, "" when the stream sits at the root.
 func templateFirstSegment(tmpl string) string {
 	_, path, ok := strings.Cut(tmpl, "/")
 	if !ok {
@@ -68,7 +64,6 @@ func templateFirstSegment(tmpl string) string {
 	return first
 }
 
-// pathFirstSegment is the first segment of a URL's path.
 func pathFirstSegment(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -80,7 +75,6 @@ func pathFirstSegment(raw string) string {
 
 var defaultDocuments = map[string]bool{"index.html": true, "index.htm": true, "index.php": true, "default.aspx": true, "default.htm": true}
 
-// lastSegment is the URL's final path segment, skipping a default document such as index.html.
 func lastSegment(raw string) (string, bool) {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -101,8 +95,6 @@ func lastSegment(raw string) (string, bool) {
 	return segs[len(segs)-1], true
 }
 
-// generalizeTemplates merges one list's same-depth templates whose middle segments vary (a category in the path) into one pattern.
-// It returns "" unless they share host and depth and keep a literal segment, so unrelated pages never merge.
 func generalizeTemplates(ts []string) string {
 	distinct := map[string]bool{}
 	for _, t := range ts {
@@ -144,8 +136,6 @@ func generalizeTemplates(ts []string) string {
 	return host + "/" + strings.Join(out, "/")
 }
 
-// matchTemplate reports whether a URL's template fits a stream's pattern, where * in the pattern stands for any one
-// non-empty segment: a root URL's template is "host/", and "/?page=2" must not join a root-slug stream.
 func matchTemplate(pattern, tmpl string) bool {
 	if pattern == tmpl {
 		return true

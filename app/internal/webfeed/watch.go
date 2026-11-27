@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-// watchPrompt drives the weekly check. Not benchmarked; change it only with a new benchmark.
 const watchPrompt = `You check once a week whether a generated feed still follows the right posts on a web page.
 You get the page URL, a digest of the page as fetched now (title, headings, a visible-text excerpt, link counts), the last items the feed accepted as good, and the items its recipe extracts from the page now (date | title | url).
 Answer broken when the current items are no longer this page's stream of posts: navigation, category or tag links, a "popular" or "related" list, another section of the site, a cookie or consent wall, an error, login or bot-check page, a parked or moved site, or a list cut down to a few entries while the page plainly shows many more posts. Also answer broken when the page shows newer posts than any current item.
@@ -20,13 +19,11 @@ const (
 	watchItems      = 20
 )
 
-// watchVerdict is the weekly check's answer.
 type watchVerdict struct {
 	Broken bool
 	Reason string
 }
 
-// WatchRecord is a weekly check's outcome and metered cost.
 type WatchRecord struct {
 	Broken       bool    `json:"broken"`
 	Reason       string  `json:"reason,omitempty"`
@@ -35,7 +32,6 @@ type WatchRecord struct {
 	USD          float64 `json:"usd,omitempty"`
 }
 
-// pageDigest is what the weekly check sees of the page as fetched now.
 type pageDigest struct {
 	Title         string
 	Headings      []string
@@ -44,8 +40,6 @@ type pageDigest struct {
 	SameSiteLinks int
 }
 
-// WeeklyCheck is the weekly second opinion on a generated source: one call that can raise an alarm, never close one.
-// On error the record carries the cost and Broken stays false.
 func WeeklyCheck(ctx context.Context, m Model, listingURL string, page []byte, lastGood, current []Item) (WatchRecord, error) {
 	d, err := digestPage(page, listingURL)
 	if err != nil {
@@ -54,8 +48,6 @@ func WeeklyCheck(ctx context.Context, m Model, listingURL string, page []byte, l
 	return watch(ctx, m, listingURL, d, lastGood, current)
 }
 
-// ConfirmAnchored asks the weekly check whether an anchored setup's items are the listing's posts, with nothing trusted
-// to compare them to: a reader's pointer alone must not swap the list a shared feed serves.
 func ConfirmAnchored(ctx context.Context, m Model, res *Result) (WatchRecord, error) {
 	if res.digest == nil {
 		return WatchRecord{}, errors.New("webfeed: the anchored setup read no listing page to check against")
@@ -77,7 +69,6 @@ func watch(ctx context.Context, m Model, listingURL string, d pageDigest, lastGo
 	return rec, nil
 }
 
-// digestPage reads the title, headings, a visible-text excerpt and link counts from a fetched page.
 func digestPage(body []byte, pageURL string) (pageDigest, error) {
 	p, err := parsePage(body, pageURL)
 	if err != nil {
@@ -107,7 +98,6 @@ func (p *pageDoc) digest() pageDigest {
 	return d
 }
 
-// renderWatchMessage builds the weekly check's user message; item lists show their first 20 entries.
 func renderWatchMessage(listingURL string, d pageDigest, lastGood, current []Item) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Page: %s\nTitle: %s\nHeadings: %s\nText: %s\nLinks: %d (%d on this site)\n", listingURL, d.Title, strings.Join(d.Headings, " | "), d.Text, d.Links, d.SameSiteLinks)
@@ -130,7 +120,6 @@ func renderWatchMessage(listingURL string, d pageDigest, lastGood, current []Ite
 	return b.String()
 }
 
-// parseWatchVerdict reads the weekly check's reply.
 func parseWatchVerdict(text string) (watchVerdict, error) {
 	var raw struct {
 		Verdict string `json:"verdict"`

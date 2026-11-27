@@ -44,7 +44,6 @@ var (
 	reURLDate   = regexp.MustCompile(`/((?:19|20)\d{2})/(\d{1,2})(?:/(\d{1,2}))?/`)
 )
 
-// parseDateText finds the first calendar date in visible text, in the formats listing pages use across languages.
 func parseDateText(s string) (time.Time, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" || len(s) > 400 {
@@ -85,9 +84,7 @@ func parseDateText(s string) (time.Time, bool) {
 		}
 	}
 	if m := reSlashDate.FindStringSubmatch(s); m != nil {
-		a, _ := strconv.Atoi(m[1])
-		// US month-first unless the first number cannot be a month.
-		if a > 12 {
+		if first, _ := strconv.Atoi(m[1]); first > 12 {
 			if t, ok := ymd(m[3], m[2], m[1]); ok {
 				return t, true
 			}
@@ -121,7 +118,6 @@ var attrLayouts = []string{
 	"Mon, 2 Jan 2006 15:04:05 -0700",
 }
 
-// parseDateAttr parses machine-readable dates from datetime, content and JSON-LD values.
 func parseDateAttr(s string) (time.Time, bool) {
 	s = strings.TrimSpace(s)
 	for _, layout := range attrLayouts {
@@ -132,7 +128,6 @@ func parseDateAttr(s string) (time.Time, bool) {
 	return parseDateText(s)
 }
 
-// dateFromURL reads /YYYY/MM(/DD)/ permalinks; a month-only path dates the item to the 1st.
 func dateFromURL(raw string) (time.Time, bool) {
 	u, err := url.Parse(raw)
 	if err != nil {

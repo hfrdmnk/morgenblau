@@ -10,11 +10,8 @@ import (
 	"morgenblau/internal/sitesection"
 )
 
-// sectionMinItems is how many posts a healthy listing shows before setup stops looking for a fuller section page.
 const sectionMinItems = 5
 
-// preferSection moves a teasing or weak listing's setup to the section page it links when that page serves its posts and
-// more. The section is read without a model, so a move needs the heuristic's own confidence and no spend is discarded.
 func (s *session) preferSection(ctx context.Context, home *Result) (*Result, error) {
 	if home.listing == nil {
 		return home, nil
@@ -39,8 +36,6 @@ func (s *session) preferSection(ctx context.Context, home *Result) (*Result, err
 	return sec, nil
 }
 
-// sectionBetter accepts a section page that serves a healthy list: every post of a healthy listing, or more posts than a
-// weak one. A refused section yields no page of its own, only robots or the sitemap, and is never a move.
 func sectionBetter(home, sec *Result) bool {
 	if sec.listing == nil || !sec.Healthy() {
 		return false
@@ -55,12 +50,9 @@ func sectionBetter(home, sec *Result) bool {
 	return !slices.ContainsFunc(home.Items, func(it Item) bool { return !have[postkey.URL(it.URL)] })
 }
 
-// sectionCandidate is the one-segment section page on the listing's host to try instead: the section all its posts live
-// under when the page links it, else for a weak front page the first linked section named like a blog; "" for none.
 func sectionCandidate(p *pageDoc, items []Item, weak bool) string {
 	listing := strings.Trim(p.url.Path, "/")
-	// A page deeper in the site, such as a tag page, is a choice the reader made, not a teaser.
-	if strings.Contains(listing, "/") {
+	if readerChoseADeeperPage := strings.Contains(listing, "/"); readerChoseADeeperPage {
 		return ""
 	}
 	var order []string
@@ -83,8 +75,7 @@ func sectionCandidate(p *pageDoc, items []Item, weak bool) string {
 	if seg := teaserSection(p.url, items); seg != "" && links[seg] != "" {
 		return links[seg]
 	}
-	// A named page the reader pasted, such as /updates, is a stream of its own; only the front page gives way to a sibling.
-	if weak && (listing == "" || defaultDocuments[listing]) {
+	if isFrontPage := listing == "" || defaultDocuments[listing]; weak && isFrontPage {
 		for _, seg := range order {
 			if sitesection.Name(seg) {
 				return links[seg]
@@ -94,8 +85,6 @@ func sectionCandidate(p *pageDoc, items []Item, weak bool) string {
 	return ""
 }
 
-// teaserSection is the first path segment every item on the listing's site lives under, with more path after it; "" when
-// they differ.
 func teaserSection(listing *url.URL, items []Item) string {
 	section := ""
 	for _, it := range items {
@@ -104,8 +93,8 @@ func teaserSection(listing *url.URL, items []Item) string {
 			continue
 		}
 		first, rest, _ := strings.Cut(strings.Trim(u.Path, "/"), "/")
-		// A year archive holds only that year's posts, so a source moved there would stop at the next new year.
-		if rest == "" || strings.Trim(first, "0123456789") == "" || (section != "" && first != section) {
+		isYearArchive := strings.Trim(first, "0123456789") == ""
+		if rest == "" || isYearArchive || (section != "" && first != section) {
 			return ""
 		}
 		section = first

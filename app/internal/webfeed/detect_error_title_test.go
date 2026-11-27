@@ -28,7 +28,7 @@ func TestErrorTitleNeedsMoreThanALeadingNumber(t *testing.T) {
 		t.Run(tc.title+"/"+tc.h1, func(t *testing.T) {
 			body := page(tc.title, siteNav+`<main><h1>`+tc.h1+`</h1>`+blogList(8)+`</main>`+siteFooter)
 			if got := pageTier0(mustPage(t, body, "https://news.example.com/blog")); got != tc.want {
-				t.Fatalf("pageTier0 = %q, want %q", got, tc.want)
+				t.Fatalf("pageTier0 = %q, want %q: a publication may lead its name with a status code, so only a bare code, one set off by punctuation or one named an error marks an error page", got, tc.want)
 			}
 		})
 	}

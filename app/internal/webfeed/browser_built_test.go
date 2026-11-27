@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// appShell is a client-rendered listing: an empty mount point and the script that fills it.
 func appShell() string {
 	return `<!doctype html><html lang="en"><head><title>Example Publication</title></head><body><div id="root"></div>` +
 		`<script type="module" src="/assets/index-4f2a.js"></script></body></html>`
@@ -27,7 +26,7 @@ func TestSetupReportsAnAppShellAsBrowserBuiltWithoutAskingTheModel(t *testing.T)
 		t.Fatalf("browser built %v reasons %v items %v", res.BrowserBuilt(), res.Reasons, itemURLs(res.Items))
 	}
 	if len(m.prompts) != 0 {
-		t.Fatalf("model asked %d times", len(m.prompts))
+		t.Fatalf("model asked %d times; check for an app shell before the judge, which would otherwise pick the least wrong of the lists the page serves without its posts", len(m.prompts))
 	}
 }
 
@@ -44,7 +43,7 @@ func TestSetupKeepsAShortServedListInsideAnAppMountPoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	if res.BrowserBuilt() || len(res.Items) != 4 {
-		t.Fatalf("browser built %v reasons %v items %v", res.BrowserBuilt(), res.Reasons, itemURLs(res.Items))
+		t.Fatalf("browser built %v reasons %v items %v; small server-rendered pages mount into an app root too, so an app root counts only when the page serves no list", res.BrowserBuilt(), res.Reasons, itemURLs(res.Items))
 	}
 }
 

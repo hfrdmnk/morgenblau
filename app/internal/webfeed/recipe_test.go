@@ -97,12 +97,12 @@ func TestNewRecipeMarshalsEmptyListsAndNullCSS(t *testing.T) {
 	}
 }
 
-func TestEmptyTitleHintsMarshalAsObject(t *testing.T) {
+func TestEmptyStreamHintsMarshalSoStoredRecipesHaveOneShape(t *testing.T) {
 	raw, err := json.Marshal(Stream{URLTemplate: "news.example.com/*"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(raw), `"title_hints":{}`) || !strings.Contains(string(raw), `"container_hints":[]`) {
-		t.Fatalf("stream JSON = %s", raw)
+		t.Fatalf("stream JSON = %s, want title_hints an object and container_hints an array, never null, so every stored recipe has one shape", raw)
 	}
 }

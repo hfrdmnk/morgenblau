@@ -2,6 +2,7 @@ package webfeed
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"reflect"
@@ -73,7 +74,18 @@ func TestJudgePromptIsTheFrozenV2Prompt(t *testing.T) {
 		!strings.HasSuffix(judgePrompt, "none=true when no candidate is a post stream.") ||
 		strings.Count(judgePrompt, "\n") != 6 ||
 		!strings.Contains(judgePrompt, `Return JSON only: {"pick":[ids],"order":"date"|"page","mixed":true|false,"none":true|false,"reason":"one short sentence"}`) {
-		t.Fatalf("system prompt drifted from v2:\n%s", judgePrompt)
+		t.Fatalf("system prompt drifted from v2, the frozen and benchmarked judge prompt; change it only with a new benchmark:\n%s", judgePrompt)
+	}
+}
+
+func TestUnbenchmarkedPromptsChangeOnlyWithABenchmark(t *testing.T) {
+	for name, tc := range map[string]struct{ prompt, sha string }{
+		"inducePrompt": {inducePrompt, "fe4228fed3199d77f7ec67772995722cc31b069ce79372404072216e2d412923"},
+		"watchPrompt":  {watchPrompt, "e3ced5794a28c43a3e1d4705614e433f172f1f106ff6429c2f9bdf68aadc5ef9"},
+	} {
+		if got := fmt.Sprintf("%x", sha256.Sum256([]byte(tc.prompt))); got != tc.sha {
+			t.Errorf("%s has sha256 %s, want %s: it was never benchmarked, so change it only together with a new benchmark, then update this hash", name, got, tc.sha)
+		}
 	}
 }
 
@@ -137,7 +149,6 @@ func TestAggregateVotes(t *testing.T) {
 	}
 }
 
-// parallelBarrier holds each call until n calls are in flight at once, and fails the test if they never are.
 func parallelBarrier(t *testing.T, n int) func(context.Context, Prompt) {
 	var mu sync.Mutex
 	arrived := 0

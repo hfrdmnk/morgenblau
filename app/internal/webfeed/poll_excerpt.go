@@ -8,7 +8,6 @@ import (
 
 const excerptSegments = 2
 
-// listingExcerpts finds each item's teaser on the listing page it came from; items without one are absent.
 func listingExcerpts(p *pageDoc, items []Item) map[string]string {
 	want := make(map[string]Item, len(items))
 	for _, it := range items {
@@ -29,7 +28,6 @@ func listingExcerpts(p *pageDoc, items []Item) map[string]string {
 	return out
 }
 
-// entryExcerpt is the entry's sentence-like text other than its title, date, labels and link furniture.
 func entryExcerpt(p *pageDoc, e *entry, title string) string {
 	var parts []string
 	for _, s := range p.segments(e) {

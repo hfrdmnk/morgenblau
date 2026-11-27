@@ -79,6 +79,20 @@ func TestSetupHonorsRobots(t *testing.T) {
 	}
 }
 
+func TestSetupReadsTheListingWhenRobotsTxtFails(t *testing.T) {
+	s := newTestSite(t)
+	s.addBlog(5)
+	s.set("/robots.txt", "User-agent: *\nDisallow: /blog\n")
+	s.status["/robots.txt"] = 503
+	res, err := Setup(context.Background(), s.url("/blog"), s.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Blocked || s.hits["/blog"] != 1 {
+		t.Fatalf("blocked %v reasons %v, listing hits %d; a robots.txt that fails allows the fetch, since a reader asked for this one page", res.Blocked, res.Reasons, s.hits["/blog"])
+	}
+}
+
 func sitemapXML(locs ...string) string {
 	var b strings.Builder
 	b.WriteString(`<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`)
@@ -127,7 +141,6 @@ func TestSetupBlockedWithoutSitemapIsBlockedBySite(t *testing.T) {
 	}
 }
 
-// ambiguousPage has two plausible lists with different URL shapes and nothing to tell them apart.
 func ambiguousPage() string {
 	var b strings.Builder
 	b.WriteString(`<main><div class="col-a">`)
@@ -384,7 +397,7 @@ func TestSetupUnsureWithoutJudgeAsksForAPost(t *testing.T) {
 		t.Fatalf("fixture is not unsure: confidence %.2f", res.Recipe.Setup.Confidence)
 	}
 	if res.Healthy() || res.Blocked || !slices.Contains(res.Reasons, ReasonUnsure) {
-		t.Fatalf("blocked %v reasons %v", res.Blocked, res.Reasons)
+		t.Fatalf("blocked %v reasons %v; without a judge an unsure pick is the reader's call, and serving it as healthy would be a silent failure", res.Blocked, res.Reasons)
 	}
 }
 
@@ -436,7 +449,6 @@ func TestJudgeReasonsThresholdsAreStrict(t *testing.T) {
 	}
 }
 
-// topicList is one list of section pages: well-shaped titles, but every link a taxonomy page.
 func topicList() string {
 	var b strings.Builder
 	b.WriteString(`<main><ul class="topics">`)

@@ -11,10 +11,8 @@ import (
 	"morgenblau/internal/postkey"
 )
 
-// errUnsupportedMode is a recipe mode apply cannot run on a fetched page.
 var errUnsupportedMode = errors.New("webfeed: recipe mode not supported by Apply")
 
-// apply runs a stored recipe on a freshly fetched page (the listing, or the sitemap in mode sitemap) without any model or extra fetch.
 func apply(r Recipe, body []byte, pageURL string) ([]Item, error) {
 	if r.Mode == ModeSitemap {
 		return applySitemap(r, body)
@@ -26,7 +24,6 @@ func apply(r Recipe, body []byte, pageURL string) ([]Item, error) {
 	return applyPage(r, p)
 }
 
-// applyPage runs a listing recipe on a page already parsed.
 func applyPage(r Recipe, p *pageDoc) ([]Item, error) {
 	switch r.Mode {
 	case ModeStreams:
@@ -65,10 +62,8 @@ func applyStreams(r Recipe, p *pageDoc) []Item {
 	return capItems(items)
 }
 
-// capItems keeps the first MaxItems, the newest in date order.
 func capItems(items []Item) []Item { return items[:min(len(items), MaxItems)] }
 
-// refind locates a stream: the exact container hint, then the same structure under rehashed classes, then any list of its URL shape.
 func refind(clusters []*cluster, st Stream) []*cluster {
 	shapeShare := func(c *cluster) float64 {
 		n := 0
@@ -108,7 +103,6 @@ func refind(clusters []*cluster, st Stream) []*cluster {
 	return shape
 }
 
-// sideList reports navigation, sidebar and "popular"-style lists, which share the stream's URL shape without being it.
 func (c *cluster) sideList() bool {
 	nav, aside := 0, 0
 	for _, e := range c.entries {
@@ -150,7 +144,6 @@ func applySitemap(r Recipe, body []byte) ([]Item, error) {
 	return sitemapItems(sm.urls, sitemapMatch(r)), nil
 }
 
-// sitemapMatch keeps the entries a sitemap recipe's streams name, other than the listing and its excluded URLs.
 func sitemapMatch(r Recipe) func(loc string) bool {
 	listing := postkey.URL(r.ListingURL)
 	return func(loc string) bool {

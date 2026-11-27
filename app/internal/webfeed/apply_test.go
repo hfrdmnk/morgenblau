@@ -14,7 +14,6 @@ import (
 
 var reClassAttr = regexp.MustCompile(`class="([^"]*)"`)
 
-// rehash renames every class the way a new CSS-module or Tailwind build would.
 func rehash(html, salt string) string {
 	return reClassAttr.ReplaceAllStringFunc(html, func(m string) string {
 		var out []string

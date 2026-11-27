@@ -8,12 +8,10 @@ import (
 	"testing"
 )
 
-// countingJudge is a model that always picks the first candidate.
 func countingJudge() *fakeModel {
 	return &fakeModel{replies: map[Effort][]string{EffortHigh: {judgeReply(OrderPage, 0)}}}
 }
 
-// shoutedTitles upper-cases every post title, which trips the title-shape rule without moving a single post.
 func shoutedTitles(list string) string {
 	for _, t := range postTitles {
 		list = strings.ReplaceAll(list, ">"+t+"<", ">"+strings.ToUpper(t)+"<")
@@ -31,7 +29,6 @@ func archiveList(class string, n int) string {
 	return b.String()
 }
 
-// renamedList is the blog list with every title rewritten except the first, under a new URL scheme.
 func renamedList(n int) string {
 	var b strings.Builder
 	b.WriteString(`<main><h1>Articles</h1><ul class="articles">`)
@@ -198,7 +195,6 @@ func TestAcceptanceRule(t *testing.T) {
 	}
 }
 
-// doubtedPoll is the page with the recipe's current extraction, as a poll hands it to repair after a weekly check doubted it.
 func doubtedPoll(t *testing.T, s *testSite, rec Recipe, body string) *PollResult {
 	t.Helper()
 	p := mustPage(t, body, s.url("/blog"))

@@ -13,38 +13,25 @@ import (
 	"morgenblau/internal/postkey"
 )
 
-// Options configures Setup.
 type Options struct {
-	// Client fetches every page; it must be SSRF-safe for attacker-chosen URLs.
-	Client Doer
-	// Model judges unsure setups and writes a CSS recipe when fewer than 3 items survive; nil keeps the heuristic's
-	// pick, records that the judge was wanted and skips induction.
-	Model Model
-	// MaxSetupBytes caps the bytes one setup or poll reads across all its fetches.
+	Client        Doer
+	Model         Model
 	MaxSetupBytes int64
-	// Robots lets polls reuse each site's robots.txt for a day; nil fetches it on every poll.
-	Robots *RobotsCache
+	Robots        *RobotsCache
 }
 
-// Result is a finished setup: the recipe to store, the items it yields now, and the self-check verdict.
 type Result struct {
-	Recipe Recipe
-	Title  string
-	Items  []Item
-	// Excerpts are the items' teasers on the listing, keyed by item URL.
-	Excerpts map[string]string
-	// Blocked says the site refused us: robots.txt, or a refusal with no sitemap to fall back on.
-	Blocked bool
-	// Reasons say why the site refused us or why the self-check doubts the result; none means it is healthy.
-	Reasons []Reason
-	// Candidates are the top lists the heuristic found, in the order the judge saw them.
-	Candidates []Candidate
-	// AnchorOnPage says the listing as fetched links the anchored post itself, not merely a URL of its shape.
+	Recipe       Recipe
+	Title        string
+	Items        []Item
+	Excerpts     map[string]string
+	Blocked      bool
+	Reasons      []Reason
+	Candidates   []Candidate
 	AnchorOnPage bool
 
 	listing *pageDoc
-	// digest is what ConfirmAnchored shows the model of the anchored listing, kept once the page is released.
-	digest *pageDigest
+	digest  *pageDigest
 }
 
 const (
@@ -56,12 +43,10 @@ const (
 	dateOrderShare       = 0.7
 )
 
-// Setup finds the post stream on a listing page that has no feed and builds its recipe.
 func Setup(ctx context.Context, listingURL string, opts Options) (*Result, error) {
 	return setupListing(ctx, listingURL, opts, true)
 }
 
-// setupListing is Setup, moving to a section page only when toSection allows it.
 func setupListing(ctx context.Context, listingURL string, opts Options, toSection bool) (*Result, error) {
 	if opts.Client == nil {
 		return nil, errClient
@@ -71,7 +56,6 @@ func setupListing(ctx context.Context, listingURL string, opts Options, toSectio
 	if err != nil {
 		return res, err
 	}
-	// Induction waits for the section check, so it is never paid for on a listing the check replaces.
 	if toSection {
 		if res, err = s.preferSection(ctx, res); err != nil {
 			res.release()
@@ -89,13 +73,10 @@ func setupListing(ctx context.Context, listingURL string, opts Options, toSectio
 	return res, nil
 }
 
-// BrowserBuilt says the listing builds its post list in the browser, so the fetched page holds no posts to follow.
 func (r *Result) BrowserBuilt() bool { return slices.Contains(r.Reasons, ReasonSPAShell) }
 
-// Healthy is a result the self-check does not doubt.
 func (r *Result) Healthy() bool { return len(r.Reasons) == 0 }
 
-// release takes the teasers from the parsed listing and drops it, the biggest thing a setup holds.
 func (r *Result) release() {
 	if r.listing != nil {
 		r.Excerpts = listingExcerpts(r.listing, r.Items)
@@ -103,7 +84,6 @@ func (r *Result) release() {
 	r.listing = nil
 }
 
-// SetupAnchored re-runs setup choosing the lists that contain the reader's example post or share its URL shape.
 func SetupAnchored(ctx context.Context, listingURL, anchorPostURL string, opts Options) (*Result, error) {
 	if URLTemplate(anchorPostURL) == "" {
 		return nil, fmt.Errorf("webfeed: anchor %q is not an http(s) URL", anchorPostURL)
@@ -163,8 +143,6 @@ func (s *session) setup(ctx context.Context, listingURL, anchorURL string, model
 	}
 	conf, margin := confidence(top)
 	rec.Setup.Confidence, rec.Setup.Margin = round2(conf), round2(margin)
-	// Checked before the judge, which would otherwise pick the least wrong of the lists the page serves without its posts.
-	// Small server-rendered pages also mount into an app root, so an app root counts only when the page serves no list.
 	if anchorURL == "" && len(top) == 0 && emptyTier0(p, resp.body) == ReasonSPAShell {
 		res.Reasons = []Reason{ReasonSPAShell}
 		return res, nil
@@ -193,7 +171,6 @@ func (s *session) setup(ctx context.Context, listingURL, anchorURL string, model
 		picked[i] = pool[k]
 	}
 	s.build(ctx, res, p, picked)
-	// Without a judge, an unsure pick is the reader's call: serving it as healthy would be a silent failure.
 	if anchorURL == "" && model == nil && conf < judgeBelowConfidence {
 		res.Reasons = append(res.Reasons, ReasonUnsure)
 	}
@@ -203,7 +180,6 @@ func (s *session) setup(ctx context.Context, listingURL, anchorURL string, model
 	return res, nil
 }
 
-// listingPage parses a listing the site did not refuse, or says why there is nothing to parse.
 func listingPage(resp *response) (*pageDoc, error) {
 	switch reason, _ := resp.refusal(); {
 	case resp.err != nil:
@@ -222,7 +198,6 @@ func listingPage(resp *response) (*pageDoc, error) {
 	return p, nil
 }
 
-// judgeReasons says why the heuristic is unsure of its pick; none means it decides alone.
 func judgeReasons(conf, margin float64, verifyFlagged bool) []string {
 	var reasons []string
 	if conf < judgeBelowConfidence {
@@ -237,8 +212,6 @@ func judgeReasons(conf, margin float64, verifyFlagged bool) []string {
 	return reasons
 }
 
-// choose picks among the top candidates: the heuristic's pick, or the judge's when the heuristic is unsure and there is
-// a model. none reports a judge majority that no list is a post stream; the heuristic's pick then stands.
 func (s *session) choose(ctx context.Context, res *Result, top []*cluster, conf, margin float64, m Model) (pick []int, none bool, err error) {
 	rec := &res.Recipe.Setup
 	flagged := s.verify(ctx, top[0])
@@ -265,8 +238,6 @@ func (s *session) choose(ctx context.Context, res *Result, top []*cluster, conf,
 	return sectionGuard(top, jr.Pick, res.Recipe.ListingURL), false, nil
 }
 
-// build turns the picked lists into the recipe's streams and the setup's items, checked against the posts' own pages,
-// and runs the self-check on them.
 func (s *session) build(ctx context.Context, res *Result, p *pageDoc, picked []*cluster) {
 	rec := &res.Recipe
 	streams := buildStreams(picked, rec.ListingURL)
@@ -309,7 +280,6 @@ func orderFor(dateFrac float64) Order {
 	return OrderPage
 }
 
-// sortItems orders newest first for date order, undated items last; page order is left alone.
 func sortItems(items []Item, order Order) {
 	if order != OrderDate {
 		return
@@ -325,7 +295,6 @@ func sortItems(items []Item, order Order) {
 
 func round2(f float64) float64 { return math.Round(f*100) / 100 }
 
-// verify fetches the top candidate's first items; it flags the stream for the judge, never rejects it.
 func (s *session) verify(ctx context.Context, top *cluster) bool {
 	var urls []string
 	for _, e := range top.entries[:min(len(top.entries), verifyItems)] {
@@ -342,15 +311,13 @@ func (s *session) verify(ctx context.Context, top *cluster) bool {
 		if info.isHub(top.template) {
 			hubs++
 		}
-		if info.clean != "" && titleSimilarity(e.Title, info.clean) < 0.3 && !strings.Contains(strings.ToLower(e.text), strings.ToLower(info.clean)) {
+		if info.ownTitle != "" && titleSimilarity(e.Title, info.ownTitle) < 0.3 && !strings.Contains(strings.ToLower(e.text), strings.ToLower(info.ownTitle)) {
 			mismatched++
 		}
 	}
 	return fetched >= 2 && (hubs >= 2 || mismatched >= 2)
 }
 
-// buildStreams turns picked clusters into streams: each list's own shape, plus post-like minority shapes inside it
-// (another post type, a series), generalized per depth. A shape an earlier stream's pattern covers folds into it.
 func buildStreams(picked []*cluster, listingURL string) []Stream {
 	var out []Stream
 	add := func(tmpl string, c *cluster) {
@@ -394,7 +361,6 @@ func buildStreams(picked []*cluster, listingURL string) []Stream {
 	return out
 }
 
-// minorityShape is the shape of same-depth leftovers in a picked list when at least two of them read as posts.
 func minorityShape(es []*entry) string {
 	if len(es) < 2 {
 		return ""
@@ -417,7 +383,6 @@ func minorityShape(es []*entry) string {
 	return generalizeTemplates(ts)
 }
 
-// titleHintFor records the most common place titles came from.
 func titleHintFor(c *cluster) TitleHints {
 	counts := map[TitleHints]int{}
 	var best TitleHints
@@ -439,7 +404,6 @@ func streamTemplates(streams []Stream) []string {
 	return out
 }
 
-// mergeEntries unions the picked lists in page order, keeping one entry per URL and only the streams' URL shapes.
 func (p *pageDoc) mergeEntries(picked []*cluster, templates []string) []*entry {
 	var all []*entry
 	seen := map[string]bool{}
@@ -457,7 +421,6 @@ func (p *pageDoc) mergeEntries(picked []*cluster, templates []string) []*entry {
 	return all
 }
 
-// calibrate fetches each emitted item once: article titles replace weak listing titles, article dates fill gaps, hub pages are excluded.
 func (s *session) calibrate(ctx context.Context, entries []*entry, picked []*cluster, streams []string) (excludes []string, hints map[string]TitleHints, source DateSource) {
 	dated := 0
 	for _, e := range entries {
@@ -488,7 +451,7 @@ func (s *session) calibrate(ctx context.Context, entries []*entry, picked []*clu
 			e.Date = info.published
 			filled++
 		}
-		if t := info.clean; t != "" && betterTitle(e, t) {
+		if t := info.ownTitle; t != "" && betterTitle(e, t) {
 			if n := segmentMatching(e, t); n != nil {
 				st := streamOf(streams, e.URL)
 				if hintVotes[st] == nil {
@@ -502,7 +465,6 @@ func (s *session) calibrate(ctx context.Context, entries []*entry, picked []*clu
 	return excludes, titleHintsFrom(hintVotes), dateSourceOf(len(entries)-len(excludes), dated, filled)
 }
 
-// calibrateLimit is how many posts calibration fetches: more when most lack a listing date, since their pages must supply it.
 func calibrateLimit(n, dated int) int {
 	if n > 0 && float64(dated)/float64(n) < 0.5 {
 		return calibrateUndated
@@ -510,7 +472,6 @@ func calibrateLimit(n, dated int) int {
 	return calibrateItems
 }
 
-// titleHintsFrom keeps, per stream, the element that held the article's title for at least two posts and half the votes.
 func titleHintsFrom(votes map[string]map[string]int) map[string]TitleHints {
 	hints := map[string]TitleHints{}
 	for tmpl, byTag := range votes {
@@ -528,7 +489,6 @@ func titleHintsFrom(votes map[string]map[string]int) map[string]TitleHints {
 	return hints
 }
 
-// dateSourceOf says where n kept posts got their dates: dated from the listing, filled from their own pages.
 func dateSourceOf(n, dated, filled int) DateSource {
 	switch {
 	case n <= 0:
@@ -543,7 +503,6 @@ func dateSourceOf(n, dated, filled int) DateSource {
 	return DateSourceNone
 }
 
-// trustArticleDates is false for a site that stamps every page with one date (a build date), which says nothing about its posts.
 func trustArticleDates(infos map[string]*articleInfo) bool {
 	days := map[string]bool{}
 	dated := 0
@@ -556,7 +515,6 @@ func trustArticleDates(infos map[string]*articleInfo) bool {
 	return dated < 3 || len(days) != 1
 }
 
-// betterTitle says whether the article's own title should replace the listing's: when the listing gave a slug, label or subtitle.
 func betterTitle(e *entry, article string) bool {
 	if strings.EqualFold(e.Title, article) || (goodTitleShape(e.Title) && !goodTitleShape(article)) {
 		return false
@@ -567,7 +525,6 @@ func betterTitle(e *entry, article string) bool {
 	if !goodTitleShape(e.Title) && goodTitleShape(article) {
 		return true
 	}
-	// A listing title that wraps the article's title in a date or label prefix is the label, not a rewrite.
 	if l, a := strings.ToLower(e.Title), strings.ToLower(collapse(article)); strings.Contains(l, a) && len(l) > len(a)*6/5 {
 		return true
 	}
@@ -577,7 +534,6 @@ func betterTitle(e *entry, article string) bool {
 	return strings.Contains(strings.ToLower(e.text), strings.ToLower(collapse(article)))
 }
 
-// anchoredPick chooses the lists holding the reader's example post, else lists with its URL shape, else every link of that shape.
 func (p *pageDoc) anchoredPick(all []*cluster, anchorURL string) ([]*cluster, []int) {
 	key, tmpl := postkey.URL(anchorURL), URLTemplate(anchorURL)
 	var pick []int
@@ -593,12 +549,10 @@ func (p *pageDoc) anchoredPick(all []*cluster, anchorURL string) ([]*cluster, []
 			}
 		}
 	}
-	// A "most read" sidebar holds recent posts and the anchor's shape too; it is the stream only when nothing else is.
 	if main := slices.DeleteFunc(slices.Clone(pick), func(i int) bool { return all[i].sideList() }); len(main) > 0 {
 		pick = main
 	}
 	if len(pick) > 0 {
-		// Every same-shape list joins, since the reader vouched for the shape; side lists merely share it.
 		for i, c := range all {
 			if c.template == all[pick[0]].template && !c.sideList() && !slices.Contains(pick, i) {
 				pick = append(pick, i)
@@ -622,7 +576,6 @@ func (p *pageDoc) anchoredPick(all []*cluster, anchorURL string) ([]*cluster, []
 	return append(all, c), []int{len(all)}
 }
 
-// links reports a link on the page to rawURL, compared the way the page's own links are keyed.
 func (p *pageDoc) links(rawURL string) bool {
 	abs, ok := resolveLink(p.url, rawURL)
 	if !ok {
@@ -632,7 +585,6 @@ func (p *pageDoc) links(rawURL string) bool {
 	return slices.ContainsFunc(p.anchors, func(a *anchor) bool { return a.key == key })
 }
 
-// streamOf is the first stream pattern an item fits, the one whose title hint a poll applies to it.
 func streamOf(streams []string, rawURL string) string {
 	t := URLTemplate(rawURL)
 	if i := slices.IndexFunc(streams, func(p string) bool { return matchTemplate(p, t) }); i >= 0 {
@@ -641,7 +593,6 @@ func streamOf(streams []string, rawURL string) string {
 	return t
 }
 
-// streamFor is the URL shape of the picked list that holds an item, its own template when none matches.
 func streamFor(picked []*cluster, rawURL string) string {
 	t := URLTemplate(rawURL)
 	for _, c := range picked {
@@ -652,8 +603,6 @@ func streamFor(picked []*cluster, rawURL string) string {
 	return t
 }
 
-// inSection is sectionGuard for minority shapes: on the site itself they must share the listing's or the list's first
-// segment; shapes on other hosts pass, since a list that links out there does so on purpose.
 func inSection(tmpl, primary, listingURL string) bool {
 	host, _, _ := strings.Cut(tmpl, "/")
 	primaryHost, _, _ := strings.Cut(primary, "/")

@@ -48,7 +48,6 @@ func page(title, body string) string {
 	return `<!doctype html><html lang="en"><head><title>` + title + `</title></head><body>` + body + `</body></html>`
 }
 
-// blogList is a plain list of n posts under /blog/<slug> with headings and <time>.
 func blogList(n int) string {
 	var b strings.Builder
 	b.WriteString(`<main><h1>Blog</h1><ul class="posts">`)

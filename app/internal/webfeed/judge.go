@@ -13,7 +13,6 @@ import (
 	"unicode/utf8"
 )
 
-// judgePrompt is the frozen, benchmarked v2 judge prompt; change it only with a new benchmark.
 const judgePrompt = `You choose which lists on a web page form the stream of posts a reader subscribes to when they follow this page.
 You get the page URL and title, then numbered candidate lists found by a DOM heuristic. Each shows its URL shape, size, how many entries are dated and their date range, the median title length, whether it sits in navigation/header/footer, which other candidates share its URL shape, and sample entries (date | title | url). Lists of up to 8 entries are shown in full.
 The reader wants every post this page publishes. Sites often split one stream over several blocks: a hero or featured story, a "latest" strip, the main list, a second grid further down, or a list of another post type (episodes, videos, press releases). Each block becomes its own candidate, often small, undated or with a different URL shape. Pick every candidate whose entries are this site's own individual posts, articles, episodes, releases or announcements, that is headline-like titles linking to single content pages. Leaving out such a block loses posts and is the most common mistake.
@@ -22,10 +21,8 @@ order: "date" when entries carry per-entry dates and newest-first is meaningful;
 Return JSON only: {"pick":[ids],"order":"date"|"page","mixed":true|false,"none":true|false,"reason":"one short sentence"}
 none=true when no candidate is a post stream.`
 
-// judgeVotes is how many independent calls a judged setup makes; a candidate needs a majority.
 const judgeVotes = 3
 
-// Verdict is the judge's answer; Pick indexes the candidates in the user message.
 type Verdict struct {
 	Pick   []int  `json:"pick"`
 	Order  Order  `json:"order"`
@@ -34,7 +31,6 @@ type Verdict struct {
 	Reason string `json:"reason"`
 }
 
-// parseVerdict reads the judge's reply; picks must index one of n candidates.
 func parseVerdict(text string, n int) (Verdict, error) {
 	var raw struct {
 		Pick   []json.RawMessage `json:"pick"`
@@ -70,7 +66,6 @@ type vote struct {
 	err error
 }
 
-// aggregateVotes applies the majority rule; a failed or unparsable call votes for the heuristic's top candidate.
 func aggregateVotes(votes []vote, heuristicOrder Order) (pick []int, order Order, none bool) {
 	counts := map[int]int{}
 	noneVotes, dateVotes, pageVotes := 0, 0, 0
@@ -124,7 +119,6 @@ func aggregateVotes(votes []vote, heuristicOrder Order) (pick []int, order Order
 	return pick, order, false
 }
 
-// runJudge makes the three votes in parallel and meters their cost.
 func runJudge(ctx context.Context, m Model, user string, n int, heuristicOrder Order) (JudgeRecord, error) {
 	votes := make([]vote, judgeVotes)
 	usages := make([]Usage, judgeVotes)
@@ -150,7 +144,6 @@ func runJudge(ctx context.Context, m Model, user string, n int, heuristicOrder O
 		}
 	}
 	rec.USD = roundUSD(rec.USD)
-	// The calls were paid for even when the deadline cut them short, so the record travels with the error.
 	if err := ctx.Err(); err != nil {
 		return rec, err
 	}
@@ -161,7 +154,6 @@ func runJudge(ctx context.Context, m Model, user string, n int, heuristicOrder O
 	return rec, nil
 }
 
-// renderUserMessage builds the judge's user message in the benchmarked format.
 func renderUserMessage(listingURL, pageTitle string, cands []Candidate) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Page: %s\nTitle: %s\n", listingURL, pageTitle)
@@ -214,7 +206,6 @@ func renderUserMessage(listingURL, pageTitle string, cands []Candidate) string {
 
 func isoDay(e Item) string { return e.Date.Format("2006-01-02") }
 
-// sampleIndexes shows every entry of small lists and a spread of six from larger ones.
 func sampleIndexes(n int) []int {
 	if n <= 8 {
 		out := make([]int, n)

@@ -8,15 +8,12 @@ import (
 	"testing"
 )
 
-// fakeModel answers each step from its own script of raw replies: the judge runs at effort high, induction at medium
-// and the weekly check at low. The last reply repeats; a step without a script fails like an unusable answer.
 type fakeModel struct {
 	mu      sync.Mutex
 	replies map[Effort][]string
 	errs    map[Effort][]error
 	prompts []Prompt
-	// before runs ahead of each answer, outside the lock, so a test can hold calls or cancel.
-	before func(ctx context.Context, p Prompt)
+	before  func(ctx context.Context, p Prompt)
 }
 
 var stepUsage = map[Effort]Usage{
@@ -54,7 +51,6 @@ func (f *fakeModel) byEffort(e Effort) []Prompt {
 	return out
 }
 
-// calls is how many prompts reached the model at effort e.
 func (f *fakeModel) calls(e Effort) []Prompt {
 	f.mu.Lock()
 	defer f.mu.Unlock()

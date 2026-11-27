@@ -15,10 +15,8 @@ import (
 	"morgenblau/internal/postkey"
 )
 
-// maxCandidates is how many lists the judge sees.
 const maxCandidates = 6
 
-// candidates scores every cluster on the page, best first.
 func (p *pageDoc) candidates() []*cluster {
 	cs := p.clusters()
 	for _, c := range cs {
@@ -33,7 +31,6 @@ func (p *pageDoc) candidates() []*cluster {
 		}
 		return 0
 	})
-	// Responsive pages render one list twice (desktop and mobile); the copy would only crowd the judge's six slots.
 	seen := map[string]bool{}
 	return slices.DeleteFunc(cs, func(c *cluster) bool {
 		var keys []string
@@ -47,8 +44,6 @@ func (p *pageDoc) candidates() []*cluster {
 	})
 }
 
-// score adds points: size grows with log2(n), each share-based feature moves the score by up to 1–5 points,
-// so the judge's margin threshold of 2 means "one decisive feature apart".
 func (p *pageDoc) score(c *cluster) {
 	n := float64(len(c.entries))
 	var tmpl, head, dated, shape, nav, aside, tax, social, pag, ext, slug, under, util float64
@@ -113,8 +108,6 @@ func (p *pageDoc) score(c *cluster) {
 	c.score = s
 }
 
-// confidence rates the top candidate in [0,1] and returns its score margin over the best candidate its shape does not
-// cover: same-shape blocks join the pick anyway, so their closeness is not doubt.
 func confidence(cs []*cluster) (conf, margin float64) {
 	if len(cs) == 0 {
 		return 0, 0
@@ -135,7 +128,6 @@ func confidence(cs []*cluster) (conf, margin float64) {
 	return conf, margin
 }
 
-// heuristicPick is the top candidate plus every post-like candidate whose URL shape the top's shape covers.
 func heuristicPick(cs []*cluster, listingURL string) []int {
 	if len(cs) == 0 {
 		return nil
@@ -150,8 +142,6 @@ func heuristicPick(cs []*cluster, listingURL string) []int {
 	return sectionGuard(cs, pick, listingURL)
 }
 
-// sectionGuard drops extra picks outside the listing's first path segment. The primary pick's segment also passes,
-// so root listings and /blog pages whose posts live under /posts keep their extra blocks.
 func sectionGuard(cs []*cluster, pick []int, listingURL string) []int {
 	if len(pick) < 2 {
 		return pick
@@ -168,7 +158,6 @@ func sectionGuard(cs []*cluster, pick []int, listingURL string) []int {
 	return out
 }
 
-// goodTitleShape is the detector's title_shape test: 2–30 words, not all caps, not a bare number or date.
 func goodTitleShape(t string) bool {
 	w := wordCount(t)
 	if w < 2 || w > 30 {
@@ -190,8 +179,8 @@ func goodTitleShape(t string) bool {
 			}
 		}
 	}
-	// Latin acronyms in a Japanese title are not shouting; only judge case where cased letters dominate.
-	return cased < 4 || cased*2 < letters || upper < cased
+	casedLettersDominate := cased >= 4 && cased*2 >= letters
+	return !casedLettersDominate || upper < cased
 }
 
 var taxonomySegments = map[string]bool{
@@ -232,7 +221,6 @@ func isPagination(u *url.URL, title string) bool {
 	return paginationWords[t] || allDigits(t)
 }
 
-// postLikePath reports a URL that reads like a single item: a multi-word slug, a long token or a numeric id.
 func postLikePath(raw string) bool {
 	last, ok := lastSegment(raw)
 	if last == "" {
@@ -264,12 +252,10 @@ func isSocialHost(host string) bool {
 	return false
 }
 
-// sameSite compares registrable domains, enough to tell a blog subdomain from another site.
 func sameSite(a, b string) bool {
 	return siteOf(a) == siteOf(b)
 }
 
-// siteOf is the registrable domain, the host itself when the public suffix list cannot name one (an IP, localhost).
 func siteOf(host string) string {
 	host = strings.ToLower(host)
 	if h, _, err := net.SplitHostPort(host); err == nil {
@@ -297,7 +283,6 @@ func isDecoyLabel(label string) bool {
 	return false
 }
 
-// sectionLabel is the heading that introduces a list: a heading just before the container or an ancestor, at most three levels up.
 func sectionLabel(n *html.Node) string {
 	for x, level := n, 0; x != nil && x.Type == html.ElementNode && level < 3; x, level = x.Parent, level+1 {
 		if x.Data == "main" || x.Data == "body" {
@@ -319,7 +304,6 @@ func sectionLabel(n *html.Node) string {
 	return ""
 }
 
-// utilityPages are the site-furniture pages every site links: legal, account, company and help pages.
 var utilityPages = map[string]bool{
 	"privacy": true, "privacy-policy": true, "privacy policy": true, "terms": true, "terms-of-use": true, "terms of use": true,
 	"terms-of-service": true, "terms of service": true, "tos": true, "legal": true, "imprint": true, "impressum": true,

@@ -12,7 +12,6 @@ import (
 
 var tones = []string{"ocean", "forest", "desert", "glacier", "meadow", "canyon"}
 
-// tonedBlog defeats the extractor: every post link carries its own class and its own category path, so each is a list of one.
 func tonedBlog(s *testSite) {
 	var b strings.Builder
 	b.WriteString(`<main><div class="feed">`)
@@ -27,7 +26,6 @@ func tonedBlog(s *testSite) {
 
 var tonedRecipe = CSSRecipe{Item: "article.post", Link: "h2 a", Title: "h2", Date: "time"}
 
-// inducer is a model whose induction replies with recipes; its judge has no script, so every vote falls back to the heuristic.
 func inducer(t *testing.T, recipes ...CSSRecipe) *fakeModel {
 	m := &fakeModel{replies: map[Effort][]string{}}
 	for _, r := range recipes {
@@ -132,8 +130,8 @@ func TestSetupStopsAfterOneRepairRound(t *testing.T) {
 func TestSetupKeepsTheExtractorWhenTheInducedRecipeIsNotBetter(t *testing.T) {
 	s := newTestSite(t)
 	tonedBlog(s)
-	// The site navigation: many links, but one-word labels fail the title-shape check.
-	ind := inducer(t, CSSRecipe{Item: "header nav a"})
+	oneWordNavLabels := CSSRecipe{Item: "header nav a"}
+	ind := inducer(t, oneWordNavLabels)
 	opts := s.opts()
 	opts.Model = ind
 	res, err := Setup(context.Background(), s.url("/blog"), opts)

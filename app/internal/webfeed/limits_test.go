@@ -10,7 +10,6 @@ import (
 	"testing"
 )
 
-// countingDoer records how many body bytes the pipeline read from each path.
 type countingDoer struct {
 	next  Doer
 	mu    sync.Mutex
@@ -47,7 +46,6 @@ func (b *countingBody) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// paddedArticle is a post page followed by size bytes of markup nobody needs.
 func paddedArticle(title string, size int) string {
 	return strings.Replace(article(title, title, "2024-03-20T09:00:00Z"), "</main>", "</main><!--"+strings.Repeat("x", size)+"-->", 1)
 }
@@ -70,7 +68,7 @@ func TestSetupCapsEachArticleBody(t *testing.T) {
 	}
 	for i := range 5 {
 		if n := doer.read["/blog/"+slugify(postTitles[i])]; n > maxArticleBody {
-			t.Errorf("article %d: read %d bytes, want at most %d", i, n, maxArticleBody)
+			t.Errorf("article %d: read %d bytes, want at most %d: a post's title and dates sit in its head and first screen, and the rest of a long page is not worth the memory", i, n, maxArticleBody)
 		}
 	}
 }
@@ -93,7 +91,7 @@ func TestSetupStaysWithinItsByteBudget(t *testing.T) {
 		t.Fatalf("items = %d, want the listing's posts even when the budget stops article fetches", len(res.Items))
 	}
 	if doer.total > opts.MaxSetupBytes {
-		t.Errorf("read %d bytes, want at most the %d byte budget", doer.total, opts.MaxSetupBytes)
+		t.Errorf("read %d bytes, want at most the %d byte budget: each fetch reserves its limit from the budget before reading, so parallel article fetches cannot overspend it", doer.total, opts.MaxSetupBytes)
 	}
 }
 
@@ -122,7 +120,6 @@ func TestFetchArticlesKeepsNeitherBodiesNorParsedPages(t *testing.T) {
 	}
 }
 
-// longList is n distinct dated posts, newest first.
 func longList(n int) string {
 	var b strings.Builder
 	b.WriteString(`<main><h1>Blog</h1><ul class="posts">`)
@@ -214,7 +211,7 @@ func TestSessionKeysItsCacheOnTheLanguage(t *testing.T) {
 	sess.setLang("de")
 	sess.get(ctx, s.url("/page"))
 	if s.hits["/page"] != 2 || s.langs["/page"] != "de" {
-		t.Errorf("hits %d, last Accept-Language %q; want a German fetch apart from the first", s.hits["/page"], s.langs["/page"])
+		t.Errorf("hits %d, last Accept-Language %q; want a German fetch apart from the first, since Accept-Language can change what a page returns", s.hits["/page"], s.langs["/page"])
 	}
 	sess.get(ctx, s.url("/page"))
 	if s.hits["/page"] != 2 {

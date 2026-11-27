@@ -2,17 +2,14 @@ package webfeed
 
 import "time"
 
-// MaxItems caps the posts one source yields, whatever the page or sitemap lists.
 const MaxItems = 200
 
-// Item is one post a recipe yields.
 type Item struct {
 	URL   string    `json:"url"`
 	Title string    `json:"title"`
 	Date  time.Time `json:"date"`
 }
 
-// Candidate is one scored list on the listing page, as the judge and the point-at-a-post flow see it.
 type Candidate struct {
 	Template      string  `json:"template"`
 	ContainerHint string  `json:"container_hint"`
