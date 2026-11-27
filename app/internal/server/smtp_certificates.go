@@ -55,7 +55,8 @@ func newSMTPCertificates(hostname string, httpPort int, settings smtpACMEConfig)
 		}
 	}
 	m := &smtpCertificates{hostname: hostname, ready: make(chan struct{}), retryInterval: time.Minute, checkInterval: time.Minute}
-	// Keep this cache empty: synchronous, owned work avoids CertMagic's detached renewal jobs.
+	// NewCache starts a goroutine that renews every certificate the cache holds; ensure renews synchronously, so the cache stays empty.
+	// https://pkg.go.dev/github.com/caddyserver/certmagic#NewCache
 	m.cache = certmagic.NewCache(certmagic.CacheOptions{GetConfigForCert: func(certmagic.Certificate) (*certmagic.Config, error) { return m.config, nil }})
 	m.config = certmagic.New(m.cache, certmagic.Config{Storage: &certmagic.FileStorage{Path: settings.Storage}})
 	ca := settings.CA
@@ -72,7 +73,6 @@ func newSMTPCertificates(hostname string, httpPort int, settings smtpACMEConfig)
 }
 
 func (m *smtpCertificates) tlsConfig() *tls.Config {
-	// Resumed handshakes skip GetCertificate and its SNI/expiry checks.
 	return &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: m.getCertificate, SessionTicketsDisabled: true}
 }
 
@@ -134,14 +134,14 @@ func (m *smtpCertificates) ensure(ctx context.Context) error {
 			return err
 		}
 	} else if errors.Is(err, errUnusableSMTPKeypair) {
-		// CertMagic writes a rotated key before its certificate; interruption can split the pair.
+		// CertMagic does not write a certificate's files atomically, so an interrupted renewal can leave a key beside the wrong certificate.
+		// https://pkg.go.dev/github.com/caddyserver/certmagic#Config
 		if err := m.config.RenewCertSync(ctx, m.hostname, true); err != nil {
 			return err
 		}
 	} else if err != nil {
 		return err
 	} else {
-		// A valid persisted certificate remains usable while a due renewal is retried.
 		_ = m.publish(cert)
 		if err := m.config.RenewCertSync(ctx, m.hostname, false); err != nil {
 			return err

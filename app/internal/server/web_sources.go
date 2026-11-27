@@ -16,7 +16,6 @@ import (
 	"morgenblau/internal/websource"
 )
 
-// publicBaseURL is the origin readers and feed readers reach this server on; generated feed URLs hang off it.
 func publicBaseURL(getenv func(string) string, port int) (string, error) {
 	if raw := strings.TrimSpace(getenv("PUBLIC_BASE_URL")); raw != "" {
 		u, err := url.Parse(raw)
@@ -36,10 +35,8 @@ func publicBaseURL(getenv func(string) string, port int) (string, error) {
 	return "https://" + u.Host, nil
 }
 
-// modelCallTimeout bounds one model call with its retries; a setup runs up to three in a row inside websource.SetupTimeout.
 const modelCallTimeout = 25 * time.Second
 
-// webModelDailyUSD reads WEB_MODEL_DAILY_USD, the most the model may cost in any 24 hours; 0 keeps every step heuristic.
 func webModelDailyUSD(getenv func(string) string) (float64, error) {
 	raw := strings.TrimSpace(getenv("WEB_MODEL_DAILY_USD"))
 	if raw == "" {
@@ -52,8 +49,6 @@ func webModelDailyUSD(getenv func(string) string) (float64, error) {
 	return usd, nil
 }
 
-// newWebGenerator builds feed generation over the SSRF-safe client; with an API key in cfg, Haiku judges unsure
-// setups, induces recipes, runs the daily model repair and the weekly check.
 func newWebGenerator(client webfeed.Doer, cfg claude.Config) (websource.Generator, bool, error) {
 	opts := webfeed.Options{Client: client}
 	if cfg.APIKey == "" {
@@ -68,7 +63,6 @@ func newWebGenerator(client webfeed.Doer, cfg claude.Config) (websource.Generato
 	return websource.NewWebfeedGenerator(opts), true, nil
 }
 
-// claudeModel runs webfeed's prompts on Claude.
 type claudeModel struct{ c *claude.Client }
 
 func (m claudeModel) Complete(ctx context.Context, p webfeed.Prompt) (string, webfeed.Usage, error) {
@@ -76,12 +70,10 @@ func (m claudeModel) Complete(ctx context.Context, p webfeed.Prompt) (string, we
 	return text, webfeed.Usage{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, USD: u.USD}, err
 }
 
-// webPoller is the slice of *websource.Service the poll loop drives.
 type webPoller interface {
 	PollDue(ctx context.Context) (int, error)
 }
 
-// runWebPoll scans for due web sources every tick; each source keeps its own schedule in next_poll_at.
 func runWebPoll(ctx context.Context, p webPoller, every time.Duration) {
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()

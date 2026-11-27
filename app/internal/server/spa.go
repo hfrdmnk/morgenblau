@@ -11,7 +11,14 @@ import (
 	"morgenblau/frontend"
 )
 
-// spaHandler reverse-proxies to Vite in local dev (for HMR); otherwise serves the embedded build.
+const (
+	hashedAssetCache = "public, max-age=31536000, immutable"
+	staticFileCache  = "public, max-age=3600"
+	// no-store, unlike no-cache, keeps the page out of the back/forward cache.
+	// https://web.dev/articles/bfcache#minimize-use-of-cache-control-no-store
+	shellCache = "no-cache"
+)
+
 func spaHandler() http.Handler {
 	if os.Getenv("APP_ENV") == "local" {
 		return viteProxyHandler()
@@ -40,21 +47,19 @@ func embeddedDistHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clean := strings.TrimPrefix(r.URL.Path, "/")
 
-		// Vite content-hashes /assets/* so those cache forever; other files get a modest TTL.
 		if clean != "" {
 			if _, err := fs.Stat(dist, clean); err == nil {
 				if strings.HasPrefix(r.URL.Path, "/assets/") {
-					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+					w.Header().Set("Cache-Control", hashedAssetCache)
 				} else {
-					w.Header().Set("Cache-Control", "public, max-age=3600")
+					w.Header().Set("Cache-Control", staticFileCache)
 				}
 				fileServer.ServeHTTP(w, r)
 				return
 			}
 		}
 
-		// Unknown paths fall back to index.html; no-cache (not no-store) forces revalidation for new deploys while keeping the page bfcache-eligible.
-		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Cache-Control", shellCache)
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = "/"
 		fileServer.ServeHTTP(w, r2)

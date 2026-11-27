@@ -32,7 +32,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 		root.HandleFunc("/__dev/", http.NotFound)
 	}
 	if s.newsletterWebhook != nil {
-		// The inbox's signature authenticates the sender; no reader session ever comes with it.
 		root.Handle("POST /webhooks/postshiba", s.newsletterWebhook)
 	}
 	root.Handle("/", gate(mux))
@@ -45,8 +44,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("/api/health", s.healthHandler)
 	mux.Handle("/oauth-client-metadata.json", handler.ClientMetadataHandler(s.oauthCfg))
 	mux.Handle("/oauth-jwks.json", handler.JWKSHandler(s.oauthCfg))
-	// Anyone can make login and callback fan out to DNS, PLC and authorization-server fetches; a real sign-in uses two requests.
-	signIn := ratelimit.New(10, time.Minute, ratelimit.ClientIP(os.Getenv("FLY_APP_NAME") != ""))
+	signIn := ratelimit.New(signInRequestsPerClientMinute, time.Minute, ratelimit.ClientIP(os.Getenv("FLY_APP_NAME") != ""))
 	mux.Handle("POST /oauth/login", signIn.Wrap(handler.LoginHandler(s.oauthFlow)))
 	mux.Handle("GET /oauth/callback", signIn.Wrap(handler.CallbackHandler(s.oauthFlow, s.sealer, s.sync, s.allowedDIDs)))
 	mux.Handle("POST /oauth/logout", handler.LogoutHandler(s.sessions, s.sealer, s.store))
@@ -58,7 +56,6 @@ func (s *Server) routes() *http.ServeMux {
 	}
 	mux.Handle("GET /api/profiles/me", api.MeProfileHandler(s.profiles, s.sync, addresses, s.admins, s.feedback != nil))
 
-	// POST/PATCH/DELETE routes below reach the PDS (auth.holdsSessionLock must match); mutations commit once through gated, OPML import once per source.
 	gated := api.CommitGate{Repo: s.pds}
 	var webFeeds websource.FeedPrefixes
 	feedAliases := api.FeedAliases(feedfinder.SameYouTubeFeedURLs)
@@ -129,8 +126,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("PATCH /api/saves/{rkey}", api.OneCommitPerRequest(api.SavesPatchHandler(s.qr, s.qw, gated, s.sync)))
 	mux.Handle("GET /api/saves/tags", saveTags)
 
-	// Each feedback mail goes through the owner's relay, so a reader gets a bounded number per hour.
-	mux.Handle("POST /api/feedback", api.FeedbackHandler(s.feedback, s.feedbackTo, s.profiles, ratelimit.New(10, time.Hour, nil)))
+	mux.Handle("POST /api/feedback", api.FeedbackHandler(s.feedback, s.feedbackTo, s.profiles, ratelimit.New(feedbackMailsPerReaderHour, time.Hour, nil)))
 
 	mux.Handle("GET /api/jobs/active", api.JobsActiveHandler(s.jobs))
 	mux.Handle("GET /api/jobs/latest", api.JobsLatestHandler(s.jobs))
@@ -144,14 +140,12 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("GET /api/entries/{slug}/images", api.EntryBodyImageHandler(s.qr, s.safeClient))
 
 	if s.webSources != nil {
-		// Server-owned storage only: generating a feed commits nothing to the PDS, so it stays out of CommitGate.
 		mux.Handle("POST /api/web-sources", api.WebSourcesCreateHandler(s.webSources))
 		for _, path := range websource.FeedPaths {
 			mux.Handle("GET "+path+"{id}", s.webSources.PublicFeedHandler())
 		}
 	}
 
-	// The auth gate admits only ADMIN_DIDS to /api/admin/ and /admin; TestEveryAdminRouteRefusesRequestsTheGateDidNotAdmit checks each route here.
 	mux.Handle("GET /api/admin/usage", api.AdminUsageHandler(s.qr, newsletterUsage, s.profiles, webFeeds))
 
 	mux.HandleFunc("/api/", api.NotFound)

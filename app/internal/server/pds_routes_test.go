@@ -43,7 +43,6 @@ const (
 
 var errPDSDown = errors.New("pds down")
 
-// pdsRoute drives one PDS-reaching route on the real mux. maxCommits is the law's budget: one for a mutation, one per source for OPML import.
 type pdsRoute struct {
 	name       string
 	pattern    string
@@ -145,7 +144,6 @@ var pdsRoutes = []pdsRoute{
 	},
 }
 
-// Every route handed the reader's PDS must be driven below, so a new write path cannot skip the law 1 checks.
 func TestEveryPDSRouteIsDrivenByTheRouteChecks(t *testing.T) {
 	file, err := parser.ParseFile(token.NewFileSet(), "routes.go", nil, 0)
 	if err != nil {
@@ -316,7 +314,6 @@ func (env *routeEnv) serve(route pdsRoute) *httptest.ResponseRecorder {
 	return rr
 }
 
-// snapshot renders every row the law 1 mirrors write, so any local change shows up as a different string.
 func (env *routeEnv) snapshot(t *testing.T) string {
 	t.Helper()
 	var out strings.Builder
@@ -441,7 +438,6 @@ func reachesPDS(expr ast.Expr) bool {
 	return found
 }
 
-// countingSync records every dispatch so the route checks can count repairs exactly.
 type countingSync struct {
 	mu       sync.Mutex
 	manual   int
@@ -476,7 +472,6 @@ func (c *countingSync) logins() []string {
 	return slices.Clone(c.loginFor)
 }
 
-// memoryPDS is one reader's repo with atomic applyWrites, counting every commit that reaches it.
 type memoryPDS struct {
 	mu          sync.Mutex
 	records     map[string]map[string]map[string]any

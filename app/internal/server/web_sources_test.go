@@ -57,12 +57,11 @@ func TestWebSourceRoutesAreRegistered(t *testing.T) {
 	}
 	srv := &Server{webSources: svc}
 
-	// /web/ is the legacy alias: subscriptions made before /feed/ still name it.
 	for _, path := range []string{"/feed/", "/web/"} {
 		rr := httptest.NewRecorder()
 		srv.RegisterRoutes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path+"abc", nil))
 		if rr.Code != http.StatusOK || rr.Header().Get("Content-Type") != "application/rss+xml; charset=utf-8" {
-			t.Fatalf("anonymous GET %sabc = %d %q: %s", path, rr.Code, rr.Header().Get("Content-Type"), rr.Body)
+			t.Fatalf("anonymous GET %sabc = %d %q: %s; /web/ must keep serving, since subscriptions made before /feed/ still name it", path, rr.Code, rr.Header().Get("Content-Type"), rr.Body)
 		}
 		if feed, err := gofeed.NewParser().ParseString(rr.Body.String()); err != nil || len(feed.Items) != 1 {
 			t.Errorf("%sabc feed = %v, %v", path, feed, err)

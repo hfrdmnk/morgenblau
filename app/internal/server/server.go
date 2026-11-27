@@ -49,14 +49,20 @@ import (
 	"morgenblau/internal/youtube"
 )
 
-// syncDispatcher is the slice of the sync orchestrator the routes dispatch through.
+const (
+	writeTimeout                  = 30 * time.Second
+	unsubscribeTimeout            = writeTimeout / 3
+	feedGenerationsPerReaderHour  = 20
+	feedbackMailsPerReaderHour    = 10
+	signInRequestsPerClientMinute = 10
+)
+
 type syncDispatcher interface {
 	StartManualRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error)
 	StartLoginRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error)
 	StartFetchOneFeed(did syntax.DID, feedURL string) string
 }
 
-// pdsRepo is the reader's PDS as the routes reach it: the shared mutation surface plus OPML import's conditional writes.
 type pdsRepo interface {
 	api.SessionRepo
 	api.ImportRepo
@@ -65,25 +71,24 @@ type pdsRepo interface {
 type Server struct {
 	port int
 
-	db          *database.DB
-	qr          *dbqueries.Queries
-	qw          *dbqueries.Queries
-	oauthCfg    *config.Config
-	oauthFlow   handler.ClientApp
-	sessions    *session.Manager
-	store       *store.Store
-	sealer      *cookie.Sealer
-	profiles    *profiles.Cache
-	jobs        *jobs.Tracker
-	sync        syncDispatcher
-	pds         pdsRepo
-	feedfinder  *feedfinder.Finder
-	fetcher     *fetcher.Fetcher
-	standard    *standardfeed.Client
-	safeClient  *http.Client
-	postClient  *http.Client
-	newsletters *newsletter.Service
-	// newsletterWebhook is nil unless POSTSHIBA_WEBHOOK_SECRET is set.
+	db                *database.DB
+	qr                *dbqueries.Queries
+	qw                *dbqueries.Queries
+	oauthCfg          *config.Config
+	oauthFlow         handler.ClientApp
+	sessions          *session.Manager
+	store             *store.Store
+	sealer            *cookie.Sealer
+	profiles          *profiles.Cache
+	jobs              *jobs.Tracker
+	sync              syncDispatcher
+	pds               pdsRepo
+	feedfinder        *feedfinder.Finder
+	fetcher           *fetcher.Fetcher
+	standard          *standardfeed.Client
+	safeClient        *http.Client
+	postClient        *http.Client
+	newsletters       *newsletter.Service
 	newsletterWebhook http.Handler
 	webSources        *websource.Service
 	youtube           *youtube.Client
@@ -96,7 +101,8 @@ type Server struct {
 	gcWG     sync.WaitGroup
 }
 
-// NewServer returns a cleanup func the caller must run after Shutdown returns (draining sync writes, closing the DB); it can't hang off server.RegisterOnShutdown, since net/http fires those as unwaited detached goroutines.
+// The caller runs the returned cleanup after Shutdown returns: net/http starts RegisterOnShutdown funcs in goroutines it never waits for.
+// https://pkg.go.dev/net/http#Server.RegisterOnShutdown
 func NewServer() (*http.Server, func(context.Context) error, error) {
 	allowedDIDs, err := auth.LoadAllowlist(os.Getenv)
 	if err != nil {
@@ -173,7 +179,6 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		return nil, nil, fmt.Errorf("load session keyset: %w", err)
 	}
 
-	// Writer pool: session store, pipelines, sync engine (all mutate). Reader pool: read-only handlers and refresher.
 	qw := dbqueries.New(db.Writer)
 	qr := dbqueries.New(db.Reader)
 
@@ -185,8 +190,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		return nil, nil, fmt.Errorf("load local network: %w", err)
 	}
 	safeClient := safehttp.NewClient(30*time.Second, 5)
-	// Well under the server's WriteTimeout, so a sender that confirms late still leaves time to delete and answer the reader.
-	unsubscribeClient := safehttp.NewClient(10*time.Second, 0)
+	unsubscribeClient := safehttp.NewClient(unsubscribeTimeout, 0)
 	identityDir := atidentity.Guarded(safeClient)
 	oauthApp := newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
 	var oauthFlow handler.ClientApp = oauthApp
@@ -194,11 +198,10 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	if localNet != nil {
 		slog.Info("local PLC and PDS enabled", "plc", localNet.plc, "pds", localNet.pds, "feed_fixture_port", localNet.feedFixture)
 		safeClient = safehttp.NewClient(30*time.Second, 5, safehttp.WithAllowLoopbackPorts(localNet.ports...))
-		unsubscribeClient = safehttp.NewClient(10*time.Second, 0, safehttp.WithAllowLoopbackPorts(localNet.ports...))
+		unsubscribeClient = safehttp.NewClient(unsubscribeTimeout, 0, safehttp.WithAllowLoopbackPorts(localNet.ports...))
 		identityDir = atidentity.Local(safeClient, localNet.plc, localNet.pds)
 		oauthApp = newOAuthApp(oauthCfg.Indigo, st, safeClient, identityDir)
 		oauthFlow = localflow.App{ClientApp: oauthApp, PDS: localNet.pds}
-		// A verify instance holds throwaway sign-in material; nothing off this machine should reach it.
 		listenHost = "127.0.0.1"
 	}
 	devConfig, err := session.LoadDevConfig(os.Getenv)
@@ -227,10 +230,8 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 	}
 	webSources := websource.NewService(db.Reader, db.Writer, webGenerator, websource.Config{
 		PublicBaseURL: publicBase, PollInterval: webPollInterval, ModelDailyUSD: webModelUSD,
-		// Each generation can cost model calls, so a reader gets a bounded number per hour.
-		Limiter: ratelimit.New(20, time.Hour, nil),
+		Limiter: ratelimit.New(feedGenerationsPerReaderHour, time.Hour, nil),
 	})
-	// WithLocalFeeds wraps the transport the fixture options build, so it must come after them.
 	fetcherOpts := append(feedFetchOptions(localNet), fetcher.WithLocalFeeds(func(u *url.URL) bool { return webSources.IsFeedURL(u.String()) }, webSources.FeedHandler()))
 	fetcherInst := fetcher.New(fetcherOpts...)
 	pipeline := internalsync.NewFeedPipeline(fetcherInst, qw).WithTxRunner(db.Writer).WithUndatedHistory(webSources.IsFeedURL)
@@ -333,7 +334,7 @@ func NewServer() (*http.Server, func(context.Context) error, error) {
 		Handler:      srv.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: writeTimeout,
 	}
 	if appHost != "" {
 		server.Handler = requireCloudflareOrigin(redirectInsecureHTTP(server.Handler, appHost, os.Getenv("FLY_APP_NAME") != ""), originSecret)
@@ -443,7 +444,6 @@ func loadCookieSealer() (*cookie.Sealer, error) {
 	return cookie.New(key)
 }
 
-// loadSessionKeyset reads SESSION_STORE_KEYS: comma-separated base64 32-byte keys (openssl rand -base64 32).
 func loadSessionKeyset() (*secret.Keyset, error) {
 	raw := os.Getenv("SESSION_STORE_KEYS")
 	if raw == "" {
@@ -464,7 +464,6 @@ func loadSessionKeyset() (*secret.Keyset, error) {
 	return secret.NewKeyset(keys...)
 }
 
-// runJobsGC sweeps finished jobs so users who never poll /api/jobs/active don't leave ghosts behind.
 func runJobsGC(ctx context.Context, tracker *jobs.Tracker) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -478,7 +477,6 @@ func runJobsGC(ctx context.Context, tracker *jobs.Tracker) {
 	}
 }
 
-// runGlobalFetch isn't tied to a user, so it logs via slog instead of minting jobs.Tracker entries.
 func runGlobalFetch(ctx context.Context, r *internalsync.GlobalRefresher, every time.Duration) {
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
@@ -500,7 +498,6 @@ func runGlobalFetch(ctx context.Context, r *internalsync.GlobalRefresher, every 
 	}
 }
 
-// runFeedSweep also sweeps at start: a server restarted more often than its interval would otherwise never sweep.
 func runFeedSweep(ctx context.Context, writer *sql.DB, every time.Duration) {
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
@@ -540,7 +537,6 @@ func runAuthRequestGC(ctx context.Context, st *store.Store) {
 	}
 }
 
-// envInt reads an integer setting, def when it is unset.
 func envInt(getenv func(string) string, name string, def int) (int, error) {
 	raw := getenv(name)
 	if raw == "" {

@@ -56,7 +56,6 @@ func TestLoadLocalNetwork_RejectsAnythingButLoopbackHTTPOrigins(t *testing.T) {
 	}
 }
 
-// The client and directory NewServer builds from the local network must reach the throwaway PLC and PDS, and nothing else on loopback.
 func TestLocalNetwork_ResolvesLocalAccountsThroughTheSafeClient(t *testing.T) {
 	const did = "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"
 	pds := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +98,6 @@ func TestLocalNetwork_ResolvesLocalAccountsThroughTheSafeClient(t *testing.T) {
 	}
 }
 
-// The verify harness's fixture feed server is the one extra loopback origin feeds may come from: not other loopback ports, not through its redirects, and never outside a local network.
 func TestLocalNetwork_FeedFixturesReachOnlyTheFixtureOrigin(t *testing.T) {
 	feed := func(title string) http.HandlerFunc {
 		return func(w http.ResponseWriter, _ *http.Request) {
@@ -157,7 +155,6 @@ func TestLocalNetwork_FeedFixturesReachOnlyTheFixtureOrigin(t *testing.T) {
 	}
 }
 
-// A loopback dev PDS is reachable only through the local network's port exception, so it must be that network's PDS.
 func TestCheckDevPDS(t *testing.T) {
 	local := &localNetwork{plc: "http://localhost:2700", pds: "http://localhost:2701", ports: []int{2700, 2701}}
 	for name, tc := range map[string]struct {

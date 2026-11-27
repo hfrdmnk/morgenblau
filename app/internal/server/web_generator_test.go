@@ -27,9 +27,8 @@ func TestWebGeneratorAlwaysGeneratesAndUsesTheModelOnlyWithAKey(t *testing.T) {
 }
 
 func TestModelCallsFitTheSetupDeadline(t *testing.T) {
-	// One round of parallel judge votes plus two induction rounds run one after another inside a setup.
 	if worst := 3 * modelCallTimeout; worst >= websource.SetupTimeout {
-		t.Errorf("model calls can take %v, want well under the %v setup deadline", worst, websource.SetupTimeout)
+		t.Errorf("a setup runs one round of judge votes and two induction rounds in a row, so model calls can take %v, want well under the %v setup deadline", worst, websource.SetupTimeout)
 	}
 }
 
@@ -60,7 +59,6 @@ func TestEnvInt(t *testing.T) {
 	}
 }
 
-// fakeMessagesAPI answers the Messages API by effort as each webfeed step expects, counting the calls per effort.
 type fakeMessagesAPI struct {
 	mu    sync.Mutex
 	calls map[string]int
@@ -96,8 +94,6 @@ func (f *fakeMessagesAPI) count(effort string) int {
 	return f.calls[effort]
 }
 
-// scatteredListing defeats the extractor, so setup both asks the judge and induces a recipe: each post link has its
-// own class and category path.
 func scatteredListing() string {
 	var b strings.Builder
 	b.WriteString(`<!doctype html><html lang="en"><head><title>Blog | Example Publication</title></head><body><main><div class="feed">`)

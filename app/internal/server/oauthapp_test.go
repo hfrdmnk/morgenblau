@@ -11,7 +11,6 @@ import (
 	"morgenblau/internal/safehttp"
 )
 
-// Guards against indigo's ClientApp defaulting to unguarded http.DefaultClient / DefaultDirectory (SSRF).
 func TestNewOAuthApp_InstallsGuardedClientAndDir(t *testing.T) {
 	cfg := oauth.NewLocalhostConfig("http://127.0.0.1:8000/oauth/callback", []string{"atproto"})
 	client := safehttp.NewClient(30*time.Second, 5)

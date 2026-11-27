@@ -8,12 +8,10 @@ import (
 	"morgenblau/internal/session"
 )
 
-// localNetwork is the throwaway PLC, PDS and fixture feed server a verify run starts beside an APP_ENV=local server; NewServer's loopback, identity and OAuth overrides all come from it.
 type localNetwork struct {
-	plc, pds    string
-	ports       []int
-	feedFixture int
-	// fixtureOrigin stands in for www.youtube.com, so a verify run never calls YouTube.
+	plc, pds      string
+	ports         []int
+	feedFixture   int
 	fixtureOrigin string
 }
 
@@ -40,7 +38,6 @@ func loadLocalNetwork(getenv func(string) string) (*localNetwork, error) {
 	return n, nil
 }
 
-// feedFetchOptions lets the feed fetcher reach a verify run's fixture feed server, the only loopback origin it ever fetches from.
 func feedFetchOptions(n *localNetwork) []fetcher.Option {
 	if n == nil || n.feedFixture == 0 {
 		return nil
@@ -48,7 +45,6 @@ func feedFetchOptions(n *localNetwork) []fetcher.Option {
 	return []fetcher.Option{fetcher.WithSafeHTTPOptions(safehttp.WithAllowLoopbackPorts(n.feedFixture))}
 }
 
-// checkDevPDS refuses a plain-HTTP dev PDS other than the local network's, since the safe client reaches loopback only on that network's ports.
 func checkDevPDS(dev *session.DevConfig, local *localNetwork) error {
 	if dev == nil {
 		return nil
@@ -65,7 +61,6 @@ func checkDevPDS(dev *session.DevConfig, local *localNetwork) error {
 	return fmt.Errorf("ATPROTO_PDS %s is plain HTTP on loopback, which the server reaches only as the PDS beside PLC_URL", dev.PDS)
 }
 
-// youtubeOrigin is where transcripts are fetched from: YouTube, or a verify run's fixture server.
 func youtubeOrigin(n *localNetwork) string {
 	if n == nil || n.fixtureOrigin == "" {
 		return "https://www.youtube.com"

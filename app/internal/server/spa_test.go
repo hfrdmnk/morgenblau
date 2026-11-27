@@ -27,8 +27,8 @@ func TestEmbeddedDistCacheHeaders(t *testing.T) {
 		path string
 		want string
 	}{
-		{"hashed asset is immutable", assetPath, "public, max-age=31536000, immutable"},
-		{"html shell revalidates", "/", "no-cache"},
+		{"Vite content-hashes assets, so they never change", assetPath, "public, max-age=31536000, immutable"},
+		{"html shell revalidates for new deploys without no-store, which bars bfcache", "/", "no-cache"},
 		{"unknown route falls back to shell", "/digest", "no-cache"},
 	}
 	for _, tt := range tests {

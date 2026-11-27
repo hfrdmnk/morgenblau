@@ -33,7 +33,6 @@ func (anySessionApp) ResumeSession(_ context.Context, did syntax.DID, sid string
 
 func (anySessionApp) Logout(context.Context, syntax.DID, string) error { return nil }
 
-// adminRoutes reads every admin pattern from routes.go, plus the SPA page the catch-all serves, so a new admin route is checked the moment it is wired.
 func adminRoutes(t *testing.T) []string {
 	t.Helper()
 	file, err := parser.ParseFile(token.NewFileSet(), "routes.go", nil, 0)
@@ -131,7 +130,6 @@ func TestEveryAdminRouteIsHiddenFromEveryoneButAdmins(t *testing.T) {
 func TestEveryAdminRouteRefusesRequestsTheGateDidNotAdmit(t *testing.T) {
 	srv, _ := newAdminRouteServer(t)
 	mux := srv.routes()
-	// Even a listed admin's session is refused without the mark only the gate sets.
 	admin := &session.Session{Data: &session.Data{AccountDID: adminDID, SessionID: "sid"}}
 	for _, pattern := range adminRoutes(t) {
 		if !strings.Contains(pattern, "/api/") {

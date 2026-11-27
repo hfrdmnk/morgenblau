@@ -120,7 +120,8 @@ func TestSMTPSTARTTLSNoSNIAndReplacement(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// An IP ServerName omits SNI; verify the intended DNS identity independently.
+		// RFC 6066 bars IP literals from SNI, so this client sends none; verify the DNS identity by hand.
+		// https://www.rfc-editor.org/rfc/rfc6066#section-3
 		err = client.StartTLS(&tls.Config{ServerName: "127.0.0.1", InsecureSkipVerify: true, VerifyConnection: func(cs tls.ConnectionState) error {
 			_, err := cs.PeerCertificates[0].Verify(x509.VerifyOptions{DNSName: m.hostname, Roots: roots})
 			return err
@@ -175,7 +176,6 @@ func TestSMTPSTARTTLSTicketsCannotBypassPolicy(t *testing.T) {
 			legacyAddr := start(legacy)
 			addr := start(m.tlsConfig())
 			cache := smtpTicketCache{tls.NewLRUClientSessionCache(1)}
-			// A malicious peer may reuse a ticket across SNI names without verifying the server.
 			config := &tls.Config{MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13, ServerName: m.hostname, InsecureSkipVerify: true, ClientSessionCache: cache}
 			dial := func(address string) *smtp.Client {
 				conn, err := net.DialTimeout("tcp", address, time.Second)
@@ -441,7 +441,6 @@ func TestSMTPACMEIntegration(t *testing.T) {
 	if !ok || state.PeerCertificates[0].SerialNumber.String() != m.current.Load().Leaf.SerialNumber.String() {
 		t.Fatal("SMTP did not serve renewed certificate")
 	}
-	// A new manager must load the same private persistent assets, not issue again.
 	reloaded, err := newSMTPCertificates("localhost", m.issuer.AltHTTPPort, settings)
 	if err != nil {
 		t.Fatal(err)

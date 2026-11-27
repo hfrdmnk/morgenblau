@@ -166,7 +166,6 @@ func TestNewsletterRoutesAreRegistered(t *testing.T) {
 	}
 }
 
-// The frontend reads every /api/ failure as {code, message}; ServeMux's own 404 and 405 bodies are plain text.
 func TestUnroutedAPIRequestsAnswerTheJSONErrorEnvelope(t *testing.T) {
 	for _, req := range []*http.Request{
 		httptest.NewRequest(http.MethodGet, "/api/does-not-exist", nil),
@@ -177,7 +176,7 @@ func TestUnroutedAPIRequestsAnswerTheJSONErrorEnvelope(t *testing.T) {
 
 		var body struct{ Code, Message string }
 		if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil || body.Code == "" || body.Message == "" {
-			t.Errorf("%s %s = %d %q, want a JSON {code, message} body", req.Method, req.URL.Path, rr.Code, rr.Body.String())
+			t.Errorf("%s %s = %d %q, want a JSON {code, message} body: the frontend reads every /api/ failure that way, and ServeMux's own 404 and 405 bodies are plain text", req.Method, req.URL.Path, rr.Code, rr.Body.String())
 		}
 		if got := rr.Header().Get("Content-Type"); got != "application/json" {
 			t.Errorf("%s %s Content-Type = %q, want application/json", req.Method, req.URL.Path, got)
