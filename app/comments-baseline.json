@@ -96,7 +96,7 @@
   "internal/favicon/discover.go": 17,
   "internal/favicon/discover_test.go": 3,
   "internal/feedfinder/discover.go": 17,
-  "internal/feedfinder/feedfinder.go": 51,
+  "internal/feedfinder/feedfinder.go": 48,
   "internal/feedfinder/feedfinder_discover_test.go": 2,
   "internal/feedfinder/feedfinder_standard_test.go": 4,
   "internal/feedfinder/feedfinder_test.go": 13,

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -128,19 +129,20 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 		}
 	}
 
-	// The well-known probe runs concurrently with the HTML fetch below and merges in after link-rel extraction.
-	// It's buffered so an early return (passthrough, error) never blocks the goroutine.
-	var wellKnown chan string
+	probeCtx, cancelProbe := context.WithCancel(ctx)
+	var wellKnownURI string
+	var probe sync.WaitGroup
+	defer func() {
+		cancelProbe()
+		probe.Wait()
+	}()
 	if f.standard != nil {
 		origin := (&url.URL{Scheme: u.Scheme, Host: u.Host}).String()
-		wellKnown = make(chan string, 1)
-		go func() {
-			uri, err := f.standard.FetchWellKnown(ctx, origin)
-			if err != nil {
-				uri = "" // best-effort probe: transport error reads as a miss
+		probe.Go(func() {
+			if uri, err := f.standard.FetchWellKnown(probeCtx, origin); err == nil {
+				wellKnownURI = uri
 			}
-			wellKnown <- uri
-		}()
+		})
 	}
 
 	req, err := newGET(ctx, raw)
@@ -168,9 +170,10 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 	probed := map[string]*probedFeed{}
 	out := f.pageFeeds(ctx, doc, base, readable, probed)
 	if f.standard != nil {
+		probe.Wait()
 		var pubURIs []string
-		if wkURI := <-wellKnown; wkURI != "" {
-			pubURIs = append(pubURIs, wkURI)
+		if wellKnownURI != "" {
+			pubURIs = append(pubURIs, wellKnownURI)
 		}
 		// Article pages carry <link rel="site.standard.document">; chase document → site → publication.
 		if docURI := extractStandardDocLink(doc); docURI != "" {

@@ -232,3 +232,30 @@ func TestResolve_WellKnownAndDocLink_DedupeByNormalizedURI(t *testing.T) {
 		t.Fatalf("standardfeed candidates = %d, want deduped 1: %+v", standard, cands)
 	}
 }
+
+type blockingWellKnown struct {
+	*fakeStandard
+	done chan struct{}
+}
+
+func (b *blockingWellKnown) FetchWellKnown(ctx context.Context, _ string) (string, error) {
+	defer close(b.done)
+	<-ctx.Done()
+	return "", ctx.Err()
+}
+
+func TestResolve_AwaitsTheWellKnownProbeOnEveryReturn(t *testing.T) {
+	probe := &blockingWellKnown{fakeStandard: &fakeStandard{}, done: make(chan struct{})}
+	finder := New(&http.Client{Transport: roundTripperFunc(func(*http.Request) *http.Response {
+		return resp(`<?xml version="1.0"?><rss version="2.0"><channel><title>Example Blog</title></channel></rss>`, "application/rss+xml")
+	})}).WithStandardResolver(probe)
+
+	if _, err := finder.Resolve(context.Background(), "https://blog.example.com/rss"); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	select {
+	case <-probe.done:
+	default:
+		t.Error("Resolve returned from a passthrough with its well-known probe still running; it must cancel and await the probe")
+	}
+}
