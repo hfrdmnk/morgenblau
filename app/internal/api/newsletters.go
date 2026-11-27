@@ -194,7 +194,7 @@ func newsletterSourceActionHandler(action func(context.Context, string, string) 
 }
 
 // NewsletterUnsubscribeHandler sends the RFC 8058 one-click unsubscribe and deletes the source only once the sender confirms with a 2xx; any other outcome changes nothing.
-// client must refuse redirects (RFC 8058 forbids them) and guard against SSRF, since the URL comes from incoming mail.
+// client must guard against SSRF, since the URL comes from incoming mail.
 func NewsletterUnsubscribeHandler(service newsletterUnsubscribeService, client *http.Client) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		privateResponse(w)
@@ -242,7 +242,9 @@ func postOneClickUnsubscribe(ctx context.Context, client *http.Client, target st
 		return err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := client.Do(req)
+	oneClick := *client
+	oneClick.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := oneClick.Do(req)
 	if err != nil {
 		// The URL is personalized to this reader, so only the underlying cause reaches the log.
 		var urlErr *url.Error

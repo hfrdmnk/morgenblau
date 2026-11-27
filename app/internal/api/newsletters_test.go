@@ -519,7 +519,6 @@ func TestNewsletterUnsubscribe_DeletesOnlyAfterTheSenderConfirms(t *testing.T) {
 			}))
 			defer sender.Close()
 			client := sender.Client()
-			client.CheckRedirect = func(*http.Request, []*http.Request) error { return errors.New("redirect refused") }
 			service := &fakeUnsubscribeService{url: sender.URL + "/u/opaque?list=weekly", urlErr: tc.urlErr}
 			mux := http.NewServeMux()
 			mux.Handle("POST /api/newsletters/{id}/unsubscribe", NewsletterUnsubscribeHandler(service, client))
@@ -536,6 +535,26 @@ func TestNewsletterUnsubscribe_DeletesOnlyAfterTheSenderConfirms(t *testing.T) {
 				t.Fatalf("deleted = %v, want %v", deleted, tc.wantDeleted)
 			}
 		})
+	}
+}
+
+func TestNewsletterUnsubscribe_ARedirectIsNotAConfirmationEvenWithAClientThatFollowsIt(t *testing.T) {
+	var confirmationPageVisits int
+	sender := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/confirmed" {
+			confirmationPageVisits++
+			return
+		}
+		http.Redirect(w, r, "/confirmed", http.StatusFound)
+	}))
+	defer sender.Close()
+	service := &fakeUnsubscribeService{url: sender.URL + "/u/opaque"}
+	mux := http.NewServeMux()
+	mux.Handle("POST /api/newsletters/{id}/unsubscribe", NewsletterUnsubscribeHandler(service, sender.Client()))
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, withSession(httptest.NewRequest(http.MethodPost, "/api/newsletters/source-1/unsubscribe", nil), "did:plc:alice", "sid-1"))
+	if rr.Code != http.StatusBadGateway || service.deletedID != "" || confirmationPageVisits != 0 {
+		t.Fatalf("status = %d, deleted %q, redirect target visits %d; want 502, nothing deleted, redirect not followed: RFC 8058 forbids senders a redirect, and a followed one turns the POST into a GET", rr.Code, service.deletedID, confirmationPageVisits)
 	}
 }
 
