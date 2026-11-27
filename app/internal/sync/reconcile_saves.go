@@ -11,7 +11,6 @@ import (
 	"morgenblau/internal/tags"
 )
 
-// reconcileSaves has no Tier-2 join and no fetch to trigger; saves are leaf bookmarks.
 func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *session.Session) (*committed[db.UserSave], error) {
 	snapshotAt := e.now().UTC()
 	didStr := did.String()
@@ -20,7 +19,6 @@ func (e *Engine) reconcileSaves(ctx context.Context, did syntax.DID, sess *sessi
 		return nil, err
 	}
 
-	// Network first: the writer connection must never be held across a PDS round-trip.
 	remote, err := e.lister.ListSaves(ctx, sess)
 	if err != nil {
 		return nil, err

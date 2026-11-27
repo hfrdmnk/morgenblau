@@ -17,7 +17,6 @@ import (
 	"morgenblau/internal/session"
 )
 
-// Engine runs the dual-track sync for one user, coalesced by the in-flight guard.
 type Engine struct {
 	jobs    *jobs.Tracker
 	store   SyncStore
@@ -28,13 +27,8 @@ type Engine struct {
 	locker  SessionLocker
 	now     func() time.Time
 
-	// refreshSession is a seam so the resume-and-refresh-under-one-lock guarantee is testable without a live AS.
 	refreshSession func(ctx context.Context, sess *session.Session) error
-
-	// runTx wraps one reconcile pass's writes in a transaction (no-op default; WithTxRunner
-	// installs the real one). Deadlock rule: the closure must never touch a non-tx writer
-	// Queries, it would block on the sole writer connection.
-	runTx func(ctx context.Context, fn func(SyncStore) error) error
+	runTx          func(ctx context.Context, fn func(SyncStore) error) error
 
 	parentCtx context.Context
 	wg        *sync.WaitGroup
@@ -50,19 +44,16 @@ type userRun struct {
 	rerun         bool
 }
 
-// WithLocker installs the session locker so each run refreshes its access token eagerly under lock; nil skips the refresh.
 func (e *Engine) WithLocker(l SessionLocker) *Engine {
 	e.locker = l
 	return e
 }
 
-// attachLifecycle binds the engine to a parent ctx and WaitGroup so its goroutines join graceful shutdown.
 func (e *Engine) attachLifecycle(ctx context.Context, wg *sync.WaitGroup) {
 	e.parentCtx = ctx
 	e.wg = wg
 }
 
-// NewEngine wires the dependencies; resumer may be nil for tests, pds may be nil to disable deletion of orphaned sidecar records (the one reconcile write exception).
 func NewEngine(
 	tracker *jobs.Tracker,
 	store SyncStore,
@@ -91,7 +82,6 @@ func NewEngine(
 	return e
 }
 
-// WithTxRunner commits each reconcile pass's writes in one transaction on the writer pool.
 func (e *Engine) WithTxRunner(w *sql.DB) *Engine {
 	e.runTx = func(ctx context.Context, fn func(SyncStore) error) error {
 		return database.WithTx(ctx, w, func(q *db.Queries) error {
@@ -101,7 +91,6 @@ func (e *Engine) WithTxRunner(w *sql.DB) *Engine {
 	return e
 }
 
-// SyncUser starts the dual-track refresh for (did, sessionID); the in-flight guard coalesces a repeat trigger into the existing job id.
 func (e *Engine) SyncUser(ctx context.Context, did syntax.DID, sessionID string, trigger jobs.Trigger) (string, error) {
 	e.runMu.Lock()
 	if active := e.active[did.String()]; active != nil {
@@ -163,14 +152,12 @@ func (e *Engine) run(run *userRun) {
 	}
 }
 
-// syncReceipt holds each reconcile pass's commit proof; a nil proof means that pass did not commit.
 type syncReceipt struct {
 	rss          *committed[db.UserSubscription]
 	standardfeed *committed[db.UserSubscription]
 	saves        *committed[db.UserSave]
 }
 
-// finishSync is the only way a sync_user job reaches done, and it requires every pass's commit proof.
 func (e *Engine) finishSync(id string, r syncReceipt, err error) {
 	if err != nil || r.rss == nil || r.standardfeed == nil || r.saves == nil {
 		e.jobs.SetFailed(id)
@@ -179,9 +166,6 @@ func (e *Engine) finishSync(id string, r syncReceipt, err error) {
 	e.jobs.SetDone(id)
 }
 
-// resumeAndRefresh resumes and refreshes under one continuous lock hold: resuming outside
-// the lock would let the request path rotate the refresh token first, so the eager refresh
-// would silently no-op on a stale token. Resume failure fails the run; refresh failure is best-effort.
 func (e *Engine) resumeAndRefresh(ctx context.Context, did syntax.DID, sessionID string) (*session.Session, error) {
 	if e.locker != nil {
 		unlock := e.locker.LockSession(did, sessionID)
@@ -199,9 +183,7 @@ func (e *Engine) resumeAndRefresh(ctx context.Context, did syntax.DID, sessionID
 	return sess, nil
 }
 
-// runDualTrack is unexported-but-callable so tests can drive it directly, without the goroutine wrapping.
 func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *session.Session) (syncReceipt, error) {
-	// Snapshot Tier-1 BEFORE reconcile so Phase 1B doesn't wait on 1A.
 	snapshotAt := e.now().UTC()
 	snapshot, err := e.store.ListUserSubscriptionsForSync(ctx, did.String())
 	if err != nil {
@@ -212,16 +194,11 @@ func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *session
 		snapURLs = append(snapURLs, row.FeedUrl)
 	}
 
-	// addedFeedURLs is populated by Phase 1A; Phase 2 reads it after fan-in.
 	var (
 		addedMu       sync.Mutex
 		addedFeedURLs []string
-	)
-
-	// Phase 1A: PDS reconcile.
-	var (
-		wg      sync.WaitGroup
-		receipt syncReceipt
+		wg            sync.WaitGroup
+		receipt       syncReceipt
 	)
 	errC := make(chan error, 2)
 	wg.Add(3)
@@ -238,13 +215,11 @@ func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *session
 		}
 	}()
 
-	// Phase 1B: Local-known fan-out fetch.
 	go func() {
 		defer wg.Done()
 		fetchAll(ctx, snapURLs, e.fetcher)
 	}()
 
-	// Phase 1C: saves reconcile, independent of subscriptions and fetches.
 	go func() {
 		defer wg.Done()
 		var err error
@@ -261,21 +236,25 @@ func (e *Engine) runDualTrack(ctx context.Context, did syntax.DID, sess *session
 		reconcileErrs = append(reconcileErrs, err)
 	}
 
-	// Phase 2: top-up, fetch newly added URLs that 1B didn't already cover.
-	already := make(map[string]struct{}, len(snapURLs))
-	for _, u := range snapURLs {
+	addedMu.Lock()
+	topUp := notAlreadyFetched(addedFeedURLs, snapURLs)
+	addedMu.Unlock()
+	fetchAll(ctx, topUp, e.fetcher)
+	return receipt, errors.Join(reconcileErrs...)
+}
+
+func notAlreadyFetched(added, fetched []string) []string {
+	already := make(map[string]struct{}, len(fetched))
+	for _, u := range fetched {
 		already[u] = struct{}{}
 	}
 	var topUp []string
-	addedMu.Lock()
-	for _, u := range addedFeedURLs {
+	for _, u := range added {
 		if _, ok := already[u]; !ok {
 			topUp = append(topUp, u)
 		}
 	}
-	addedMu.Unlock()
-	fetchAll(ctx, topUp, e.fetcher)
-	return receipt, errors.Join(reconcileErrs...)
+	return topUp
 }
 
 func fetchAll(ctx context.Context, urls []string, f FeedFetcher) {

@@ -10,7 +10,6 @@ import (
 	"testing"
 )
 
-// The fetch_one_feed job finishes on its own fetch; every sync_user completion must go through finishSync's commit proofs.
 var setDoneCallers = map[string]bool{
 	"Engine.finishSync":              true,
 	"Orchestrator.StartFetchOneFeed": true,
@@ -75,7 +74,6 @@ func TestCommitProofIsMintedOnlyByReconcileCollection(t *testing.T) {
 	}
 }
 
-// constructsCommitted matches every syntactic way to obtain a committed value: literal, new, conversion, or zero-value var.
 func constructsCommitted(n ast.Node) bool {
 	switch n := n.(type) {
 	case *ast.CompositeLit:

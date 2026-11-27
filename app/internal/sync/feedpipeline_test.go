@@ -146,6 +146,9 @@ func TestFeedPipeline_FetchAndStore_HappyPath(t *testing.T) {
 	if q.feeds[0].SiteUrl == nil || *q.feeds[0].SiteUrl != "https://site.example.com/" {
 		t.Errorf("SiteUrl = %v", q.feeds[0].SiteUrl)
 	}
+	if q.feeds[0].Title != nil {
+		t.Errorf("catalog Title = %q, want nil: a refresh never writes the feed's own title, so it cannot clobber the title a reader chose", *q.feeds[0].Title)
+	}
 	if len(q.entries) != 2 {
 		t.Fatalf("entries = %d, want 2", len(q.entries))
 	}
@@ -158,7 +161,7 @@ func TestFeedPipeline_FetchAndStore_HappyPath(t *testing.T) {
 	if q.entries[1].Title == nil {
 		t.Errorf("second title = nil, want %q", "It's a Q&A")
 	} else if *q.entries[1].Title != "It's a Q&A" {
-		t.Errorf("second title = %q, want %q", *q.entries[1].Title, "It's a Q&A")
+		t.Errorf("second title = %q, want %q: Ghost and other generators put entity-escaped text inside CDATA, which gofeed returns verbatim", *q.entries[1].Title, "It's a Q&A")
 	}
 	if q.entries[0].ContentHtml == nil || strings.Contains(*q.entries[0].ContentHtml, "<script") {
 		t.Errorf("first body was not sanitized: %v", q.entries[0].ContentHtml)
@@ -382,8 +385,7 @@ func TestFeedPipeline_FetchAndStore_YouTubeFailureRetriesOnTheNextSweep(t *testi
 		wantChecks int
 		wantNext   time.Duration
 	}{
-		// Six failures would wait a day on the ladder.
-		"during an outage":                   {db.Feed{ConsecutiveFailures: 6, LoneFailures: 1}, outage, false, 1, nil, 0, 15 * time.Minute},
+		"during an outage, though six failures would wait a day on the ladder": {db.Feed{ConsecutiveFailures: 6, LoneFailures: 1}, outage, false, 1, nil, 0, 15 * time.Minute},
 		"first lone failure":                 {db.Feed{ConsecutiveFailures: 6}, alone, true, 1, nil, 0, 15 * time.Minute},
 		"second lone failure, channel there": {db.Feed{ConsecutiveFailures: 6, LoneFailures: 1}, alone, false, 2, nil, 1, 15 * time.Minute},
 		"second lone failure, channel gone":  {db.Feed{ConsecutiveFailures: 6, LoneFailures: 1}, alone, true, 2, &nowStr, 1, 24 * time.Hour},
@@ -412,10 +414,10 @@ func TestFeedPipeline_FetchAndStore_YouTubeFailureRetriesOnTheNextSweep(t *testi
 				t.Errorf("failures = %d, lone = %d, gone = %q; want 7, %d, %q", got.ConsecutiveFailures, got.LoneFailures, derefTestString(got.ChannelGoneAt), tc.wantLone, derefTestString(tc.wantGone))
 			}
 			if want := now.Add(tc.wantNext).Format(time.RFC3339); derefTestString(got.NextFetchAt) != want {
-				t.Errorf("NextFetchAt = %q, want %s", derefTestString(got.NextFetchAt), want)
+				t.Errorf("NextFetchAt = %q, want %s: YouTube's feed server goes down for hours, so a live channel retries well inside the 30-minute sweep instead of climbing a ladder that keeps landing it in the next outage", derefTestString(got.NextFetchAt), want)
 			}
 			if len(checked) != tc.wantChecks || (tc.wantChecks > 0 && checked[0] != channel) {
-				t.Errorf("channel page checks = %v, want %d of %s", checked, tc.wantChecks, channel)
+				t.Errorf("channel page checks = %v, want %d of %s: an outage's first failures read as lone before the rest are recorded, so the page is checked from the second lone failure, then on every failure while muted or gone", checked, tc.wantChecks, channel)
 			}
 			if q.failingSince != "2026-05-15T10:00:00Z" {
 				t.Errorf("outage count left out feeds failing since before %q, want two days back", q.failingSince)
@@ -496,14 +498,14 @@ func TestFeedPipeline_FetchAndStore_CancelledContextNoFailureRecord(t *testing.T
 		t.Fatal("FetchAndStore: want error for a cancelled context")
 	}
 	if len(q.failures) != 0 {
-		t.Errorf("failure records = %d, want 0 for context.Canceled", len(q.failures))
+		t.Errorf("failure records = %d, want 0 for context.Canceled: the caller gave up, which says nothing about the feed's health", len(q.failures))
 	}
 }
 
 func TestFeedPipeline_FetchAndStore_UnreachableServerRecordsFailure(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	unreachableURL := srv.URL + "/feed.xml"
-	srv.Close() // closed listener: nothing answers this URL
+	srv.Close()
 
 	q := &fakePipelineQueries{}
 	p := newTestPipeline(q, &fakeFaviconDiscoverer{}, time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC))
@@ -547,7 +549,6 @@ func TestFeedPipeline_FetchAndStore_StoresTheYouTubeChannelsHandle(t *testing.T)
 		lookups        int
 		want           string
 	}{
-		// An empty site URL leaves the stored one in place (UpsertFeed's COALESCE).
 		"handle already stored": {"https://www.youtube.com/@example", "https://www.youtube.com/@other", 0, ""},
 		"channel page stored":   {channel, "https://www.youtube.com/@example", 1, "https://www.youtube.com/@example"},
 		"bare origin stored":    {"https://www.youtube.com", "https://www.youtube.com/@example", 1, "https://www.youtube.com/@example"},
@@ -565,7 +566,7 @@ func TestFeedPipeline_FetchAndStore_StoresTheYouTubeChannelsHandle(t *testing.T)
 				t.Fatalf("FetchAndStore: %v", err)
 			}
 			if got := derefTestString(q.feeds[0].SiteUrl); got != tc.want {
-				t.Errorf("SiteUrl = %q, want %q", got, tc.want)
+				t.Errorf("SiteUrl = %q, want %q: a channel's feeds link its /channel/ page at best, so its @handle page comes from that page, and an empty site keeps a stored handle through UpsertFeed's COALESCE", got, tc.want)
 			}
 			if len(looked) != tc.lookups || (tc.lookups > 0 && looked[0] != channel) {
 				t.Errorf("handle lookups = %v, want %d of %s", looked, tc.lookups, channel)

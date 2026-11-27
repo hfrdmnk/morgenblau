@@ -1,4 +1,3 @@
-// Package sync orchestrates the dual-track refresh: PDS reconcile + fan-out fetch.
 package sync
 
 import (
@@ -12,14 +11,12 @@ import (
 	"morgenblau/internal/jobs"
 )
 
-// FeedFetcher is the slice of internal/fetcher the orchestrator uses.
 type FeedFetcher interface {
 	FetchAndStore(ctx context.Context, feedURL string) error
 }
 
 var ErrNoEngine = errors.New("sync: engine not configured")
 
-// Orchestrator owns the job tracker, the feed pipeline, and the sync engine.
 type Orchestrator struct {
 	jobs    *jobs.Tracker
 	fetcher FeedFetcher
@@ -45,7 +42,6 @@ func New(tracker *jobs.Tracker, fetcher FeedFetcher, engine *Engine) *Orchestrat
 	return o
 }
 
-// Shutdown cancels the orchestrator's parent ctx and waits for in-flight goroutines to finish, returning ctx.Err() if the wait deadline trips first.
 func (o *Orchestrator) Shutdown(ctx context.Context) error {
 	o.cancel()
 	done := make(chan struct{})
@@ -61,7 +57,6 @@ func (o *Orchestrator) Shutdown(ctx context.Context) error {
 	}
 }
 
-// StartManualRefresh creates a sync_user job for (did, sessionID).
 func (o *Orchestrator) StartManualRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error) {
 	if o.engine == nil {
 		return "", ErrNoEngine
@@ -69,7 +64,6 @@ func (o *Orchestrator) StartManualRefresh(ctx context.Context, did syntax.DID, s
 	return o.engine.SyncUser(ctx, did, sessionID, jobs.TriggerManual)
 }
 
-// StartLoginRefresh is the entrypoint the OAuth callback uses; same path as manual, trigger metadata differs.
 func (o *Orchestrator) StartLoginRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error) {
 	if o.engine == nil {
 		return "", ErrNoEngine
@@ -77,7 +71,6 @@ func (o *Orchestrator) StartLoginRefresh(ctx context.Context, did syntax.DID, se
 	return o.engine.SyncUser(ctx, did, sessionID, jobs.TriggerLogin)
 }
 
-// StartFetchOneFeed creates a fetch_one_feed job so the refresh pill activates the moment a user adds a source.
 func (o *Orchestrator) StartFetchOneFeed(did syntax.DID, feedURL string) string {
 	j := o.jobs.Create(jobs.KindFetchOneFeed, did, jobs.TriggerAddFeed)
 	o.wg.Add(1)

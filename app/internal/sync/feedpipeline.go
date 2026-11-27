@@ -24,16 +24,12 @@ import (
 	"morgenblau/internal/safehttp"
 )
 
-// iconRefreshAfter: long enough to avoid hammering the site, short enough to catch a redesign within a month.
 const iconRefreshAfter = 30 * 24 * time.Hour
 
-// feedBackoff implements SPEC <feed-sources> failure handling; the 24h cap also serves as the muted feeds' once-daily retry.
 var feedBackoff = backoff.Policy{Steps: []time.Duration{5 * time.Minute, 15 * time.Minute, time.Hour, 6 * time.Hour, 24 * time.Hour}}
 
-// youtubeRetry sits well under the default 30-minute sweep, so every sweep retries even when it reaches the feed later than the last one: YouTube's feed server goes down for hours at a time, and a ladder that grows to a day can keep landing a channel in the next outage.
 const youtubeRetry = 15 * time.Minute
 
-// FaviconDiscoverer lets tests stub favicon discovery.
 type FaviconDiscoverer interface {
 	Discover(ctx context.Context, siteURL string) (string, error)
 }
@@ -48,19 +44,16 @@ func (c *faviconHTTPClient) Discover(ctx context.Context, siteURL string) (strin
 	return favicon.Discover(ctx, c.client, siteURL)
 }
 
-// FeedPipeline implements FeedFetcher for RSS/Atom feeds.
 type FeedPipeline struct {
 	fetcher   *fetcher.Fetcher
 	queries   pipelineQueries
 	sanitizer *bluemonday.Policy
 	now       func() time.Time
 	favicon   FaviconDiscoverer
-	// youtubeHandle reads a YouTube channel page for its @handle page.
-	youtubeHandle func(ctx context.Context, channelURL string) (string, error)
-	// youtubeGone reads a YouTube channel page for whether the channel still exists.
-	youtubeGone func(ctx context.Context, channelURL string) (bool, error)
-	runTx       func(ctx context.Context, fn func(pipelineQueries) error) error
-	// undatedHistory reports feeds whose undated items are history rather than news, so they keep no date.
+
+	youtubeHandle  func(ctx context.Context, channelURL string) (string, error)
+	youtubeGone    func(ctx context.Context, channelURL string) (bool, error)
+	runTx          func(ctx context.Context, fn func(pipelineQueries) error) error
 	undatedHistory func(feedURL string) bool
 }
 
@@ -89,26 +82,22 @@ func NewFeedPipeline(f *fetcher.Fetcher, q pipelineQueries) *FeedPipeline {
 	p.youtubeGone = func(ctx context.Context, channelURL string) (bool, error) {
 		return feedfinder.YouTubeChannelGone(ctx, handleClient, channelURL)
 	}
-	// No transaction by default so fake-based tests work; production installs a real runner via WithTxRunner.
 	p.runTx = func(ctx context.Context, fn func(pipelineQueries) error) error {
 		return fn(p.queries)
 	}
 	return p
 }
 
-// WithFaviconDiscoverer swaps the favicon discoverer for tests.
 func (p *FeedPipeline) WithFaviconDiscoverer(d FaviconDiscoverer) *FeedPipeline {
 	p.favicon = d
 	return p
 }
 
-// WithUndatedHistory marks feeds that date every new item themselves (generated feeds), so an undated item there is setup history and skips the first-seen fallback.
 func (p *FeedPipeline) WithUndatedHistory(isHistory func(feedURL string) bool) *FeedPipeline {
 	p.undatedHistory = isHistory
 	return p
 }
 
-// WithTxRunner commits each feed's write batch in one transaction on the writer pool.
 func (p *FeedPipeline) WithTxRunner(w *sql.DB) *FeedPipeline {
 	p.runTx = func(ctx context.Context, fn func(pipelineQueries) error) error {
 		return database.WithTx(ctx, w, func(q *db.Queries) error {
@@ -138,7 +127,6 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 
 	res, err := p.fetcher.Fetch(ctx, feedURL, state)
 	if err != nil {
-		// context.Canceled means the caller gave up, not that the upstream is unhealthy; it must not count against the feed.
 		if !errors.Is(err, context.Canceled) {
 			p.recordFetchFailure(ctx, feedURL, existing, err)
 		}
@@ -154,7 +142,6 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 		FeedUrl:       feedURL,
 	}
 
-	// NotModified only touches fetch state, a single auto-commit write; no transaction needed.
 	if res.NotModified || res.Feed == nil {
 		if err := p.queries.UpdateFeedFetchState(ctx, fetchState); err != nil {
 			slog.Warn("feedpipeline: Tier-2 state update failed", "url", feedURL, "err", err)
@@ -162,20 +149,14 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 		return nil
 	}
 
-	// The feed-claimed title (res.Feed.Title) is intentionally never persisted to
-	// Tier-1: the subscription title is user-owned and a refresh must not clobber it.
 	feedSite := strings.TrimSpace(res.Feed.Link)
 	if feedSite == "" {
 		feedSite = feedfinder.YouTubeChannelURL(feedURL)
 	}
 	if feedSite == "" {
-		// Falls back to the feed URL's origin so favicon discovery has somewhere to look when the feed XML lacks a <link>.
-		if u, err := url.Parse(feedURL); err == nil && u.Scheme != "" && u.Host != "" {
-			feedSite = u.Scheme + "://" + u.Host
-		}
+		feedSite = origin(feedURL)
 	}
 
-	// A channel's feeds link its /channel/ page at best, so its @handle page comes from that page; a stored one stays, since an empty site leaves it in place.
 	storedSite := feedSite
 	channel := feedfinder.YouTubeChannelURL(feedURL)
 	if channel == "" {
@@ -192,7 +173,6 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 		}
 	}
 
-	// Favicon discovery is a network call, hoisted out of the transaction so the write batch never holds the writer connection across a slow fetch.
 	var iconURL string
 	if feedSite != "" && shouldDiscoverIcon(existing, p.now()) {
 		if u, err := p.favicon.Discover(ctx, feedSite); err == nil && u != "" {
@@ -202,8 +182,8 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 		}
 	}
 
-	// Per-entry errors are tolerated (SQLite statement errors don't poison the
-	// tx) so fn always returns nil; only a Begin/Commit failure rolls the batch back.
+	// SQLite backs out only a failing statement and keeps the transaction active, so a failed entry write leaves its siblings in the batch.
+	// https://www.sqlite.org/lang_conflict.html
 	return p.runTx(ctx, func(q pipelineQueries) error {
 		if err := q.UpdateFeedFetchState(ctx, fetchState); err != nil {
 			slog.Warn("feedpipeline: Tier-2 state update failed", "url", feedURL, "err", err)
@@ -228,11 +208,8 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 			}
 		}
 
-		// Undated items already in a feed's first successful fetch are its back catalogue, not today's news.
-		var keepUndated int64
-		if existing.LastFetchedAt == nil || (p.undatedHistory != nil && p.undatedHistory(feedURL)) {
-			keepUndated = 1
-		}
+		firstSuccessfulFetch := existing.LastFetchedAt == nil
+		keepUndated := boolToInt64(firstSuccessfulFetch || (p.undatedHistory != nil && p.undatedHistory(feedURL)))
 		for _, item := range res.Feed.Items {
 			guid := chooseGUID(item)
 			if guid == "" {
@@ -243,7 +220,6 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 			if !published.IsZero() {
 				publishedAt = published.UTC().Format(time.RFC3339)
 			}
-			// Ghost and others put entity-escaped text inside CDATA, which gofeed returns verbatim.
 			title := strings.TrimSpace(html.UnescapeString(item.Title))
 			body := chooseBody(item)
 			sanitized := p.sanitizer.Sanitize(body)
@@ -290,7 +266,8 @@ func chooseGUID(item *gofeed.Item) string {
 }
 
 func chooseTime(item *gofeed.Item, fallback time.Time) time.Time {
-	// gofeed may substitute UpdatedParsed for an unparseable Atom publication date.
+	// gofeed's Atom translator fills PublishedParsed from UpdatedParsed when an entry has no parsed publication date.
+	// https://github.com/mmcdole/gofeed/blob/v1.5.0/translator.go#L643-L646
 	if t, ok := parseRawDate(item.Published); ok {
 		return t
 	}
@@ -306,18 +283,17 @@ func chooseTime(item *gofeed.Item, fallback time.Time) time.Time {
 	return fallback
 }
 
-// parseRawDate covers date shapes gofeed misses: Bluesky's RSS pubDate has no
-// weekday prefix, no seconds, and a numeric offset (e.g. "24 May 2026 20:02 +0200").
 var extraDateFormats = []string{
-	"2 Jan 2006 15:04 -0700",
+	blueskyPubDate,
 }
+
+const blueskyPubDate = "2 Jan 2006 15:04 -0700"
 
 func parseRawDate(s string) (time.Time, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return time.Time{}, false
 	}
-	// Some Atom generators leave padding between the calendar date and T.
 	if date, clock, ok := strings.Cut(s, "T"); ok {
 		if t, err := time.Parse(time.RFC3339, strings.TrimSpace(date)+"T"+clock); err == nil {
 			return t, true
@@ -338,7 +314,6 @@ func chooseBody(item *gofeed.Item) string {
 	return strings.TrimSpace(item.Description)
 }
 
-// classifyContentType applies SPEC <content-types>; defaults to "blogpost" as the safest UI fallback.
 func classifyContentType(feedURL string, item *gofeed.Item) string {
 	if u, err := url.Parse(feedURL); err == nil {
 		host := strings.ToLower(u.Host)
@@ -358,7 +333,6 @@ func classifyContentType(feedURL string, item *gofeed.Item) string {
 	return "blogpost"
 }
 
-// buildMetadata captures type-specific metadata as a JSON blob, promoted to typed columns only once their UI ships.
 func buildMetadata(item *gofeed.Item) map[string]any {
 	out := map[string]any{}
 	if len(item.Authors) > 0 && item.Authors[0] != nil && item.Authors[0].Name != "" {
@@ -377,7 +351,6 @@ func buildMetadata(item *gofeed.Item) map[string]any {
 	return out
 }
 
-// inBackoff treats a missing or unparseable next_fetch_at as eligible so partial state always re-fetches.
 func inBackoff(f db.Feed, now time.Time) bool {
 	if f.NextFetchAt == nil {
 		return false
@@ -389,7 +362,6 @@ func inBackoff(f db.Feed, now time.Time) bool {
 	return now.Before(next)
 }
 
-// recordFetchFailure persists SPEC <feed-sources> backoff state; write errors are logged, never returned, so they don't mask the fetch error that triggered them.
 func (p *FeedPipeline) recordFetchFailure(ctx context.Context, feedURL string, prior db.Feed, fetchErr error) {
 	failures := prior.ConsecutiveFailures + 1
 	lone, goneAt := prior.LoneFailures, prior.ChannelGoneAt
@@ -397,8 +369,7 @@ func (p *FeedPipeline) recordFetchFailure(ctx context.Context, feedURL string, p
 	if feedfinder.IsYouTubeFeedURL(feedURL) {
 		if p.youtubeUp(ctx) {
 			lone++
-			// Not the first lone failure: an outage's first failures read as lone before the rest are recorded. After that, once a day while muted or gone.
-			if channel := feedfinder.YouTubeChannelURL(feedURL); channel != "" && (lone == 2 || lone >= feedfinder.YouTubeMutedAfterLoneFailures || goneAt != nil) {
+			if channel := feedfinder.YouTubeChannelURL(feedURL); channel != "" && checksChannelPage(lone, goneAt) {
 				if gone, err := p.youtubeGone(ctx, channel); err != nil {
 					slog.Warn("feedpipeline: YouTube channel check failed", "channel", channel, "err", err)
 				} else if !gone {
@@ -434,7 +405,6 @@ func (p *FeedPipeline) recordFetchFailure(ctx context.Context, feedURL string, p
 	}
 }
 
-// youtubeUp tells a feed failing alone from one caught in an outage; when the catalog can't say, the failure is not counted against the channel.
 func (p *FeedPipeline) youtubeUp(ctx context.Context) bool {
 	feeds, err := p.queries.CountYouTubeFeedFailures(ctx, feedfinder.YouTubeOutageCutoff(p.now()))
 	if err != nil {
@@ -444,7 +414,6 @@ func (p *FeedPipeline) youtubeUp(ctx context.Context) bool {
 	return !feedfinder.YouTubeFeedsDown(feeds.Total, feeds.Failing)
 }
 
-// shouldDiscoverIcon treats a missing or unparseable icon_fetched_at as stale so partial state always re-resolves.
 func shouldDiscoverIcon(f db.Feed, now time.Time) bool {
 	if f.IconUrl == nil || *f.IconUrl == "" {
 		return true
@@ -457,6 +426,19 @@ func shouldDiscoverIcon(f db.Feed, now time.Time) bool {
 		return true
 	}
 	return now.Sub(fetched) > iconRefreshAfter
+}
+
+func checksChannelPage(lone int64, goneAt *string) bool {
+	secondLoneFailure := lone == 2
+	return secondLoneFailure || lone >= feedfinder.YouTubeMutedAfterLoneFailures || goneAt != nil
+}
+
+func origin(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
 }
 
 func nilIfEmpty(s string) *string {

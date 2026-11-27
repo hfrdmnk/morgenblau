@@ -22,7 +22,6 @@ func (e *Engine) reconcileTier1(
 	snapshotAt time.Time,
 	onAdded func(feedURL string),
 ) (rss, standardfeed *committed[db.UserSubscription], err error) {
-	// Both lists are fetched before any mutation, so a failed listing can't leave deletes running against a partial snapshot.
 	remote, err := e.lister.ListSubscriptions(ctx, sess)
 	if err != nil {
 		return nil, nil, err
@@ -44,7 +43,6 @@ func (e *Engine) reconcileRSS(
 	remote []PDSSubscription,
 	onAdded func(feedURL string),
 ) (*committed[db.UserSubscription], error) {
-	// This pass only touches kind=rss rows; standardfeed rows belong to reconcileStandardfeed and must never be deleted here.
 	local := filterSubscriptions(snapshot, isRSS)
 	localByRkey := rkeySet(local)
 
@@ -102,12 +100,9 @@ func (e *Engine) reconcileRSS(
 		deleteRow: func(ctx context.Context, q SyncStore, rkey string) error {
 			return q.DeleteUserSubscription(ctx, db.DeleteUserSubscriptionParams{Did: didStr, Rkey: rkey})
 		},
-		// A subscription delete+recreated on the PDS keeps its feed URL, so the stale row must vacate before the new rkey upserts or UNIQUE(did, feed_url) rejects it.
-		deleteFirst: true,
 	})
 }
 
-// reconcileStandardfeed applies the publication-source model (SPEC <sync-architecture>).
 func (e *Engine) reconcileStandardfeed(
 	ctx context.Context,
 	did syntax.DID,
@@ -127,7 +122,6 @@ func (e *Engine) reconcileStandardfeed(
 			sidecars = append(sidecars, s)
 		}
 	}
-	// Newest sidecar wins so the user's latest edit survives a sync/PATCH race duplicate; losers are deleted below.
 	sidecarByPub := newestSidecarByKey(sidecars,
 		func(s PDSSubscription) string { return s.Publication },
 		func(s PDSSubscription) string { return s.Rkey },
@@ -188,14 +182,11 @@ func (e *Engine) reconcileStandardfeed(
 		deleteRow: func(ctx context.Context, q SyncStore, rkey string) error {
 			return q.DeleteUserSubscription(ctx, db.DeleteUserSubscriptionParams{Did: didStr, Rkey: rkey})
 		},
-		// A canonical-rkey change (duplicate collapse, delete+recreate elsewhere) would trip UNIQUE(did, feed_url) if the new upsert ran before the stale row was gone.
-		deleteFirst: true,
 	})
 	if err != nil {
 		slog.Warn("reconcile: standardfeed tx failed", "did", didStr, "err", err)
 	}
 
-	// Deletes orphaned and non-canonical sidecars; covered by the blue.morgen grant, no standard-scope check needed. Post-commit since it's a network write.
 	sidecarCleanup(ctx, e.pds, sess, syntax.NSID(subscriptionCollection), sidecars,
 		func(s PDSSubscription) string { return s.Publication },
 		func(s PDSSubscription) string { return s.Rkey },
@@ -206,8 +197,6 @@ func (e *Engine) reconcileStandardfeed(
 	return receipt, err
 }
 
-// tier2ThenTier1 upserts the catalog row before the subscription: the FK from feed_entries.feed_url requires it,
-// and onAdded (the Phase-2 fetch trigger, which resolves name/site/icon) fires only for a source this pass newly added.
 func tier2ThenTier1(feed db.UpsertFeedParams, sub db.UpsertUserSubscriptionParams, existed bool, onAdded func(feedURL string)) func(context.Context, SyncStore) error {
 	return func(ctx context.Context, q SyncStore) error {
 		if err := q.UpsertFeed(ctx, feed); err != nil {
@@ -242,7 +231,6 @@ func optionalStringChanged(current, baseline *string) bool {
 	return *current != *baseline
 }
 
-// filterSubscriptions keeps the RSS and Standardfeed passes separate when comparing pre-list and in-transaction rows.
 func filterSubscriptions(snapshot []db.UserSubscription, keep func(db.UserSubscription) bool) []db.UserSubscription {
 	out := make([]db.UserSubscription, 0, len(snapshot))
 	for _, row := range snapshot {
@@ -255,5 +243,4 @@ func filterSubscriptions(snapshot []db.UserSubscription, keep func(db.UserSubscr
 
 func isStandardfeed(row db.UserSubscription) bool { return row.Kind == "standardfeed" }
 
-// A row whose kind predates the column reads as rss, so the rss pass claims everything the standardfeed pass does not.
 func isRSS(row db.UserSubscription) bool { return !isStandardfeed(row) }
