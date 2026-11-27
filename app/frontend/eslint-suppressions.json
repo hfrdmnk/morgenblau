@@ -1,19 +1,4 @@
 {
-  "eslint.config.js": {
-    "comments/no-comments": {
-      "count": 8
-    }
-  },
-  "eslint/design-system.js": {
-    "comments/no-comments": {
-      "count": 11
-    }
-  },
-  "scripts/design-tokens.ts": {
-    "comments/no-comments": {
-      "count": 2
-    }
-  },
   "src/components/account-menu.tsx": {
     "comments/no-comments": {
       "count": 2
@@ -527,16 +512,6 @@
   "src/pages/sources.tsx": {
     "comments/no-comments": {
       "count": 5
-    }
-  },
-  "src/pwa.test.ts": {
-    "comments/no-comments": {
-      "count": 2
-    }
-  },
-  "vite.config.ts": {
-    "comments/no-comments": {
-      "count": 9
     }
   }
 }

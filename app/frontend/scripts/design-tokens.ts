@@ -1,5 +1,5 @@
-// Writes src/design/tokens.css: Tailwind only generates classes it finds as literal text, and Frame and Text
-// build theirs at runtime, so every class the token maps can produce is listed here for each breakpoint.
+// Tailwind generates only the classes it finds whole in source files:
+// https://tailwindcss.com/docs/detecting-classes-in-source-files#dynamic-class-names
 import { breakpoints, frame, text } from '../src/design/tokens';
 
 const prefixes = ['', ...breakpoints.map((breakpoint) => `${breakpoint}:`)].join(',');

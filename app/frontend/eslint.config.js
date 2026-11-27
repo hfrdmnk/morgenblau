@@ -70,7 +70,6 @@ const skeletonRules = [
 export default defineConfig([
     globalIgnores(['dist']),
     {
-        // Inline disables only warn under noInlineConfig; the lint script's --max-warnings 0 makes them fail.
         linterOptions: { noInlineConfig: true },
     },
     {
@@ -134,9 +133,7 @@ export default defineConfig([
             ],
         },
     },
-    // Design-system exceptions. Every file here may write class strings; a growing list means a token or variant is missing.
     {
-        // Sizes and tones the Central glyphs, and swaps the sunrise and sunset glyphs by theme.
         files: ['src/components/icons.tsx'],
         rules: {
             'no-restricted-imports': 'off',
@@ -147,27 +144,22 @@ export default defineConfig([
         },
     },
     {
-        // api() itself, and tests that stub fetch beneath it.
         files: ['src/lib/api.ts', 'src/**/*.test.{ts,tsx}'],
         rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' },
     },
     {
-        // Frame and Text are where token props become the className they hand to the element.
         files: ['src/design/**'],
         rules: { 'design-system/no-style-props': 'off' },
     },
     {
-        // The rule tests hold the class strings they check the rules against.
         files: ['eslint/**'],
         rules: { 'design-system/token-classes': 'off' },
     },
     {
-        // Test harnesses render throwaway markup around the component under test; it never ships.
         files: ['src/**/*.test.{ts,tsx}'],
         rules: { 'design-system/no-raw-elements': 'off', 'design-system/no-style-props': 'off' },
     },
     {
-        // The primitives: the components that own class strings, held to the same tokens as everything else.
         files: ['src/components/ui/**'],
         rules: {
             'no-restricted-syntax': ['error', ...loadingRules],
