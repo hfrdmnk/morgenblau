@@ -73,6 +73,7 @@ func TestGateAdmitsOnlyAdminsToAdminPaths(t *testing.T) {
 		{path: "/admin", did: admin, wantStatus: 200, wantAdmin: true},
 		{path: "/api/digest", did: admin, wantStatus: 200},
 		{path: "/administrator", did: reader, wantStatus: 200},
+		{path: "/admin/report.csv", did: reader, wantStatus: 404},
 	} {
 		t.Run(tc.path+" "+tc.did, func(t *testing.T) {
 			sealer := newSealer(t)

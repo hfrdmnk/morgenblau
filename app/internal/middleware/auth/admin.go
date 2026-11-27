@@ -9,7 +9,6 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 )
 
-// Admins, unlike Allowlist, fails closed: an unset or empty ADMIN_DIDS admits nobody.
 type Admins map[syntax.DID]struct{}
 
 func LoadAdmins(getenv func(string) string) (Admins, error) {
@@ -33,7 +32,6 @@ func (a Admins) Includes(did syntax.DID) bool {
 	return ok
 }
 
-// IsAdminPath cleans first so a path ServeMux would redirect onto an admin route is gated too.
 func IsAdminPath(p string) bool {
 	p = path.Clean("/" + p)
 	for _, prefix := range []string{"/admin", "/api/admin"} {
@@ -46,12 +44,10 @@ func IsAdminPath(p string) bool {
 
 type adminKey struct{}
 
-// WithAdmin is for the gate and tests only; TestOnlyTheGateMarksAdmins keeps every other caller out.
 func WithAdmin(ctx context.Context) context.Context {
 	return context.WithValue(ctx, adminKey{}, true)
 }
 
-// IsAdmin reports whether the gate admitted this request to an admin path.
 func IsAdmin(ctx context.Context) bool {
 	v, _ := ctx.Value(adminKey{}).(bool)
 	return v

@@ -21,7 +21,6 @@ import (
 	"morgenblau/internal/oauth/cookie"
 )
 
-// memoryLocker is a small in-memory SessionLocker keyed by (did, sid).
 type memoryLocker struct {
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
@@ -44,7 +43,6 @@ func (l *memoryLocker) LockSession(did syntax.DID, sid string) func() {
 	return m.Unlock
 }
 
-// noopLocker satisfies SessionLocker without serialising, for tests that don't care about concurrency.
 type noopLocker struct{}
 
 func (noopLocker) LockSession(syntax.DID, string) func() { return func() {} }
@@ -76,7 +74,6 @@ func newSealer(t *testing.T) *cookie.Sealer {
 	return s
 }
 
-// passthroughNext records the request that reached it and returns 200.
 type passthroughNext struct {
 	hit   bool
 	ctx   context.Context
@@ -90,7 +87,6 @@ func (p *passthroughNext) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// setSession installs an authed session in the resumer and returns the cookie.
 func setSession(t *testing.T, sealer *cookie.Sealer, resumer *fakeResumer, did, sid string) *http.Cookie {
 	t.Helper()
 	rr := httptest.NewRecorder()
@@ -127,7 +123,6 @@ func TestMiddleware_Table(t *testing.T) {
 		{name: "static asset", path: "/assets/index-abc.js", method: "GET", wantCode: 200, wantNext: true},
 		{name: "favicon", path: "/favicon.svg", method: "GET", wantCode: 200, wantNext: true},
 
-		// Feed readers fetch generated web source feeds without a session.
 		{name: "generated feed unauthed", path: "/feed/abcdefghijklmnopqrstuvwxyz", method: "GET", wantCode: 200, wantNext: true},
 		{name: "generated feed authed", path: "/feed/abcdefghijklmnopqrstuvwxyz", method: "GET", authed: true, wantCode: 200, wantNext: true},
 		{name: "web feed unauthed", path: "/web/abcdefghijklmnopqrstuvwxyz", method: "GET", wantCode: 200, wantNext: true},
@@ -151,12 +146,10 @@ func TestMiddleware_Table(t *testing.T) {
 		{name: "unknown unauthed", path: "/anything", method: "GET", wantCode: 302, wantNext: false, wantLoc: "/login"},
 		{name: "unknown authed", path: "/anything", method: "GET", authed: true, wantCode: 200, wantNext: true},
 
-		// Gated API: 401, frontend needs a status code rather than a redirect.
-		{name: "api me unauthed", path: "/api/me", method: "GET", wantCode: 401, wantNext: false},
+		{name: "api me unauthed gets a status code, not a login redirect", path: "/api/me", method: "GET", wantCode: 401, wantNext: false},
 		{name: "api subscriptions unauthed", path: "/api/subscriptions", method: "GET", wantCode: 401, wantNext: false},
 
-		// Dotted API route values must not trip the static-asset heuristic.
-		{name: "dotted api path unauthed", path: "/api/example.json", method: "GET", wantCode: 401, wantNext: false},
+		{name: "dotted api path unauthed is not a static file", path: "/api/example.json", method: "GET", wantCode: 401, wantNext: false},
 		{name: "dotted api path authed", path: "/api/example.json", method: "GET", authed: true, wantCode: 200, wantNext: true},
 
 		{name: "api me authed", path: "/api/me", method: "GET", authed: true, wantCode: 200, wantNext: true},
@@ -190,7 +183,6 @@ func TestMiddleware_Table(t *testing.T) {
 	}
 }
 
-// bodyReader reads the body and records the error, so a test can observe the MaxBytesReader cap.
 type bodyReader struct {
 	err error
 }
@@ -204,7 +196,6 @@ func (b *bodyReader) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// The frontend reads every /api/ failure as JSON {code, message}; a plain-text 401 loses the code it keys off.
 func TestMiddleware_UnauthedAPIAnswersTheJSONErrorEnvelope(t *testing.T) {
 	m := New(&fakeResumer{sessions: map[string]*session.Session{}}, noopLocker{}, newSealer(t), nil, nil)
 	rr := httptest.NewRecorder()
@@ -221,7 +212,7 @@ func TestMiddleware_UnauthedAPIAnswersTheJSONErrorEnvelope(t *testing.T) {
 		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
-		t.Fatalf("body %q is not JSON: %v", rr.Body.String(), err)
+		t.Fatalf("body %q is not JSON: %v; the frontend reads every /api/ failure as the {code, message} envelope", rr.Body.String(), err)
 	}
 	if body.Code != "unauthenticated" || body.Message == "" {
 		t.Errorf("body = %+v, want code unauthenticated and a message", body)
@@ -352,7 +343,6 @@ func TestMiddleware_ResumeFailure_RedirectsAndClearsCookie(t *testing.T) {
 	}
 }
 
-// blockingResumer simulates a slow refresh, blocking until released, to assert max concurrent in-flight resumes.
 type blockingResumer struct {
 	mu               sync.Mutex
 	inFlight         int32
@@ -375,8 +365,6 @@ func (b *blockingResumer) ResumeSession(_ context.Context, _ syntax.DID, _ strin
 	return b.session, nil
 }
 
-// A mutating request holds the session lock across its handler so two never
-// overlap for the same session; otherwise both could refresh and one gets invalid_grant.
 func TestMiddleware_MutatingRequestsDoNotOverlapInNext(t *testing.T) {
 	sealer := newSealer(t)
 	resumer := &fakeResumer{sessions: map[string]*session.Session{}}
@@ -408,11 +396,10 @@ func TestMiddleware_MutatingRequestsDoNotOverlapInNext(t *testing.T) {
 	wg.Wait()
 
 	if overlapped.Load() {
-		t.Error("mutating handlers for the same session overlapped (lock released before next)")
+		t.Error("mutating handlers for the same session overlapped (lock released before next); indigo does not coalesce refreshes, so both could refresh and one would get invalid_grant")
 	}
 }
 
-// Read-only requests take no lock, so they never queue behind a slow mutating request for the same session.
 func TestMiddleware_GETNotBlockedBySlowMutating(t *testing.T) {
 	sealer := newSealer(t)
 	resumer := &fakeResumer{sessions: map[string]*session.Session{}}
@@ -454,7 +441,6 @@ func TestMiddleware_GETNotBlockedBySlowMutating(t *testing.T) {
 	close(releasePost)
 }
 
-// The lock keeps only one concurrent request inside ResumeSession at a time.
 func TestMiddleware_LockSerializesMutatingResume(t *testing.T) {
 	sealer := newSealer(t)
 	did, _ := syntax.ParseDID("did:plc:alice")
@@ -482,7 +468,6 @@ func TestMiddleware_LockSerializesMutatingResume(t *testing.T) {
 		}()
 	}
 
-	// Poll until the lock has let exactly one goroutine into resumer.
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		if atomic.LoadInt32(&resumer.inFlight) == 1 {
@@ -508,7 +493,6 @@ func TestMiddleware_LockSerializesMutatingResume(t *testing.T) {
 	}
 }
 
-// A transient (ctx.Canceled / DeadlineExceeded) error must leave the cookie intact so the next request can retry.
 func TestMiddleware_TransientErrorKeepsCookie(t *testing.T) {
 	sealer := newSealer(t)
 	resumer := &fakeResumer{sessions: map[string]*session.Session{}, err: context.Canceled}
@@ -533,7 +517,6 @@ func TestMiddleware_TransientErrorKeepsCookie(t *testing.T) {
 	}
 }
 
-// Read-only subscription routes skip the session lock, so a slow upstream fetch never stalls the reader's writes.
 func TestHoldsSessionLock_OnlyPDSWrites(t *testing.T) {
 	for path, want := range map[string]bool{
 		"/api/subscriptions":                 true,
@@ -545,7 +528,7 @@ func TestHoldsSessionLock_OnlyPDSWrites(t *testing.T) {
 		"/api/subscriptions/preview/article": false,
 	} {
 		if got := holdsSessionLock(httptest.NewRequest(http.MethodPost, path, nil)); got != want {
-			t.Errorf("POST %s holds lock = %v, want %v", path, got, want)
+			t.Errorf("POST %s holds lock = %v, want %v: only routes that write to the PDS hold it, so a slow upstream fetch never stalls the reader's writes", path, got, want)
 		}
 	}
 }

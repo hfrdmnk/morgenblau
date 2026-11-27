@@ -8,7 +8,6 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 )
 
-// A nil Allowlist leaves admission unrestricted; an empty non-nil list denies everyone.
 type Allowlist map[syntax.DID]struct{}
 
 func LoadAllowlist(getenv func(string) string) (Allowlist, error) {
