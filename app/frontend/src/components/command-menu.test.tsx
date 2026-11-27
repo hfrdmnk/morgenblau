@@ -29,7 +29,6 @@ function json(body: unknown) {
     return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
 }
 
-// The menu's own lists load on open; this reader follows nothing.
 function quietServer() {
     globalThis.fetch = Object.assign(
         async (url: Parameters<typeof fetch>[0]) => {
@@ -74,7 +73,6 @@ function SourcePage() {
             id: 'primary',
             group: 'Example Publication',
             label: 'Primary',
-            // Never settles, so every later Enter lands while the first write is still in flight.
             toggle: {
                 on: false,
                 set: (on) => {
@@ -92,7 +90,6 @@ function SourcePage() {
                 title: 'Tags',
                 tags: ['design'],
                 suggestionsPath: '/api/subscriptions/tags',
-                // A write with “weekend” waits until the test fails it, as a save that already toasted its own failure does.
                 save: (tags) => {
                     tagWrites.push(tags);
                     if (!tags.includes('weekend')) return Promise.resolve();

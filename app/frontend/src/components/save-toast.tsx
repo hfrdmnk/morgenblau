@@ -9,7 +9,6 @@ import { Text } from '@/design/text';
 import { useShortcuts } from '@/hooks/use-shortcuts';
 import type { EntrySave } from '@/lib/entry-save';
 
-// Tagging is offered, never asked for: the field opens on "Add tags" or T, so saving never takes the reader's keys.
 export function SaveToast({ save, onHold }: { save: EntrySave; onHold: (held: boolean) => void }) {
     const [open, setOpen] = useState(false);
     const input = useRef<HTMLInputElement>(null);

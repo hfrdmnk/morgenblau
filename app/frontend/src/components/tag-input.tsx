@@ -18,7 +18,6 @@ export function TagChips({
     inputRef: RefObject<HTMLInputElement | null>;
     onRemove: (tag: string) => void;
 }) {
-    // The removed chip's button unmounts, so focus moves to a neighbour first instead of dropping to the page.
     function remove(tag: string, button: HTMLButtonElement) {
         const buttons = [...(button.closest('ul')?.querySelectorAll('button') ?? [])];
         const index = buttons.indexOf(button);
@@ -88,7 +87,6 @@ export function TagInput({
     const inputId = useId();
     const hintId = useId();
     const anchor = useRef<HTMLDivElement>(null);
-    // Enter on a highlighted suggestion belongs to the combobox, which runs this input's handler first.
     const highlighted = useRef(false);
     const suggestions = useTagSuggestions(suggestionsPath, tags);
     const full = tags.length >= MAX_TAGS;

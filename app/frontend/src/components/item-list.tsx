@@ -31,7 +31,6 @@ export function ItemList({
     );
 }
 
-// mark hangs in the gutter left of the title on wide screens, so marked and unmarked titles share one edge.
 export function ListItem({
     title,
     href,
@@ -72,7 +71,6 @@ export function ListItem({
                             </Text>
                         </Frame>
                         {icon || meta ? (
-                            // The status inherits the line's size and tone, as the meta does.
                             <Text as="span" size="sm" tone="subtle">
                                 <Frame align="center" as="span" direction="row" gap="s" minWidth={0}>
                                     <SourceIcon src={icon} />

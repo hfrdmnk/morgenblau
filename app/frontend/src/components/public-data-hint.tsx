@@ -3,7 +3,6 @@ import { Frame } from '@/design/frame';
 import { Text } from '@/design/text';
 import { useAppProfile } from '@/hooks/use-app-profile';
 
-// centered: the hint under a sheet's add button, set a little apart from it.
 export function PublicDataHint({ centered = false }: { centered?: boolean }) {
     const hint = (
         <Text align={centered ? 'center' : undefined} size="xs" tone="subtle" wrap={centered ? 'balance' : 'pretty'}>

@@ -297,8 +297,10 @@ test('editing a channel followed without Shorts renames it and brings Shorts bac
 
     const name = document.querySelector<HTMLInputElement>('input[aria-label="Name"]')!;
     expect(name.value).toBe('Example Channel');
-    // The name sits in the header, so only its form owner lets Enter in it save.
-    expect(name.form?.contains(saveButton())).toBe(true);
+    expect(
+        name.form?.contains(saveButton()),
+        'The name sits in the header, so only its form owner lets Enter in it save.',
+    ).toBe(true);
     await act(async () => {
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
         setter.call(name, 'Example Videos');

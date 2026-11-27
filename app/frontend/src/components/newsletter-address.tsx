@@ -135,7 +135,6 @@ const COPY_ADDRESS_FAILURE = {
     description: 'Select the address and copy it manually.',
 };
 
-// The crossfade sizes its icon for a 20px slot; the copy button's icons stay at its 16px.
 function CopyGlyph() {
     return <CopyIcon size="md" />;
 }

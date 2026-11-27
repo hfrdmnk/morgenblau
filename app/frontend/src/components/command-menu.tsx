@@ -42,8 +42,6 @@ export function CommandMenu() {
     const [adding, setAdding] = useState<{ url: string; key: number } | null>(null);
     const [location] = useLocation();
     const popup = useRef<HTMLDivElement>(null);
-    // ⌘K has no trigger to return focus to, so closing returns it to whatever had it before the menu opened. With nothing
-    // focused, the opener is the body, and Base UI would focus its first tabbable child, the skip link.
     const opener = useRef<HTMLElement | null>(null);
     const enabled = location !== PATHS.login;
 
@@ -51,7 +49,6 @@ export function CommandMenu() {
         if (!enabled) return;
         function onKeyDown(event: KeyboardEvent) {
             if (!isCommandMenuKey(event)) return;
-            // Another open dialog keeps its keys, so the menu never stacks over a sheet.
             const target = event.target instanceof Element ? event.target : null;
             if (target?.closest('[role="dialog"], [role="alertdialog"]') && !popup.current?.contains(target)) return;
             event.preventDefault();
@@ -72,7 +69,6 @@ export function CommandMenu() {
                         details.cancel();
                         return;
                     }
-                    // Escape inside a step steps back out of it; only Escape at the top closes the menu.
                     if (!next && step && details.reason === 'escape-key') {
                         details.cancel();
                         setStep(null);
@@ -91,7 +87,6 @@ export function CommandMenu() {
                 >
                     <MenuBody
                         onAddSource={(url) => {
-                            // The sheet takes focus. An explicit finalFocus target would be focused even after that, pulling focus out of the sheet.
                             opener.current = null;
                             setOpen(false);
                             setAdding((previous) => ({ url, key: (previous?.key ?? 0) + 1 }));
@@ -108,7 +103,6 @@ export function CommandMenu() {
     );
 }
 
-// The menu lives outside AppShell, on the reader too, so its add sheet loads the profile its newsletter address waits on.
 function AddSourceSheet({ initialUrl }: { initialUrl: string }) {
     const [profile, setProfile] = useState<AppProfileState>({ kind: 'loading' });
     useEffect(() => {
@@ -138,7 +132,6 @@ function MenuBody({
 }: MenuProps & { step: CommandStep | null; onAddSource: (url: string) => void }) {
     const registered = useSyncExternalStore(pageCommands.subscribe, pageCommands.get);
     const global = useGlobalCommands(onAddSource);
-    // A flipped toggle shows its new state at once; the page catches up when its data reloads.
     const [flipped, setFlipped] = useState<Map<string, boolean>>(new Map());
     const run = useRun(props);
 
@@ -173,7 +166,6 @@ type Run = ReturnType<typeof useRun>;
 
 function useRun({ onClose, onPending }: MenuProps) {
     const [state, setState] = useState<{ pending: boolean; error: string }>({ pending: false, error: '' });
-    // A second Enter can land before the pending render, so a ref, not state, keeps a command from running twice.
     const inFlight = useRef(false);
     async function run(work: () => Outcome | Promise<unknown>, { close = true } = {}) {
         if (inFlight.current) return false;
@@ -210,15 +202,14 @@ function problemText(failure: unknown, fallback: string): string {
     return describeMutationError(failure, fallback);
 }
 
-// A row read from the query itself renders only when it applies, so it always leads.
 const FROM_QUERY = new Set(['create-tag']);
 
-// Matching reads the keywords, never the row's id. cmdk's fuzzy score lets letters scattered across a title match; those score
-// under 0.05, while word starts and substrings score far higher, so the scattered ones are dropped.
+const SCATTERED_LETTERS_SCORE = 0.05;
+
 function filter(value: string, search: string, keywords?: string[]) {
     if (FROM_QUERY.has(value)) return 1;
     const score = defaultFilter(keywords?.join(' ') ?? '', search);
-    return score < 0.05 ? 0 : score;
+    return score < SCATTERED_LETTERS_SCORE ? 0 : score;
 }
 
 function Shell({
@@ -242,11 +233,9 @@ function Shell({
 }) {
     const input = useRef<HTMLInputElement>(null);
     const list = useRef<HTMLDivElement>(null);
-    // A step opens on its current value, selected so typing replaces it.
     useEffect(() => input.current?.select(), []);
-    // A new query selects the first row, but cmdk 1.1.1 first scrolls to the row selected before it, which still carries
-    // aria-selected, so the list lands partway down. cmdk does that in a render of its own after this one; the frame
-    // callback runs after it and before paint.
+    // cmdk scrolls to the row selected before a new query, which still carries aria-selected:
+    // https://github.com/dip/cmdk/issues/389
     useEffect(() => {
         const frame = requestAnimationFrame(() => {
             list.current!.scrollTop = 0;
@@ -324,7 +313,6 @@ function Keys({ keys }: { keys: string }) {
     );
 }
 
-// What the list says in place of rows, when there are none to show.
 function ListNote({ children }: { children: ReactNode }) {
     return (
         <Frame paddingX="m" paddingY="2xl">
@@ -458,8 +446,6 @@ function RootView({
     );
 }
 
-// The top level ranks its own rows: cmdk re-sorts groups only on a keystroke, so a group that mounts mid-search, such as
-// the sources, would keep its mount position under a weaker match.
 function rankedGroups(commands: Command[], query: string) {
     const searching = query.trim() !== '';
     const groups = new Map<string, { command: Command; score: number }[]>();
@@ -470,7 +456,6 @@ function rankedGroups(commands: Command[], query: string) {
             : 1;
         if (score > 0) groups.set(command.group, [...(groups.get(command.group) ?? []), { command, score }]);
     }
-    // Without a query the page's own commands come first, then navigation, then actions; with one, the best match leads.
     const rank = (group: string) => (group === GO_TO ? 1 : group === ACTIONS ? 2 : 0);
     const best = (group: string) => Math.max(...groups.get(group)!.map(({ score }) => score));
     return [...groups.keys()]
@@ -571,7 +556,6 @@ function ChoiceStep({ step, run, back }: StepProps<'choice'>) {
     );
 }
 
-// Each tag change saves on its own, in order, so the list can be edited without leaving the menu.
 function TagsStep({ step, run, back }: StepProps<'tags'>) {
     const [query, setQuery] = useState('');
     const { tags, change } = useTagEdits(step, run);
@@ -610,7 +594,6 @@ function TagsStep({ step, run, back }: StepProps<'tags'>) {
     );
 }
 
-// A failure puts the list back to what last saved and drops the edits queued behind it, which were built on the failed one.
 function useTagEdits(step: Extract<CommandStep, { kind: 'tags' }>, run: Run) {
     const [tags, setTags] = useState(step.tags);
     const confirmed = useRef(step.tags);
@@ -634,7 +617,6 @@ function useTagEdits(step: Extract<CommandStep, { kind: 'tags' }>, run: Run) {
     return { tags, change };
 }
 
-// The source's own tags first, then the reader's other tags as suggestions.
 function useOfferedTags(path: string, tags: string[]): string[] {
     const suggestions = useSources<{ tags: string[] }>(path);
     const chosen = new Set(tags.map((tag) => tag.toLowerCase()));

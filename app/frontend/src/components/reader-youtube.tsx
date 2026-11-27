@@ -11,7 +11,6 @@ import { useYouTubePlayer, youtubeEmbedURL, type YouTubePlayer } from '@/hooks/u
 import { api } from '@/lib/api';
 import { activeIndex, formatTimestamp, groupCues, type Transcript, type TranscriptParagraph } from '@/lib/transcript';
 
-// The player sticks to the top while it plays so the transcript can be read beneath it; its slot keeps its place, so nothing shifts.
 export function ReaderYouTube({ entrySlug, videoID, title }: { entrySlug: string; videoID: string; title: string }) {
     const frame = useRef<HTMLIFrameElement>(null);
     const playerBox = useRef<HTMLDivElement>(null);
@@ -42,7 +41,6 @@ export function ReaderYouTube({ entrySlug, videoID, title }: { entrySlug: string
     );
 }
 
-// A missing or failed transcript renders nothing: the video stays exactly as it was without one.
 function useTranscript(entrySlug: string): Transcript | null {
     const [transcript, setTranscript] = useState<Transcript | null>(null);
     useEffect(() => {
@@ -69,14 +67,12 @@ function ReaderTranscript({
 }) {
     const [font] = useReaderFont();
     const list = useRef<HTMLOListElement>(null);
-    // Nothing is marked until the video has started, so an untouched transcript reads as plain text.
     const started = player.playing || player.currentTimeMs > 0;
     const active = useMemo(
         () => (started ? activeIndex(paragraphs, player.currentTimeMs) : -1),
         [paragraphs, started, player.currentTimeMs],
     );
     const previous = useRef(active);
-    // Scrolling waits for playback: a seek moves the time before the player pins, and scrolling the unpinned player away stops it from starting.
     useEffect(() => {
         const before = previous.current;
         previous.current = active;
@@ -93,7 +89,6 @@ function ReaderTranscript({
                     {kind === 'asr' ? <Text as="span">Auto-generated</Text> : null}
                 </Frame>
             </Text>
-            {/* The arrows walk the passages and Enter or a click plays from one, as posts open in a list; j and k stay with stepping entries. */}
             <PostList arrowsOnly>
                 <TranscriptList font={font} ref={list} stuck={player.playing}>
                     {paragraphs.map((paragraph, index) => (
@@ -113,13 +108,11 @@ function ReaderTranscript({
     );
 }
 
-// Follow playback only while the reader is following it: their line is on screen. Scrolling away is never undone.
 function follow(items: HTMLCollection, before: number, active: number, stuck: HTMLElement | null) {
     if (before === active) return uncover(items[active], stuck);
     if (before < 0 || isOnScreen(items[before], stuck)) reveal(items[active], stuck);
 }
 
-// Centres the passage in the part of the window the pinned player leaves free.
 function reveal(item: Element, playerBox: HTMLElement | null) {
     const covered = playerBox?.offsetHeight ?? 0;
     const free = window.innerHeight - covered;
@@ -129,7 +122,6 @@ function reveal(item: Element, playerBox: HTMLElement | null) {
     window.scrollTo({ top: window.scrollY + rect.top - offset, behavior: reduce ? 'auto' : 'smooth' });
 }
 
-// Playback just started or resumed, pinning the player over the top of the page, which can cover the reader's passage.
 function uncover(item: Element, stuck: HTMLElement | null) {
     if (stuck && item.getBoundingClientRect().top < stuck.getBoundingClientRect().bottom) reveal(item, stuck);
 }

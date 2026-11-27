@@ -15,7 +15,6 @@ import type { FeedSource } from '@/hooks/use-sources';
 
 const RELATIVE = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
 
-// waitingChannels is how many of the reader's YouTube channels wait on the same outage, when the caller knows.
 export function FeedHealth({
     source,
     labelled = false,
@@ -64,7 +63,6 @@ export function FeedHealth({
 }
 
 function YouTubeOutageStatus({ nextFetchAt, waitingChannels = 0 }: { nextFetchAt?: string; waitingChannels?: number }) {
-    // Read when the popover opens, since render must not read the clock.
     const [openedAt, setOpenedAt] = useState(0);
     return (
         <Popover
@@ -107,7 +105,6 @@ export function GeneratedNote({ source }: { source: FeedSource }) {
     let note = 'This site blocks feed readers';
     if (generated.health !== 'blocked_by_site')
         note = generated.healthReason ? `Needs attention: ${generated.healthReason}` : 'Needs attention';
-    // A note sits a little under whatever it annotates: a source's facts, or a row in the source list.
     return (
         <Frame paddingTop="xs">
             <Text size="xs" tone="muted">

@@ -49,7 +49,6 @@ const tones = {
     'source-generated': 'text-source-generated',
 };
 
-// Without a size, an icon takes the one its control sets, such as Button's 16px.
 export type IconProps = Omit<CentralIconProps, 'className' | 'style' | 'size'> & {
     size?: keyof typeof sizes;
     tone?: keyof typeof tones;
@@ -125,7 +124,6 @@ export function DigestActiveIcon({ size, tone, spin, rotate, ...props }: IconPro
 
 const markHeights = { md: 'h-4', xl: 'h-5', '2xl': 'h-6' };
 
-// Sized by height, on the icon scale; the width follows the mark's proportions.
 export function MorgenblauMark({
     size = '2xl',
     ...props

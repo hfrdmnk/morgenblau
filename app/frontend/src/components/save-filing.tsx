@@ -11,13 +11,11 @@ import { Text } from '@/design/text';
 import { useSaveState } from '@/hooks/use-entry-save';
 import type { EntrySave } from '@/lib/entry-save';
 
-// The end of a saved article is where it gets filed; an unsaved one ends without asking.
 export function SaveFiling({ save }: { save: EntrySave }) {
     const { saved, tags } = useSaveState(save);
     return saved ? <SavedFiling save={save} tags={tags} /> : null;
 }
 
-// Unmounts with the save, so a re-save starts closed however it was removed.
 function SavedFiling({ save, tags }: { save: EntrySave; tags: string[] }) {
     const [editing, setEditing] = useState(false);
     const input = useRef<HTMLInputElement>(null);

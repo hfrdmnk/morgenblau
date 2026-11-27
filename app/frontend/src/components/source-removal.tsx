@@ -21,7 +21,6 @@ import {
     type EditableSource,
 } from '@/lib/source-edit';
 
-// onChanged refreshes the page's copy; a source that vanished closes its dialog so the refresh can drop it.
 type DialogProps = { source: EditableSource; open: boolean; onClose: () => void; onChanged: () => void };
 type MutationError = { message: string; reauth: boolean };
 
@@ -119,7 +118,6 @@ export function RemoveDialog(
     return <RemovalDialog {...props} confirm={() => removeSource(props.source)} copy={copy} failed={copy.failed} />;
 }
 
-// The sender refused or never offered one-click unsubscribe; nothing changed, so the reader can still delete by hand.
 function unsubscribeRefused(error: unknown): boolean {
     return error instanceof ApiError && (error.status === 502 || error.status === 422);
 }

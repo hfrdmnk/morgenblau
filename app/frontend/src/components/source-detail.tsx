@@ -55,7 +55,6 @@ export function SourceHeader({
     menu: ReactNode;
 }) {
     return (
-        // Each line keeps its own distance from the one above: identity and health stand apart, facts tuck under.
         <TooltipProvider>
             <Frame as="header" gap="l" paddingBottom="5xl">
                 <Frame>

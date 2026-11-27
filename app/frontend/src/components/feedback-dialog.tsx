@@ -26,7 +26,6 @@ const SEND_SHORTCUT = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ Enter' :
 
 type Attachment = { id: string; file: File; url: string };
 
-// One composer surface, like a chat input: thumbnails above the text, attach and send below it. The draft outlives a close.
 export function FeedbackDialog() {
     const [open, setOpen] = useState(false);
     const [message, setMessage] = useState('');
@@ -146,7 +145,6 @@ export function FeedbackDialog() {
     );
 }
 
-// Takes images in order until the count or size limit; the first refusal explains why the rest stayed out.
 function acceptImages(current: Attachment[], incoming: File[]) {
     const images = incoming.filter((file) => FEEDBACK_IMAGE_TYPES.includes(file.type));
     const accepted: File[] = [];
@@ -167,7 +165,6 @@ function acceptImages(current: Attachment[], incoming: File[]) {
     };
 }
 
-// Thumbnails above the text, the way a chat composer shows what it will send.
 function AttachmentList({
     attachments,
     disabled,
@@ -267,7 +264,6 @@ function ComposerActions({
     );
 }
 
-// Images arrive by paste or drop anywhere in the dialog. Drags count nested enter/leave pairs, since dragging over a child fires leave on its parent.
 function useImageIntake(add: (files: Iterable<File>) => void) {
     const [depth, setDepth] = useState(0);
     const carriesFiles = (event: DragEvent) => event.dataTransfer.types.includes('Files');
