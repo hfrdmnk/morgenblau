@@ -9,7 +9,6 @@ import (
 	"testing"
 )
 
-// roundTripperFunc lets us hand-roll responses without spinning up a server.
 type roundTripperFunc func(*http.Request) *http.Response
 
 func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -72,7 +71,6 @@ func TestResolve_PassthroughDirectFeedURL(t *testing.T) {
 }
 
 func TestResolve_PassthroughExtractsCanonicalTitle(t *testing.T) {
-	// Mastodon-style direct RSS feed; body parse should yield <channel><title>.
 	const body = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
@@ -126,7 +124,7 @@ func TestResolve_PassthroughSiteURLComesFromTheFeedLink(t *testing.T) {
 			want:        "https://blog.example.com/",
 		},
 		{
-			name:        "no site link stays empty",
+			name:        "no site link stays empty, since the feed URL is no site",
 			contentType: "application/rss+xml",
 			body:        `<?xml version="1.0"?><rss version="2.0"><channel><title>Example Blog</title></channel></rss>`,
 			want:        "",
@@ -164,14 +162,13 @@ const ytAtomFeed = `<?xml version="1.0" encoding="UTF-8"?>
 </feed>`
 
 func TestResolve_YouTube_ChannelDirect(t *testing.T) {
-	// /channel/<id> skips the HTML scrape but still fetches the feed to fill in the title.
 	var feedHits int
 	finder := New(&http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
 		if strings.Contains(r.URL.RawQuery, "channel_id=UCabcdefghijklmnopqrstuv") {
 			feedHits++
 			return resp(ytAtomFeed, "application/atom+xml")
 		}
-		t.Fatalf("unexpected request: %s", r.URL.String())
+		t.Fatalf("unexpected request %s: a /channel/<id> URL names its feed, so only the feed is fetched, for its title", r.URL.String())
 		return nil
 	})})
 	cands, err := finder.Resolve(context.Background(), "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")
@@ -199,8 +196,7 @@ func TestSameYouTubeFeedURLs_NameTheChannelFeedAndItsLongFormFeed(t *testing.T) 
 	for raw, want := range map[string]string{
 		all:      both,
 		longForm: both,
-		"https://youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv": both,
-		// Shorts-only and live-only uploads playlists are different feeds.
+		"https://youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv":        both,
 		"https://www.youtube.com/feeds/videos.xml?playlist_id=UUSHabcdefghijklmnopqrstuv": "[]",
 		"https://www.youtube.com/feeds/videos.xml?playlist_id=PLabcdefghijklmnopqrstuv":   "[]",
 		"https://www.youtube.com/feeds/videos.xml?channel_id=UCshort":                     "[]",
@@ -208,7 +204,7 @@ func TestSameYouTubeFeedURLs_NameTheChannelFeedAndItsLongFormFeed(t *testing.T) 
 		"https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv":                        "[]",
 	} {
 		if got := fmt.Sprint(SameYouTubeFeedURLs(raw)); got != want {
-			t.Errorf("SameYouTubeFeedURLs(%q) = %s, want %s", raw, got, want)
+			t.Errorf("SameYouTubeFeedURLs(%q) = %s, want %s: only the UULF uploads playlist, which leaves out Shorts and live streams, is the same channel; UUSH and other playlists are different feeds", raw, got, want)
 		}
 	}
 }
@@ -230,7 +226,6 @@ func TestYouTubeChannelURL_NamesTheChannelBehindEitherFeed(t *testing.T) {
 }
 
 func TestYouTubeHandleURL_ReadsTheChannelsOwnHandle(t *testing.T) {
-	// Featured channels appear on the page too, as canonicalBaseUrl, before the channel's own metadata.
 	const page = `<script>{"canonicalBaseUrl":"/@featured"}{"channelMetadataRenderer":{"vanityChannelUrl":"http://www.youtube.com/@example","ownerUrls":["http://www.youtube.com/@example"]}}</script>`
 	for name, tc := range map[string]struct {
 		status int
@@ -252,14 +247,13 @@ func TestYouTubeHandleURL_ReadsTheChannelsOwnHandle(t *testing.T) {
 			})}
 			got, err := YouTubeHandleURL(context.Background(), client, "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")
 			if err != nil || got != tc.want {
-				t.Errorf("YouTubeHandleURL = %q, %v, want %q", got, err, tc.want)
+				t.Errorf("YouTubeHandleURL = %q, %v, want %q: the handle is the channel's own vanityChannelUrl, since featured channels appear on the page as canonicalBaseUrl before it", got, err, tc.want)
 			}
 		})
 	}
 }
 
 func TestYouTubeChannelGone_ReadsTheChannelPagesOwnVerdict(t *testing.T) {
-	// YouTube answers 200 for a channel that does not exist, with an error alert in place of the channel's metadata.
 	const gone = `<script>{"alerts":[{"alertRenderer":{"type":"ERROR","text":{"simpleText":"This channel does not exist."}}}]}</script>`
 	const live = `<script>{"alerts":[{"alertRenderer":{"type":"ERROR","text":{"simpleText":"Something went wrong."}}}]}{"channelMetadataRenderer":{"vanityChannelUrl":"http://www.youtube.com/@example"}}</script>`
 	for name, tc := range map[string]struct {
@@ -283,14 +277,13 @@ func TestYouTubeChannelGone_ReadsTheChannelPagesOwnVerdict(t *testing.T) {
 			})}
 			got, err := YouTubeChannelGone(context.Background(), client, "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")
 			if err != nil || got != tc.want {
-				t.Errorf("YouTubeChannelGone = %v, %v, want %v", got, err, tc.want)
+				t.Errorf("YouTubeChannelGone = %v, %v, want %v: YouTube answers a channel that does not exist with 200, an error alert and no channel metadata, so an error status proves nothing", got, err, tc.want)
 			}
 		})
 	}
 }
 
 func TestResolve_YouTube_HandlePath_ConsentBypass(t *testing.T) {
-	// YouTube's consent-bypass page (no cookies) embeds the channel ID only in canonical/og:url/feed-link attrs, not the JS blob.
 	const channelHTML = `<html><head>
 <link rel="canonical" href="https://www.youtube.com/channel/UCwxyzABCDEFGHIJKLMNopq">
 <link rel="alternate" type="application/rss+xml" title="RSS" href="https://www.youtube.com/feeds/videos.xml?channel_id=UCwxyzABCDEFGHIJKLMNopq">
@@ -308,7 +301,7 @@ func TestResolve_YouTube_HandlePath_ConsentBypass(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(cands) != 1 || !strings.Contains(cands[0].FeedURL, "channel_id=UCwxyzABCDEFGHIJKLMNopq") {
-		t.Fatalf("cands = %+v", cands)
+		t.Fatalf("cands = %+v, want the channel's feed: YouTube's cookie-less consent-bypass page names the channel only in its canonical and feed links, not in channelId JSON", cands)
 	}
 	if cands[0].Title != "Aaron Francis" {
 		t.Errorf("Title = %q, want %q", cands[0].Title, "Aaron Francis")
@@ -323,7 +316,6 @@ func TestResolve_YouTube_HandlePath(t *testing.T) {
 		if strings.HasPrefix(r.URL.Path, "/feeds/videos.xml") {
 			return resp(feedXML, "application/atom+xml")
 		}
-		// Real YouTube pages embed channelId in JSON; mimic that.
 		return resp(channelHTML, "text/html")
 	})})
 	cands, err := finder.Resolve(context.Background(), "https://www.youtube.com/@example-creator")
@@ -362,7 +354,6 @@ func TestResolve_YouTube_FeedFetchFailure_StillReturnsCandidate(t *testing.T) {
 }
 
 func TestResolve_YouTube_HandlePath_FirstMatchWins(t *testing.T) {
-	// Pins the regex contract: canonical link/og:url/feed link precede user content like an embed pointing at another channel.
 	const channelHTML = `<html><head>
 <link rel="canonical" href="https://www.youtube.com/channel/UCcanonicalAAAAAAAAAAAA">
 <link rel="alternate" type="application/rss+xml" href="https://www.youtube.com/feeds/videos.xml?channel_id=UCcanonicalAAAAAAAAAAAA">
@@ -374,7 +365,7 @@ func TestResolve_YouTube_HandlePath_FirstMatchWins(t *testing.T) {
 	finder := New(&http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
 		if strings.HasPrefix(r.URL.Path, "/feeds/videos.xml") {
 			if !strings.Contains(r.URL.RawQuery, "channel_id=UCcanonicalAAAAAAAAAAAA") {
-				t.Fatalf("wrong channel picked: %s", r.URL.RawQuery)
+				t.Fatalf("wrong channel picked: %s; the first channel ID on the page is the channel's own, since its canonical and feed links precede user content such as links to other channels", r.URL.RawQuery)
 			}
 			return resp(feedXML, "application/atom+xml")
 		}
@@ -390,9 +381,7 @@ func TestResolve_YouTube_HandlePath_FirstMatchWins(t *testing.T) {
 }
 
 func TestResolve_YouTube_HandlePath_NonOK_NoCandidate(t *testing.T) {
-	// A non-2xx response must not feed the regex; falls through to generic resolution.
 	finder := New(&http.Client{Transport: roundTripperFunc(func(_ *http.Request) *http.Response {
-		// Error page happens to mention a UC… string but must be ignored.
 		return &http.Response{
 			StatusCode: 404,
 			Header:     http.Header{"Content-Type": []string{"text/html"}},
@@ -403,9 +392,8 @@ func TestResolve_YouTube_HandlePath_NonOK_NoCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Falls through to generic link-rel-alternate path, which finds nothing.
 	if len(cands) != 0 {
-		t.Errorf("expected 0 candidates, got %+v", cands)
+		t.Errorf("cands = %+v, want none: an error page can mention a UC… string, so only a 2xx channel page is read for the channel ID", cands)
 	}
 }
 
@@ -425,7 +413,6 @@ func TestResolve_SendsMorgenblauUserAgent(t *testing.T) {
 }
 
 func TestResolve_YouTube_SendsMorgenblauUserAgent(t *testing.T) {
-	// Handle-path resolution hits both the channel-scrape request and the feed-title fetch.
 	var gotUAs []string
 	finder := New(&http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
 		gotUAs = append(gotUAs, r.Header.Get("User-Agent"))
@@ -439,7 +426,7 @@ func TestResolve_YouTube_SendsMorgenblauUserAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(gotUAs) != 2 {
-		t.Fatalf("requests made = %d, want 2", len(gotUAs))
+		t.Fatalf("requests made = %d, want 2: the channel page and the feed for its title", len(gotUAs))
 	}
 	for _, ua := range gotUAs {
 		if !strings.Contains(ua, "Morgenblau") {
@@ -472,6 +459,22 @@ func TestIsYouTubeFeedURL_MatchesTheOutageCount(t *testing.T) {
 	} {
 		if got := IsYouTubeFeedURL(raw); got != want {
 			t.Errorf("IsYouTubeFeedURL(%q) = %v, want %v", raw, got, want)
+		}
+	}
+}
+
+func TestYouTubeFeedsDown_WhenAtLeastHalfAndMoreThanAFewFail(t *testing.T) {
+	for _, tc := range []struct {
+		total, failing int64
+		want           bool
+	}{
+		{total: 10, failing: 5, want: true},
+		{total: 10, failing: 4, want: false},
+		{total: 3, failing: 3, want: true},
+		{total: 2, failing: 2, want: false},
+	} {
+		if got := YouTubeFeedsDown(tc.total, tc.failing); got != tc.want {
+			t.Errorf("YouTubeFeedsDown(%d, %d) = %v, want %v: an outage fails at least half the followed YouTube feeds at once, and a few dead channels on a small server are no outage", tc.total, tc.failing, got, tc.want)
 		}
 	}
 }

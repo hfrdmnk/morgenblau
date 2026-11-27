@@ -15,12 +15,11 @@ const (
 	handlePub = "at://blog.example.test/site.standard.publication/3pub"
 )
 
-// fakeStandard keys publications by the requested uri (handle or DID form) but returns them DID-normalized, mirroring the real client.
 type fakeStandard struct {
-	pubs         map[string]*standardfeed.Publication
-	docs         map[string]*standardfeed.Document
-	wellKnown    map[string]string // origin → publication at-uri
-	wellKnownErr error
+	pubs              map[string]*standardfeed.Publication
+	docs              map[string]*standardfeed.Document
+	wellKnownByOrigin map[string]string
+	wellKnownErr      error
 }
 
 func (f *fakeStandard) GetPublication(_ context.Context, uri string) (*standardfeed.Publication, error) {
@@ -41,7 +40,7 @@ func (f *fakeStandard) FetchWellKnown(_ context.Context, siteURL string) (string
 	if f.wellKnownErr != nil {
 		return "", f.wellKnownErr
 	}
-	return f.wellKnown[siteURL], nil
+	return f.wellKnownByOrigin[siteURL], nil
 }
 
 func normalizedPub() *standardfeed.Publication {
@@ -62,8 +61,8 @@ func htmlTransport(t *testing.T, body string) HTTPDoer {
 
 func TestResolve_WellKnownHit_MergesWithLinkRels(t *testing.T) {
 	std := &fakeStandard{
-		pubs:      map[string]*standardfeed.Publication{pubURI: normalizedPub()},
-		wellKnown: map[string]string{"https://example.test": pubURI},
+		pubs:              map[string]*standardfeed.Publication{pubURI: normalizedPub()},
+		wellKnownByOrigin: map[string]string{"https://example.test": pubURI},
 	}
 	finder := New(htmlTransport(t, htmlWithFeeds)).WithStandardResolver(std)
 
@@ -88,7 +87,7 @@ func TestResolve_WellKnownHit_MergesWithLinkRels(t *testing.T) {
 
 func TestResolve_WellKnownMissOrError_RSSOnly(t *testing.T) {
 	cases := map[string]*fakeStandard{
-		"miss":            {wellKnown: map[string]string{}},
+		"miss":            {wellKnownByOrigin: map[string]string{}},
 		"transport error": {wellKnownErr: errors.New("timeout")},
 	}
 	for name, std := range cases {
@@ -112,9 +111,8 @@ func TestResolve_WellKnownMissOrError_RSSOnly(t *testing.T) {
 
 func TestResolve_ATURIPassthrough_Publication(t *testing.T) {
 	std := &fakeStandard{pubs: map[string]*standardfeed.Publication{pubURI: normalizedPub()}}
-	// Any HTTP request here would be a bug; at-uris resolve via the PDS client.
 	finder := New(&http.Client{Transport: roundTripperFunc(func(r *http.Request) *http.Response {
-		t.Fatalf("unexpected HTTP request: %s", r.URL)
+		t.Fatalf("unexpected HTTP request %s: an at-uri resolves through the PDS client, never over HTTP", r.URL)
 		return nil
 	})}).WithStandardResolver(std)
 
@@ -155,6 +153,14 @@ func TestResolve_ATURIPassthrough_LooseDocumentNoCandidate(t *testing.T) {
 	}
 	if len(cands) != 0 {
 		t.Fatalf("loose document must yield no candidates: %+v", cands)
+	}
+}
+
+func TestResolve_ATURIPassthroughThatFailsIsAnError(t *testing.T) {
+	finder := New(http.DefaultClient).WithStandardResolver(&fakeStandard{})
+
+	if cands, err := finder.Resolve(context.Background(), pubURI); err == nil {
+		t.Errorf("Resolve = %+v, nil, want the lookup's error: a pasted at-uri is asked for explicitly, so unlike the best-effort probes it says why it failed", cands)
 	}
 }
 
@@ -207,14 +213,13 @@ func TestResolve_ArticleDocLinkTag_ResolvesPublication(t *testing.T) {
 }
 
 func TestResolve_WellKnownAndDocLink_DedupeByNormalizedURI(t *testing.T) {
-	// Well-known returns the handle-form uri, the document's site the DID-form; both normalize to the same publication.
 	std := &fakeStandard{
 		pubs: map[string]*standardfeed.Publication{
 			pubURI:    normalizedPub(),
 			handlePub: normalizedPub(),
 		},
-		docs:      map[string]*standardfeed.Document{docURI: {URI: docURI, Site: pubURI, Title: "Post"}},
-		wellKnown: map[string]string{"https://blog.example.test": handlePub},
+		docs:              map[string]*standardfeed.Document{docURI: {URI: docURI, Site: pubURI, Title: "Post"}},
+		wellKnownByOrigin: map[string]string{"https://blog.example.test": handlePub},
 	}
 	finder := New(htmlTransport(t, htmlWithDocLink)).WithStandardResolver(std)
 
@@ -229,7 +234,7 @@ func TestResolve_WellKnownAndDocLink_DedupeByNormalizedURI(t *testing.T) {
 		}
 	}
 	if standard != 1 {
-		t.Fatalf("standardfeed candidates = %d, want deduped 1: %+v", standard, cands)
+		t.Fatalf("standardfeed candidates = %d, want 1: well-known names the publication by handle and the document's site by DID, and both are one publication: %+v", standard, cands)
 	}
 }
 

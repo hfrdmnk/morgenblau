@@ -20,7 +20,6 @@ type page struct {
 	redirectTo  string
 }
 
-// siteServer serves fixed pages by path, 404s everything else, and records every request.
 type siteServer struct {
 	*httptest.Server
 	mu       sync.Mutex
@@ -212,7 +211,6 @@ func TestResolve_RefusedListingStillFindsTheRootFeed(t *testing.T) {
 }
 
 func TestResolve_ProbeMustParseAsAFeed(t *testing.T) {
-	// The content type claims RSS, but the body is the site's HTML shell.
 	srv := newSiteServer(t, map[string]page{
 		"/blog": htmlPage(`<html><body><a href="/feed">RSS</a>` + listingPosts + `</body></html>`),
 		"/feed": {contentType: "application/rss+xml", body: `<html><body>Our newest posts</body></html>`},
@@ -223,7 +221,7 @@ func TestResolve_ProbeMustParseAsAFeed(t *testing.T) {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if cands != nil {
-		t.Errorf("cands = %+v, want nil", cands)
+		t.Errorf("cands = %+v, want nil: sites serve their HTML shell under feed paths and feed content types, so only a body that parses as a feed counts", cands)
 	}
 	if !srv.requested("/feed") {
 		t.Error("/feed was never probed")
@@ -301,7 +299,29 @@ func TestResolve_OverlapTiePrefersAFeedThePageLinks(t *testing.T) {
 
 	got := resolveOne(t, srv.URL+"/blog")
 	if got.FeedURL != srv.URL+"/s/everything.xml" {
-		t.Errorf("FeedURL = %q, want the page-linked feed", got.FeedURL)
+		t.Errorf("FeedURL = %q, want the page-linked feed: on an overlap tie a feed the page points at beats a guessed path", got.FeedURL)
+	}
+}
+
+func TestResolve_AGuessedPathThePageAlsoLinksKeepsTheLinkedRank(t *testing.T) {
+	srv := newSiteServer(t, map[string]page{
+		"/blog":    htmlPage(`<html><body><a href="/rss.xml">RSS</a>` + listingPosts + `</body></html>`),
+		"/rss.xml": rssPage("Example Publication"),
+		"/rss":     rssPage("Example Short"),
+	})
+
+	got := resolveOne(t, srv.URL+"/blog")
+	if got.FeedURL != srv.URL+"/rss.xml" {
+		t.Errorf("FeedURL = %q, want the linked /rss.xml over the shorter guessed /rss: a URL the page links and the finder also guesses keeps the page's stronger source, so page hints are probed before guessed paths", got.FeedURL)
+	}
+}
+
+func TestResolve_AnUnreachableSiteIsAnError(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	srv.Close()
+
+	if cands, err := discoverFinder().Resolve(context.Background(), srv.URL+"/blog"); err == nil {
+		t.Errorf("Resolve = %+v, nil, want an error: a site that does not answer is a failure, and only a page that answers without a feed is unresolvable", cands)
 	}
 }
 

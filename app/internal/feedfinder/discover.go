@@ -20,14 +20,10 @@ import (
 )
 
 const (
-	// probeConcurrency keeps one paste from hammering a single site.
 	probeConcurrency = 4
-	// probeBudget caps the whole probe phase because a paste is interactive.
-	probeBudget = 10 * time.Second
-	// maxHintProbes bounds page-supplied URLs, since a page can mention "feed" in hundreds of links.
-	maxHintProbes = 12
-	// minPostLinks is how many content links a listing needs before a feed sharing none of them counts as another stream.
-	minPostLinks = 2
+	probeBudget      = 10 * time.Second
+	maxHintProbes    = 12
+	minListingPosts  = 2
 )
 
 var (
@@ -35,12 +31,10 @@ var (
 	rootOnlyFeedPaths = []string{"/feed/", "/blog/rss.xml", "/news/rss.xml"}
 )
 
-// feedWord needs rss, atom or feed as a whole word so "feedback" and "anatomy" never trigger a probe.
 var feedWord = regexp.MustCompile(`(?i)(?:^|[^a-z])(?:rss|atom|feeds?)(?:[^a-z]|$)`)
 
 type probeSource int
 
-// Order matters: on an overlap tie a feed the page itself points at beats a guessed path.
 const (
 	fromPage probeSource = iota
 	fromPath
@@ -60,8 +54,6 @@ type probedFeed struct {
 	itemHosts   map[string]struct{}
 }
 
-// discoverFeed finds a feed the page does not advertise with rel=alternate, or returns nil.
-// probed carries probe results across the pages of one Resolve, so a second page never refetches a URL.
 func (f *Finder) discoverFeed(ctx context.Context, doc *goquery.Document, base *url.URL, listingReadable bool, probed map[string]*probedFeed) *Candidate {
 	ctx, cancel := context.WithTimeout(ctx, probeBudget)
 	defer cancel()
@@ -90,10 +82,9 @@ func (f *Finder) discoverFeed(ctx context.Context, doc *goquery.Document, base *
 			strings.Compare(a.finalURL, b.finalURL),
 		)
 	})
-	// A guessed path whose posts never appear on a readable listing is another stream, such as a site-wide press feed;
-	// a client-rendered shell has no posts to share, so its silence says nothing.
-	if listingReadable && best.source == fromPath && len(best.itemKeys) > 0 && overlap(best) == 0 &&
-		contentLinks(doc, base, best.itemHosts) >= minPostLinks {
+	guessedFeedOfAnotherStream := listingReadable && best.source == fromPath && len(best.itemKeys) > 0 && overlap(best) == 0 &&
+		contentLinks(doc, base, best.itemHosts) >= minListingPosts
+	if guessedFeedOfAnotherStream {
 		return nil
 	}
 	return &Candidate{
@@ -104,7 +95,6 @@ func (f *Finder) discoverFeed(ctx context.Context, doc *goquery.Document, base *
 	}
 }
 
-// feedProbes lists page hints before guessed paths so dedupe keeps the stronger source.
 func feedProbes(doc *goquery.Document, base *url.URL) []probe {
 	var out []probe
 	seen := map[string]struct{}{}
@@ -140,7 +130,6 @@ func feedProbes(doc *goquery.Document, base *url.URL) []probe {
 	return out
 }
 
-// feedHints collects hrefs the page labels as feeds: meta rss-feed, then link elements, then anchors.
 func feedHints(doc *goquery.Document) []string {
 	var out []string
 	doc.Find("meta[name][content]").Each(func(_ int, s *goquery.Selection) {
@@ -168,7 +157,6 @@ func feedHints(doc *goquery.Document) []string {
 	return out
 }
 
-// anchorLabel joins an anchor's text with the attributes icon-only links use to name themselves.
 func anchorLabel(a *goquery.Selection) string {
 	parts := []string{a.Text(), a.AttrOr("title", ""), a.AttrOr("aria-label", ""), a.AttrOr("class", "")}
 	a.Find("[alt], [title], [aria-label], [class], img[src]").Each(func(_ int, s *goquery.Selection) {
@@ -179,7 +167,6 @@ func anchorLabel(a *goquery.Selection) string {
 	return strings.Join(parts, " ")
 }
 
-// probeAll returns the probes that parsed as feeds, one per final URL after redirects, and records every outcome in probed.
 func (f *Finder) probeAll(ctx context.Context, probes []probe, lang string, probed map[string]*probedFeed) []*probedFeed {
 	results := make([]*probedFeed, len(probes))
 	sem := make(chan struct{}, probeConcurrency)
@@ -187,7 +174,6 @@ func (f *Finder) probeAll(ctx context.Context, probes []probe, lang string, prob
 	for i, p := range probes {
 		if prev, done := probed[p.url]; done {
 			if prev != nil {
-				// The source is this page's, so a URL this page links outranks the same URL guessed earlier.
 				reused := *prev
 				reused.probe = p
 				results[i] = &reused
@@ -222,7 +208,6 @@ func (f *Finder) probeAll(ctx context.Context, probes []probe, lang string, prob
 	return out
 }
 
-// probeFeed trusts only a 2xx body that parses as a feed, because sites serve HTML shells under feed paths and content types.
 func (f *Finder) probeFeed(ctx context.Context, p probe, lang string) *probedFeed {
 	req, err := newGET(ctx, p.url)
 	if err != nil {
@@ -280,7 +265,6 @@ func listingLinkKeys(doc *goquery.Document, base *url.URL) map[string]struct{} {
 	return keys
 }
 
-// contentLinks counts the listing's links outside the site chrome that point below the root of a host the feed's posts live on.
 func contentLinks(doc *goquery.Document, base *url.URL, hosts map[string]struct{}) int {
 	n := 0
 	doc.Find("a[href]").Each(func(_ int, s *goquery.Selection) {
