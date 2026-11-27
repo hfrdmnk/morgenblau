@@ -10,14 +10,10 @@ import (
 	"morgenblau/internal/webfeed"
 )
 
-// WebfeedGenerator is the Generator over internal/webfeed. Polls and the free repair steps never call a model; the
-// model in its options judges and induces only at setup and in the once-a-day model repair, and checks once a week.
 type WebfeedGenerator struct {
 	opts webfeed.Options
 }
 
-// NewWebfeedGenerator takes options with an SSRF-safe client; a nil Model leaves every model step out. Polls share one
-// robots.txt cache unless opts brings its own.
 func NewWebfeedGenerator(opts webfeed.Options) *WebfeedGenerator {
 	if opts.Robots == nil {
 		opts.Robots = webfeed.NewRobotsCache()
@@ -74,7 +70,6 @@ func (g *WebfeedGenerator) Setup(ctx context.Context, listingURL, anchorURL stri
 	return gen, nil
 }
 
-// confirmAnchored is the weekly check's one look at an anchored list, left for the service to spend.
 func (g *WebfeedGenerator) confirmAnchored(listingURL string, res *webfeed.Result) func(context.Context) (Confirmation, error) {
 	return func(ctx context.Context) (Confirmation, error) {
 		rec, err := webfeed.ConfirmAnchored(ctx, g.opts.Model, res)
@@ -136,7 +131,6 @@ func (g *WebfeedGenerator) Poll(ctx context.Context, raw json.RawMessage, prev P
 	return out, nil
 }
 
-// repair runs the ladder on the page the poll fetched; an accepted repair publishes like an ok poll with its new recipe.
 func (g *WebfeedGenerator) repair(ctx context.Context, out PollOutcome, polled *webfeed.PollResult, recipe webfeed.Recipe,
 	history []webfeed.GoodPoll, prev PollState, cause RepairCause, reason string) (PollOutcome, error) {
 	res, err := webfeed.Repair(ctx, polled, webfeed.RepairInput{
@@ -155,8 +149,8 @@ func (g *WebfeedGenerator) repair(ctx context.Context, out PollOutcome, polled *
 	out.Repair = report
 	slog.Info("web source repair", "listing", recipe.ListingURL, "cause", cause, "reason", reason, "tried", res.Tried,
 		"accepted", res.Accepted, "step", res.Step, "rule", res.Rule, "false_alarm", res.FalseAlarm, "model", res.UsedModel, "usd", res.ModelUSD)
-	// The weekly check doubts the very posts a free re-infer anchors on, so reproducing them cannot close its alarm.
-	if !res.Accepted || (cause == RepairCauseWeeklyCheck && res.FalseAlarm) {
+	reproducedTheDoubtedList := cause == RepairCauseWeeklyCheck && res.FalseAlarm
+	if !res.Accepted || reproducedTheDoubtedList {
 		out.Verdict, out.Reason = VerdictSuspect, unresolvedReason(cause)
 		return out, nil
 	}
@@ -174,14 +168,12 @@ func (g *WebfeedGenerator) repair(ctx context.Context, out PollOutcome, polled *
 	return out, nil
 }
 
-// freeOpts are the options for steps that must never reach a model.
 func (g *WebfeedGenerator) freeOpts() webfeed.Options {
 	opts := g.opts
 	opts.Model = nil
 	return opts
 }
 
-// SetupHealth is a finished setup's verdict in the Sources page's terms.
 func SetupHealth(res *webfeed.Result) Health {
 	switch {
 	case res.Blocked:
@@ -192,7 +184,6 @@ func SetupHealth(res *webfeed.Result) Health {
 	return HealthOK
 }
 
-// setupReason words the setup's first reason for the Sources page; a healthy setup has none.
 func setupReason(blocked bool, reasons []webfeed.Reason) string {
 	if blocked {
 		return "this site blocks feed readers"
@@ -284,7 +275,6 @@ func goodPolls(history []PollRecord) []webfeed.GoodPoll {
 	return out
 }
 
-// historyItems is the last good poll as items, the weekly check's reference.
 func historyItems(history []webfeed.GoodPoll) []webfeed.Item {
 	if len(history) == 0 {
 		return nil

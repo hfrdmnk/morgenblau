@@ -28,7 +28,6 @@ func sitemapOf(from, to int) string {
 	return b.String()
 }
 
-// blockedSite refuses its listing and lists posts 2..5 in its sitemap.
 func blockedSite() *fakeWeb {
 	web := newFakeWeb()
 	web.setPage(blockedListing, fakePage{status: http.StatusForbidden, body: "no"})

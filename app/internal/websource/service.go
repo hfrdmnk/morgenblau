@@ -22,44 +22,32 @@ import (
 )
 
 const (
-	previewItems    = 10
-	feedItems       = 20
-	historyPolls    = 6
-	maxExcerptRunes = 280
-	maxBackoff      = 24 * time.Hour
-	pollBatch       = 50
-	modelRepairGap  = 24 * time.Hour
-	checkEvery      = 7 * 24 * time.Hour
-	// An open weekly alarm is checked again this soon, so a wrong doubt does not silence a source for a week.
-	checkRetry = 24 * time.Hour
-	// An unresolved site records a repair every poll; a month is enough to read its story.
-	keepRepairs = 30 * 24 * time.Hour
-	// More model repairs than this in a week means the page fights the recipe; someone should look.
-	weeklyModelRepairs = 3
-	// An unhealthy verdict younger than this is returned as is, so a reader retrying at once does not regenerate.
-	staleSetup = 10 * time.Minute
-	// maxItems matches webfeed.MaxItems; it is enforced again here because every write goes through this package.
-	maxItems = 200
-	// dailySources caps the new sites one reader can make Morgenblau set up in a day; each may spend model calls.
-	dailySources = 30
-	// setupSlots bounds concurrent setups, each of which can hold tens of megabytes of pages.
-	setupSlots       = 2
-	modelSpendWindow = 24 * time.Hour
+	previewItems           = 10
+	feedItems              = 20
+	historyPolls           = 6
+	maxExcerptRunes        = 280
+	maxBackoff             = 24 * time.Hour
+	pollBatch              = 50
+	modelRepairGap         = 24 * time.Hour
+	checkEvery             = 7 * 24 * time.Hour
+	checkRetry             = 24 * time.Hour
+	keepRepairs            = 30 * 24 * time.Hour
+	weeklyModelRepairs     = 3
+	staleSetup             = 10 * time.Minute
+	maxItems               = webfeed.MaxItems
+	newSourcesPerReaderDay = 30
+	setupSlots             = 2
+	modelSpendWindow       = 24 * time.Hour
 )
 
-// SetupTimeout bounds one setup, waiting for a slot included; the create route keeps its connection open longer.
 const SetupTimeout = 90 * time.Second
 
-// timeLayout is fixed-width UTC so stored times order correctly as strings.
-const timeLayout = "2006-01-02T15:04:05Z"
+const sortableTimeLayout = "2006-01-02T15:04:05Z"
 
 type Config struct {
-	// PublicBaseURL is the origin readers reach this server on; feed URLs are PublicBaseURL + "/feed/" + id.
 	PublicBaseURL string
 	PollInterval  time.Duration
-	// Limiter caps generations per reader DID; nil means no cap.
-	Limiter Limiter
-	// ModelDailyUSD caps model spend over any 24 hours across all sources; past it setup and repair stay heuristic.
+	Limiter       Limiter
 	ModelDailyUSD float64
 }
 
@@ -80,7 +68,6 @@ type Service struct {
 	inflight map[string]bool
 }
 
-// NewService takes a nil Generator when generation is not configured: Create then answers ErrUnavailable and nothing polls.
 func NewService(reader, writer *sql.DB, gen Generator, cfg Config) *Service {
 	s := &Service{
 		writer:        writer,
@@ -101,21 +88,17 @@ func NewService(reader, writer *sql.DB, gen Generator, cfg Config) *Service {
 	return s
 }
 
-// FeedURL is the address readers subscribe to for one web source.
 func (s *Service) FeedURL(id string) string { return s.FeedURLPrefixes().Current + id }
 
-// FeedPrefixes are every generated feed's URL up to its id, for SQL that recognizes them by prefix; the zero value matches none.
 type FeedPrefixes struct {
 	Current string
-	// Legacy is where feeds were served first; readers' PDS records still name it, so it stays one of ours.
-	Legacy string
+	Legacy  string
 }
 
 func (s *Service) FeedURLPrefixes() FeedPrefixes {
 	return FeedPrefixes{Current: s.base + feedPath, Legacy: s.base + legacyFeedPath}
 }
 
-// IDFromFeedURL names the web source a feed URL serves, when it is one of this server's generated feeds.
 func (s *Service) IDFromFeedURL(raw string) (string, bool) {
 	u, err := url.Parse(raw)
 	base, berr := url.Parse(s.base)
@@ -125,7 +108,6 @@ func (s *Service) IDFromFeedURL(raw string) (string, bool) {
 	return feedID(u.Path)
 }
 
-// SameFeedURLs are the URLs serving the same generated feed as raw, current first; none when raw is not one of ours.
 func (s *Service) SameFeedURLs(raw string) []string {
 	id, ok := s.IDFromFeedURL(raw)
 	if !ok {
@@ -135,15 +117,11 @@ func (s *Service) SameFeedURLs(raw string) []string {
 	return []string{p.Current + id, p.Legacy + id}
 }
 
-// IsFeedURL reports one of this server's generated feeds.
 func (s *Service) IsFeedURL(raw string) bool {
 	_, ok := s.IDFromFeedURL(raw)
 	return ok
 }
 
-// Create returns the site's web source, generating it on first use. An anchorURL on a source that is not healthy, or an
-// unsure setup older than staleSetup, re-runs setup; the new one replaces the old only when it is ok or healthier, and an
-// anchored one on a source others follow only once vetAnchor passes it. An unanchored re-run never fails the request.
 func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string) (Preview, error) {
 	listing, err := parseHTTPURL(listingURL)
 	if err != nil {
@@ -177,7 +155,6 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 		}
 		p, err := s.generate(ctx, did, key, listing, "", existing, true)
 		if err != nil {
-			// The reader asked for the shared feed, not this refresh, so whatever stopped it the existing source serves.
 			slog.Info("web source refresh skipped", "id", existing.ID, "err", err)
 			return s.preview(ctx, existing)
 		}
@@ -188,7 +165,6 @@ func (s *Service) Create(ctx context.Context, did, listingURL, anchorURL string)
 	return s.generate(ctx, did, key, listing, anchorURL, db.WebSource{}, false)
 }
 
-// generate runs a setup for the site and stores it: a new source, or when regenerate a candidate to replace existing.
 func (s *Service) generate(ctx context.Context, did, key string, listing *url.URL, anchorURL string, existing db.WebSource, regenerate bool) (Preview, error) {
 	if s.gen == nil {
 		return Preview{}, ErrUnavailable
@@ -209,7 +185,6 @@ func (s *Service) generate(ctx context.Context, did, key string, listing *url.UR
 		}
 	}
 
-	// One deadline covers the setup and its model check, so the answer still reaches the reader's open request.
 	setupCtx, cancel := context.WithTimeout(ctx, s.setupTimeout)
 	defer cancel()
 	var gen Generated
@@ -220,7 +195,6 @@ func (s *Service) generate(ctx context.Context, did, key string, listing *url.UR
 	}
 	if err != nil {
 		if regenerate {
-			// The deadline may be what failed the setup, and the next visitor should not pay for it again at once.
 			tried := db.MarkWebSourceSetupTriedParams{ID: existing.ID, TriedAt: formatTime(s.now().UTC())}
 			if merr := db.New(s.writer).MarkWebSourceSetupTried(context.WithoutCancel(ctx), tried); merr != nil {
 				return Preview{}, errors.Join(err, merr)
@@ -265,9 +239,6 @@ func (s *Service) generate(ctx context.Context, did, key string, listing *url.UR
 	return p, err
 }
 
-// anchoredSetup rebuilds existing around the reader's post. An anchored setup never looks for a section page, so a paste
-// that reached a moved source through its alias tries the listing the source moved to first; the pasted page still
-// recovers a source whose listing died or lacks the post.
 func (s *Service) anchoredSetup(ctx context.Context, existing db.WebSource, key string, listing *url.URL, anchorURL string) (Generated, string, *url.URL, error) {
 	if own, err := parseHTTPURL(existing.ListingUrl); err == nil && existing.ListingKey != key {
 		if gen, err := s.runSetup(ctx, own.String(), anchorURL, true); err == nil && gen.AnchorOnPage {
@@ -278,19 +249,14 @@ func (s *Service) anchoredSetup(ctx context.Context, existing db.WebSource, key 
 	return gen, key, listing, err
 }
 
-// setupRow is a finished setup as the source row stores it. key and listingURL name the listing the setup ended on;
-// pastedKey names the one it was given, which differs when the setup moved to a section page.
 type setupRow struct {
 	key, pastedKey, listingURL, siteURL, title, recipe, cost string
 	anchoredBy                                               string
-	// replaces is the source a regenerated setup is a candidate for; atSeq, when set, drops it once another setup replaced that source.
-	replaces string
-	atSeq    *int64
-	gen      Generated
+	replaces                                                 string
+	atSeq                                                    *int64
+	gen                                                      Generated
 }
 
-// vetAnchor holds an anchored setup that would replace a source other readers follow to two checks: the page links the
-// reader's post, and the model agrees the new list is the site's posts. It says why the source stays, or nothing.
 func (s *Service) vetAnchor(ctx context.Context, did string, existing db.WebSource, gen Generated) (AnchorRejection, error) {
 	followed, err := s.read.IsWebSourceFollowedByOthers(ctx, db.IsWebSourceFollowedByOthersParams{
 		FeedUrl: s.FeedURL(existing.ID), LegacyFeedUrl: s.FeedURLPrefixes().Legacy + existing.ID, Did: did,
@@ -311,8 +277,7 @@ func (s *Service) vetAnchor(ctx context.Context, did string, existing db.WebSour
 		return AnchorNotConfirmed, err
 	}
 	c, err := gen.Confirm(ctx)
-	// The spend lands even when the setup's deadline cut the call short: it was paid for.
-	if serr := s.recordModelSpend(context.WithoutCancel(ctx), "anchor_check", c.USD); serr != nil {
+	if serr := s.recordModelSpend(ctx, "anchor_check", c.USD); serr != nil {
 		return "", serr
 	}
 	if err != nil || !c.Agreed {
@@ -322,7 +287,6 @@ func (s *Service) vetAnchor(ctx context.Context, did string, existing db.WebSour
 	return "", nil
 }
 
-// newSetupRow fills in what a setup left blank: the recipe, the title and the site's address.
 func newSetupRow(key string, listing *url.URL, gen Generated) (setupRow, error) {
 	cost, err := json.Marshal(gen.Cost)
 	if err != nil {
@@ -345,10 +309,8 @@ func newSetupRow(key string, listing *url.URL, gen Generated) (setupRow, error) 
 	return row, nil
 }
 
-// endedOn is the listing a setup of listing ended on: the section page it moved to, else listing itself.
 func endedOn(listing *url.URL, genListing string) *url.URL {
 	u, err := parseHTTPURL(genListing)
-	// A move off the site would let a paste of one site claim another site's key.
 	if err != nil || !sameSite(u.Hostname(), listing.Hostname()) || listingKey(u) == listingKey(listing) {
 		return listing
 	}
@@ -356,10 +318,6 @@ func endedOn(listing *url.URL, genListing string) *url.URL {
 	return u
 }
 
-// storeSetup writes a setup in one transaction: a new source, or a replacement of setup.replaces when the setup improves
-// on it; kept reports a regenerated setup that did not. A source is keyed by the listing its setup ended on, and the
-// pasted listing becomes an alias when the setup moved to a section page. Its items join as history; a healthy setup
-// also starts the detector's history.
 func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow) (id string, kept bool, err error) {
 	gen := setup.gen
 	now := s.now().UTC()
@@ -375,7 +333,6 @@ func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow) (i
 		row, err := storedSource(ctx, q, setup)
 		switch {
 		case err == nil && row.ID != setup.replaces:
-			// Another reader generated this site, or the section it moved to, while our setup ran; theirs stands.
 			id = row.ID
 			return addAlias(ctx, q, setup.pastedKey, row)
 		case err == nil:
@@ -401,7 +358,6 @@ func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow) (i
 			if err := rekey(ctx, q, row, setup.key); err != nil {
 				return err
 			}
-			// Readers already have the old items, so they stay; the detector's history belongs to the old recipe.
 			if err := q.DeleteWebSourcePolls(ctx, id); err != nil {
 				return err
 			}
@@ -435,8 +391,6 @@ func (s *Service) storeSetup(ctx context.Context, did string, setup setupRow) (i
 	return id, kept, err
 }
 
-// storedSource is the source a setup lands on: the one it replaces, else the one its pasted listing or the section it
-// moved to already has.
 func storedSource(ctx context.Context, q *db.Queries, setup setupRow) (db.WebSource, error) {
 	if setup.replaces != "" {
 		if row, err := q.GetWebSource(ctx, setup.replaces); !errors.Is(err, sql.ErrNoRows) {
@@ -450,7 +404,6 @@ func storedSource(ctx context.Context, q *db.Queries, setup setupRow) (db.WebSou
 	return row, err
 }
 
-// addAlias lets key find row; a key another source already answers to stays with it.
 func addAlias(ctx context.Context, q *db.Queries, key string, row db.WebSource) error {
 	if key == row.ListingKey {
 		return nil
@@ -458,8 +411,6 @@ func addAlias(ctx context.Context, q *db.Queries, key string, row db.WebSource) 
 	return q.InsertWebSourceAlias(ctx, db.InsertWebSourceAliasParams{ListingKey: key, SourceID: row.ID})
 }
 
-// rekey moves row to the key of the listing its new setup ended on, and its old key becomes an alias. When another source
-// already answers to that key, row keeps its own: ids never change and sources never merge.
 func rekey(ctx context.Context, q *db.Queries, row db.WebSource, key string) error {
 	if key == row.ListingKey {
 		return nil
@@ -480,7 +431,6 @@ func rekey(ctx context.Context, q *db.Queries, row db.WebSource, key string) err
 	return q.InsertWebSourceAlias(ctx, db.InsertWebSourceAliasParams{ListingKey: row.ListingKey, SourceID: row.ID})
 }
 
-// runSetup runs one setup in a slot; mayUseModel lets it use the model while the daily budget lasts.
 func (s *Service) runSetup(ctx context.Context, listingURL, anchorURL string, mayUseModel bool) (Generated, error) {
 	select {
 	case s.slots <- struct{}{}:
@@ -491,7 +441,6 @@ func (s *Service) runSetup(ctx context.Context, listingURL, anchorURL string, ma
 	return s.setupInSlot(ctx, listingURL, anchorURL, mayUseModel)
 }
 
-// setupInSlot runs a setup for a caller that holds a slot.
 func (s *Service) setupInSlot(ctx context.Context, listingURL, anchorURL string, mayUseModel bool) (Generated, error) {
 	allowModel := false
 	if mayUseModel {
@@ -505,8 +454,7 @@ func (s *Service) setupInSlot(ctx context.Context, listingURL, anchorURL string,
 		err = fmt.Errorf("unknown health %q", gen.Health)
 	}
 	if err != nil {
-		// A failed setup's model calls were paid for, and its deadline may be what failed it.
-		if serr := s.recordModelSpend(context.WithoutCancel(ctx), "setup", gen.Cost.USD); serr != nil {
+		if serr := s.recordModelSpend(ctx, "setup", gen.Cost.USD); serr != nil {
 			return Generated{}, errors.Join(fmt.Errorf("%w: %w", ErrGeneration, err), serr)
 		}
 		return Generated{}, fmt.Errorf("%w: %w", ErrGeneration, err)
@@ -514,7 +462,6 @@ func (s *Service) setupInSlot(ctx context.Context, listingURL, anchorURL string,
 	return gen, nil
 }
 
-// claimReader allows one setup per reader at a time; a second would only double the bill for the same click.
 func (s *Service) claimReader(did string) (release func(), err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -532,22 +479,21 @@ func (s *Service) claimReader(did string) (release func(), err error) {
 func (s *Service) underDailyCap(ctx context.Context, did string) error {
 	now := s.now().UTC()
 	created, err := s.read.ListWebSourcesCreatedSince(ctx, db.ListWebSourcesCreatedSinceParams{
-		Did: did, Since: formatTime(now.Add(-24 * time.Hour)), Limit: dailySources,
+		Did: did, Since: formatTime(now.Add(-24 * time.Hour)), Limit: newSourcesPerReaderDay,
 	})
 	if err != nil {
 		return err
 	}
-	if len(created) < dailySources {
+	if len(created) < newSourcesPerReaderDay {
 		return nil
 	}
-	oldest, err := time.Parse(timeLayout, created[0])
+	oldest, err := time.Parse(sortableTimeLayout, created[0])
 	if err != nil {
 		return err
 	}
 	return &RateLimitError{RetryAfter: max(time.Second, oldest.Add(24*time.Hour).Sub(now))}
 }
 
-// modelBudgetLeft reports whether today's model spend leaves room for another model step.
 func (s *Service) modelBudgetLeft(ctx context.Context) (bool, error) {
 	spent, err := s.read.SumModelSpendSince(ctx, formatTime(s.now().UTC().Add(-modelSpendWindow)))
 	if err != nil {
@@ -564,6 +510,7 @@ func (s *Service) recordModelSpend(ctx context.Context, kind string, usd float64
 	if usd <= 0 {
 		return nil
 	}
+	ctx = context.WithoutCancel(ctx)
 	return database.WithTx(ctx, s.writer, func(q *db.Queries) error { return recordSpend(ctx, q, s.now().UTC(), kind, usd) })
 }
 
@@ -577,16 +524,14 @@ func recordSpend(ctx context.Context, q *db.Queries, now time.Time, kind string,
 	return q.PruneModelSpend(ctx, formatTime(now.Add(-2*modelSpendWindow)))
 }
 
-// staleUnsure is a setup that doubted its own list and was last tried long enough ago to try again; poll outages do not count.
 func (s *Service) staleUnsure(row db.WebSource) bool {
 	if Health(row.SetupHealth) == HealthOK {
 		return false
 	}
-	tried, err := time.Parse(timeLayout, row.SetupTriedAt)
+	tried, err := time.Parse(sortableTimeLayout, row.SetupTriedAt)
 	return err != nil || s.now().Sub(tried) >= staleSetup
 }
 
-// improves says a new setup verdict should replace the source's: it is ok, or better than both the old setup and the source now.
 func improves(next Health, row db.WebSource) bool {
 	return next == HealthOK || (next.rank() > Health(row.SetupHealth).rank() && next.rank() > Health(row.Health).rank())
 }
@@ -626,7 +571,6 @@ func (s *Service) source(row db.WebSource) Source {
 	}
 }
 
-// PollDue polls every followed web source whose next poll is due and reports how many it polled.
 func (s *Service) PollDue(ctx context.Context) (int, error) {
 	if s.gen == nil {
 		return 0, ErrUnavailable
@@ -650,7 +594,6 @@ func (s *Service) PollDue(ctx context.Context) (int, error) {
 			continue
 		}
 		polled++
-		// The check follows the poll, so a source is polled as usual whatever the check finds or fails at.
 		if checks < sectionChecksPerSweep && needsSectionCheck(src) {
 			checks++
 			if err := s.checkSection(ctx, src); err != nil {
@@ -673,9 +616,8 @@ func (s *Service) pollOne(ctx context.Context, src db.WebSource) error {
 	out, err := s.gen.Poll(ctx, json.RawMessage(src.Recipe), prev)
 	if err != nil {
 		if ctx.Err() != nil {
-			// A repair cut short by shutdown already paid for its model calls, so the budget still counts them.
 			if r := out.Repair; r != nil {
-				if serr := s.recordModelSpend(context.WithoutCancel(ctx), "repair", r.USD); serr != nil {
+				if serr := s.recordModelSpend(ctx, "repair", r.USD); serr != nil {
 					slog.Warn("web source repair spend", "id", src.ID, "err", serr)
 				}
 			}
@@ -692,7 +634,6 @@ func (s *Service) pollOne(ctx context.Context, src db.WebSource) error {
 	return s.storePoll(ctx, src, out, update, publish, now)
 }
 
-// pollUpdate is the source row after a poll, and whether the poll's items are published.
 func (s *Service) pollUpdate(src db.WebSource, out PollOutcome, now time.Time) (update db.UpdateWebSourcePollParams, publish bool) {
 	update = db.UpdateWebSourcePollParams{
 		ID: src.ID, SetupSeq: src.SetupSeq, Recipe: src.Recipe, LastPolledAt: ptr(formatTime(now)), UpdatedAt: formatTime(now),
@@ -723,14 +664,12 @@ func (s *Service) pollUpdate(src db.WebSource, out PollOutcome, now time.Time) (
 		update.ConsecutiveFailures = src.ConsecutiveFailures + 1
 		update.NextPollAt = ptr(formatTime(now.Add(s.backoff.Delay(int(update.ConsecutiveFailures)))))
 	}
-	// Only a later setup answers an unsure one; its own polls trust the very list it doubted.
 	if out.Verdict != VerdictBroken && Health(src.SetupHealth) != HealthOK {
 		update.Health, update.HealthReason = src.SetupHealth, src.SetupHealthReason
 	}
 	return update, publish
 }
 
-// storePoll writes one poll in a transaction: spend, the source row, its repair record and, when publish, the new items.
 func (s *Service) storePoll(ctx context.Context, src db.WebSource, out PollOutcome, update db.UpdateWebSourcePollParams, publish bool, now time.Time) error {
 	return database.WithTx(ctx, s.writer, func(q *db.Queries) error {
 		if err := recordSpend(ctx, q, now, "check", out.CheckUSD); err != nil {
@@ -741,7 +680,6 @@ func (s *Service) storePoll(ctx context.Context, src db.WebSource, out PollOutco
 				return err
 			}
 		}
-		// The update goes first: it matches nothing when a setup replaced the source meanwhile, and then the poll writes nothing.
 		if r := out.Repair; r != nil && r.UsedModel {
 			n, err := q.CountModelRepairsSince(ctx, db.CountModelRepairsSinceParams{SourceID: src.ID, Since: formatTime(now.Add(-checkEvery))})
 			if err != nil {
@@ -789,7 +727,6 @@ func (s *Service) storePoll(ctx context.Context, src db.WebSource, out PollOutco
 	})
 }
 
-// answersAlarm is a repair the weekly alarm accepts: one that left the doubted list for another.
 func answersAlarm(r *RepairReport) bool {
 	return r != nil && r.Cause == RepairCauseWeeklyCheck && r.Outcome == RepairAccepted
 }
@@ -824,7 +761,7 @@ func (s *Service) pollState(ctx context.Context, src db.WebSource, now time.Time
 	for _, k := range known {
 		it := Item{URL: k.Url, Title: k.Title}
 		if k.PublishedAt != nil {
-			if it.Date, err = time.Parse(timeLayout, *k.PublishedAt); err != nil {
+			if it.Date, err = time.Parse(sortableTimeLayout, *k.PublishedAt); err != nil {
 				return PollState{}, fmt.Errorf("item %s date: %w", k.Url, err)
 			}
 		}
@@ -838,7 +775,7 @@ func (s *Service) pollState(ctx context.Context, src db.WebSource, now time.Time
 	state.AllowModelRepair = modelLeft
 	switch last, err := s.read.GetLastModelRepairAt(ctx, src.ID); {
 	case err == nil:
-		at, perr := time.Parse(timeLayout, last)
+		at, perr := time.Parse(sortableTimeLayout, last)
 		state.AllowModelRepair = modelLeft && perr == nil && now.Sub(at) >= modelRepairGap
 	case !errors.Is(err, sql.ErrNoRows):
 		return PollState{}, err
@@ -855,14 +792,12 @@ func (s *Service) pollState(ctx context.Context, src db.WebSource, now time.Time
 	if state.WeeklyAlarm {
 		every = checkRetry
 	}
-	if at, err := time.Parse(timeLayout, since); err == nil {
+	if at, err := time.Parse(sortableTimeLayout, since); err == nil {
 		state.CheckDue = modelLeft && now.Sub(at) >= every
 	}
 	return state, nil
 }
 
-// weeklyAlarmOpen reports a weekly-check alarm that no later healthy check, accepted repair onto another list or fresh
-// setup has answered. Ordinary polls cannot close it: they trust the same list the check doubted.
 func (s *Service) weeklyAlarmOpen(ctx context.Context, src db.WebSource) (bool, error) {
 	last, err := s.read.GetLastWeeklyRepair(ctx, src.ID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -875,9 +810,6 @@ func (s *Service) weeklyAlarmOpen(ctx context.Context, src db.WebSource) (bool, 
 		last.AttemptedAt >= *src.LastCheckedAt && last.AttemptedAt >= src.SetupAt, nil
 }
 
-// unpublished drops items already in the feed and items dated before its oldest one, which defends against decoy lists
-// that share the stream's URL shape. A post the site moved to a new URL shape joins as history, so a URL migration does
-// not refill today's newspaper; a known title at a URL of the old shape is a recurring title, so a new post.
 func unpublished(ctx context.Context, q *db.Queries, sourceID string, items []Item) (fresh, moved []Item, err error) {
 	known, err := q.ListWebSourceKnownItems(ctx, sourceID)
 	if err != nil {
@@ -896,7 +828,7 @@ func unpublished(ctx context.Context, q *db.Queries, sourceID string, items []It
 	var oldest time.Time
 	switch raw, err := q.GetOldestWebSourceItemDate(ctx, sourceID); {
 	case err == nil && raw != nil:
-		if oldest, err = time.Parse(timeLayout, *raw); err != nil {
+		if oldest, err = time.Parse(sortableTimeLayout, *raw); err != nil {
 			return nil, nil, fmt.Errorf("oldest item date: %w", err)
 		}
 	case err != nil && !errors.Is(err, sql.ErrNoRows):
@@ -914,7 +846,6 @@ func unpublished(ctx context.Context, q *db.Queries, sourceID string, items []It
 	return fresh, moved, nil
 }
 
-// movedFrom reports a known post with the same title whose URL had another shape and is gone from the page now.
 func movedFrom(newURL string, sameTitle []string, current map[string]bool) bool {
 	shape := webfeed.URLTemplate(newURL)
 	for _, old := range sameTitle {
@@ -925,7 +856,6 @@ func movedFrom(newURL string, sameTitle []string, current map[string]bool) bool 
 	return false
 }
 
-// dedupeItems is the gate every stored item passes: one per URL, only http(s) links, at most maxItems.
 func dedupeItems(items []Item) []Item {
 	seen := make(map[string]bool, len(items))
 	out := make([]Item, 0, min(len(items), maxItems))
@@ -992,14 +922,13 @@ func recordPoll(ctx context.Context, q *db.Queries, sourceID string, now time.Ti
 	return q.PruneWebSourcePolls(ctx, db.PruneWebSourcePollsParams{SourceID: sourceID, Keep: historyPolls})
 }
 
-// feedItem applies the history rule: a setup item without a date has none in the feed; a later one is dated when Morgenblau first saw it.
 func feedItem(r db.ListWebSourceFeedItemsRow) Item {
 	it := Item{URL: r.Url, Title: r.Title, Excerpt: r.Excerpt}
 	switch {
 	case r.PublishedAt != nil:
-		it.Date, _ = time.Parse(timeLayout, *r.PublishedAt)
+		it.Date, _ = time.Parse(sortableTimeLayout, *r.PublishedAt)
 	case r.History == 0:
-		it.Date, _ = time.Parse(timeLayout, r.FirstSeenAt)
+		it.Date, _ = time.Parse(sortableTimeLayout, r.FirstSeenAt)
 	}
 	return it
 }
@@ -1031,15 +960,12 @@ func parseHTTPURL(raw string) (*url.URL, error) {
 	return u, nil
 }
 
-// listingKey names the site a listing URL belongs to, so scheme, www., case, trailing slashes, fragments and tracking
-// parameters do not make a second web source.
 func listingKey(u *url.URL) string {
 	c := *u
 	postkey.StripTracking(&c)
 	return postkey.FromURL(&c)
 }
 
-// sameSite holds when one host is the other or a subdomain of it, www. aside.
 func sameSite(a, b string) bool {
 	a, b = strings.TrimPrefix(strings.ToLower(a), "www."), strings.TrimPrefix(strings.ToLower(b), "www.")
 	return a == b || strings.HasSuffix(a, "."+b) || strings.HasSuffix(b, "."+a)
@@ -1061,7 +987,7 @@ func (h Health) valid() bool {
 	return false
 }
 
-func formatTime(t time.Time) string { return t.UTC().Format(timeLayout) }
+func formatTime(t time.Time) string { return t.UTC().Format(sortableTimeLayout) }
 
 func boolInt(b bool) int64 {
 	if b {

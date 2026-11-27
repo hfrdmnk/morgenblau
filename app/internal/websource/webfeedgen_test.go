@@ -13,8 +13,6 @@ import (
 	"morgenblau/internal/webfeed"
 )
 
-// scriptedModel answers by step: the judge (effort high) picks the first list, the weekly check (effort low) says
-// broken when told to; it counts the calls per step.
 type scriptedModel struct {
 	mu     sync.Mutex
 	broken bool
@@ -105,7 +103,6 @@ func TestWebfeedGeneratorSetupWordsItsDoubtsForReaders(t *testing.T) {
 	}
 }
 
-// twoListsPage has two undated lists of different URL shapes and nothing to tell them apart, so the heuristic wants the judge.
 func twoListsPage() string {
 	var b strings.Builder
 	b.WriteString(`<main><div class="col-a">`)

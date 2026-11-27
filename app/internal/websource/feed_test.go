@@ -119,7 +119,7 @@ func TestFeedAnswersConditionalGET(t *testing.T) {
 		t.Errorf("If-Modified-Since status = %d", rr.Code)
 	}
 	if rr := serveFeed(t, env, id, http.Header{"If-None-Match": {`"stale"`}, "If-Modified-Since": {lastModified}}); rr.Code != http.StatusOK {
-		t.Errorf("a stale ETag must win over a matching date: status = %d", rr.Code)
+		t.Errorf("a stale ETag must win over a matching date, since RFC 9110 lets If-None-Match decide alone: status = %d", rr.Code)
 	}
 
 	env.advance(31 * time.Minute)
@@ -147,7 +147,6 @@ func TestFeedAnswersUnknownIDsWithNotFound(t *testing.T) {
 	}
 }
 
-// Readers who subscribed before generated feeds moved to /feed/ still hold /web/ URLs in their PDS records.
 func TestFeedServesTheSameFeedAtTheLegacyPath(t *testing.T) {
 	env := newTestEnv(t)
 	id := followed(t, env)
@@ -157,7 +156,7 @@ func TestFeedServesTheSameFeedAtTheLegacyPath(t *testing.T) {
 		t.Fatalf("status /feed/ = %d, /web/ = %d", current.Code, legacy.Code)
 	}
 	if legacy.Body.String() != current.Body.String() || legacy.Header().Get("ETag") != current.Header().Get("ETag") {
-		t.Errorf("/web/%s serves a different feed than /feed/%s", id, id)
+		t.Errorf("/web/%s serves a different feed than /feed/%s: readers who subscribed before feeds moved to /feed/ still name /web/ in their PDS records", id, id)
 	}
 }
 
@@ -236,7 +235,6 @@ func TestAnOutsideFeedReaderKeepsAGeneratedFeedPolledAndKept(t *testing.T) {
 		}
 	}
 
-	// Long after the offer: from here only the outside reader can keep the source.
 	env.advance(database.FeedSweepGrace + 24*time.Hour)
 	read(env.service.FeedHandler())
 	if n := pollDue(t, env); n != 0 {

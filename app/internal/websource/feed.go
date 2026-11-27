@@ -46,7 +46,6 @@ const (
 	legacyFeedPath = "/web/"
 )
 
-// FeedPaths are the server paths a generated feed is served under, its id following; each needs a public route.
 var FeedPaths = []string{feedPath, legacyFeedPath}
 
 func feedID(path string) (string, bool) {
@@ -58,14 +57,10 @@ func feedID(path string) (string, bool) {
 	return "", false
 }
 
-// servedStampEvery bounds the writes anonymous fetches can cause; against FeedSweepGrace an hourly stamp loses nothing.
 const servedStampEvery = time.Hour
 
-// FeedHandler serves GET /feed/<id> and its legacy alias /web/<id> as RSS 2.0 to Morgenblau's own in-process fetcher; it
-// reads the id from the path so it also runs outside a mux pattern.
 func (s *Service) FeedHandler() http.Handler { return s.feedHandler(false) }
 
-// PublicFeedHandler serves the same feed to outside feed readers and records that one still follows the source.
 func (s *Service) PublicFeedHandler() http.Handler { return s.feedHandler(true) }
 
 func (s *Service) feedHandler(public bool) http.Handler {
@@ -113,11 +108,10 @@ func (s *Service) feedHandler(public bool) http.Handler {
 	})
 }
 
-// markServed never fails the response: a missed stamp is retried by the reader's next fetch.
 func (s *Service) markServed(ctx context.Context, src db.WebSource) {
 	now := s.now().UTC()
 	if src.ServedAt != nil {
-		if last, err := time.Parse(timeLayout, *src.ServedAt); err == nil && now.Sub(last) < servedStampEvery {
+		if last, err := time.Parse(sortableTimeLayout, *src.ServedAt); err == nil && now.Sub(last) < servedStampEvery {
 			return
 		}
 	}
@@ -127,9 +121,8 @@ func (s *Service) markServed(ctx context.Context, src db.WebSource) {
 	}
 }
 
-// renderRSS also returns when the served items last changed: the newest first sighting among them, since setup and polls stamp every item they add.
 func renderRSS(src db.WebSource, rows []db.ListWebSourceFeedItemsRow) ([]byte, time.Time, error) {
-	lastModified, _ := time.Parse(timeLayout, src.CreatedAt)
+	lastModified, _ := time.Parse(sortableTimeLayout, src.CreatedAt)
 	doc := rssDoc{Version: "2.0", Channel: rssChannel{
 		Title:       src.Title,
 		Link:        src.SiteUrl,
@@ -137,7 +130,7 @@ func renderRSS(src db.WebSource, rows []db.ListWebSourceFeedItemsRow) ([]byte, t
 		Items:       []rssItem{},
 	}}
 	for _, r := range rows {
-		if seen, err := time.Parse(timeLayout, r.FirstSeenAt); err == nil && seen.After(lastModified) {
+		if seen, err := time.Parse(sortableTimeLayout, r.FirstSeenAt); err == nil && seen.After(lastModified) {
 			lastModified = seen
 		}
 		it := feedItem(r)
@@ -154,7 +147,6 @@ func renderRSS(src db.WebSource, rows []db.ListWebSourceFeedItemsRow) ([]byte, t
 	return append([]byte(xml.Header), body...), lastModified.UTC(), nil
 }
 
-// notModified follows RFC 9110: If-None-Match decides alone when present.
 func notModified(r *http.Request, etag string, lastModified time.Time) bool {
 	if inm := r.Header.Get("If-None-Match"); inm != "" {
 		for tag := range strings.SplitSeq(inm, ",") {

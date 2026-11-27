@@ -10,7 +10,6 @@ import (
 	"morgenblau/internal/webfeed"
 )
 
-// jsonLDSite lists posts from..to-1 without any date on the listing; each post page states its date only in JSON-LD.
 func jsonLDSite(web *fakeWeb, from, to int) {
 	var b strings.Builder
 	b.WriteString(`<main><h1>Blog</h1><ul class="posts">`)

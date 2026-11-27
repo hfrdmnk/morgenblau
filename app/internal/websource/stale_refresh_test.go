@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-// staleUnsureSource stores an unsure source for the site and lets its verdict go stale.
 func staleUnsureSource(t *testing.T, env *testEnv) Preview {
 	t.Helper()
 	env.gen.generated.Health = HealthNeedsAttention
@@ -31,7 +30,7 @@ func TestCreateFallsBackToTheExistingSourceWhenARefreshFails(t *testing.T) {
 
 			got, err := env.service.Create(context.Background(), "did:plc:visitor", "https://news.example.com/", "")
 			if err != nil {
-				t.Fatalf("refresh failure reached the reader: %v", err)
+				t.Fatalf("refresh failure reached the reader: %v; the reader asked for the shared feed, not this refresh, so the existing source serves", err)
 			}
 			if got.Source.ID != first.Source.ID || got.ItemCount != first.ItemCount {
 				t.Errorf("preview = %+v, want the existing source", got.Source)

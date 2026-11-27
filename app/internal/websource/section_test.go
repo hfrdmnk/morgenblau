@@ -15,10 +15,8 @@ const (
 	sectionURL = "https://news.example.com/blog"
 )
 
-// uncheckedRecipe is a homepage recipe stored before setup looked for a section page.
 const uncheckedRecipe = `{"version":1,"listing_url":"https://news.example.com/","mode":"streams","setup":{"stages":["heuristic"]}}`
 
-// movedGenerated is a homepage setup that moved to the section page listing all its posts.
 func movedGenerated() Generated {
 	return Generated{
 		ListingURL: sectionURL,
@@ -38,7 +36,6 @@ func movedGenerated() Generated {
 	}
 }
 
-// sectionGenerated is a setup of the section page itself.
 func sectionGenerated() Generated {
 	g := movedGenerated()
 	g.ListingURL = sectionURL
@@ -97,7 +94,6 @@ func create(t *testing.T, env *testEnv, did, listing string) Preview {
 	return p
 }
 
-// follow subscribes a reader to the source under a record key of its own, so a test can follow several sources.
 func follow(t *testing.T, env *testEnv, id string) {
 	t.Helper()
 	feedURL, rkey := env.service.FeedURL(id), "3"+id
@@ -179,7 +175,7 @@ func TestRegenerateMovesAHomepageSourceToItsSection(t *testing.T) {
 	}
 	items := storedItems(t, env, first.Source.ID)
 	if len(items) != 5 || !items["https://news.example.com/posts/fifth"].history || !items["https://news.example.com/posts/second"].history {
-		t.Errorf("items = %v, want the old items kept and the section's joined as history", items)
+		t.Errorf("items = %v, want the old items kept and the section's joined as history: readers already have the old items", items)
 	}
 	if again := create(t, env, "did:plc:other", sectionURL); again.Source.ID != first.Source.ID {
 		t.Errorf("section paste made %q, want %q", again.Source.ID, first.Source.ID)
@@ -217,7 +213,6 @@ func TestRegenerateKeepsItsKeyWhenAnotherSourceOwnsTheSection(t *testing.T) {
 	}
 }
 
-// uncheckedSource is a followed homepage source stored before setup looked for a section page.
 func uncheckedSource(t *testing.T, env *testEnv, listing string) string {
 	t.Helper()
 	gen := exampleGenerated()
@@ -375,7 +370,7 @@ func TestPollDueKeepsASourceWhoseSectionDropsAPostReadersSee(t *testing.T) {
 
 	row := readKeyed(t, env, id)
 	if row.listingKey != "news.example.com" || row.setupSeq != 0 || !strings.Contains(row.recipe, `"section_checked":true`) {
-		t.Errorf("row = %+v, want the source kept on its list and marked checked", row)
+		t.Errorf("row = %+v, want the source kept on its list and marked checked: the free setup may read the section differently than the setup in force, so a move must keep every post readers see now", row)
 	}
 }
 
@@ -386,7 +381,7 @@ func TestCreateNeverKeysASourceByAnotherSitesPage(t *testing.T) {
 
 	id := create(t, env, testDID, homeURL).Source.ID
 	if row := readKeyed(t, env, id); row.listingKey != "news.example.com" || row.listingURL != homeURL {
-		t.Errorf("row = %+v, want the pasted site's key", row)
+		t.Errorf("row = %+v, want the pasted site's key: a setup that moved off the site would let a paste of one site claim another site's key", row)
 	}
 	if got := aliases(t, env); len(got) != 0 {
 		t.Errorf("aliases = %v, want none", got)
@@ -415,7 +410,6 @@ func TestRegenerateMovesASectionSourceBackToItsHomepage(t *testing.T) {
 	}
 }
 
-// movedUnsureSource is a source whose setup moved from the homepage to its section and needs attention, so it takes anchors.
 func movedUnsureSource(t *testing.T, env *testEnv) string {
 	t.Helper()
 	moved := movedGenerated()
@@ -438,7 +432,7 @@ func TestCreateRebuildsAnAnchoredHomepagePasteOnTheSectionTheSourceMovedTo(t *te
 		t.Fatalf("anchored paste made %q, err = %v; want %q rebuilt", got.Source.ID, err, id)
 	}
 	if setups := setupsOf(env); !slices.Equal(setups[1:], []string{sectionURL}) {
-		t.Errorf("setups = %v, want one anchored rebuild of the section", setups)
+		t.Errorf("setups = %v, want one anchored rebuild of the section: an anchored setup never looks for a section page, so a paste that reached a moved source through its alias tries the section first", setups)
 	}
 	if row := readKeyed(t, env, id); row.listingKey != "news.example.com/blog" || row.listingURL != sectionURL || row.setupSeq != 1 {
 		t.Errorf("row = %+v, want the source rebuilt on its section", row)
@@ -517,7 +511,6 @@ func TestPollDueLeavesTheCheckForALaterSweepWhenReadersHoldTheSlots(t *testing.T
 	for range setupSlots {
 		env.service.slots <- struct{}{}
 	}
-	// Readers finish just before the check's deadline, so a check that waited would start a setup it cannot finish.
 	freed := make(chan struct{})
 	time.AfterFunc(150*time.Millisecond, func() {
 		for range setupSlots {
@@ -532,7 +525,7 @@ func TestPollDueLeavesTheCheckForALaterSweepWhenReadersHoldTheSlots(t *testing.T
 
 	env.gen.beforeSetup, env.gen.setupErr = nil, nil
 	if row := readKeyed(t, env, id); strings.Contains(row.recipe, `"section_checked":true`) {
-		t.Fatalf("row = %+v, want the check left for a later sweep", row)
+		t.Fatalf("row = %+v, want the check left for a later sweep: readers freed their slots just before the check's deadline, so a check that waited for them would start a setup it cannot finish and be marked checked for good", row)
 	}
 	env.advance(31 * time.Minute)
 	pollDue(t, env)

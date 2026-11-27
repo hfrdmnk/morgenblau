@@ -16,7 +16,6 @@ import (
 	"morgenblau/internal/webfeed"
 )
 
-// fakeWeb serves invented sites by full URL, so fixtures keep example.com hosts instead of a loopback address.
 type fakeWeb struct {
 	mu    sync.Mutex
 	pages map[string]fakePage
@@ -97,14 +96,12 @@ func driftPage(title, body string) string {
 	return `<!doctype html><html lang="en"><head><title>` + title + `</title></head><body>` + driftNav + body + driftFooter + `</body></html>`
 }
 
-// driftPost is post i (0 is the newest) as one list entry under prefix.
 func driftPost(i int, prefix string) string {
 	t := driftTitles[i]
 	return fmt.Sprintf(`<li class="post"><h2><a href="/%s/%s">%s</a></h2><time datetime="2026-09-%02d">September %d, 2026</time>`+
 		`<p>A short teaser for post %d that tells readers what it is about.</p></li>`, prefix, driftSlug(t), t, 28-i, 28-i, i)
 }
 
-// driftList renders posts from..to-1 in a list under prefix.
 func driftList(from, to int, prefix string) string {
 	var b strings.Builder
 	b.WriteString(`<main><h1>Blog</h1><ul class="posts">`)
@@ -119,7 +116,6 @@ func driftURL(i int, prefix string) string {
 	return "https://blog.example.com/" + prefix + "/" + driftSlug(driftTitles[i])
 }
 
-// driftSite is the publication at setup: posts 2..9 under /blog, each with an article page.
 func driftSite() *fakeWeb {
 	web := newFakeWeb()
 	web.set(driftListing, driftPage("Blog | Example Publication", driftList(2, 10, "blog")))
@@ -134,7 +130,6 @@ func driftSite() *fakeWeb {
 	return web
 }
 
-// driftEnv is a service over the real webfeed generator, with one followed source set up from driftSite.
 type driftEnv struct {
 	*testEnv
 	web     *fakeWeb
@@ -168,7 +163,6 @@ func (d *driftEnv) poll(t *testing.T) {
 	}
 }
 
-// served is the item links GET /web/<id> serves, in feed order.
 func (d *driftEnv) served(t *testing.T) []string {
 	t.Helper()
 	rec := httptest.NewRecorder()
@@ -288,12 +282,11 @@ func TestDriftBench(t *testing.T) {
 				}
 			}
 
-			// The next poll of the same page is quiet: a repair stored a recipe that holds.
 			if tc.health == HealthOK {
 				before := len(repairs)
 				d.poll(t)
 				if row := readSource(t, d.testEnv, d.id); row.health != string(HealthOK) || len(repairRows(t, d.testEnv, d.id)) != before {
-					t.Errorf("second poll: health %s, repairs %d -> %d", row.health, before, len(repairRows(t, d.testEnv, d.id)))
+					t.Errorf("second poll: health %s, repairs %d -> %d; want a quiet poll, since the repair stored a recipe that holds", row.health, before, len(repairRows(t, d.testEnv, d.id)))
 				}
 			}
 		})
@@ -357,9 +350,8 @@ func TestWeeklyCheckRunsOnceAWeekAndItsAlarmGoesThroughTheLadder(t *testing.T) {
 		t.Errorf("published new posts while the weekly alarm stands: %v", got)
 	}
 	rows = repairRows(t, d.testEnv, d.id)
-	// The first repair's setup rung asked no model, so the day's model repair is still unspent and the retry climbs to it.
 	if len(rows) != 2 || rows[1].cause != "weekly_check" || rows[1].outcome != "unresolved" || rows[1].step != "judge" || rows[0].usedModel || rows[1].usedModel {
-		t.Errorf("repairs = %+v, want the open alarm to retry the whole ladder on the next poll without spending a model call", rows)
+		t.Errorf("repairs = %+v, want the open alarm to retry the whole ladder on the next poll, up to the judge, without spending a model call: the first repair's setup rung asked no model, so the day's model repair is still unspent", rows)
 	}
 	if w.count(webfeed.EffortLow) != 2 {
 		t.Errorf("watcher calls = %d, want the next check to wait for its day", w.count(webfeed.EffortLow))
