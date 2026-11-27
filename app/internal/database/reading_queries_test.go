@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// Every other reading-index query must bind each reading table it touches to the caller's DID.
 var unscopedReadingQueries = map[string]string{
 	"IsWebSourceFollowedByOthers": "a shared generated feed asks only whether anyone else follows it, a yes or no that names no reader",
 	"ClaimFollowedFeeds":          "the shared-cache sweep asks only whether anyone follows a feed, a yes or no that names no reader",

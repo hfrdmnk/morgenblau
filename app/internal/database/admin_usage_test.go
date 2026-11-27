@@ -31,7 +31,6 @@ func TestAdminUsageCountsEachReaderBySourceType(t *testing.T) {
 	subscribe("did:plc:alpha", "a2", prefix+"01generated", "rss")
 	subscribe("did:plc:alpha", "a3", "at://did:plc:publication/site.standard.publication/self", "standard")
 	subscribe("did:plc:alpha", "a4", legacy+"01legacy", "rss")
-	// Another deployment's generated feed is an ordinary feed to this one.
 	subscribe("did:plc:beta", "b1", "https://other.example.com/feed/01generated", "rss")
 
 	got := map[string][2]int64{}

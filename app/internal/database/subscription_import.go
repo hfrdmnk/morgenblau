@@ -31,7 +31,6 @@ func (d *DB) MirrorImportedSubscription(ctx context.Context, baseline *db.UserSu
 		if err != nil {
 			return err
 		}
-		// Field comparison also catches writes sharing a timestamp with the baseline.
 		if !reflect.DeepEqual(current, baseline) {
 			return fmt.Errorf("subscription changed during PDS import")
 		}

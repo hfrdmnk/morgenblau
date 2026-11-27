@@ -12,8 +12,7 @@ import (
 const (
 	videoTranscriptTable     = "video_transcripts"
 	videoTranscriptQueryFile = "video_transcripts.sql"
-	// videoTranscriptReader is the one file that may hold transcript rows: the reader's transcript endpoint.
-	videoTranscriptReader = "internal/api/entry_transcript.go"
+	videoTranscriptReader    = "internal/api/entry_transcript.go"
 )
 
 func TestVideoTranscriptsStayInTheirOwnQueries(t *testing.T) {

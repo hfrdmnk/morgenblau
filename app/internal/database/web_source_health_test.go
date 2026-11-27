@@ -26,8 +26,7 @@ func TestSourceListCarriesGeneratedFeedHealthOnlyForOwnWebFeeds(t *testing.T) {
 		"generated": prefix + "generated",
 		"legacy":    legacy + "generated",
 		"plain":     "https://news.example.com/feed.xml",
-		// Same id under another origin is somebody else's feed, not one of ours.
-		"foreign": "https://other.example.com/web/generated",
+		"foreign":   "https://other.example.com/web/generated",
 	}
 	for rkey, url := range feeds {
 		if err := q.UpsertFeed(ctx, db.UpsertFeedParams{FeedUrl: url, CreatedAt: now, UpdatedAt: now}); err != nil {
