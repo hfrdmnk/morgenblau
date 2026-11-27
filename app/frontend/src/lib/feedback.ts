@@ -1,11 +1,9 @@
 import { api } from '@/lib/api';
 
-// Mirrors the limits in internal/api/feedback.go, so a reader hears about them before sending.
 export const MAX_FEEDBACK_IMAGES = 5;
 export const MAX_FEEDBACK_IMAGE_BYTES = 12 * 1024 * 1024;
 export const FEEDBACK_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
-// What only the browser knows; the server adds the account and the user agent.
 function browserContext(): [string, string][] {
     const media = (query: string) => window.matchMedia(query).matches;
     return [

@@ -1,7 +1,3 @@
-// The design decisions Frame and Text accept, each mapped to the literal Tailwind class that carries it.
-// Values live in src/index.css; breakpoint variants of every class here come from its @source inline lines,
-// which tokens.test.ts keeps in step with these maps.
-
 export const spacing = {
     none: '0',
     '3xs': '0.5',
@@ -67,11 +63,8 @@ export const frame = {
     paddingStart: scale('ps'),
     paddingEnd: scale('pe'),
     width: { full: 'w-full', fit: 'w-fit' },
-    // status: the room a sheet's pending state holds, so the result that replaces it does not jump.
     height: { full: 'h-full', status: 'h-36' },
     minWidth: { 0: 'min-w-0' },
-    // control: a default Button's height, so a row of text lines up with one; touch: the 44px touch target.
-    // state: the room a page's loading, empty or error state centres in, so it reads as the page and not a stray line.
     minHeight: {
         0: 'min-h-0',
         screen: 'min-h-dvh',
@@ -108,7 +101,6 @@ export const frame = {
     order: { first: 'order-first', none: 'order-none' },
     overflow: { hidden: 'overflow-hidden', auto: 'overflow-auto' },
     position: { relative: 'relative' },
-    // A focus target that is the whole screen or panel needs no ring: what changed already shows where focus went.
     outline: { none: 'outline-none' },
     background: {
         background: 'bg-background',
@@ -154,7 +146,6 @@ export const text = {
     numeric: { tabular: 'tabular-nums' },
     caps: { true: 'uppercase tracking-wide' },
     tracking: { tight: 'tracking-tight' },
-    // A heading that script focuses to mark where a new result begins; the result itself shows where focus went.
     outline: { none: 'outline-none' },
     display: { block: 'block', inline: 'inline', 'inline-flex': 'inline-flex', none: 'hidden' },
     visuallyHidden: { true: 'sr-only' },

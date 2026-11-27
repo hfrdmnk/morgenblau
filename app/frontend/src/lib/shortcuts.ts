@@ -2,7 +2,6 @@ import { toast } from 'sonner';
 
 const KEEPS_ITS_KEYS = 'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"]';
 
-// Shift alone is the app's modifier: Ctrl, Alt and Meta combinations belong to the browser and the OS, except ⌘K (isCommandMenuKey).
 export function shortcutKey(event: KeyboardEvent): string | null {
     if (event.ctrlKey || event.altKey || event.metaKey) return null;
     if (event.repeat || event.isComposing || event.defaultPrevented) return null;
@@ -15,7 +14,6 @@ export function showShortcutNotice(message: string) {
     toast.info(message, { id: 'shortcut-notice' });
 }
 
-// The command menu takes ⌘K, or Ctrl+K off Apple platforms, from anywhere, text fields included, as other apps do.
 export function isCommandMenuKey(event: KeyboardEvent): boolean {
     return (
         (event.metaKey || event.ctrlKey) &&
@@ -26,7 +24,6 @@ export function isCommandMenuKey(event: KeyboardEvent): boolean {
     );
 }
 
-// A space separates keys that do the same thing.
 export const SHORTCUTS = [
     { keys: 'Mod+K', label: 'Command menu', where: 'Anywhere' },
     { keys: 'Shift+D', label: 'Digest', where: 'Anywhere' },

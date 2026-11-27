@@ -6,7 +6,6 @@ import type { EntrySave } from '@/lib/entry-save';
 const SAVE_TOAST = 'entry-save';
 const REMOVED_TOAST = 'entry-save-removed';
 
-// Focus inside the toast holds it open; leaving it gives a short grace instead of the full duration.
 export function announceSave(save: EntrySave) {
     toast.dismiss(REMOVED_TOAST);
     const show = (duration: number) =>

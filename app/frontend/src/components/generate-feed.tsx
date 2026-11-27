@@ -10,10 +10,8 @@ import { Text } from '@/design/text';
 import type { GenerationStep } from '@/hooks/use-generation';
 import { anchorError, anchorRejection, generatedVerdict, type GeneratedSource } from '@/lib/add-source';
 
-// A sample is enough to recognize the site's posts, with the post field still in view when unsure.
 const PREVIEW_POSTS = { sure: 5, unsure: 3 };
 
-// Listing pages print a day, which the server keeps as midnight UTC.
 const postDate = new Intl.DateTimeFormat(undefined, {
     day: 'numeric',
     month: 'short',
@@ -28,7 +26,6 @@ function postCount(count: number) {
 type PreviewProps = {
     saving: boolean;
     onPointAt: (anchor: string) => Promise<void>;
-    // The sheet's own form for adding the feed.
     add: (source: GeneratedSource) => ReactNode;
 };
 
@@ -82,14 +79,12 @@ function focusOrder(state: GenerationStep) {
     return state.anchored ? ['add', 'anchor'] : ['heading', 'anchor'];
 }
 
-// The add form belongs to the sheet, so its submit button is found inside the slot rather than marked itself.
 function focusTarget(root: HTMLElement, name: string) {
     return root.querySelector<HTMLElement>(
         name === 'add' ? '[data-focus="add"] [type="submit"]' : `[data-focus="${name}"]`,
     );
 }
 
-// Each step unmounts the control that started it, and the sheet would park focus on its popup after a long wait.
 function settleFocus(root: HTMLElement | null, order: string[]) {
     if (!root) return;
     const active = document.activeElement;
@@ -100,7 +95,6 @@ function settleFocus(root: HTMLElement | null, order: string[]) {
     (target ?? root).focus();
 }
 
-// The sheet's inset panel; start alignment keeps a button in it at its own width.
 function Panel(props: FrameProps) {
     return <Frame align="start" background="background" gap="m" padding="l" radius="lg" {...props} />;
 }
@@ -168,7 +162,6 @@ function GeneratedPreview({ source, saving, onPointAt, add }: PreviewProps & { s
     const unsure = verdict.askAnchor && verdict.subscribable;
     const previewed = source.items.length > 0;
     return (
-        // Without the post list, the form still sits as far below the sheet's header as it would below the list.
         <Frame gap="l" paddingTop={previewed ? undefined : 'l'}>
             {previewed && <PostPreview source={source} limit={unsure ? PREVIEW_POSTS.unsure : PREVIEW_POSTS.sure} />}
             {verdict.askAnchor && (
@@ -182,7 +175,6 @@ function GeneratedPreview({ source, saving, onPointAt, add }: PreviewProps & { s
                 />
             )}
             {verdict.subscribable && (
-                // A post being looked up may still change the feed, so its form waits.
                 <Frame as="fieldset" data-focus="add" disabled={anchoring} minWidth={0} paddingTop="l">
                     {add(source)}
                 </Frame>
@@ -252,7 +244,6 @@ const ANCHOR_PROMPT = {
     empty: 'No posts found on this page yet. Paste the address of one post from it, and Morgenblau will look for posts like it.',
 };
 
-// A shared feed can be broken by one failed poll while it still serves the posts it stored.
 function anchorPrompt(source: GeneratedSource, found: boolean) {
     if (!found) return ANCHOR_PROMPT.empty;
     return source.health === 'broken' ? ANCHOR_PROMPT.stale : ANCHOR_PROMPT.unsure;
@@ -354,7 +345,6 @@ const SEARCHING = 'Looking for posts like that one. This can take a little while
 
 function anchorMessage(anchoring: boolean, error: ReturnType<typeof anchorError> | null, notice?: string) {
     if (anchoring) return { text: SEARCHING, role: 'status' };
-    // The dialog's status region already announced the notice; a second live region would repeat it.
     if (notice) return { text: notice };
     if (!error) return null;
     return { text: error.message, role: 'alert', invalid: error.invalid };
@@ -373,7 +363,6 @@ function AnchorMessage({
 }) {
     const message = anchorMessage(anchoring, error, notice);
     const line = useRef<HTMLParagraphElement>(null);
-    // The dialog can be taller than the screen, and the field's focus alone leaves the line below its fold.
     useEffect(() => {
         line.current?.scrollIntoView({ block: 'nearest' });
     }, [message?.text]);

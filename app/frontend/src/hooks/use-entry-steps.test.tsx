@@ -12,15 +12,6 @@ const { useSearch } = await import('wouter/use-browser-location');
 const { useEntrySteps } = await import('./use-entry-steps');
 const { useAppLocation } = await import('./use-app-location');
 
-// Wouter's module may be cached from a different Happy DOM window.
-for (const method of ['pushState', 'replaceState'] as const) {
-    const original = window.history[method].bind(window.history);
-    window.history[method] = (...args: Parameters<History[typeof method]>) => {
-        original(args[0], args[1], args[2]);
-        window.dispatchEvent(new Event('popstate'));
-    };
-}
-
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const realFetch = globalThis.fetch;
 let unmount = () => {};

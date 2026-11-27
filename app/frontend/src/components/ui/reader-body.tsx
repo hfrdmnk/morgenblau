@@ -3,7 +3,6 @@ import type { ComponentProps } from 'react';
 import { cn } from 'cn';
 import '@/pages/reader.css';
 
-// Article HTML in the reader's typography (src/pages/reader.css); clamped shows the first five lines.
 function ReaderBody({
     clamped = false,
     ...props

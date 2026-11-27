@@ -36,7 +36,6 @@ export function useNavigationScrollRestoration() {
         const target = state?.scrollY;
         if (!target) return;
 
-        // The digest can be shorter than the saved position until its entries load.
         const observer = new ResizeObserver(() => {
             window.scrollTo(0, target);
             if (Math.abs(window.scrollY - target) < 1) observer.disconnect();

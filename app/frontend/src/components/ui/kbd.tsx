@@ -1,6 +1,5 @@
 import type { ComponentProps } from 'react';
 
-// A key the reader can press, drawn as a keycap outline. hideOnTouch drops a hint that a touch screen has no key for.
 function Kbd({
     hideOnTouch = false,
     ...props

@@ -1,6 +1,10 @@
 import { afterEach, expect, test } from 'bun:test';
 
+import subscription from '../../../lexicons/blue/morgen/feed/subscription.json';
 import {
+    MAX_TAG_LENGTH,
+    MAX_TAGS,
+    MAX_TITLE_LENGTH,
     addTags,
     canAddTags,
     hasOverlongTag,
@@ -83,7 +87,16 @@ test('adding tags splits on commas, trims, and skips case-insensitive duplicates
     expect(addTags(['Tech'], '   ')).toEqual(['Tech']);
 });
 
-test('length limits count characters, not bytes or UTF-16 units', () => {
+test('the tag and title limits are the subscription lexicon’s, so the server never rejects what the sheet allowed', () => {
+    const { tags, title } = subscription.defs.main.record.properties;
+    expect([MAX_TAGS, MAX_TAG_LENGTH, MAX_TITLE_LENGTH]).toEqual([
+        tags.maxLength,
+        tags.items.maxGraphemes,
+        title.maxGraphemes,
+    ]);
+});
+
+test('length limits count code points, as the server does, not bytes or UTF-16 units', () => {
     expect(hasOverlongTag(`ok, ${'é'.repeat(64)}`)).toBe(false);
     expect(hasOverlongTag(`ok, ${'a'.repeat(65)} `)).toBe(true);
     expect(hasOverlongTag('🌍'.repeat(64))).toBe(false);

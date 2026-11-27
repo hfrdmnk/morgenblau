@@ -1,14 +1,10 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { afterAll, afterEach, expect, test } from 'bun:test';
 
-const nativeEventTarget = EventTarget;
-const nativeEvent = Event;
+import { animateWithoutWebAnimations } from '../../test/web-animations';
+
 GlobalRegistrator.register({ url: 'http://app.example.com/' });
-const DOMEvent = Event;
-// The shared source event bus outlives this file's DOM window, and native targets reject DOM events.
-Object.assign(globalThis, { EventTarget: nativeEventTarget, Event: nativeEvent });
-// happy-dom rejects a cancelled animation's promise unhandled; without WAAPI, motion animates on its own frame loop.
-Reflect.deleteProperty(Element.prototype, 'animate');
+animateWithoutWebAnimations();
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { AddSourceDialog, EditSourceSheet } = await import('./add-source-dialog');
@@ -38,7 +34,6 @@ async function settle() {
     });
 }
 
-// The newsletter panel's exit runs on motion's frame loop (test/preload.ts) before results mount.
 async function waitFor(text: string) {
     for (let tries = 0; tries < 100 && !document.body.textContent?.includes(text); tries++) {
         await act(async () => {
@@ -70,7 +65,7 @@ async function findFeeds(site: string) {
     await act(async () => {
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
         setter.call(input, site);
-        input.dispatchEvent(new DOMEvent('input', { bubbles: true }));
+        input.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await act(async () => input.form!.requestSubmit());
 }
@@ -302,12 +297,14 @@ test('editing a channel followed without Shorts renames it and brings Shorts bac
 
     const name = document.querySelector<HTMLInputElement>('input[aria-label="Name"]')!;
     expect(name.value).toBe('Example Channel');
-    // The name sits in the header, so only its form owner lets Enter in it save.
-    expect(name.form?.contains(saveButton())).toBe(true);
+    expect(
+        name.form?.contains(saveButton()),
+        'The name sits in the header, so only its form owner lets Enter in it save.',
+    ).toBe(true);
     await act(async () => {
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
         setter.call(name, 'Example Videos');
-        name.dispatchEvent(new DOMEvent('input', { bubbles: true }));
+        name.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await press('Save changes');
     expect(previewed).toEqual([longForm, all, longForm, all]);
@@ -337,7 +334,7 @@ test('an untitled feed with a long address can be added and edited without renam
     const type = async (value: string) =>
         act(async () => {
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name(), value);
-            name().dispatchEvent(new DOMEvent('input', { bubbles: true }));
+            name().dispatchEvent(new Event('input', { bubbles: true }));
         });
 
     await findFeeds('news.example.com');

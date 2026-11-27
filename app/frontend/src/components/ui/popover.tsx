@@ -7,7 +7,6 @@ function Popover({ ...props }: PopoverPrimitive.Root.Props) {
     return <PopoverPrimitive.Root data-slot="popover" {...props} />;
 }
 
-// explain: a dotted underline marks text that opens an explanation, not an action.
 const triggerVariants = {
     explain:
         'flex shrink-0 cursor-pointer items-center gap-1.5 rounded-sm underline decoration-subtle-line decoration-dotted underline-offset-4 transition-[color] duration-(--motion-duration-fast) hover:text-foreground',

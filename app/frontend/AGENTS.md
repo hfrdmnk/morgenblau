@@ -27,7 +27,7 @@ paths:
 - Animate `transform`, `opacity` and `filter`. Size and position changes go through `motion`'s `layout`, or the keyframes in `src/index.css` and `tw-animate-css`; never transition width, height or offsets by hand. `eslint.config.js` rejects `transition-all` and size or offset transitions in class strings outside `src/components/ui/`.
 - Reduced motion is part of every animation: the tokens collapse under `prefers-reduced-motion`, CSS animations sit behind `motion-safe:` or `motion-reduce:`, and `motion/react` code reads `useReducedMotion()` and goes instant.
 - Multi-stage choreography is a storyboard: a `TIMING` object and per-element config objects, named for their stages, that hold every duration, easing and spring, never inline in JSX. `src/components/add-source-dialog.tsx` is the reference. The pattern is adapted from the Storyboard Animation guide in Josh Puckett's Interface Craft.
-- `test/preload.ts` explains how `motion` runs under happy-dom.
+- `test/web-animations.ts` explains how `motion` runs under happy-dom.
 
 ## Adding primitives
 

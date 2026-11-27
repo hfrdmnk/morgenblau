@@ -25,7 +25,6 @@ function edgeNotice(from: string | null, offset: number): string {
     return `No ${offset > 0 ? 'next' : 'previous'} article${place}`;
 }
 
-// Steps through the list the entry was opened from. Steps queue, so presses made while the list loads each move one entry.
 export function useEntrySteps(slug: string, from: string | null) {
     const [, navigate] = useLocation();
     const list = useRef<{ path: string; slugs: string[] } | null>(null);
@@ -55,7 +54,6 @@ export function useEntrySteps(slug: string, from: string | null) {
         }
     }
 
-    // The kept list may predate entries collected since, so only a fresh one confirms an edge. Null means loading failed.
     async function targetIn(path: string, offset: number): Promise<string | undefined | null> {
         const kept = list.current?.path === path ? neighbour(list.current.slugs, at.current, offset) : undefined;
         if (kept) return kept;
@@ -78,7 +76,6 @@ export function useEntrySteps(slug: string, from: string | null) {
     };
     const previous = () => step(-1);
     const next = () => step(1);
-    // Up and Down stay with scrolling the article, so stepping between entries takes Left and Right.
     useShortcuts({ ArrowLeft: previous, k: previous, ArrowRight: next, j: next });
     return { previous, next };
 }

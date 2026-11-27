@@ -3,7 +3,6 @@ import { afterAll, afterEach, expect, test } from 'bun:test';
 
 import type { ReaderEntry } from '@/lib/reader';
 
-// React DOM reads the environment when it loads, so the DOM must exist before the dynamic imports below.
 GlobalRegistrator.register();
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');

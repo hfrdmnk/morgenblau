@@ -4,9 +4,7 @@ import { afterAll, afterEach, expect, test } from 'bun:test';
 import type { FeedSource } from '@/hooks/use-sources';
 import type { ImportSource } from '@/lib/source-import';
 
-const nativeEvents = { Event, EventTarget };
 GlobalRegistrator.register();
-Object.assign(globalThis, nativeEvents);
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { Router } = await import('wouter');

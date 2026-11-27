@@ -2,7 +2,6 @@ import { useSyncExternalStore } from 'react';
 
 import { connection } from '@/lib/api';
 
-// The browser can report online while Morgenblau is out of reach, so a failed request counts as offline too.
 export function useOnline() {
     return useSyncExternalStore(
         (onChange) => {

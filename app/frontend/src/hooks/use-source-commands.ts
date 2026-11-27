@@ -29,7 +29,6 @@ function nameProblem(value: string): string | null {
     return titleTooLong(value) ? `Names can be up to ${MAX_TITLE_LENGTH} characters.` : null;
 }
 
-// The commands a feed's page offers; null while the page still loads, so its sample never reaches the menu.
 export function useFeedSourceCommands(source: FeedSourceDetail | null, entries: Entries) {
     const [, navigate] = useLocation();
     const latest = entries.status === 'loaded' ? entries.data[0]?.entrySlug : undefined;
@@ -66,7 +65,6 @@ function feedEdits(source: FeedSourceDetail): Command[] {
                 title: 'Rename',
                 initial: title,
                 placeholder: 'Use the feed’s own name',
-                // An emptied name resets the source to its feed's own title, as the edit sheet does.
                 action: (value) => (value.trim() ? `Rename to “${value.trim()}”` : 'Use the feed’s own name'),
                 problem: nameProblem,
                 submit: (value) =>
@@ -184,7 +182,6 @@ function newsletterEdits(source: NewsletterSourceDetail, onChanged: () => void):
                 initial: title,
                 placeholder: 'A name for this newsletter',
                 action: (value) => `Rename to “${value.trim()}”`,
-                // A newsletter has no title of its own to fall back to.
                 problem: (value) => (value.trim() ? nameProblem(value) : 'A newsletter needs a name.'),
                 submit: (value) =>
                     value.trim() === title ? undefined : edit({ title: value.trim() }).then(() => 'Newsletter renamed'),

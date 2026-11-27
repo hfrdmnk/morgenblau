@@ -12,7 +12,7 @@
     "dev": "bun --bun vite",
     "build": "bun check && bun --bun vite build",
     "lint": "eslint . --max-warnings 0",
-    "test": "bun test",
+    "test": "bun test --isolate",
     "doctor": "react-doctor",
     "preview": "bun --bun vite preview",
     "design:tokens": "bun scripts/design-tokens.ts"

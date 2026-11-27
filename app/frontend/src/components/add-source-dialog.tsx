@@ -97,21 +97,18 @@ import {
     titleTooLong,
 } from '@/lib/source-edit';
 
-/* Sheet storyboard: every level of detail is its own screen inside one sheet.
- *   0ms  sheet slides in from its edge over --motion-duration-overlay (ui/drawer.tsx)
- *  push  the next screen enters 12px from the right over 200ms; the previous one leaves at once
- *   pop  the previous screen returns 12px from the left over 200ms
- *        keyboard navigation and reduced motion swap screens instantly
- */
-const TIMING = { screen: 0.2 };
+const TIMING = {
+    screenIn: 0.2,
+    screenOut: 0,
+};
 const SCREEN = {
-    push: 'translateX(12px)',
-    pop: 'translateX(-12px)',
-    rest: 'translateX(0px)',
-    ease: [0.16, 1, 0.3, 1] as const,
+    pushedIn: { opacity: 0, transform: 'translateX(12px)' },
+    shown: { opacity: 1, transform: 'translateX(0px)' },
+    covered: { opacity: 0, transform: 'translateX(-12px)' },
+    in: { duration: TIMING.screenIn, ease: [0.16, 1, 0.3, 1] as const },
+    out: { duration: TIMING.screenOut },
 };
 
-// rkey is the subscription a feed screen was opened with; site is absent when it was opened from a profile's follows.
 type Screen =
     | { kind: 'feed'; candidate: SourceCandidate; site?: SiteResult; rkey?: string }
     | {
@@ -150,7 +147,6 @@ type Sheet = {
     pointAt: (url: string, anchor: string) => Promise<void>;
 };
 
-// With an initialUrl the sheet opens at once, already looking that site up, and has no trigger of its own.
 export function AddSourceDialog({ trigger, initialUrl }: { trigger?: ReactElement; initialUrl?: string }) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [open, setOpen] = useState(initialUrl !== undefined);
@@ -182,7 +178,6 @@ export function AddSourceDialog({ trigger, initialUrl }: { trigger?: ReactElemen
     );
 }
 
-// The same sheet as Add a source, opened on one of the reader's feeds to rename, retag or re-point it.
 export function EditSourceSheet({
     source,
     onChanged,
@@ -197,7 +192,6 @@ export function EditSourceSheet({
     return <EditSheet root={{ kind: 'edit', source, onChanged, onRemoved, removedFocus }} />;
 }
 
-// The same sheet for a newsletter: rename, retag, stop or resume, and unsubscribe or delete it.
 export function EditNewsletterSheet({
     source,
     stopped,
@@ -287,7 +281,6 @@ function lookUp(input: string, signal: AbortSignal): Promise<Discovery> {
     );
 }
 
-// A sheet opened with a URL starts looking it up at once, as if the reader had pasted it and pressed Enter.
 function useInitialLookup(initialUrl: string, requestRef: RefObject<AbortController | null>) {
     const [discovery, setDiscovery] = useState<Discovery>({ stage: initialUrl ? 'loading' : 'idle' });
     useEffect(() => {
@@ -302,7 +295,6 @@ function useInitialLookup(initialUrl: string, requestRef: RefObject<AbortControl
     return [discovery, setDiscovery] as const;
 }
 
-// A root screen replaces the search screen (which only the add sheet, with its inputRef, shows), so the sheet opens on it and Back never leaves it.
 function SheetBody({
     initialUrl = '',
     inputRef,
@@ -326,7 +318,6 @@ function SheetBody({
     const generation = useGeneration(showGeneration);
     const { nameOf, formOf, rename } = useScreenNames();
     const [keyboard, setKeyboard] = useState(false);
-    // Sources added (rkey) or removed (null) in this sheet, overriding what earlier lookups reported.
     const [subscriptions, setSubscriptions] = useState<Map<string, string | null>>(new Map());
     const reduced = useReducedMotion();
     useEffect(() => () => request.current?.abort(), []);
@@ -425,7 +416,6 @@ function SheetBody({
     );
 }
 
-// The name a nameable screen will save sits in the header; its length error sits just under it.
 function SheetHeader({
     top,
     subscriptions,
@@ -452,7 +442,6 @@ function SheetHeader({
     const hinted = named && nameTooLong(named.name, named.screen);
     return (
         <>
-            {/* A length hint takes the header's bottom padding, so it sits just under the name. */}
             <Frame
                 align="center"
                 as="header"
@@ -492,7 +481,6 @@ function SheetHeader({
     );
 }
 
-// Starts where NameInput's text does, so a screen's title sits in the same place whether or not it can be renamed.
 function SheetTitle({ screen, inset }: { screen?: Screen; inset: boolean }) {
     return (
         <Frame grow minWidth={0} paddingStart={inset ? 'm' : 's'}>
@@ -503,7 +491,6 @@ function SheetTitle({ screen, inset }: { screen?: Screen; inset: boolean }) {
     );
 }
 
-// Screens below the top stay mounted, so going back keeps their drafts and loaded posts; ids keep a re-pushed screen from inheriting a popped one's state. A root screen is never popped.
 function useScreenStack(root?: Screen) {
     const [stack, setStack] = useState<{ id: number; screen: Screen }[]>(root ? [{ id: 0, screen: root }] : []);
     const nextId = useRef(1);
@@ -512,7 +499,6 @@ function useScreenStack(root?: Screen) {
         canGoBack: stack.length > (root ? 1 : 0),
         push: (next: Screen) => setStack([...stack, { id: nextId.current++, screen: next }]),
         pop: () => setStack(stack.slice(0, -1)),
-        // Only one generation runs at a time, so its steps land on whichever generated screen is open.
         showGeneration: (step: GenerationStep) =>
             setStack((previous) =>
                 previous.map((entry) =>
@@ -522,7 +508,6 @@ function useScreenStack(root?: Screen) {
     };
 }
 
-// Names typed into the header, per screen, until that screen saves them; each screen's form id ties the header field to its save.
 function useScreenNames() {
     const [names, setNames] = useState<Map<number, string>>(new Map());
     const formPrefix = useId();
@@ -533,7 +518,6 @@ function useScreenNames() {
     };
 }
 
-// Lines up under the name: the header's inset, plus the back button and its gap when there is one.
 function NameLengthHint({ form, canGoBack }: { form: string; canGoBack: boolean }) {
     return (
         <Frame paddingBottom="s" paddingEnd="2xl" paddingStart={canGoBack ? '6xl' : '2xl'}>
@@ -556,7 +540,6 @@ function screenTitle(screen: Screen) {
     return 'Profile';
 }
 
-// Focus follows the screen, since the row or button that opened it is gone. A screen that is covered waits at the pop offset, so it returns from the left.
 function ScreenTransition({
     active,
     instant,
@@ -576,20 +559,19 @@ function ScreenTransition({
     }, [active, focusOnMount]);
     return (
         <MotionFrame
-            animate={active ? { opacity: 1, transform: SCREEN.rest } : { opacity: 0, transform: SCREEN.pop }}
+            animate={active ? SCREEN.shown : SCREEN.covered}
             hidden={!active}
-            initial={instant ? false : { opacity: 0, transform: SCREEN.push }}
+            initial={instant ? false : SCREEN.pushedIn}
             outline="none"
             ref={ref}
             tabIndex={-1}
-            transition={active && !instant ? { duration: TIMING.screen, ease: SCREEN.ease } : { duration: 0 }}
+            transition={active && !instant ? SCREEN.in : SCREEN.out}
         >
             {children}
         </MotionFrame>
     );
 }
 
-// Only a screen that will save a name lets the reader type one.
 function nameable(screen: Screen, subscriptions: Map<string, string | null>) {
     if (screen.kind === 'edit' || screen.kind === 'newsletter') return true;
     if (screen.kind === 'generated')
@@ -599,12 +581,10 @@ function nameable(screen: Screen, subscriptions: Map<string, string | null>) {
     return !status.rkey && !status.note;
 }
 
-// An untouched name is never saved, so a long default (an untitled feed's address) does not block the form.
 function nameTooLong(name: string, screen: Screen) {
     return name.trim() !== screenTitle(screen) && titleTooLong(name);
 }
 
-// The name sits in the header, outside its screen's form, so form ties Enter to that form's save.
 function NameInput({
     value,
     form,
@@ -884,7 +864,6 @@ function candidateStatus(
     return { rkey: undefined, note: undefined };
 }
 
-// A site is followed through its RSS feed or its Standardfeed publication, never both.
 function followsSibling(
     candidate: SourceCandidate,
     site: SiteResult | undefined,
@@ -898,12 +877,10 @@ function followsSibling(
     const followedSibling = siblings.some((other) =>
         subscriptions.has(other) ? Boolean(subscriptions.get(other)) : existing.has(other),
     );
-    // subscribedVia may name a feed this lookup didn't list; one it did list is covered above, including its removal here.
     const followedElsewhere = Boolean(candidate.subscribedVia) && !siblings.some((other) => existing.has(other));
     return followedSibling || followedElsewhere;
 }
 
-// gap separates the lines of a row's text: a title and its meta sit close, a summary further apart.
 function Row({
     onClick,
     label,
@@ -929,7 +906,6 @@ function Row({
     );
 }
 
-// Turning Shorts off follows the channel's UULF feed instead; a feed left as it was keeps its URL exactly.
 function useShortsChoice(feedUrl: string | undefined) {
     const feeds = feedUrl ? youtubeFeeds(feedUrl) : undefined;
     const initial = feeds?.longForm === feedUrl;
@@ -998,7 +974,6 @@ function FeedScreen({
 }) {
     const status = candidateStatus(candidate, site, sheet.subscriptions, known);
     const shorts = useShortsChoice(candidate.feedUrl);
-    // Saves are recorded under the candidate's key, so the channel reads as followed whichever of its feeds was added.
     const source = useMemo<SourceCandidate>(
         () =>
             candidate.kind !== 'standardfeed' && shorts.feedUrl ? { ...candidate, feedUrl: shorts.feedUrl } : candidate,
@@ -1080,7 +1055,6 @@ function FeedScreen({
     );
 }
 
-// The add closes the sheet: the feed is the site's only one, so there is nothing left to pick.
 function GeneratedScreen({
     screen,
     form,
@@ -1160,7 +1134,6 @@ function EditScreen({
 
     function changeFor({ tags, primary }: SourceOptions) {
         const change: SourceChange = {};
-        // An emptied name resets the source to its feed's own title.
         if (name.trim() !== feedSourceName(source)) change.title = name.trim();
         if (tags.join('\n') !== (source.tags ?? []).join('\n')) change.tags = tags;
         if (primary !== source.primary) change.primary = primary;
@@ -1255,7 +1228,6 @@ function NewsletterScreen({
 
     function changeFor({ tags, primary }: SourceOptions) {
         const change: { title?: string; tags?: string[]; primary?: boolean } = {};
-        // A newsletter has no title of its own to fall back to, so an emptied name keeps the current one.
         const title = name.trim();
         if (title && title !== newsletterName(source)) change.title = title;
         if (tags.join('\n') !== source.tags.join('\n')) change.tags = tags;
@@ -1395,7 +1367,6 @@ function SourceForm({
     id: string;
     action: string;
     secondary?: ReactNode;
-    // Absent when any submit is a change, as an add always is.
     changed?: (options: SourceOptions) => boolean;
     busyLabel: string;
     nameTooLong: boolean;
@@ -1464,7 +1435,6 @@ function SourceForm({
     );
 }
 
-// error and secondary ride in the same sticky footer, so a screen taller than the sheet never hides them behind it.
 function SheetAction({
     saving,
     busyLabel,
@@ -1516,7 +1486,6 @@ const SAMPLE_POSTS: PreviewPost[] = [
     'Another sample post title',
 ].map((title) => ({ title, publishedAt: '2026-01-01T00:00:00Z' }));
 
-// A save pops its feed screen when it lands, so nothing may open on top of it meanwhile.
 function PostPreview({
     candidate,
     disabled,
@@ -1549,7 +1518,6 @@ function PostPreview({
             <Text as="h3" id={label} size="xs" tone="muted">
                 Latest posts
             </Text>
-            {/* Room for three posts while they load; an error is one line and needs none. */}
             <RowSpace reserve={posts === 'loading' || Array.isArray(posts)}>
                 <Skeleton
                     data={Array.isArray(posts) ? posts : null}
@@ -1594,7 +1562,6 @@ function PostPreview({
     );
 }
 
-// A line in place of the posts; an outage is set in italics, as the one notice that is not about the feed itself.
 function PreviewNote({ outage = false, children }: { outage?: boolean; children: ReactNode }) {
     return (
         <Frame paddingTop="m">
@@ -1610,7 +1577,6 @@ const ARTICLE_NOTICE = {
     failed: 'The full article could not be loaded. You can try again or open the original.',
 };
 
-// Mirrors the reader: the feed's body first, the extracted article when the feed carries none, and a way to load it when the body is only a summary.
 function PostScreen({ post }: { post: PreviewPost }) {
     const original = httpURL(post.url);
     const { body, extracted, pending, notice, loadFull } = useArticle(original, post.contentHtml?.trim() ?? '');
@@ -1870,7 +1836,6 @@ function ProfileAbout({ html }: { html: string }) {
     const ref = useRef<HTMLDivElement>(null);
     const [expanded, setExpanded] = useState(false);
     const [overflows, setOverflows] = useState(false);
-    // A new object makes React rewrite the HTML on every toggle, which drops focus from a link inside it.
     const content = useMemo(() => ({ __html: html }), [html]);
     useEffect(() => {
         const element = ref.current;
@@ -1886,7 +1851,6 @@ function ProfileAbout({ html }: { html: string }) {
                 dangerouslySetInnerHTML={content}
                 data-font={font}
                 data-size="compact"
-                // A link past the clamp is still tabbable, and focusing it scrolls the clipped box.
                 onFocus={(event) => event.target.matches(':focus-visible') && setExpanded(true)}
                 ref={ref}
             />

@@ -1,10 +1,7 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { afterAll, afterEach, expect, test } from 'bun:test';
 
-const nativeEvents = { Event, EventTarget };
 GlobalRegistrator.register();
-// The shared event bus outlives this test file's DOM registration.
-Object.assign(globalThis, nativeEvents);
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { useDigest } = await import('./use-digest');
@@ -200,7 +197,6 @@ test('a day collecting when Morgenblau goes out of reach keeps its copy and back
     await act(async () => {
         await Bun.sleep(4500);
     });
-    // Retries at 1, 2 and 4 seconds; polling every second would have made four.
-    expect(offlineCalls).toBe(3);
+    expect(offlineCalls, 'Retries at 1, 2 and 4 seconds; polling every second would have made four.').toBe(3);
     expect(container.textContent).toBe('Earlier article');
 });

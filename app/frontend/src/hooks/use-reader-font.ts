@@ -9,7 +9,6 @@ export function parseReaderFont(value: string | null): ReaderFont {
     return readerFonts.find((font) => font === value) ?? 'sans';
 }
 
-// Every reader of the font follows a change made anywhere, such as from the command menu over an open entry.
 const listeners = new Set<() => void>();
 
 function storedFont(): ReaderFont | null {

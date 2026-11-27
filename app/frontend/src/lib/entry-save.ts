@@ -19,7 +19,6 @@ function saveRoutes(entry: ReaderEntry): SaveRoutes | null {
             path: (id) => `/api/newsletter-saves/${encodeURIComponent(id)}`,
         };
     }
-    // A path-less Standardfeed document has no canonical URL to key a save on.
     if (!entry.url) return null;
     const body = { itemUrl: entry.url, feedUrl: entry.source.feedUrl };
     return {
@@ -28,8 +27,6 @@ function saveRoutes(entry: ReaderEntry): SaveRoutes | null {
     };
 }
 
-// Every change shows at once and its request joins a queue, so a tag typed while the save is still in flight lands after it.
-// A failed request puts the state back to what the server last confirmed.
 export function createEntrySave(entry: ReaderEntry) {
     const found = saveRoutes(entry);
     if (!found) return null;
@@ -45,10 +42,8 @@ export function createEntrySave(entry: ReaderEntry) {
         listeners.forEach((listener) => listener());
     }
 
-    // A failure resets the view to the server's state, so changes queued behind it are dropped rather than applied unseen.
     let generation = 0;
 
-    // Resolves to whether the change reached the server; a dropped or failed one resolves false.
     function enqueue(request: () => Promise<void>, failure: string): Promise<boolean> {
         const queuedIn = generation;
         const done = queue

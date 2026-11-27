@@ -7,9 +7,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// iOS shows a startup image only when its pixel size exactly matches the screen, so each entry needs a pair in public/splash/.
-// Portrait CSS width, height and pixel ratio.
-const appleScreens = [
+const appleScreens: [portraitWidth: number, portraitHeight: number, pixelRatio: number][] = [
     [440, 956, 3],
     [420, 912, 3],
     [402, 874, 3],
@@ -45,7 +43,6 @@ export default defineConfig(({ mode }) => {
             react(),
             tailwindcss(),
             {
-                // Without a preload the browser finds Geist only after parsing the CSS, so text paints in the fallback and reflows.
                 name: 'preload-geist',
                 transformIndexHtml: {
                     order: 'post',
@@ -74,19 +71,18 @@ export default defineConfig(({ mode }) => {
             {
                 name: 'apple-startup-images',
                 transformIndexHtml: () =>
-                    appleScreens.flatMap(([width, height, ratio]) =>
+                    appleScreens.flatMap(([portraitWidth, portraitHeight, ratio]) =>
                         (['portrait', 'landscape'] as const).map((orientation) => {
                             const [w, h] =
                                 orientation === 'portrait'
-                                    ? [width * ratio, height * ratio]
-                                    : [height * ratio, width * ratio];
+                                    ? [portraitWidth * ratio, portraitHeight * ratio]
+                                    : [portraitHeight * ratio, portraitWidth * ratio];
                             return {
                                 tag: 'link',
                                 attrs: {
                                     rel: 'apple-touch-startup-image',
                                     href: `/splash/${w}x${h}.png`,
-                                    // iOS keeps the portrait device-width and device-height in landscape.
-                                    media: `(device-width: ${width}px) and (device-height: ${height}px) and (-webkit-device-pixel-ratio: ${ratio}) and (orientation: ${orientation})`,
+                                    media: `(device-width: ${portraitWidth}px) and (device-height: ${portraitHeight}px) and (-webkit-device-pixel-ratio: ${ratio}) and (orientation: ${orientation})`,
                                 },
                                 injectTo: 'head' as const,
                             };
@@ -100,7 +96,6 @@ export default defineConfig(({ mode }) => {
                     name: 'Morgenblau',
                     short_name: 'Morgenblau',
                     description: 'A personal daily newspaper',
-                    // Installed Android apps also paint the strip behind the gesture bar with these, in both color schemes.
                     theme_color: '#ffffff',
                     background_color: '#ffffff',
                     display: 'standalone',
@@ -113,9 +108,7 @@ export default defineConfig(({ mode }) => {
                     ],
                 },
                 workbox: {
-                    // The empty and error states' art is a CSS background, so an offline error screen needs it precached.
                     globPatterns: ['**/*.{js,wasm,css,html,webp}'],
-                    // Documents go to the server, which redirects signed-out readers; the precached shell answers only when the network fails.
                     directoryIndex: null,
                     navigateFallback: null,
                     runtimeCaching: [
@@ -125,7 +118,6 @@ export default defineConfig(({ mode }) => {
                             options: { precacheFallback: { fallbackURL: '/index.html' } },
                         },
                         {
-                            // The images offline copies show. clearOfflineCopies in src/lib/api.ts deletes this cache with the copies.
                             urlPattern: ({ sameOrigin, url }) =>
                                 sameOrigin &&
                                 /^\/api\/(entries\/[^/]+\/images?$|favicon$|avatars\/|newsletter-assets\/)/.test(
@@ -155,7 +147,6 @@ export default defineConfig(({ mode }) => {
             },
         },
         build: {
-            // Route split alone still left one >500kB chunk; splitting vendor code out clears the warning.
             rolldownOptions: {
                 output: {
                     codeSplitting: {

@@ -2,7 +2,6 @@ import { useState } from 'react';
 
 import { Avatar, AvatarFace, AvatarImage, type AvatarSize } from '@/components/ui/avatar';
 
-// Seed with something stable, like a DID or a site's host, so the face survives a changed handle or name.
 export function PersonAvatar({
     seed,
     src = null,

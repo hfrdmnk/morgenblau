@@ -1,7 +1,6 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import type { ComponentProps, ReactNode } from 'react';
 
-// The reader's actions: a column fixed to the right edge from sm up, a bar along the bottom on phones. Each shows the reading progress.
 function RailColumn({ label, progress, children }: { label: string; progress: number; children: ReactNode }) {
     return (
         <aside
@@ -28,15 +27,12 @@ function RailBar({ label, progress, children }: { label: string; progress: numbe
     );
 }
 
-// Relative, so an icon crossfade inside can stack its layers; touch-sized on phones. The class goes after the spread props because a
-// tooltip trigger renders these and merges its own props in.
 const railActionVariants = cva(
     'relative inline-flex size-11 cursor-pointer items-center justify-center rounded-md transition-[color,transform] duration-(--motion-duration-fast) ease-out motion-safe:active:scale-96 sm:size-10',
     {
         variants: {
             tone: {
                 idle: 'text-muted-foreground hover:text-foreground',
-                // A toggle that is on, its icon filled.
                 on: 'text-primary [&_path]:fill-current',
                 success: 'text-success',
             },

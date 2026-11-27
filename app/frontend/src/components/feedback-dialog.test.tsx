@@ -1,9 +1,10 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { afterAll, afterEach, expect, test } from 'bun:test';
 
+import { animateWithoutWebAnimations } from '../../test/web-animations';
+
 GlobalRegistrator.register({ url: 'http://app.example.com/sources' });
-// happy-dom rejects a cancelled animation's promise unhandled; without WAAPI, motion animates on its own frame loop.
-Reflect.deleteProperty(Element.prototype, 'animate');
+animateWithoutWebAnimations();
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { FeedbackDialog } = await import('./feedback-dialog');

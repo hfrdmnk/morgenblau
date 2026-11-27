@@ -39,7 +39,6 @@ function initialOf(label: string): string {
     return /\p{L}/u.test(first) ? first : '#';
 }
 
-// Sorts by the shown label rather than trusting server order, which falls back to the feed URL for untitled feeds.
 export function groupByInitial<T>(items: T[], label: (item: T) => string): { initial: string; items: T[] }[] {
     const groups = new Map<string, T[]>();
     for (const item of [...items].sort((a, b) => labelOrder.compare(label(a), label(b)))) {
@@ -81,7 +80,6 @@ export function feedFacts(source: { frequency?: string; totalEntries: number; la
     return facts(undefined, source.frequency, source.totalEntries, 'post', source.lastPublishedAt);
 }
 
-// A stopped newsletter has no cadence to promise.
 export function newsletterFacts(source: {
     status: string;
     frequency: string;

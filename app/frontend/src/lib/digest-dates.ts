@@ -63,9 +63,10 @@ const MONTHS = [
     'december',
 ];
 
-// Three letters at least, so a short query like "mo" stays a search instead of becoming a date.
+const SHORTEST_DAY_OR_MONTH_PREFIX = 3;
+
 function namedIndex(names: string[], word: string): number {
-    return word.length < 3 ? -1 : names.findIndex((name) => name.startsWith(word));
+    return word.length < SHORTEST_DAY_OR_MONTH_PREFIX ? -1 : names.findIndex((name) => name.startsWith(word));
 }
 
 function calendarDate(year: number, month: number, day: number): Date | null {
@@ -73,7 +74,6 @@ function calendarDate(year: number, month: number, day: number): Date | null {
     return date.getMonth() === month && date.getDate() === day ? date : null;
 }
 
-// A day without a year is the latest one that is not in the future.
 function latestOn(month: number, day: number, year: number | undefined, today: Date): Date | null {
     if (year !== undefined) return calendarDate(year, month, day);
     const thisYear = calendarDate(today.getFullYear(), month, day);
@@ -94,7 +94,6 @@ function relativeDay(query: string, today: Date): Date | null {
         const amount = /^\d/.test(ago[1]) ? Number(ago[1]) : 1;
         return addCalendarDays(today, -amount * (ago[2].startsWith('w') ? 7 : 1));
     }
-    // A weekday is the latest one before today, so "monday" on a Monday means a week ago.
     const weekday = namedIndex(WEEKDAYS, query.replace(/^last /, ''));
     if (weekday < 0) return null;
     return addCalendarDays(today, -(((today.getDay() - weekday + 6) % 7) + 1));
@@ -117,7 +116,6 @@ function writtenDay(query: string, today: Date): Date | null {
     return latestOn(month, Number(day), fullYear(year), today);
 }
 
-// Reads a typed day such as "yesterday", "last monday", "2 days ago", "14.10" or "oct 14". Future days have no digest, so they read as nothing.
 export function parseDayQuery(input: string, today: Date): Date | null {
     const query = input.trim().toLowerCase().replace(/\s+/g, ' ');
     if (!query) return null;

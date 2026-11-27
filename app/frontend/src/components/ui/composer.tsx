@@ -5,8 +5,6 @@ import { CloseIcon, ImageIcon } from '@/components/icons';
 import { DialogBackdrop, DialogPopup } from '@/components/ui/dialog';
 import { cn } from 'cn';
 
-// A chat-style composer in a dialog: one input surface holding attachments, the text and its actions, with a status line under it.
-
 function ComposerDialog({
     title,
     children,
@@ -23,7 +21,6 @@ function ComposerDialog({
     );
 }
 
-// The surface rings while its text has focus, or while files are dragged over the dialog.
 function Composer({ dragging, ...props }: Omit<ComponentProps<'form'>, 'className' | 'style'> & { dragging: boolean }) {
     return (
         <form
@@ -36,7 +33,6 @@ function Composer({ dragging, ...props }: Omit<ComponentProps<'form'>, 'classNam
     );
 }
 
-// Grows with its text up to half the screen; 16px on phones so iOS doesn't zoom into it.
 function ComposerField(props: Omit<ComponentProps<'textarea'>, 'className' | 'style'>) {
     return (
         <textarea
@@ -55,12 +51,10 @@ function ComposerDropOverlay({ children }: { children: ReactNode }) {
     );
 }
 
-// A hint about the mouse and keyboard, which a touch screen has no use for.
 function ComposerHint({ children }: { children: ReactNode }) {
     return <span className="hidden text-xs text-subtle-foreground pointer-fine:inline">{children}</span>;
 }
 
-// A thumbnail whose remove button shows on hover or focus, and always on touch screens, where nothing hovers.
 function AttachmentThumb({
     src,
     name,
@@ -94,7 +88,6 @@ function AttachmentThumb({
     );
 }
 
-// Holds one line of height whether or not there is a status, so a refusal appearing doesn't move the dialog.
 function ComposerStatus({ status, fallback }: { status: string | null; fallback: string }) {
     return (
         <p

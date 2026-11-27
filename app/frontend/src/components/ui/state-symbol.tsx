@@ -7,7 +7,6 @@ const shapes = {
 
 type StateSymbolShape = keyof typeof shapes;
 
-// Decorative: the state's title says what the symbol stands for.
 function StateSymbol({ shape }: { shape: StateSymbolShape }) {
     return (
         <span aria-hidden="true" data-slot="state-symbol" className={`state-symbol block shrink-0 ${shapes[shape]}`} />

@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from 'cn';
 
-// The group draws the field, so the inner input's focus ring and invalid edge move to the group and wrap the button too.
 function InputGroup({ className, ...props }: ComponentProps<'div'>) {
     return (
         <div
@@ -30,7 +29,6 @@ function InputGroupInput({ className, ...props }: ComponentProps<typeof Input>) 
     );
 }
 
-// tone="success" holds the button green while it confirms an action, such as a copy.
 function InputGroupButton({ className, tone, ...props }: ComponentProps<typeof Button> & { tone?: 'success' }) {
     return (
         <Button

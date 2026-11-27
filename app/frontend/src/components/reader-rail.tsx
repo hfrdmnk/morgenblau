@@ -110,7 +110,6 @@ function useScrollProgress(): number {
     useEffect(() => {
         const compute = () => {
             const max = document.documentElement.scrollHeight - window.innerHeight;
-            // Whole percents let React bail out on most scroll events instead of re-rendering every frame.
             setProgress(max <= 0 ? 1 : Math.round(Math.max(0, Math.min(1, window.scrollY / max)) * 100) / 100);
         };
         compute();

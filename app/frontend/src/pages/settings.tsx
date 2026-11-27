@@ -20,7 +20,6 @@ export function Settings() {
                     General settings
                 </Text>
                 <Frame maxWidth="xl" gap="5xl">
-                    {/* The legend sits outside a fieldset's flex box, so the gap starts below the hint. */}
                     <Frame as="fieldset" gap="xl">
                         <legend>
                             <Text as="span" display="block" size="lg" weight="medium">

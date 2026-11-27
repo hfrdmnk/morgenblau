@@ -64,13 +64,11 @@ export function AccountMenu({ profile }: { profile: AppProfile }) {
 
 const STEPS: Partial<Record<string, number>> = { ArrowDown: 1, ArrowUp: -1 };
 
-// The links and Log out read as one vertical list, so the arrows move through them instead of scrolling the page behind.
 function moveThroughItems(event: KeyboardEvent<HTMLElement>) {
     const step = STEPS[event.key];
     if (!step) return;
     event.preventDefault();
     const items = [...event.currentTarget.querySelectorAll<HTMLElement>('a, button')];
     const index = items.findIndex((item) => item === document.activeElement);
-    // From outside the list, down starts at the first item and up at the last.
     items.at(index === -1 ? Math.min(step, 0) : (index + step) % items.length)?.focus();
 }

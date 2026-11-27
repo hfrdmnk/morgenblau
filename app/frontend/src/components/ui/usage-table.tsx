@@ -6,7 +6,6 @@ function UsageStats(props: Props<'dl'>) {
     return <dl data-slot="usage-stats" className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-4" {...props} />;
 }
 
-// The header's first column spans a row's avatar and name, so the three fixed count columns line up with every row's.
 function UsageHeader(props: Props<'div'>) {
     return <div data-slot="usage-header" className="hidden grid-cols-(--grid-usage) gap-4 sm:grid" {...props} />;
 }

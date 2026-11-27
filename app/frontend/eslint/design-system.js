@@ -1,6 +1,3 @@
-// Rules that keep markup on the design system: containers and text go through Frame and Text, controls through
-// Button and Link, and only the primitives in src/components/ui/ and src/design/ write class strings.
-
 const FRAME = [
     'div',
     'section',
@@ -35,7 +32,6 @@ const MOTION_EXPORTS = new Set(['motion', 'm']);
 const rawElementMessage = (use, element) =>
     `Use ${use} instead of ${element}: raw elements accept any class string, and the design system only works when there is no way around it.`;
 
-// The local names an import gives some exports, whether imported by name, under an alias, or through a namespace.
 function trackImports(sources, exports, names = []) {
     const local = new Set(names);
     const namespaces = new Set();
@@ -62,8 +58,7 @@ const noRawElements = {
     meta: { type: 'problem', schema: [] },
     create(context) {
         const motion = trackImports(MOTION_SOURCES, MOTION_EXPORTS, ['motion']);
-        // React's createElement, not the DOM's document.createElement.
-        const react = trackImports(new Set(['react']), new Set(['createElement']));
+        const reactCreateElement = trackImports(new Set(['react']), new Set(['createElement']));
         const isMotionFactory = (callee) =>
             motion.refersTo(callee) ||
             (callee.type === 'MemberExpression' && callee.property.name === 'create' && motion.refersTo(callee.object));
@@ -74,7 +69,7 @@ const noRawElements = {
         return {
             ImportDeclaration(node) {
                 motion.collect(node);
-                react.collect(node);
+                reactCreateElement.collect(node);
             },
             JSXOpeningElement(node) {
                 const use = elementUse(node.name);
@@ -84,7 +79,6 @@ const noRawElements = {
                         message: rawElementMessage(use, `<${context.sourceCode.getText(node.name)}>`),
                     });
             },
-            // createElement('div'), motion('div') and motion.create('div') build the same raw elements without JSX.
             CallExpression(node) {
                 const element = rawName(node.arguments[0]);
                 if (!element) return;
@@ -93,7 +87,7 @@ const noRawElements = {
                         node,
                         message: rawElementMessage('<MotionFrame> from @/design/motion', `motion('${element}')`),
                     });
-                else if (react.refersTo(node.callee))
+                else if (reactCreateElement.refersTo(node.callee))
                     context.report({
                         node,
                         message: rawElementMessage(REPLACEMENTS[element], `createElement('${element}')`),
@@ -116,7 +110,6 @@ const noStyleProps = {
                 if (STYLE_PROPS.has(node.name.name))
                     context.report({ node, message: stylePropMessage(node.name.name) });
             },
-            // Props written as an object, such as a spread ({...{ className }}), createElement's props or cloneElement's overrides.
             Property(node) {
                 if (node.parent.type !== 'ObjectExpression' || node.computed) return;
                 const name = node.key.type === 'Identifier' ? node.key.name : node.key.value;
@@ -143,17 +136,15 @@ const TOKEN_MESSAGES = {
 };
 
 const PALETTE_COLOR = new RegExp(`^${COLOR_UTILITY}-((${PALETTE})-\\d{2,3}|white|black)(/.*)?$`);
-// A modifier after a color is its opacity; after a text size it is the line height, which the spacing scale already decides.
+const TEXT_SIZE_LINE_HEIGHT = String.raw`text-(xs|sm|base|lg|\d?xl)/`;
+const GRADIENT_INTERPOLATION = 'bg-(linear|radial|conic)-';
 const OPACITY_MODIFIER = new RegExp(
-    `^(?!text-(xs|sm|base|lg|\\d?xl)/)(?!bg-(linear|radial|conic)-)${COLOR_UTILITY}-[a-z0-9-]+/`,
+    `^(?!${TEXT_SIZE_LINE_HEIGHT})(?!${GRADIENT_INTERPOLATION})${COLOR_UTILITY}-[a-z0-9-]+/`,
 );
-// transition-[...] lists properties, which the transition rule checks.
 const ARBITRARY_VALUE = /^(?!transition-)[a-z@][a-z0-9-]*-\[|\/\[/;
 const ARBITRARY_PROPERTY = /^\[-*[a-z][a-z-]*:/;
-// Bracketed variants select an element by state, such as data-[side=top]:; breakpoints are values.
 const ARBITRARY_BREAKPOINT = /^@?(min|max)-\[|^@\[/;
 
-// Splits hover:data-[side=top]:bg-x into its variants and utility, keeping colons inside brackets and parentheses.
 function classParts(cls) {
     const parts = [];
     let depth = 0;
@@ -181,7 +172,6 @@ function tokenProblem(cls, allowDark) {
     return null;
 }
 
-// Every string is read as a class list: class names reach components through variables, cva maps and helpers, not only className.
 const tokenClasses = {
     meta: {
         type: 'problem',

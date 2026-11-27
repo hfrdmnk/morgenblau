@@ -5,13 +5,10 @@ import { fileURLToPath } from 'node:url';
 
 import { breakpoints, frame, text } from '@/design/tokens';
 
-// Every class a selector in the build names, unescaped; an exact set, since .p-1 is a substring of .p-1\.5.
 const classNames = (css: string) =>
     new Set([...css.matchAll(/\.((?:\\.|[\w-])+)/g)].map(([, name]) => name.replace(/\\(.)/g, '$1')));
 
-// Without a scanned candidate list the build holds only what index.css itself names, so a class missing here is one
-// Frame or Text would put on an element with no CSS behind it.
-test('every token class compiles at every breakpoint', async () => {
+test('every token class compiles at every breakpoint, so Frame and Text never put a class with no CSS behind it on an element', async () => {
     const path = fileURLToPath(new URL('../index.css', import.meta.url));
     const compiler = await compile(readFileSync(path, 'utf8'), {
         base: fileURLToPath(new URL('..', import.meta.url)),

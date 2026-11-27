@@ -1,4 +1,3 @@
-// A source's favicon, sized like an icon; one that fails to load hides instead of showing a broken image.
 function SourceIcon({ src, size = 'md' }: { src?: string | null; size?: 'md' | '2xl' }) {
     if (!src) return null;
     return (

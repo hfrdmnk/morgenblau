@@ -14,7 +14,6 @@ test('only same-tab app paths go through the router; a new-tab or protocol-relat
     document.body.append(container);
     const root = createRoot(container);
     const routed: Record<string, boolean> = {};
-    // Runs after React's root listener: record whether the link took over the click, then stop the page from navigating.
     const record = (event: MouseEvent) => {
         const anchor = (event.target as Element).closest('a')!;
         routed[anchor.textContent!] = event.defaultPrevented;

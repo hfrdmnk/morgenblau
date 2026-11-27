@@ -50,7 +50,6 @@ export function Entry() {
     useModeShortcuts();
     const steps = useEntrySteps(slug, from);
     useShortcuts({ Escape: () => navigate(back) });
-    // The reader registers these after its own actions, so saving leads the menu and Enter never leaves the entry by surprise.
     const navigation: Command[] = [
         { id: 'entry:previous', group: READER, label: 'Previous entry', run: steps.previous },
         { id: 'entry:next', group: READER, label: 'Next entry', run: steps.next },
@@ -99,7 +98,6 @@ async function loadEntry(slug: string, signal: AbortSignal): Promise<Extract<Ent
     const state = { status: 'loaded' as const, entry, extracted: false, extractionFailed: false };
     if (!canExtractArticle(entry) || entry.body?.trim()) return state;
     try {
-        // The entry read above keeps its summary-only body, so the extracted article needs its own offline copy.
         state.entry = await api<ReaderEntry>(`/api/entries/${encodeURIComponent(slug)}/extract`, {
             method: 'POST',
             signal,
@@ -215,7 +213,6 @@ function EntryError({ status, retry }: { status: number; retry: () => void }) {
     );
 }
 
-// live is false for the loading sample, which must not offer its commands.
 function Reader({
     initialEntry,
     initiallyExtracted,
@@ -253,7 +250,6 @@ function Reader({
 
 const READER = 'Reader';
 
-// The save's commands register first, as a child, so they lead the menu.
 function ReaderCommands({
     entry,
     save,
@@ -348,7 +344,6 @@ function SaveCommands({ save }: { save: EntrySave }) {
     return null;
 }
 
-// The save toasts its own failure, so the menu is only told to roll back.
 async function applied(change: Promise<boolean>) {
     if (!(await change)) throw new CommandProblem('');
 }

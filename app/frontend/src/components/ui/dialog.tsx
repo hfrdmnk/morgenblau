@@ -2,7 +2,8 @@ import { Dialog } from '@base-ui/react/dialog';
 
 import { cn } from 'cn';
 
-// Base UI skips a nested dialog's backdrop, so a confirm opened from a sheet would leave the sheet unblurred.
+// Base UI renders no backdrop for a nested dialog unless forceRender is set:
+// https://base-ui.com/react/components/dialog#nested-dialogs
 function DialogBackdrop({ className, ...props }: Dialog.Backdrop.Props) {
     return (
         <Dialog.Backdrop
@@ -17,8 +18,6 @@ function DialogBackdrop({ className, ...props }: Dialog.Backdrop.Props) {
     );
 }
 
-// Centred on both axes and scaled from the centre, so every modal enters the same way.
-// short: a popup whose content can grow long, such as an import receipt, stops well short of the screen's height.
 function DialogPopup({
     className,
     size,

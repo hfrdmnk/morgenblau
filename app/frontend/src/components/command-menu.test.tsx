@@ -1,11 +1,10 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { afterAll, afterEach, expect, setSystemTime, test } from 'bun:test';
 
-const nativeEventTarget = EventTarget;
+import { animateWithoutWebAnimations } from '../../test/web-animations';
+
 GlobalRegistrator.register({ url: 'http://app.example.com/' });
-// The shared source event bus outlives this file's DOM window.
-Object.assign(globalThis, { EventTarget: nativeEventTarget });
-Reflect.deleteProperty(Element.prototype, 'animate');
+animateWithoutWebAnimations();
 const { act, StrictMode } = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { Router } = await import('wouter');
@@ -13,15 +12,6 @@ const { CommandMenu } = await import('./command-menu');
 const { useAppLocation } = await import('@/hooks/use-app-location');
 const { useCommands } = await import('@/hooks/use-commands');
 const { CommandProblem } = await import('@/lib/commands');
-
-// Wouter's module may be cached from a different Happy DOM window.
-for (const method of ['pushState', 'replaceState'] as const) {
-    const original = window.history[method].bind(window.history);
-    window.history[method] = (...args: Parameters<History[typeof method]>) => {
-        original(args[0], args[1], args[2]);
-        window.dispatchEvent(new Event('popstate'));
-    };
-}
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const realFetch = globalThis.fetch;
@@ -39,7 +29,6 @@ function json(body: unknown) {
     return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
 }
 
-// The menu's own lists load on open; this reader follows nothing.
 function quietServer() {
     globalThis.fetch = Object.assign(
         async (url: Parameters<typeof fetch>[0]) => {
@@ -84,7 +73,6 @@ function SourcePage() {
             id: 'primary',
             group: 'Example Publication',
             label: 'Primary',
-            // Never settles, so every later Enter lands while the first write is still in flight.
             toggle: {
                 on: false,
                 set: (on) => {
@@ -102,7 +90,6 @@ function SourcePage() {
                 title: 'Tags',
                 tags: ['design'],
                 suggestionsPath: '/api/subscriptions/tags',
-                // A write with “weekend” waits until the test fails it, as a save that already toasted its own failure does.
                 save: (tags) => {
                     tagWrites.push(tags);
                     if (!tags.includes('weekend')) return Promise.resolve();

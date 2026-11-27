@@ -1,17 +1,13 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { afterAll, afterEach, expect, test } from 'bun:test';
 
-const nativeEventTarget = EventTarget;
-const nativeEvent = Event;
+import { animateWithoutWebAnimations } from '../../test/web-animations';
+
 const zone = process.env.TZ;
-// West of UTC, a day-precision date read in local time lands on the previous day.
-process.env.TZ = 'America/Los_Angeles';
+const westOfUTC = 'America/Los_Angeles';
+process.env.TZ = westOfUTC;
 GlobalRegistrator.register({ url: 'http://app.example.com/' });
-const DOMEvent = Event;
-// The shared source event bus outlives this file's DOM window, and native targets reject DOM events.
-Object.assign(globalThis, { EventTarget: nativeEventTarget, Event: nativeEvent });
-// happy-dom rejects a cancelled animation's promise unhandled; without WAAPI, motion animates on its own frame loop.
-Reflect.deleteProperty(Element.prototype, 'animate');
+animateWithoutWebAnimations();
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { AddSourceDialog } = await import('./add-source-dialog');
@@ -48,7 +44,6 @@ const preview = {
 
 type Call = { url: string; body: Record<string, unknown> };
 
-// The lookup finds no feed, so the sheet offers to generate one; handler answers generation and saves.
 function respond(handler: (call: Call) => Response | Promise<Response>) {
     const calls: Call[] = [];
     globalThis.fetch = Object.assign(
@@ -65,7 +60,6 @@ function respond(handler: (call: Call) => Response | Promise<Response>) {
     return calls;
 }
 
-// The screen on top of the sheet; screens below it stay mounted but hidden.
 function screen() {
     return [...document.querySelectorAll<HTMLElement>('.overscroll-contain > [tabindex="-1"]')].find(
         (node) => !node.hidden,
@@ -126,7 +120,7 @@ async function type(input: HTMLInputElement, value: string) {
     await act(async () => {
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
         setter.call(input, value);
-        input.dispatchEvent(new DOMEvent('input', { bubbles: true }));
+        input.dispatchEvent(new Event('input', { bubbles: true }));
     });
 }
 
@@ -236,8 +230,10 @@ test('an unsure list asks for one post, regenerates around it, and can still be 
     expect(input.readOnly).toBe(true);
     expect(input.getAttribute('aria-busy')).toBe('true');
     expect(document.activeElement).toBe(input);
-    // happy-dom does not disable a fieldset's controls, so this reads the fieldset browsers honor.
-    expect(button('Add to sources')?.closest('fieldset')?.disabled).toBe(true);
+    expect(
+        button('Add to sources')?.closest('fieldset')?.disabled,
+        'happy-dom does not disable a fieldset’s controls, so this reads the fieldset, which browsers honor.',
+    ).toBe(true);
 
     await act(async () => release());
     await settle();
@@ -272,8 +268,10 @@ for (const [why, line] of [
 
         expect(calls).toHaveLength(2);
         expect(screen().textContent).toContain(line);
-        // A tall sheet would otherwise leave the line below its fold.
-        expect(scrolled.calls.at(-1)).toEqual({ text: line, options: { block: 'nearest' } });
+        expect(scrolled.calls.at(-1), 'A tall sheet would otherwise leave the line below its fold.').toEqual({
+            text: line,
+            options: { block: 'nearest' },
+        });
         expect(announced()).toEqual([line]);
         expect(screen().querySelector('[role="alert"]')).toBeNull();
         expect(input.isConnected).toBe(true);

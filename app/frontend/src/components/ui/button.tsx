@@ -16,9 +16,7 @@ const buttonVariants = cva(
                 ghost: 'hover:bg-secondary aria-expanded:bg-secondary',
                 quiet: 'text-muted-foreground hover:bg-secondary hover:text-foreground aria-expanded:bg-secondary',
                 subtle: 'text-subtle-foreground hover:bg-secondary hover:text-foreground aria-expanded:bg-secondary',
-                // Chrome navigation that changes only its colour on hover, like the links around it.
                 nav: 'text-muted-foreground hover:text-foreground disabled:text-subtle-foreground',
-                // Shows or hides more of a list; open, it keeps the hover look, and its chevron turns with it.
                 disclosure:
                     'text-muted-foreground hover:bg-foreground-faint hover:text-foreground aria-expanded:bg-foreground-faint aria-expanded:text-foreground [&_svg]:transition-transform [&_svg]:duration-(--motion-duration-ui) [&_svg]:ease-(--ease-out) motion-reduce:[&_svg]:transition-none',
                 destructive: `${raised} btn-surface-destructive-tint text-destructive`,
@@ -26,22 +24,17 @@ const buttonVariants = cva(
             size: {
                 default: 'h-10 px-3.5',
                 sm: 'h-8 rounded-sm px-2.5 text-xs',
-                // A small action under a block of text: its label lines up with the text, and the hover fill bleeds into the gutter.
                 text: 'h-8 rounded-sm px-2.5 text-xs -ms-2.5 self-start',
                 lg: 'h-11 px-4',
                 icon: 'size-10',
                 'icon-sm': 'relative size-8 rounded-sm before:absolute before:-inset-1.5',
                 'icon-sm-round': 'relative size-8 rounded-full before:absolute before:-inset-1.5',
                 'icon-lg': 'size-11',
-                // The account avatar ends the header row, so it bleeds its padding and the picture, not its fill, meets the page's edge.
                 avatar: '-me-1 size-10 rounded-full p-1',
                 'icon-xs': 'relative size-5 rounded-full before:absolute before:-inset-1',
-                // A pill in a line of text: its fill reaches past the line without making it taller; pill-start lines its label up with the text above.
                 pill: '-my-1 gap-1 rounded-full px-2 py-1',
                 'pill-start': '-my-1 -ms-2 gap-1 rounded-full px-2 py-1',
-                // An action that reads as part of the text around it, in its weight, with a fill that reaches past the line.
                 inline: '-my-1 gap-2 rounded-sm px-2 py-1 font-normal',
-                // An action with no box at all, only its label; the hit area reaches above and below the row without making it taller.
                 bare: '-my-3 rounded-sm py-3 font-normal',
             },
         },
