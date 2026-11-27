@@ -12,6 +12,8 @@ import (
 	"morgenblau/internal/server"
 )
 
+const shutdownDrainTimeout = 30 * time.Second
+
 func gracefulShutdown(apiServer *http.Server, cleanup func(context.Context) error, done chan bool) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -19,16 +21,14 @@ func gracefulShutdown(apiServer *http.Server, cleanup func(context.Context) erro
 	<-ctx.Done()
 
 	slog.Info("shutting down gracefully, press Ctrl+C again to force")
-	stop() // Allow Ctrl+C to force shutdown
+	stop()
 
-	// 30s gives in-flight requests and the sync orchestrator's background goroutines room to drain (sync_user can hold writes mid-flight).
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownDrainTimeout)
 	defer cancel()
 	if err := apiServer.Shutdown(ctx); err != nil {
 		slog.Error("server forced to shutdown", "err", err)
 	}
 
-	// http.Server.Shutdown doesn't wait for RegisterOnShutdown funcs, so cleanup must run here explicitly, blocking before done is signaled.
 	if err := cleanup(ctx); err != nil {
 		slog.Error("cleanup", "err", err)
 	}

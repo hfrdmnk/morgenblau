@@ -91,7 +91,6 @@ func (s *relaySession) Data(r io.Reader) error {
 func (s *relaySession) Reset()        {}
 func (s *relaySession) Logout() error { return nil }
 
-// startRelay runs a submission server that offers STARTTLS and AUTH PLAIN, like a provider's port 587.
 func startRelay(t *testing.T) (*relay, Config, string) {
 	t.Helper()
 	cert, pool := selfSigned(t)
@@ -116,8 +115,7 @@ func startRelay(t *testing.T) (*relay, Config, string) {
 	}, ln.Addr().String()
 }
 
-// senderTo dials the test relay whatever host the config names, so the sender treats it as a remote relay.
-func senderTo(cfg Config, addr string) *Sender {
+func senderToRemoteRelay(cfg Config, addr string) *Sender {
 	s := NewSender(cfg)
 	s.dial = func(ctx context.Context, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "tcp", addr)
@@ -165,7 +163,7 @@ func TestSend_DeliversMultipartMessageOverSTARTTLSWithAuth(t *testing.T) {
 		},
 	}
 
-	if err := senderTo(cfg, addr).Send(context.Background(), msg); err != nil {
+	if err := senderToRemoteRelay(cfg, addr).Send(context.Background(), msg); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
 
@@ -263,7 +261,7 @@ func TestSend_RefusesARelayWithoutTLS(t *testing.T) {
 	t.Cleanup(func() { _ = srv.Close() })
 
 	cfg := Config{Host: "relay.example.com", Port: ln.Addr().(*net.TCPAddr).Port, Username: "relay-user", Password: "relay-pass", From: netmail.Address{Address: "feedback@notify.example.com"}}
-	if err := senderTo(cfg, ln.Addr().String()).Send(context.Background(), Message{To: "owner@example.com", Subject: "Hi", Text: "Hello"}); err == nil {
+	if err := senderToRemoteRelay(cfg, ln.Addr().String()).Send(context.Background(), Message{To: "owner@example.com", Subject: "Hi", Text: "Hello"}); err == nil {
 		t.Fatal("Send succeeded without TLS, want an error")
 	}
 	if len(r.msgs) != 0 {

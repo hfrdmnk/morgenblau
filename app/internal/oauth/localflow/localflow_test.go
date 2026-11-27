@@ -44,7 +44,6 @@ func metadata(issuer string) oauth.AuthServerMetadata {
 	}
 }
 
-// fakePDS is a loopback PDS that is its own authorization server, as the dev-env PDS is.
 type fakePDS struct {
 	*httptest.Server
 	meta        func(issuer string) oauth.AuthServerMetadata
@@ -161,8 +160,7 @@ func TestStartAuthFlow_AnotherLoopbackPDSIsAnErrorNotAFallback(t *testing.T) {
 	}
 }
 
-// The DID document and ATPROTO_PDS may spell the same loopback server differently.
-func TestStartAuthFlow_MatchesTheLocalPDSByLoopbackPort(t *testing.T) {
+func TestStartAuthFlow_MatchesTheLocalPDSByLoopbackPortHoweverTheHostIsSpelled(t *testing.T) {
 	pds := newFakePDS(t)
 	port := pds.Listener.Addr().(*net.TCPAddr).Port
 	app, _ := newAppWithAccountPDS(t, pds, fmt.Sprintf("http://localhost:%d/", port))

@@ -1,4 +1,3 @@
-// Package secret provides AEAD encryption at rest with key rotation; wire format is nonce || ciphertext || tag (AES-256-GCM).
 package secret
 
 import (
@@ -9,18 +8,14 @@ import (
 	"fmt"
 )
 
-// KeySize is the required key length: 32 bytes for AES-256.
 const KeySize = 32
 
-// ErrOpen is returned by Open when no key in the set can decrypt the input.
 var ErrOpen = errors.New("secret: no key could open the ciphertext")
 
-// Keyset seals and opens byte slices; keys[0] encrypts, all keys are tried on Open (rotation).
 type Keyset struct {
 	aeads []cipher.AEAD
 }
 
-// NewKeyset builds a Keyset from one or more 32-byte keys; keys[0] is the current encryption key.
 func NewKeyset(keys ...[]byte) (*Keyset, error) {
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("secret: keyset requires at least one key")
@@ -43,7 +38,6 @@ func NewKeyset(keys ...[]byte) (*Keyset, error) {
 	return &Keyset{aeads: aeads}, nil
 }
 
-// Seal encrypts plaintext under the current (first) key; only fails on a dead entropy source.
 func (k *Keyset) Seal(plaintext []byte) ([]byte, error) {
 	aead := k.aeads[0]
 	nonce := make([]byte, aead.NonceSize())
@@ -53,7 +47,6 @@ func (k *Keyset) Seal(plaintext []byte) ([]byte, error) {
 	return aead.Seal(nonce, nonce, plaintext, nil), nil
 }
 
-// Open tries each key in turn, returning ErrOpen if none succeed (wrong key, tampered, or truncated input).
 func (k *Keyset) Open(sealed []byte) ([]byte, error) {
 	for _, aead := range k.aeads {
 		ns := aead.NonceSize()

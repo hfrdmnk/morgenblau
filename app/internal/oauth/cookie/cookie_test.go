@@ -81,7 +81,6 @@ func TestGet_TamperedCiphertext_NoSession(t *testing.T) {
 	if len(cookies) != 1 {
 		t.Fatalf("expected 1 cookie, got %d", len(cookies))
 	}
-	// flip a character somewhere in the middle of the base64 payload
 	val := []byte(cookies[0].Value)
 	if val[10] == 'A' {
 		val[10] = 'B'

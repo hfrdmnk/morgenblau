@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -153,6 +154,12 @@ func TestDevSessionLoginRefreshLogout(t *testing.T) {
 	}
 	if _, err := NewManager(nil, &DevConfig{}, pds.Client()).ResumeSession(ctx, sess.Data.AccountDID, sess.Data.SessionID); err == nil {
 		t.Fatal("dev session survived restart")
+	}
+}
+
+func TestDevSessionPrefixCannotOccurInAnOAuthSessionID(t *testing.T) {
+	if _, err := base64.RawURLEncoding.DecodeString(devSessionPrefix); err == nil {
+		t.Fatalf("devSessionPrefix %q is valid base64url: Indigo's OAuth session IDs are base64url, so the prefix needs a character they cannot contain", devSessionPrefix)
 	}
 }
 
