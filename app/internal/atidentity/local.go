@@ -14,10 +14,10 @@ import (
 	"morgenblau/internal/atxrpc"
 )
 
-// localHandleTLD is reserved for testing (RFC 2606), so no public handle can live under it for the local PDS to shadow.
+// RFC 2606 reserves .test for testing, so no public handle can live under it.
+// https://www.rfc-editor.org/rfc/rfc2606#section-2
 const localHandleTLD = "test"
 
-// Local is Guarded for an APP_ENV=local server beside a throwaway PLC and PDS: did:plc lookups ask plcURL first and fall back to the public PLC on not-found, and .test handles resolve through the PDS at pdsURL.
 func Local(client *http.Client, plcURL, pdsURL string) identity.Directory {
 	return cached(newLocalDirectory(guardedBase(client), client, plcURL, pdsURL))
 }
@@ -30,7 +30,6 @@ func newLocalDirectory(public identity.Resolver, client *http.Client, plcURL, pd
 	}
 }
 
-// localDirectory repeats BaseDirectory's bidirectional checks, because BaseDirectory has no seam for routing a handle or DID to another resolver.
 type localDirectory struct {
 	public identity.Resolver
 	plc    identity.Resolver

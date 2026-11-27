@@ -20,7 +20,6 @@ const (
 	publicHandle = syntax.Handle("writer.example.com")
 )
 
-// localNetwork fakes a throwaway PLC and PDS: the PLC knows localDID, and the PDS resolves handles to whatever handles maps them to.
 type localNetwork struct {
 	plc, pds *httptest.Server
 	handles  map[string]string
@@ -128,14 +127,13 @@ func TestLocal_UnknownTestHandleIsNotFound(t *testing.T) {
 	}
 }
 
-// Publications a reader subscribes to live on the real network, so the local PLC must not hide them.
 func TestLocal_DIDUnknownToTheLocalPLCFallsBackToThePublicNetwork(t *testing.T) {
 	n := newLocalNetwork(t)
 	dir := n.directory(publicResolver())
 
 	ident, err := dir.LookupDID(context.Background(), publicDID)
 	if err != nil {
-		t.Fatalf("LookupDID: %v", err)
+		t.Fatalf("LookupDID: %v; the publications a reader follows live on the public network, so the local PLC must not hide them", err)
 	}
 	if ident.Handle != publicHandle || ident.PDSEndpoint() != "https://pds.example.com" {
 		t.Errorf("identity = %s at %s, want %s at https://pds.example.com", ident.Handle, ident.PDSEndpoint(), publicHandle)

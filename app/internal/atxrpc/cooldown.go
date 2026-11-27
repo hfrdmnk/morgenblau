@@ -12,13 +12,10 @@ import (
 )
 
 const (
-	// defaultCooldownWindow applies when a rate-limited host names no deadline of its own.
 	defaultCooldownWindow = 30 * time.Second
-	// maxCooldownWindow caps mistaken or hostile deadlines so one header can't park a host for hours.
-	maxCooldownWindow = 10 * time.Minute
+	maxCooldownWindow     = 10 * time.Minute
 )
 
-// HostCoolingError reports a request refused before the network because Host is rate-limited until Until.
 type HostCoolingError struct {
 	Host  string
 	Until time.Time
@@ -28,20 +25,17 @@ func (e *HostCoolingError) Error() string {
 	return fmt.Sprintf("atxrpc: %s is rate-limited until %s", e.Host, e.Until.UTC().Format(time.RFC3339))
 }
 
-// IsHostCooling reports whether err is a cooldown refusal, seeing through the *url.Error that http.Client wraps it in.
 func IsHostCooling(err error) bool {
 	var cooling *HostCoolingError
 	return errors.As(err, &cooling)
 }
 
-// HostCooldown tracks per-host rate-limit deadlines. The zero value is ready to use.
 type HostCooldown struct {
 	mu    sync.Mutex
 	until map[string]time.Time
-	now   func() time.Time // nil means time.Now; injected by tests
+	now   func() time.Time
 }
 
-// Cooling reports whether host is still rate-limited, dropping the entry once its window has passed.
 func (c *HostCooldown) Cooling(host string) (time.Time, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -57,7 +51,6 @@ func (c *HostCooldown) Cooling(host string) (time.Time, bool) {
 	return until, true
 }
 
-// Observe records a cooldown when resp signals rate limiting, honoring Retry-After, then ratelimit-reset, then the default window.
 func (c *HostCooldown) Observe(host string, resp *http.Response) {
 	if resp == nil || !rateLimited(resp) {
 		return
@@ -68,7 +61,6 @@ func (c *HostCooldown) Observe(host string, resp *http.Response) {
 
 	now := c.clock()
 	until := now.Add(cooldownWindow(resp, now))
-	// Requests that raced past the check land later and must not shorten a window the host already asked for.
 	if prev, ok := c.until[host]; ok && prev.After(until) {
 		return
 	}
@@ -85,7 +77,6 @@ func (c *HostCooldown) clock() time.Time {
 	return time.Now()
 }
 
-// rateLimited treats 429, 503, and an exhausted ratelimit budget alike; all three mean stop.
 func rateLimited(resp *http.Response) bool {
 	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
 		return true
@@ -104,7 +95,6 @@ func cooldownWindow(resp *http.Response, now time.Time) time.Duration {
 	return min(d, maxCooldownWindow)
 }
 
-// resetWindow reads a ratelimit-reset unix timestamp; a stale one counts as absent so the caller falls back.
 func resetWindow(v string, now time.Time) (time.Duration, bool) {
 	secs, err := strconv.ParseInt(v, 10, 64)
 	if err != nil {
@@ -117,7 +107,6 @@ func resetWindow(v string, now time.Time) (time.Duration, bool) {
 	return d, true
 }
 
-// cooldownTransport refuses requests to a cooling host, so a rate-limited PDS stops receiving traffic instead of absorbing retries.
 type cooldownTransport struct {
 	inner    http.RoundTripper
 	cooldown *HostCooldown
