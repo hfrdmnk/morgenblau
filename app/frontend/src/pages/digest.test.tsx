@@ -1,7 +1,10 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { afterAll, afterEach, expect, test } from 'bun:test';
 
+import { animateWithoutWebAnimations } from '../../test/web-animations';
+
 GlobalRegistrator.register({ url: 'http://app.example.com/' });
+animateWithoutWebAnimations();
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { Digest } = await import('./digest');
@@ -117,8 +120,6 @@ test('a source with several posts keeps its latest in place and folds the rest b
     const toggle = container.querySelector<HTMLButtonElement>('button[aria-expanded]');
     expect(toggle?.textContent).toBe('+2 more');
     await act(async () => toggle?.click());
-    // Unmounting mid-animation leaves the next test's digest stuck loading under happy-dom.
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 300)));
     expect(visible()).toEqual(['links-latest', 'links-older', 'links-oldest', 'weekly', 'letter']);
 });
 

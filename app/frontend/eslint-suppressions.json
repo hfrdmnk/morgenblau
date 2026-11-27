@@ -1,9 +1,4 @@
 {
-  "src/pages/digest.test.tsx": {
-    "comments/no-comments": {
-      "count": 1
-    }
-  },
   "src/pages/digest.tsx": {
     "comments/no-comments": {
       "count": 11
