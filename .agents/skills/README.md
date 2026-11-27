@@ -7,6 +7,7 @@ Each directory here is one skill: a `SKILL.md` with `name` and `description` fro
 | [verify-morgenblau](verify-morgenblau/SKILL.md) | by the agent after user-facing changes, or on request | driving an isolated instance, its harness and fixture feeds, and the evidence format |
 | [maintain-verification-skill](maintain-verification-skill/SKILL.md) | on request or by an authorized schedule | keeping verify-morgenblau's recipes and harness in step with the app |
 | [garden](garden/SKILL.md) | explicitly only: `garden`, `/garden`, or a scheduled run | the static sweep that ships mechanical fixes and files judgment issues |
+| [no-comments](no-comments/SKILL.md) | on request, for one scope of `app/` | burning down the comments the two comment baselines still allow |
 
 ## Writing a skill
 
