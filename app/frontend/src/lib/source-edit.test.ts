@@ -1,6 +1,4 @@
 import { afterEach, expect, test } from 'bun:test';
-
-import subscription from '../../../lexicons/blue/morgen/feed/subscription.json';
 import {
     MAX_TAG_LENGTH,
     MAX_TAGS,
@@ -87,7 +85,22 @@ test('adding tags splits on commas, trims, and skips case-insensitive duplicates
     expect(addTags(['Tech'], '   ')).toEqual(['Tech']);
 });
 
-test('the tag and title limits are the subscription lexicon’s, so the server never rejects what the sheet allowed', () => {
+type SubscriptionLexicon = {
+    defs: {
+        main: {
+            record: {
+                properties: {
+                    tags: { maxLength: number; items: { maxGraphemes: number } };
+                    title: { maxGraphemes: number };
+                };
+            };
+        };
+    };
+};
+
+test('the tag and title limits are the subscription lexicon’s, so the server never rejects what the sheet allowed', async () => {
+    const lexicon = new URL('../../../lexicons/blue/morgen/feed/subscription.json', import.meta.url);
+    const subscription: SubscriptionLexicon = await Bun.file(lexicon).json();
     const { tags, title } = subscription.defs.main.record.properties;
     expect([MAX_TAGS, MAX_TAG_LENGTH, MAX_TITLE_LENGTH]).toEqual([
         tags.maxLength,
