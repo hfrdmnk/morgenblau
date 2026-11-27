@@ -100,7 +100,6 @@ const SAMPLE_DIGEST: DigestData = {
 };
 
 function DigestContent({ date, state }: { date: string; state: ReturnType<typeof useDigest> }) {
-    // An empty day while a sync runs is still loading: entries are on their way, so it keeps the skeleton until they land or the job ends.
     const collecting = state.status === 'loaded' && state.data.hasActiveJob && state.data.entries.length === 0;
     return (
         <Skeleton
@@ -114,7 +113,6 @@ function DigestContent({ date, state }: { date: string; state: ReturnType<typeof
     );
 }
 
-// Kept outside the page so going back from a folded post finds its group still open.
 const openSources = new Map<string, Set<string>>();
 
 function LoadedDigest({ date, digest }: { date: string; digest: DigestData }) {
@@ -164,7 +162,6 @@ function LoadedDigest({ date, digest }: { date: string; digest: DigestData }) {
 
 type SourceGroup = { key: string; lead: DigestEntry; more: DigestEntry[] };
 
-// Entries arrive newest first, so a busy source keeps its latest post in place and folds the rest beneath it.
 function groupBySource(entries: DigestEntry[]): SourceGroup[] {
     const groups = new Map<string, SourceGroup>();
     for (const entry of entries) {
@@ -182,16 +179,13 @@ function groupBySource(entries: DigestEntry[]): SourceGroup[] {
     return [...groups.values()];
 }
 
-// An empty day reads differently for a reader who has nothing to follow yet, so it checks before choosing the copy.
 function EmptyDigest({ digest }: { digest: DigestData }) {
     const feeds = useSources<FeedSource[]>('/api/subscriptions');
     const newsletters = useSources<{ active: unknown[]; stopped: unknown[] }>('/api/newsletters');
-    // Servers without newsletter delivery answer 404 here, which means the reader has no newsletters.
     const noSources =
         feeds.status === 'loaded' && newsletters.status !== 'loading'
             ? feeds.data.length === 0 && (newsletters.status === 'error' || newsletters.data.active.length === 0)
             : null;
-    // After a source change the copy waits for the digest's own answer, which may turn this day into collecting instead.
     const [changedAt, setChangedAt] = useState<DigestData | null>(null);
     useEffect(() => {
         const change = () => setChangedAt(digest);
@@ -240,12 +234,10 @@ function greeting(now: Date): string {
     return 'Good evening';
 }
 
-// Primary posts lead with type and whitespace; the image appears only when the post has one that loads.
 type GroupProps = { date: string; group: SourceGroup; onToggle: () => void; open: boolean };
 
 function PrimaryItem({ date, group, onToggle, open }: GroupProps) {
     const entry = group.lead;
-    // The digest re-polls every second while a sync runs; memoizing on the body skips reparsing unchanged posts.
     const excerpt = useMemo(() => entryExcerpt(entry.body), [entry.body]);
     const [failedImage, setFailedImage] = useState<string | null>(null);
     const image = entry.image && entry.image !== failedImage ? entry.image : null;
@@ -352,7 +344,6 @@ function MoreFromSource({ date, group, onToggle, open, size }: GroupProps & { si
     const id = useId();
     return (
         <Frame>
-            {/* Block flow: the toggle sits on a line of body text, whose height sets the room above the folded posts. */}
             <Frame display="block">
                 <MoreToggle controls={id} group={group} onToggle={onToggle} open={open} size="pill-start" />
             </Frame>
@@ -391,10 +382,8 @@ function MoreToggle({
     );
 }
 
-// Closing runs faster than opening because the reader has already decided.
 const MORE_TIMING = { open: 0.24, close: 0.16, ease: [0.16, 1, 0.3, 1] as const };
 
-// The source already heads the group, so the folded posts show only their titles.
 function MoreList({
     date,
     entries,

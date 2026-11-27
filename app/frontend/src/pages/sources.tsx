@@ -33,8 +33,6 @@ export function Sources() {
     const feeds = useSources<FeedSource[]>('/api/subscriptions', 15_000);
     const newsletters = useSources<{ active: NewsletterSource[]; stopped: NewsletterSource[] }>('/api/newsletters');
     useDocumentTitle('Sources');
-    // Sections hold their skeletons until both lists answer, so a new account never sees a section's empty state
-    // flash before the page-wide one replaces it.
     const settled = feeds.status !== 'loading' && newsletters.status !== 'loading';
     return (
         <Frame
@@ -66,7 +64,6 @@ export function Sources() {
     );
 }
 
-// A section's skeleton data, held back until both lists have answered.
 function settledData<T>(
     state: { status: 'loading' } | { status: 'loaded'; data: T } | { status: 'error' },
     settled: boolean,
@@ -74,7 +71,6 @@ function settledData<T>(
     return settled && state.status === 'loaded' ? state.data : null;
 }
 
-// Null until both lists load; stopped newsletters count, since the page still lists them.
 function sourceCount(feeds: Feeds, newsletters: Newsletters): number | null {
     if (feeds.status !== 'loaded' || newsletters.status !== 'loaded') return null;
     return feeds.data.length + newsletters.data.active.length + newsletters.data.stopped.length;
@@ -196,7 +192,6 @@ function NewsletterList({
     );
 }
 
-// With only stopped newsletters the section keeps a quiet line: "No newsletters yet." would contradict the list below.
 function ActiveNewsletters({
     newsletters: { active, stopped },
     onChanged,

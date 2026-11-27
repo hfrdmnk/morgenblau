@@ -23,12 +23,10 @@ export function Login() {
     const [pending, setPending] = useState(false);
     useDocumentTitle('Sign in');
 
-    // Logging out and every sign-in land here, so one reader's offline copies never reach the next.
     useEffect(() => {
         void clearOfflineCopies();
     }, []);
 
-    // A page restored from the back-forward cache keeps its pending state, so Back would leave the button stuck.
     useEffect(() => {
         const reset = () => setPending(false);
         window.addEventListener('pageshow', reset);
@@ -65,16 +63,13 @@ export function Login() {
     );
 }
 
-// A failed sign-in returns here with the handle and an error code, so the field comes back filled in and explains what went wrong.
 function HandleField() {
     const { error: code = '', handle = '' } = Object.fromEntries(new URLSearchParams(useSearch()));
     const error = LOGIN_ERRORS[code];
     const [value, setValue] = useState(handle);
-    // Only typing searches, so a prefilled handle or a picked suggestion costs no request.
     const [search, setSearch] = useState('');
     const [open, setOpen] = useState(false);
     const actors = useActorSuggestions(search);
-    // An open popup hides the rest of the page from assistive tech, Continue included, so it stays closed without suggestions.
     const shown = open && actors.length > 0;
     return (
         <Frame gap="s">
@@ -102,11 +97,9 @@ function HandleField() {
                     autoFocus={!window.matchMedia('(pointer: coarse)').matches}
                     aria-describedby={error && 'handle-error'}
                     aria-invalid={Boolean(error)}
-                    // Base UI only reports closing while the popup is mounted, so leaving the field closes it here, before late results can open it.
                     onBlur={() => setOpen(false)}
                     onKeyDown={(event) => {
                         if (event.key !== 'Escape' || shown) return;
-                        // Base UI clears the input on Escape when the popup is closed, which would wipe a typed or prefilled handle.
                         event.preventBaseUIHandler();
                         setOpen(false);
                     }}
@@ -150,10 +143,8 @@ function HandleField() {
 
 type Actor = { did: string; handle: string; displayName?: string; avatar?: string };
 
-// Typeahead allows 60 requests a minute per IP, so searches wait for a pause in typing.
 const SUGGESTION_DELAY_MS = 350;
 
-// Suggestions are optional: a failed search leaves the field working as a plain handle input.
 function useActorSuggestions(input: string) {
     const [actors, setActors] = useState<Actor[]>([]);
     const query = input.trim().replace(/^@/, '');
