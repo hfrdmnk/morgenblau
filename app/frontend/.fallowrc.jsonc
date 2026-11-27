@@ -1,5 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": ["test/isolation/*.ts"],
   "duplicates": {
     // CSS declares one @font-face per font subset, so blocks sharing family, style and weight can't be deduplicated.
     "ignore": ["src/assets/fonts/fonts.css"],
