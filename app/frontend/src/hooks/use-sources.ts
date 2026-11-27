@@ -57,7 +57,6 @@ export type SourceEntry = {
 type State<T> = { status: 'loading' } | { status: 'loaded'; data: T } | { status: 'error'; notFound?: boolean };
 
 export function useSources<T>(path: string, pollInterval = 0) {
-    // Keyed by path so a page reused for another source never shows the previous one's data.
     const [state, setState] = useState<State<T> & { path?: string }>({ status: 'loading' });
     const [attempt, setAttempt] = useState(0);
 
@@ -65,7 +64,6 @@ export function useSources<T>(path: string, pollInterval = 0) {
         const controller = new AbortController();
         let timer: ReturnType<typeof setTimeout>;
         const refresh = () => setAttempt((value) => value + 1);
-        // Every subscription view reads the same records, so a change anywhere refreshes each one.
         if (path.startsWith('/api/subscriptions')) {
             subscriptionChanges.addEventListener('change', refresh);
         }

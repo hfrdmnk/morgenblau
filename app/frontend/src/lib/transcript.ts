@@ -5,7 +5,6 @@ export type Transcript =
 
 export type TranscriptParagraph = { start: number; text: string };
 
-// A paragraph ends at a sentence once it has run a while, at a long pause, or at a hard cap for captions without punctuation.
 const SENTENCE_MS = 12_000;
 const PAUSE_MS = 20_000;
 const MAX_MS = 30_000;
@@ -32,7 +31,6 @@ export function groupCues(cues: TranscriptCue[]): TranscriptParagraph[] {
     return paragraphs;
 }
 
-// The paragraph being spoken at ms: the last one that has started, so a pause keeps the previous one marked. -1 before the first.
 export function activeIndex(paragraphs: TranscriptParagraph[], ms: number): number {
     let low = 0;
     let high = paragraphs.length - 1;

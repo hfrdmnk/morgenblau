@@ -1,6 +1,5 @@
 import { useEffect, useState, type RefObject } from 'react';
 
-// The embed speaks the postMessage protocol of YouTube's iframe_api script; driving it directly keeps the embed the only third-party resource.
 export const PLAYER_ORIGIN = 'https://www.youtube-nocookie.com';
 const HANDSHAKE_EVERY_MS = 250;
 const HANDSHAKE_TRIES = 40;
@@ -9,8 +8,7 @@ const PLAYING = 1;
 export type YouTubePlayer = {
     ready: boolean;
     playing: boolean;
-    // Milliseconds into the video, as last reported by the player.
-    currentTime: number;
+    currentTimeMs: number;
     seekTo: (ms: number) => void;
 };
 
@@ -21,7 +19,7 @@ export function youtubeEmbedURL(videoID: string): string {
 export function useYouTubePlayer(iframe: RefObject<HTMLIFrameElement | null>): YouTubePlayer {
     const [ready, setReady] = useState(false);
     const [playing, setPlaying] = useState(false);
-    const [currentTime, setCurrentTime] = useState(0);
+    const [currentTimeMs, setCurrentTimeMs] = useState(0);
 
     useEffect(() => {
         const frame = iframe.current;
@@ -29,7 +27,6 @@ export function useYouTubePlayer(iframe: RefObject<HTMLIFrameElement | null>): Y
         let heard = false;
         let tries = 0;
         let timer: ReturnType<typeof setInterval> | undefined;
-        // The player ignores messages until its own script has loaded, so the handshake repeats until it answers.
         const handshake = () => {
             clearInterval(timer);
             tries = 0;
@@ -45,7 +42,7 @@ export function useYouTubePlayer(iframe: RefObject<HTMLIFrameElement | null>): Y
             if (!update) return;
             heard = true;
             setReady(true);
-            if (update.time !== undefined) setCurrentTime(update.time);
+            if (update.time !== undefined) setCurrentTimeMs(update.time);
             if (update.playing !== undefined) setPlaying(update.playing);
         };
         window.addEventListener('message', onMessage);
@@ -61,10 +58,10 @@ export function useYouTubePlayer(iframe: RefObject<HTMLIFrameElement | null>): Y
     const seekTo = (ms: number) => {
         post(iframe.current, { event: 'command', func: 'seekTo', args: [ms / 1000, true] });
         post(iframe.current, { event: 'command', func: 'playVideo', args: [] });
-        setCurrentTime(ms);
+        setCurrentTimeMs(ms);
     };
 
-    return { ready, playing, currentTime, seekTo };
+    return { ready, playing, currentTimeMs, seekTo };
 }
 
 function post(frame: HTMLIFrameElement | null, message: object) {
@@ -73,7 +70,6 @@ function post(frame: HTMLIFrameElement | null, message: object) {
 
 type PlaybackUpdate = { time?: number; playing?: boolean };
 
-// What a player message says about playback; null for anything that is not one.
 function readPlayerMessage(raw: unknown): PlaybackUpdate | null {
     const data = parseMessage(raw);
     if (!data) return null;

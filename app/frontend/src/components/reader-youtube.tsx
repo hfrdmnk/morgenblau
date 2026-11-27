@@ -70,10 +70,10 @@ function ReaderTranscript({
     const [font] = useReaderFont();
     const list = useRef<HTMLOListElement>(null);
     // Nothing is marked until the video has started, so an untouched transcript reads as plain text.
-    const started = player.playing || player.currentTime > 0;
+    const started = player.playing || player.currentTimeMs > 0;
     const active = useMemo(
-        () => (started ? activeIndex(paragraphs, player.currentTime) : -1),
-        [paragraphs, started, player.currentTime],
+        () => (started ? activeIndex(paragraphs, player.currentTimeMs) : -1),
+        [paragraphs, started, player.currentTimeMs],
     );
     const previous = useRef(active);
     // Scrolling waits for playback: a seek moves the time before the player pins, and scrolling the unpinned player away stops it from starting.

@@ -197,7 +197,6 @@ test('a day collecting when Morgenblau goes out of reach keeps its copy and back
     await act(async () => {
         await Bun.sleep(4500);
     });
-    // Retries at 1, 2 and 4 seconds; polling every second would have made four.
-    expect(offlineCalls).toBe(3);
+    expect(offlineCalls, 'Retries at 1, 2 and 4 seconds; polling every second would have made four.').toBe(3);
     expect(container.textContent).toBe('Earlier article');
 });

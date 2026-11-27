@@ -27,7 +27,6 @@ export type ReaderEntry = {
     savedState?: { kind?: string; id?: string; rkey?: string; tags?: string[] } | null;
 };
 
-// The choice applies to this one message, which comes back with its images allowed.
 export async function allowRemoteImages(
     entry: ReaderEntry,
     newsletter: NonNullable<ReaderEntry['newsletter']>,
@@ -52,8 +51,6 @@ export function readerContentURL(value: string, base: string): string {
     }
 }
 
-// A stored entry's images load through the app so publishers never see the reader's address. The proxy matches the raw src
-// against the stored article, so it gets the attribute unresolved. The add-source preview has no stored entry and loads images directly.
 export function readerBody(
     entry: Pick<ReaderEntry, 'body' | 'url' | 'contentType' | 'newsletter'> & { entrySlug?: string },
 ): string {
@@ -61,7 +58,6 @@ export function readerBody(
     const base = httpURL(entry.url);
     if (entry.newsletter || entry.contentType === 'newsletter' || (!base && !entry.entrySlug)) return body;
 
-    // A template keeps image requests inert until their URLs are rewritten.
     const template = document.createElement('template');
     template.innerHTML = body;
     for (const attribute of ['href', 'src', 'cite']) {

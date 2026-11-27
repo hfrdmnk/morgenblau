@@ -7,7 +7,6 @@ export type GenerationStep =
     | { step: 'failed'; message: string; retry: boolean }
     | { step: 'preview'; source: GeneratedSource; anchored: boolean };
 
-// The steps live with the screen that shows them, so the sheet's header can name the feed once it exists.
 export function useGeneration(onStep: (step: GenerationStep) => void) {
     const request = useRef<AbortController | null>(null);
     useEffect(() => () => request.current?.abort(), []);
@@ -37,7 +36,6 @@ export function useGeneration(onStep: (step: GenerationStep) => void) {
         if (!controller.signal.aborted) onStep(next);
     }
 
-    // Rejects so the anchor form can keep the current preview and show why.
     async function pointAt(url: string, anchor: string) {
         const controller = begin();
         const source = await generateSource(url, anchor, controller.signal);

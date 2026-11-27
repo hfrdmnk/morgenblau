@@ -14,7 +14,6 @@ export type EditableSource =
           latestEntrySlug?: string;
       };
 
-// The subscription lexicon caps a record at ten tags of 64 graphemes and titles at 128.
 export const MAX_TAGS = 10;
 export const MAX_TAG_LENGTH = 64;
 export const MAX_TITLE_LENGTH = 128;
@@ -85,7 +84,6 @@ function sourcePath(source: EditableSource): string {
         : `/api/newsletters/${encodeURIComponent(source.id)}`;
 }
 
-// The PATCH route changes only the fields it is sent, so an edit never rewrites a field from a stale copy.
 export function editNewsletter(
     source: Extract<EditableSource, { kind: 'newsletter' }>,
     change: { title?: string; tags?: string[]; primary?: boolean },
@@ -93,13 +91,11 @@ export function editNewsletter(
     return api(sourcePath(source), { method: 'PATCH', body: change });
 }
 
-// Stopping is a newsletter's reversible removal; deleting one is unsubscribeNewsletter or deleteNewsletter.
 export function removeSource(source: EditableSource) {
     if (source.kind === 'feed') return api(sourcePath(source), { method: 'DELETE' });
     return api(`${sourcePath(source)}/stop`, { method: 'POST' });
 }
 
-// The server deletes the newsletter only after the sender confirms the one-click unsubscribe.
 export function unsubscribeNewsletter(source: Extract<EditableSource, { kind: 'newsletter' }>) {
     return api(`${sourcePath(source)}/unsubscribe`, { method: 'POST' });
 }
@@ -112,17 +108,16 @@ export function resumeNewsletter(source: Extract<EditableSource, { kind: 'newsle
     return api(`${sourcePath(source)}/enable`, { method: 'POST' });
 }
 
-// Code points, as the server counts; the lexicon's grapheme limit is never stricter.
-function length(text: string): number {
+function codePoints(text: string): number {
     return [...text].length;
 }
 
 export function titleTooLong(title: string): boolean {
-    return length(title.trim()) > MAX_TITLE_LENGTH;
+    return codePoints(title.trim()) > MAX_TITLE_LENGTH;
 }
 
 export function hasOverlongTag(input: string): boolean {
-    return input.split(',').some((tag) => length(tag.trim()) > MAX_TAG_LENGTH);
+    return input.split(',').some((tag) => codePoints(tag.trim()) > MAX_TAG_LENGTH);
 }
 
 export function canAddTags(tags: string[], input: string): boolean {

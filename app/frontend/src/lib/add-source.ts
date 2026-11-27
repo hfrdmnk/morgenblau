@@ -30,7 +30,6 @@ export function sourceLocation(candidate: SourceCandidate) {
 
 const YOUTUBE_FEED = 'https://www.youtube.com/feeds/videos.xml';
 
-// Mirrors SameYouTubeFeedURLs in internal/feedfinder: a channel's full feed and its UULF uploads playlist, which leaves out Shorts.
 export function youtubeFeeds(feedUrl: string) {
     let url: URL;
     try {
@@ -107,7 +106,6 @@ export function generateSource(input: string, anchor: string | undefined, signal
 const RATE_LIMITED = 'You’ve generated a lot of feeds recently. Try again later.';
 const SETUP_IN_FLIGHT = 'Your last feed is still being generated. Try again in a moment.';
 
-// The reader's own earlier setup is still spending, so this clears in seconds unlike a limit.
 function setupInFlight(error: ApiError) {
     return error.code === 'setup_in_flight';
 }
@@ -133,7 +131,6 @@ function apiGenerationError(error: ApiError) {
     return error.status < 500 ? error.message : undefined;
 }
 
-// Server messages are terse logs, so every failure reads in the dialog's own words.
 export function generationError(error: unknown) {
     const api = error instanceof ApiError ? apiGenerationError(error) : undefined;
     if (api) return api;
@@ -142,7 +139,6 @@ export function generationError(error: unknown) {
         : 'Couldn’t generate a feed. Try again.';
 }
 
-// Only a bad address is the reader's to fix; a busy or unreachable server is not.
 export function anchorError(error: unknown) {
     const invalid = error instanceof ApiError ? error.status === 400 : !(error instanceof TypeError);
     return {
@@ -154,14 +150,12 @@ export function anchorError(error: unknown) {
     };
 }
 
-// The post was a fair try, so this reads as an outcome rather than the reader's mistake.
 export function anchorRejection(why: AnchorRejection) {
     return why === 'not_on_page'
         ? 'That post isn’t linked on this page. The feed stays as it was.'
         : 'That post didn’t help. The feed stays as it was.';
 }
 
-// A long limit, an unavailable generator or a bad address answers the same way at once.
 export function canRetryGeneration(error: unknown) {
     if (error instanceof ApiError)
         return error.status === 429 ? setupInFlight(error) : error.status >= 500 && error.status !== 503;
@@ -188,9 +182,7 @@ export function generatedCandidate(source: GeneratedSource): SourceCandidate {
 
 export type SourceOptions = { tags: string[]; primary: boolean; title?: string };
 
-// Options travel only when set: a native publication with none needs no sidecar record.
 export async function addSource(candidate: SourceCandidate, options: SourceOptions = { tags: [], primary: false }) {
-    // A publication's own name needs no sidecar, so only a name the reader typed travels with it.
     const identity =
         candidate.kind === 'standardfeed'
             ? { publication: candidate.publication, title: options.title }
@@ -210,21 +202,18 @@ export async function addSource(candidate: SourceCandidate, options: SourceOptio
 
 export type SourceChange = { title?: string; tags?: string[]; primary?: boolean; feedUrl?: string };
 
-// The PATCH route rewrites only the fields it is sent, so the change carries only what the reader edited.
 export async function editSource(rkey: string, change: SourceChange) {
     const { jobId } = await api<{ jobId?: string }>(`/api/subscriptions/${encodeURIComponent(rkey)}`, {
         method: 'PATCH',
         body: change,
     });
     subscriptionChanges.dispatchEvent(new Event('change'));
-    // A re-pointed feed has no posts until its fetch lands, so views read it again once the job settles.
     if (jobId) void settled(jobId).then(() => subscriptionChanges.dispatchEvent(new Event('change')));
 }
 
 const JOB_POLL_MS = 750;
 const JOB_POLLS = 80;
 
-// Resolves once the job has stopped running; a job that is unreadable or outlives the polls ends the wait the same way.
 async function settled(jobId: string) {
     for (let poll = 0; poll < JOB_POLLS; poll++) {
         await new Promise((resolve) => setTimeout(resolve, JOB_POLL_MS));
@@ -269,7 +258,6 @@ export type SiteProfile = {
     following?: SiteFollow[];
 };
 
-// A site without a frontmatter summary still gets a short bio: its about page's first paragraph.
 export function profileSummary(profile: SiteProfile): string | undefined {
     if (profile.summary) return profile.summary;
     const template = document.createElement('template');
@@ -279,7 +267,6 @@ export function profileSummary(profile: SiteProfile): string | undefined {
 
 export type SiteResult = SourceDiscovery & { url: string; profile: SiteProfile | null };
 
-// The profile is optional decoration, so its failure never fails the lookup.
 export async function findSite(input: string, signal: AbortSignal): Promise<SiteResult> {
     const url = webURL(input);
     const profile = url

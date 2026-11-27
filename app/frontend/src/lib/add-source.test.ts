@@ -333,10 +333,12 @@ test('a setup still in flight reads as a short wait that can be tried again', as
 });
 
 test('a long limit reads calmly, names no window, and is not offered again at once', async () => {
-    // A fixed hourly window can be seconds from its reset, which must not read as a setup in flight.
     for (const retryAfter of ['5', '600', '82800', null]) {
         const limited = await limitedBy('rate_limited', retryAfter);
-        expect(generationError(limited)).toBe('You’ve generated a lot of feeds recently. Try again later.');
+        expect(
+            generationError(limited),
+            'A fixed hourly window can be seconds from its reset, which must not read as a setup in flight.',
+        ).toBe('You’ve generated a lot of feeds recently. Try again later.');
         expect(canRetryGeneration(limited)).toBe(false);
         expect(anchorError(limited)).toEqual({
             message: 'You’ve generated a lot of feeds recently. Try again later.',

@@ -16,7 +16,7 @@ function Player() {
         <>
             <iframe ref={frame} title="Example video" />
             <button onClick={() => player.seekTo(83_000)}>Play from 1:23</button>
-            <output>{`${player.ready} ${player.playing} ${player.currentTime}`}</output>
+            <output>{`${player.ready} ${player.playing} ${player.currentTimeMs}`}</output>
         </>
     );
 }

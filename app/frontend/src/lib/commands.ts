@@ -1,9 +1,7 @@
-// A command's work resolves to the toast it shows, or to nothing.
 type Outcome = Promise<string | void> | string | void;
 
 export type CommandOption = { value: string; label: string; detail?: string; shortcut?: string };
 
-// A step takes over the menu's input, so an action asks for its value in place.
 export type CommandStep =
     | {
           kind: 'text';
@@ -38,13 +36,11 @@ export type Command = {
     keywords?: string[];
     detail?: string;
     icon?: string | null;
-    // Listed only once the reader types, so long lists such as every source stay out of the opening view.
     searchOnly?: boolean;
 } & (
     { run: () => Outcome } | { toggle: { on: boolean; set: (on: boolean) => Promise<unknown> } } | { step: CommandStep }
 );
 
-// A failure whose message is meant for the reader, shown in the menu as it is. An empty one means the reader was already told.
 export class CommandProblem extends Error {}
 
 export async function copied(text: string, message: string) {

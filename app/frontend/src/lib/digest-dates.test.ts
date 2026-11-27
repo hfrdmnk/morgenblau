@@ -70,7 +70,6 @@ describe('digest dates', () => {
     });
 
     describe('typed days', () => {
-        // Saturday, 7 November 2026.
         const saturday = new Date(2026, 10, 7);
         const read = (query: string, today = saturday) => {
             const day = parseDayQuery(query, today);

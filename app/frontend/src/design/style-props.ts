@@ -4,7 +4,6 @@ type Breakpoint = (typeof breakpoints)[number];
 
 type Choice<K> = K extends 'true' ? true : K extends 'false' ? false : K;
 
-// A token, or one per breakpoint from the smallest screen up.
 export type Responsive<T> = T | ({ base?: T } & { [B in Breakpoint]?: T });
 
 type ClassMaps = Record<string, Record<string | number, string>>;

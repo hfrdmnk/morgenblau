@@ -33,7 +33,6 @@ export function isAdminPath(path: string): boolean {
     return path === PATHS.admin || path.startsWith(`${PATHS.admin}/`);
 }
 
-// Pages opened from the account menu, which offer a way back to the mode they were opened from.
 export function isAccountMenuPath(path: string): boolean {
     return isSettingsPath(path) || isAdminPath(path);
 }
@@ -57,7 +56,6 @@ export function readerSourceHref(source: { kind?: string; id?: string; rkey?: st
 
 const SOURCE_PAGE = /^\/sources\/(?:newsletters\/)?[^/?#\\]+$/;
 
-// `from` arrives in the URL, so only a source page path is trusted as a link target.
 export function sourceOrigin(from: string | null): string | null {
     return from && SOURCE_PAGE.test(from) ? from : null;
 }
@@ -68,7 +66,6 @@ export function digestHref(date?: string): string {
 
 const NEWSLETTER_PAGE = /^\/sources\/newsletters\/(.+)$/;
 
-// The API path that returns the list behind an entry's `from`, in the order that list shows it.
 export function entryListPath(from: string | null, timezone: string): string | null {
     const source = sourceOrigin(from);
     if (source) {
