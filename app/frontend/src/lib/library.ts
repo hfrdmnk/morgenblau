@@ -1,23 +1,16 @@
-export type SaveState = 'queue' | 'archived';
+export type LibraryView = 'recent' | 'everything';
 
-const ARCHIVED = 'archived';
+export const RECENT_SIZE = 10;
 
-const isArchived = (tag: string) => tag.toLowerCase() === ARCHIVED;
-
-export function saveState(tags: string[]): SaveState {
-    return tags.some(isArchived) ? 'archived' : 'queue';
+export function libraryView(search: string): LibraryView {
+    return new URLSearchParams(search).get('view') === 'everything' ? 'everything' : 'recent';
 }
 
-export function visibleTags(tags: string[]): string[] {
-    return tags.filter((tag) => !isArchived(tag));
-}
+export type LibrarySort = 'newest' | 'title' | 'site';
 
-export function withState(tags: string[], state: SaveState): string[] {
-    return state === 'queue' ? visibleTags(tags) : [ARCHIVED, ...visibleTags(tags)];
-}
-
-export function libraryTab(search: string): SaveState {
-    return new URLSearchParams(search).get('tab') === ARCHIVED ? 'archived' : 'queue';
+export function librarySort(search: string): LibrarySort {
+    const sort = new URLSearchParams(search).get('sort');
+    return sort === 'title' || sort === 'site' ? sort : 'newest';
 }
 
 export type LibrarySource = {
@@ -60,17 +53,64 @@ export function saveTagsPath(save: LibrarySave): string {
         : `/api/saves/${encodeURIComponent(save.rkey)}`;
 }
 
-export function queueGroups(saves: LibrarySave[]): Array<{ title: string; saves: LibrarySave[] }> {
-    const video = (save: LibrarySave) => save.kind !== 'newsletter' && save.contentType === 'video';
-    const read = (save: LibrarySave, from: number, to = Infinity) =>
-        !video(save) && !!save.minutes && save.minutes >= from && save.minutes <= to;
-    return [
-        { title: 'Quick reads', saves: saves.filter((s) => read(s, 1, 5)) },
-        { title: 'Over coffee', saves: saves.filter((s) => read(s, 6, 15)) },
-        { title: 'Deep dives', saves: saves.filter((s) => read(s, 16)) },
-        { title: 'To watch', saves: saves.filter(video) },
-        { title: 'Links', saves: saves.filter((s) => !video(s) && !s.minutes) },
-    ].filter((group) => group.saves.length);
+export function saveTitle(save: LibrarySave): string {
+    return save.title || 'Untitled';
+}
+
+export function saveHost(save: LibrarySave): string | null {
+    if (save.kind === 'newsletter') return null;
+    try {
+        return new URL(save.itemUrl).hostname.replace(/^www\./, '');
+    } catch {
+        return save.itemUrl;
+    }
+}
+
+export function saveSourceLabel(save: LibrarySave): string {
+    return save.source?.title || saveHost(save) || 'Newsletter';
+}
+
+export const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
+
+export function matchesQuery(save: LibrarySave, query: string): boolean {
+    const terms = fold(query)
+        .split(/\s+/)
+        .filter((term) => term && term !== '#');
+    const tags = (save.tags ?? []).map(fold);
+    const text = fold([saveTitle(save), saveSourceLabel(save), saveHost(save) ?? '', ...(save.tags ?? [])].join(' '));
+    return terms.every((term) => (term.startsWith('#') ? tags.includes(term.slice(1)) : text.includes(term)));
+}
+
+const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+
+export function groupSaves(
+    saves: LibrarySave[],
+    sort: LibrarySort,
+    now = new Date(),
+): Array<{ title: string; saves: LibrarySave[] }> {
+    const sorted =
+        sort === 'title'
+            ? [...saves].sort((a, b) => collator.compare(saveTitle(a), saveTitle(b)))
+            : sort === 'site'
+              ? [...saves].sort((a, b) => collator.compare(saveSourceLabel(a), saveSourceLabel(b)))
+              : saves;
+    const key = (save: LibrarySave) => {
+        if (sort === 'site') return saveSourceLabel(save);
+        if (sort === 'newest') return monthLabel(save.createdAt, now);
+        const first = saveTitle(save).normalize('NFD').charAt(0).toLocaleUpperCase();
+        return /\p{L}/u.test(first) ? first : '#';
+    };
+    const groups = new Map<string, LibrarySave[]>();
+    for (const save of sorted) groups.set(key(save), [...(groups.get(key(save)) ?? []), save]);
+    return [...groups].map(([title, saves]) => ({ title, saves }));
+}
+
+const monthOnly = new Intl.DateTimeFormat(undefined, { month: 'long' });
+const monthAndYear = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' });
+
+function monthLabel(createdAt: string, now: Date): string {
+    const saved = new Date(createdAt);
+    return (saved.getFullYear() === now.getFullYear() ? monthOnly : monthAndYear).format(saved);
 }
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -85,4 +125,11 @@ export function savedLabel(createdAt: string, now = new Date()): string {
     if (days === 1) return 'Yesterday';
     if (days < 7) return `${days} days ago`;
     return (saved.getFullYear() === now.getFullYear() ? sameYear : otherYear).format(saved);
+}
+
+export function savedPhrase(savedAt: string, now = new Date()): string {
+    const label = savedLabel(savedAt, now);
+    if (label === 'Today' || label === 'Yesterday') return `Saved to your Library ${label.toLowerCase()}`;
+    if (label.endsWith(' ago')) return `Saved to your Library ${label}`;
+    return `Saved to your Library on ${label}`;
 }

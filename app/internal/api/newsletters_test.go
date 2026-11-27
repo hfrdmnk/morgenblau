@@ -133,11 +133,12 @@ func newsletterMessageFixture() newsletter.Message {
 	sent := time.Date(2026, 5, 20, 8, 0, 0, 0, time.UTC)
 	name := "The Sender"
 	saveID := "save-1"
+	savedAt := time.Date(2026, 5, 21, 9, 30, 0, 0, time.UTC)
 	return newsletter.Message{
 		ID: "message-1", EntrySlug: "letter-1", SourceID: "source-1", SourceTitle: "Morning Letter",
 		Title: "Issue one", SenderName: &name, SenderAddress: "sender@example.test", SentAt: &sent,
 		ReceivedAt: time.Date(2026, 5, 20, 8, 2, 0, 0, time.UTC), BodyHTML: "<p>Hello</p>",
-		HasBlockedRemoteImages: true, RemoteImagesAllowed: false, SaveID: &saveID,
+		HasBlockedRemoteImages: true, RemoteImagesAllowed: false, SaveID: &saveID, SavedAt: &savedAt,
 	}
 }
 
@@ -269,7 +270,8 @@ func TestNewsletterEntries_ReturnEntryWire(t *testing.T) {
 	if got[0].Source.Kind != "newsletter" || got[0].Source.ID != "source-1" {
 		t.Errorf("source = %+v", got[0].Source)
 	}
-	if got[0].SavedState == nil || got[0].SavedState.Kind != "newsletter" || got[0].SavedState.ID != "save-1" {
+	if got[0].SavedState == nil || got[0].SavedState.Kind != "newsletter" || got[0].SavedState.ID != "save-1" ||
+		got[0].SavedState.SavedAt != "2026-05-21T09:30:00Z" {
 		t.Errorf("savedState = %+v", got[0].SavedState)
 	}
 }
@@ -386,18 +388,6 @@ func TestSavesTags_UnionsURLAndNewsletterSaveTags(t *testing.T) {
 	SavesTagsHandler(public, private).ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK || rr.Body.String() != "{\"tags\":[\"design\",\"Read-later\",\"zines\"]}\n" {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
-	}
-}
-
-func TestSavesTags_LeaveOutTheArchiveState(t *testing.T) {
-	public := newFakeSavesIndex()
-	public.tags = []*string{strPtr(`["kept","design"]`), strPtr(`["Archived"]`)}
-	private := &fakeNewsletterService{saveTags: []string{"archived", "zines"}}
-	req := withSession(httptest.NewRequest(http.MethodGet, "/api/saves/tags", nil), "did:plc:alice", "sid-1")
-	rr := httptest.NewRecorder()
-	SavesTagsHandler(public, private).ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK || rr.Body.String() != "{\"tags\":[\"design\",\"kept\",\"zines\"]}\n" {
-		t.Fatalf("status = %d, body = %s; only the archive state is not a tag to suggest", rr.Code, rr.Body.String())
 	}
 }
 

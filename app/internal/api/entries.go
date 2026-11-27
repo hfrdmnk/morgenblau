@@ -178,7 +178,7 @@ func lookupSavedState(ctx context.Context, reader EntryReader, itemURL string) *
 		}
 		return nil
 	}
-	return &SavedState{Rkey: row.Rkey, Tags: tags.Unmarshal(row.Tags)}
+	return &SavedState{Rkey: row.Rkey, Tags: tags.Unmarshal(row.Tags), SavedAt: row.CreatedAt}
 }
 
 func extractReadable(ctx context.Context, client *http.Client, rawURL string, sanitizer *bluemonday.Policy) (string, error) {

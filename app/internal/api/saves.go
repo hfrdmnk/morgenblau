@@ -305,17 +305,9 @@ func SavesTagsHandler(reader saveTagsReader, privateListers ...newsletterSaveTag
 			}
 			lists = append(lists, private)
 		}
-		suggestions := []string{}
-		for _, tag := range distinctTags(lists...) {
-			if !strings.EqualFold(tag, archivedTag) {
-				suggestions = append(suggestions, tag)
-			}
-		}
-		writeJSON(w, tagsResponse{Tags: suggestions})
+		writeJSON(w, tagsResponse{Tags: distinctTags(lists...)})
 	})
 }
-
-const archivedTag = "archived"
 
 func SavesListHandler(reader SavesIndexReader, privateListers ...newsletterSaveLister) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

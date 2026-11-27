@@ -1,5 +1,5 @@
 import { parseDigestDate, toDateKey } from '@/lib/digest-dates';
-import type { SaveState } from '@/lib/library';
+import { librarySort, libraryView, type LibrarySave, type LibrarySort, type LibraryView } from '@/lib/library';
 
 export const PATHS = {
     login: '/login',
@@ -61,14 +61,33 @@ export function sourceOrigin(from: string | null): string | null {
     return from && SOURCE_PAGE.test(from) ? from : null;
 }
 
-export function libraryHref(tab: SaveState = 'queue'): string {
-    return tab === 'queue' ? PATHS.library : `${PATHS.library}?tab=${tab}`;
+export function libraryHref(
+    view: LibraryView = 'recent',
+    { sort = 'newest', query = '' }: { sort?: LibrarySort; query?: string } = {},
+): string {
+    if (view === 'recent') return PATHS.library;
+    const params = new URLSearchParams({ view });
+    if (sort !== 'newest') params.set('sort', sort);
+    if (query.trim()) params.set('q', query);
+    return `${PATHS.library}?${params}`;
 }
 
-const LIBRARY_PAGE = /^\/library(?:\?tab=archived)?$/;
+const LIBRARY_PARAMS = new Set(['view', 'sort', 'q']);
 
 function libraryOrigin(from: string | null): string | null {
-    return from && LIBRARY_PAGE.test(from) ? from : null;
+    if (!from?.startsWith(`${PATHS.library}?`) && from !== PATHS.library) return null;
+    const url = new URL(from, 'https://app.invalid');
+    if (url.pathname !== PATHS.library || [...url.searchParams.keys()].some((key) => !LIBRARY_PARAMS.has(key)))
+        return null;
+    return libraryHref(libraryView(url.search), {
+        sort: librarySort(url.search),
+        query: url.searchParams.get('q') ?? '',
+    });
+}
+
+export function saveHref(save: LibrarySave, from: string): string {
+    if (save.entrySlug) return entryHref(save.entrySlug, from);
+    return save.kind === 'newsletter' ? from : save.itemUrl;
 }
 
 export function readerBack(from: string | null): { href: string; label: string } {

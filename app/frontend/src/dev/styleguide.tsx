@@ -2,12 +2,12 @@ import { useId, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
 import {
-    ArchiveIcon,
     ArrowRightIcon,
     CheckIcon,
     CopyIcon,
     ExternalLinkIcon,
     LoadingIcon,
+    TagIcon,
     TrashIcon,
 } from '@/components/icons';
 import { ItemList, ListItem } from '@/components/item-list';
@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/context-menu';
 import { Input } from '@/components/ui/input';
 import { Link } from '@/components/ui/link';
+import { MarkLine } from '@/components/ui/mark-line';
 import {
     Popover,
     PopoverContent,
@@ -348,19 +349,33 @@ function ButtonSpecimens() {
 function ContextMenuSpecimen() {
     return (
         <Frame gap="m">
-            <Caption>Context menu: right click or long-press the row</Caption>
+            <Caption>Row actions on hover, and a context menu on right click or long press</Caption>
             <ContextMenu>
                 <ContextMenuTrigger>
                     <PostList>
                         <ItemList>
-                            <ListItem href="#buttons" meta="Example Publication · 4 min" title="A saved post" />
+                            <ListItem
+                                href="#buttons"
+                                meta="Example Publication · 4 min"
+                                rowActions={
+                                    <>
+                                        <Button aria-label="Copy link" size="icon-sm" variant="quiet">
+                                            <CopyIcon />
+                                        </Button>
+                                        <Button aria-label="Remove from Library" size="icon-sm" variant="quiet">
+                                            <TrashIcon />
+                                        </Button>
+                                    </>
+                                }
+                                title="A saved post"
+                            />
                         </ItemList>
                     </PostList>
                 </ContextMenuTrigger>
                 <ContextMenuContent>
                     <ContextMenuItem>
-                        <ArchiveIcon />
-                        Archive
+                        <ExternalLinkIcon />
+                        Open original
                     </ContextMenuItem>
                     <ContextMenuItem>
                         <CopyIcon />
@@ -373,6 +388,29 @@ function ContextMenuSpecimen() {
                     </ContextMenuItem>
                 </ContextMenuContent>
             </ContextMenu>
+        </Frame>
+    );
+}
+
+function MarkLineSpecimen() {
+    return (
+        <Frame gap="m">
+            <Caption>Mark line: the text stands on the mark’s horizon</Caption>
+            <MarkLine
+                actions={
+                    <>
+                        <Button aria-label="Add tags" size="icon-sm" variant="subtle">
+                            <TagIcon />
+                        </Button>
+                        <Button aria-label="Remove from Library" size="icon-sm" variant="subtle">
+                            <TrashIcon />
+                        </Button>
+                    </>
+                }
+                label="End of article"
+            >
+                Saved to your Library 3 days ago
+            </MarkLine>
         </Frame>
     );
 }
@@ -667,6 +705,7 @@ export function Styleguide() {
                         </Frame>
                         <ThemePair>
                             <ContextMenuSpecimen />
+                            <MarkLineSpecimen />
                         </ThemePair>
                     </Section>
 

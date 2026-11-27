@@ -29,10 +29,11 @@ function json(body: unknown) {
     return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
 }
 
-function quietServer() {
+function quietServer(saves: unknown[] = []) {
     globalThis.fetch = Object.assign(
         async (url: Parameters<typeof fetch>[0]) => {
             const path = String(url);
+            if (path === '/api/saves') return json(saves);
             if (path === '/api/profiles/me')
                 return json({ did: 'did:plc:example', handle: 'reader.example', displayName: null, avatar: null });
             if (path === '/api/newsletters/address') return json({ address: 'reader@inbound.example.com' });
@@ -103,9 +104,9 @@ function SourcePage() {
     return <input aria-label="A field on the page" />;
 }
 
-async function render() {
+async function render(saves: unknown[] = []) {
     window.history.replaceState(null, '', '/sources/example');
-    quietServer();
+    quietServer(saves);
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
@@ -161,6 +162,28 @@ test('Ctrl+K opens the menu from a text field, and a typed day goes to that dige
     );
     await press('Enter');
     expect(`${location.pathname}${location.search}`).toBe('/?date=2026-11-02');
+});
+
+test('a save is found by its title without its accents, and opens in the reader with a way back to the Library', async () => {
+    await render([
+        {
+            rkey: '3save',
+            itemUrl: 'https://notes.example.com/zurich',
+            entrySlug: 'zurich-slug',
+            createdAt: '2026-11-01T00:00:00Z',
+            title: 'Grüße aus Zürich',
+            source: { title: 'Example Travel Journal' },
+        },
+    ]);
+    await press('k', { ctrlKey: true });
+
+    await type('zurich');
+    const selected = document.querySelector('[cmdk-item][data-selected="true"]');
+    expect(selected?.textContent).toContain('Grüße aus Zürich');
+    expect(selected?.closest('[cmdk-group]')?.querySelector('[cmdk-group-heading]')?.textContent).toBe('Library');
+    await press('Enter');
+    expect(location.pathname).toBe('/entry/zurich-slug');
+    expect(new URLSearchParams(location.search).get('from')).toBe('/library?view=everything');
 });
 
 test('closing the menu opened from nowhere leaves focus off the page, not on its first control', async () => {

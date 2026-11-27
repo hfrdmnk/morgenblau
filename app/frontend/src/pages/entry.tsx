@@ -4,10 +4,10 @@ import { useSearch } from 'wouter/use-browser-location';
 
 import { BackLink } from '@/components/back-link';
 import { NewsletterImages } from '@/components/newsletter-images';
+import { ReaderEnd } from '@/components/reader-end';
 import { ReaderNotice } from '@/components/reader-notice';
 import { ReaderRail } from '@/components/reader-rail';
 import { ReaderYouTube } from '@/components/reader-youtube';
-import { SaveFiling } from '@/components/save-filing';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Link } from '@/components/ui/link';
@@ -36,7 +36,6 @@ import {
     youtubeID,
     type ReaderEntry,
 } from '@/lib/reader';
-import { saveState, visibleTags, withState } from '@/lib/library';
 import { announceRemove, announceSave } from '@/lib/save-announce';
 
 export function Entry() {
@@ -238,7 +237,7 @@ function Reader({
                     extractionFailed={extractionFailed}
                 />
             ) : null}
-            {save ? <SaveFiling save={save} /> : null}
+            <ReaderEnd save={save} />
             <ReaderRail entry={entry} save={save} />
             {live ? <ReaderCommands entry={entry} navigation={navigation} onChange={setEntry} save={save} /> : null}
         </Frame>
@@ -328,13 +327,13 @@ function SaveCommands({ save }: { save: EntrySave }) {
             id: 'entry:tags',
             group: READER,
             label: 'Edit tags',
-            detail: visibleTags(tags).join(', '),
+            detail: tags.join(', '),
             step: {
                 kind: 'tags',
                 title: 'Tags',
-                tags: visibleTags(tags),
+                tags,
                 suggestionsPath: '/api/saves/tags',
-                save: (next) => applied(save.setTags(withState(next, saveState(tags)))),
+                save: (next) => applied(save.setTags(next)),
             },
         },
     ]);

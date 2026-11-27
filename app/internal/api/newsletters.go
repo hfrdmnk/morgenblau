@@ -463,6 +463,9 @@ func newsletterMessageToWire(message newsletter.Message) EntryWire {
 	var saved *SavedState
 	if message.SaveID != nil {
 		saved = &SavedState{Kind: "newsletter", ID: *message.SaveID, Tags: message.SaveTags}
+		if message.SavedAt != nil {
+			saved.SavedAt = message.SavedAt.UTC().Format(time.RFC3339)
+		}
 	}
 	return EntryWire{
 		ID: message.ID, EntrySlug: message.EntrySlug, Title: &title,

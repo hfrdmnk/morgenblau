@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { api, describeMutationError } from '@/lib/api';
 import type { ReaderEntry } from '@/lib/reader';
 
-type SaveState = { saved: boolean; tags: string[] };
+type SaveState = { saved: boolean; tags: string[]; savedAt: string | null };
 export type EntrySave = NonNullable<ReturnType<typeof createEntrySave>>;
 
 type SaveRoutes = {
@@ -32,7 +32,11 @@ export function createEntrySave(entry: ReaderEntry) {
     if (!found) return null;
     const routes = found;
     let id = entry.savedState?.id ?? entry.savedState?.rkey ?? null;
-    let confirmed: SaveState = { saved: Boolean(id), tags: entry.savedState?.tags ?? [] };
+    let confirmed: SaveState = {
+        saved: Boolean(id),
+        tags: entry.savedState?.tags ?? [],
+        savedAt: entry.savedState?.savedAt ?? null,
+    };
     let state = confirmed;
     let queue = Promise.resolve();
     const listeners = new Set<() => void>();
@@ -64,33 +68,34 @@ export function createEntrySave(entry: ReaderEntry) {
 
     async function save() {
         if (state.saved) return true;
-        set({ saved: true, tags: [] });
+        const savedAt = new Date().toISOString();
+        set({ saved: true, tags: [], savedAt });
         return enqueue(async () => {
             if (id) return;
             const created = await routes.create();
             id = created.id ?? created.rkey ?? null;
-            confirmed = { saved: true, tags: [] };
+            confirmed = { saved: true, tags: [], savedAt };
         }, 'Couldn’t save this. Try again.');
     }
 
     async function setTags(tags: string[]) {
         if (!state.saved) void save();
-        set({ saved: true, tags });
+        set({ ...state, tags });
         return enqueue(async () => {
             if (!id) return;
             const updated = await api<{ tags?: string[] }>(routes.path(id), { method: 'PATCH', body: { tags } });
-            confirmed = { saved: true, tags: updated.tags ?? [] };
+            confirmed = { ...confirmed, saved: true, tags: updated.tags ?? [] };
         }, 'Couldn’t save these tags. Try again.');
     }
 
     async function remove() {
         if (!state.saved) return true;
-        set({ saved: false, tags: [] });
+        set({ saved: false, tags: [], savedAt: null });
         return enqueue(async () => {
             if (!id) return;
             await api(routes.path(id), { method: 'DELETE' });
             id = null;
-            confirmed = { saved: false, tags: [] };
+            confirmed = { saved: false, tags: [], savedAt: null };
         }, 'Couldn’t remove this save. Try again.');
     }
 

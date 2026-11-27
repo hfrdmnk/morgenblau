@@ -152,10 +152,11 @@ func TestEntry_SavedState_Populated(t *testing.T) {
 		feed:         feedFixture(),
 		saveOK:       true,
 		save: db.UserSave{
-			Did:     "did:plc:alice",
-			Rkey:    "3laSAVE",
-			ItemUrl: "https://example.test/post",
-			Tags:    strPtr(`["read-later","design"]`),
+			Did:       "did:plc:alice",
+			Rkey:      "3laSAVE",
+			ItemUrl:   "https://example.test/post",
+			CreatedAt: "2026-11-20T08:00:00Z",
+			Tags:      strPtr(`["read-later","design"]`),
 		},
 	}
 	mux := http.NewServeMux()
@@ -179,6 +180,9 @@ func TestEntry_SavedState_Populated(t *testing.T) {
 	}
 	if strings.Join(got.SavedState.Tags, ",") != "read-later,design" {
 		t.Errorf("savedState.tags = %v", got.SavedState.Tags)
+	}
+	if got.SavedState.SavedAt != "2026-11-20T08:00:00Z" {
+		t.Errorf("savedState.savedAt = %q, want the save's createdAt", got.SavedState.SavedAt)
 	}
 }
 

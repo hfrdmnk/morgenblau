@@ -35,10 +35,11 @@ type EntryWire struct {
 }
 
 type SavedState struct {
-	Kind string   `json:"kind,omitempty"`
-	ID   string   `json:"id,omitempty"`
-	Rkey string   `json:"rkey,omitempty"`
-	Tags []string `json:"tags,omitempty"`
+	Kind    string   `json:"kind,omitempty"`
+	ID      string   `json:"id,omitempty"`
+	Rkey    string   `json:"rkey,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
+	SavedAt string   `json:"savedAt,omitempty"`
 }
 
 type SourceMeta struct {

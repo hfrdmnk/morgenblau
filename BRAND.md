@@ -31,3 +31,5 @@ The voice is calm, direct, and human. No urgency, no exclamation marks, no emoji
 ## The mark
 
 The mark is an abstract sun rising over the ocean. It connects Morgenblau to light, the horizon, and the feeling of a fresh start. It does not mean that every brand image needs to show a sunrise.
+
+Wherever the mark sits beside text, the text stands on the horizon: the bottom edge of the horizon bar lines up with the text's baseline, and the notch below it hangs like a descender. Icons on the same line centre on the text, not on the mark. The site footer in [`site/src/pages/index.astro`](site/src/pages/index.astro) shows the technique.

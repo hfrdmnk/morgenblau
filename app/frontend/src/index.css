@@ -388,6 +388,16 @@
 }
 
 /* The raised button: a top highlight and a 1px gradient rim, drawn by an ::after masked down to its padding. Variants set the surface. */
+@utility post-row-actions-fade {
+    background: linear-gradient(to right in oklch, transparent, var(--secondary) 2.5rem);
+}
+
+@utility mark-on-horizon {
+    & svg {
+        translate: 0 calc(20 / 144 * 100%);
+    }
+}
+
 @utility raised {
     --btn-from: color-mix(in oklch, var(--btn-surface), white 15%);
     --btn-highlight: color-mix(in oklch, var(--btn-surface), white 30%);

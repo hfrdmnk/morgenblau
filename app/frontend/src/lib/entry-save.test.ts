@@ -42,7 +42,7 @@ test('a tag added while the save is in flight patches the record that save creat
     const save = createEntrySave(entry)!;
     const saving = save.save();
     const tagging = save.setTags(['read-later']);
-    expect(save.get()).toEqual({ saved: true, tags: ['read-later'] });
+    expect(save.get()).toEqual({ saved: true, tags: ['read-later'], savedAt: expect.any(String) });
     await settle();
     created();
     expect(await Promise.all([saving, tagging])).toEqual([true, true]);
@@ -55,9 +55,12 @@ test('a tag added while the save is in flight patches the record that save creat
 
 test('a failed tag change falls back to what the server confirmed', async () => {
     stubFetch(() => Response.json({}, { status: 502 }));
-    const save = createEntrySave({ ...entry, savedState: { rkey: '3old', tags: ['design'] } })!;
+    const save = createEntrySave({
+        ...entry,
+        savedState: { rkey: '3old', tags: ['design'], savedAt: '2026-11-20T08:00:00Z' },
+    })!;
     expect(await save.setTags(['design', 'weekend'])).toBe(false);
-    expect(save.get()).toEqual({ saved: true, tags: ['design'] });
+    expect(save.get()).toEqual({ saved: true, tags: ['design'], savedAt: '2026-11-20T08:00:00Z' });
 });
 
 test('a failure drops the changes queued behind it, so the server keeps what the reader sees', async () => {
@@ -67,10 +70,13 @@ test('a failure drops the changes queued behind it, so the server keeps what the
         failed = true;
         return Response.json({}, { status: 502 });
     });
-    const save = createEntrySave({ ...entry, savedState: { rkey: '3old', tags: ['design'] } })!;
+    const save = createEntrySave({
+        ...entry,
+        savedState: { rkey: '3old', tags: ['design'], savedAt: '2026-11-20T08:00:00Z' },
+    })!;
     const changes = [save.setTags(['design', 'weekend']), save.setTags(['design', 'weekend', 'later'])];
     expect(await Promise.all(changes)).toEqual([false, false]);
 
     expect(calls).toEqual(['PATCH /api/saves/3old {"tags":["design","weekend"]}']);
-    expect(save.get()).toEqual({ saved: true, tags: ['design'] });
+    expect(save.get()).toEqual({ saved: true, tags: ['design'], savedAt: '2026-11-20T08:00:00Z' });
 });

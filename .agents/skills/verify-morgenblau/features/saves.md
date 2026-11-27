@@ -10,12 +10,12 @@ Help article: none
 - `list` `GET /api/saves` lists URL saves (`rkey`, `itemUrl`) and newsletter saves (`kind` `newsletter`, `id`, `entrySlug`, no `rkey`).
 - `unsave` `DELETE /api/saves/{rkey}`.
 - `tag` `PATCH /api/saves/{rkey}` with `{tags}` rewrites the PDS record's tags, keeping its other fields; `PATCH /api/newsletter-saves/{id}` does the same for a private newsletter save, which never reaches the PDS. `GET /api/saves/tags` suggests the tags on both kinds. Saves carry `tags` in `GET /api/saves` and in the reader's `savedState`.
-- `library` `/library` files saves under To read and Archive (`?tab=archived`) by the `archived` tag (SPEC `<library>`). `GET /api/saves` gives a cached entry's `source`, `contentType` and `minutes`, and a newsletter save's `messageId`, `source` and `minutes`; `GET /api/saves/tags` never suggests `archived`. The reader's end-of-article block and the save toast (`⇧A`) offer Archive.
+- `library` `/library` shows the 10 newest saves (Recent) and `/library?view=everything` every save, grouped by month, or by first letter (`&sort=title`) or site (`&sort=site`), filtered by the search in `&q=` (`matchesQuery` in `frontend/src/lib/library.ts`) (SPEC `<library>`). `GET /api/saves` gives a cached entry's `source`, `contentType` and `minutes`, and a newsletter save's `messageId`, `source` and `minutes`. The reader's `savedState` carries `savedAt`.
 
 ## How to reach it
 
 - Browser: the reader's bookmark and end-of-article filing block, see [entry-reader](./entry-reader.md).
-- Browser: `/library`, its header tabs, and each row's context menu (right click, or long press on touch).
+- Browser: `/library`, its header links `Recent` and `Everything`, the Everything search (`Search your Library`, key `/`), each row's hover actions (`Copy link`, `Remove from Library`; keys `C` and `⌫` on the selected row) and its context menu (right click, or long press on touch).
 - API routes above.
 
 ## Drive and prove
@@ -28,7 +28,8 @@ Preconditions:
 - **Idempotent.** Repeat the POST: `200`, same `rkey`, still one row.
 - **List.** `GET /api/saves --out saves`: contains the URL. With a newsletter save from [newsletters](./newsletters.md) in place, it also holds that entry with `kind` `newsletter` and no `rkey`.
 - **Tag.** `PATCH /api/saves/<rkey> --data '{"tags":["read-later"]}'`: `200` with `tags`; `sqlite3 -readonly $E/run/morgenblau.db "select tags from user_saves"` shows them (`inspect` lists no tags) and `GET /api/saves/tags` lists `read-later`.
-- **Library.** Save three digest entries and open `/library`: the header shows `To read` and `Archive`, and the saves sit under `Quick reads`, `Over coffee`, `Deep dives` or `To watch` by `minutes` and `contentType`. Right-click a row and choose `Archive`: the row leaves To read, an `Undo` toast shows, and `select tags from user_saves` holds `["archived"]`; `Undo` empties it again. Archive it again; on the Archive tab its menu's `Move to To read` moves it back. `Remove from Library` deletes the row and its `Undo` saves it again with its tags (a new `rkey`; a newsletter save by its `messageId`). In the reader of a To read save, `Archive` in the `Saved to Library` line turns it into `Archived` with `Read again later`, and the tag chips never show `archived` (`library-*.png`).
+- **Library.** Save eleven digest entries and open `/library`: the header shows `Recent` and `Everything`, and Recent lists the ten newest, each with when it was saved. `Everything` lists all eleven under month headings; `Title` and `Site` regroup them by first letter and by source. Hover a row: `Copy link` and `Remove from Library` appear; right click shows `Open original`, `Copy link` and `Remove from Library`. `Remove from Library` deletes the row and its `Undo` saves it again with its tags (a new `rkey`; a newsletter save by its `messageId`) (`library-*.png`).
+- **Library search.** Tag one save `design` and another `design-notes`. On `/library`, press `/`: the URL becomes `?view=everything` and `Search your Library` has focus. Type `zurich creme`: only `Grüße aus Zürich, café crème` lists and the count reads `1 of <n> saves`. `#design` lists only the save tagged `design`. Choose `Site`, open the row, and the reader's `Back to library` returns to `?view=everything&sort=site&q=%23design` with the query still in the field. `quokka` reads `Nothing matches “quokka”.` (`search-*.png`).
 - **Unsave.** `DELETE /api/saves/<rkey>`: `204`; the row is gone.
 - **Negative.** `POST /api/saves --data '{}'`: `400` (`itemUrl is required`). `DELETE /api/saves/unknownrkey`: `404`. `GET /api/saves --anon`: `401`.
 

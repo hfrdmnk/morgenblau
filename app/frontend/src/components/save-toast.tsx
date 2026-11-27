@@ -6,17 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { Frame } from '@/design/frame';
 import { Text } from '@/design/text';
-import { useSaveState } from '@/hooks/use-entry-save';
 import { useShortcuts } from '@/hooks/use-shortcuts';
 import type { EntrySave } from '@/lib/entry-save';
-import { saveState, withState } from '@/lib/library';
 
 export function SaveToast({ save, onHold }: { save: EntrySave; onHold: (held: boolean) => void }) {
     const [open, setOpen] = useState(false);
     const input = useRef<HTMLInputElement>(null);
-    const { tags } = useSaveState(save);
-    const archive = () => save.setTags(withState(tags, 'archived'));
-    useShortcuts({ t: () => setOpen(true), 'Shift+A': archive });
+    useShortcuts({ t: () => setOpen(true) });
     useEffect(() => {
         if (open) input.current?.focus();
     }, [open]);
@@ -33,7 +29,11 @@ export function SaveToast({ save, onHold }: { save: EntrySave; onHold: (held: bo
         >
             <Frame align="center" direction="row" gap="m">
                 <CheckIcon size="md" tone="success-icon" />
-                <ToastTitle archive={archive} archived={saveState(tags) === 'archived'} />
+                <Frame grow>
+                    <Text as="span" weight="medium">
+                        Saved to Library
+                    </Text>
+                </Frame>
                 {!open ? (
                     <Button aria-keyshortcuts="t" onClick={() => setOpen(true)} size="inline" variant="quiet">
                         Add tags
@@ -43,23 +43,5 @@ export function SaveToast({ save, onHold }: { save: EntrySave; onHold: (held: bo
             </Frame>
             {open ? <SaveTagEditor inputRef={input} save={save} /> : null}
         </Frame>
-    );
-}
-
-function ToastTitle({ archived, archive }: { archived: boolean; archive: () => void }) {
-    return (
-        <>
-            <Frame grow>
-                <Text as="span" weight="medium">
-                    {archived ? 'Saved to Archive' : 'Saved to Library'}
-                </Text>
-            </Frame>
-            {archived ? null : (
-                <Button aria-keyshortcuts="Shift+A" onClick={archive} size="inline" variant="quiet">
-                    Archive
-                    <Kbd hideOnTouch>⇧A</Kbd>
-                </Button>
-            )}
-        </>
     );
 }
