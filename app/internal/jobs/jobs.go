@@ -1,4 +1,3 @@
-// Package jobs is the in-memory tracker the refresh-pill polls against. Lifecycle status only, no counts (SPEC <feed-sources>).
 package jobs
 
 import (
@@ -11,7 +10,6 @@ import (
 	"github.com/oklog/ulid/v2"
 )
 
-// Status is the lifecycle state of a job, intentionally minimal to preserve the calm-brand promise of no progress detail.
 type Status string
 
 const (
@@ -21,7 +19,6 @@ const (
 	StatusFailed  Status = "failed"
 )
 
-// Kind classifies what work the job is doing.
 type Kind string
 
 const (
@@ -29,7 +26,6 @@ const (
 	KindFetchOneFeed Kind = "fetch_one_feed"
 )
 
-// Trigger records why the job was requested.
 type Trigger string
 
 const (
@@ -38,27 +34,22 @@ const (
 	TriggerAddFeed Trigger = "add"
 )
 
-// Job is what /api/jobs/{id} returns. Exported fields are the wire format.
 type Job struct {
 	ID         string    `json:"id"`
 	Kind       Kind      `json:"kind"`
 	Trigger    Trigger   `json:"trigger,omitempty"`
-	UserDID    string    `json:"-"` // never leaked over the wire
+	UserDID    string    `json:"-"`
 	Status     Status    `json:"status"`
 	StartedAt  time.Time `json:"startedAt"`
 	FinishedAt time.Time `json:"finishedAt,omitempty"`
 }
 
-// DefaultRetention keeps finished jobs around briefly so /consume reloads don't see ghost pills before GC.
 const DefaultRetention = 5 * time.Minute
 
-// ErrNotFound is returned by Get for unknown ids.
 var ErrNotFound = errors.New("jobs: not found")
 
-// ErrForbidden is returned by Get when the id belongs to another user.
 var ErrForbidden = errors.New("jobs: forbidden")
 
-// Tracker is the in-memory job map. Concurrency-safe.
 type Tracker struct {
 	mu           sync.Mutex
 	jobs         map[string]*Job
@@ -69,12 +60,10 @@ type Tracker struct {
 	entropy      *ulid.MonotonicEntropy
 }
 
-// New builds a tracker with the default retention window.
 func New() *Tracker {
 	return NewWithOptions(DefaultRetention, time.Now)
 }
 
-// NewWithOptions exposes retention + clock for tests.
 func NewWithOptions(retention time.Duration, now func() time.Time) *Tracker {
 	return &Tracker{
 		jobs:         make(map[string]*Job),
@@ -86,7 +75,6 @@ func NewWithOptions(retention time.Duration, now func() time.Time) *Tracker {
 	}
 }
 
-// Create registers a new job in pending state; callers must follow with SetRunning then SetDone or SetFailed.
 func (t *Tracker) Create(kind Kind, userDID syntax.DID, trigger Trigger) *Job {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -104,7 +92,6 @@ func (t *Tracker) Create(kind Kind, userDID syntax.DID, trigger Trigger) *Job {
 	return j
 }
 
-// CreateOrReturnExisting atomically dedupes concurrent triggers for the same (kind, did) within the guard window instead of creating duplicate jobs.
 func (t *Tracker) CreateOrReturnExisting(kind Kind, userDID syntax.DID, trigger Trigger, guard time.Duration) (*Job, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -135,7 +122,6 @@ func (t *Tracker) CreateOrReturnExisting(kind Kind, userDID syntax.DID, trigger 
 	return cloneJob(j), false
 }
 
-// SetRunning marks the job as running. Idempotent.
 func (t *Tracker) SetRunning(id string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -146,12 +132,10 @@ func (t *Tracker) SetRunning(id string) {
 	}
 }
 
-// SetDone marks the job as done with the current timestamp.
 func (t *Tracker) SetDone(id string) {
 	t.transition(id, StatusDone)
 }
 
-// SetFailed marks the job as failed with the current timestamp.
 func (t *Tracker) SetFailed(id string) {
 	t.transition(id, StatusFailed)
 }
@@ -197,7 +181,6 @@ func jobIsNewer(job, current *Job) bool {
 	return job.StartedAt.Equal(current.StartedAt) && job.ID > current.ID
 }
 
-// Get returns the job for id and verifies ownership against userDID.
 func (t *Tracker) Get(id string, userDID syntax.DID) (*Job, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -211,7 +194,6 @@ func (t *Tracker) Get(id string, userDID syntax.DID) (*Job, error) {
 	return cloneJob(j), nil
 }
 
-// ActiveForUser returns the most recent pending/running job for the user, or nil; also runs GC to keep the polling path free of stale jobs.
 func (t *Tracker) ActiveForUser(userDID syntax.DID) *Job {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -235,7 +217,6 @@ func (t *Tracker) ActiveForUser(userDID syntax.DID) *Job {
 	return cloneJob(best)
 }
 
-// LatestSyncForUser prioritizes an active retry, then retains unresolved failures across normal job GC.
 func (t *Tracker) LatestSyncForUser(userDID syntax.DID) *Job {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -253,7 +234,6 @@ func (t *Tracker) LatestSyncForUser(userDID syntax.DID) *Job {
 	return nil
 }
 
-// GC sweeps finished jobs older than the retention window; exposed separately for direct test invocation.
 func (t *Tracker) GC() {
 	t.mu.Lock()
 	defer t.mu.Unlock()

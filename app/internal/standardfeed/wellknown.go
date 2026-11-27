@@ -14,8 +14,6 @@ import (
 
 const wellKnownPath = "/.well-known/site.standard.publication"
 
-// FetchWellKnown GETs /.well-known/site.standard.publication for the at-uri.
-// A miss (bad status, body, or collection) returns ("", nil): the probe is best-effort.
 func (c *Client) FetchWellKnown(ctx context.Context, siteURL string) (string, error) {
 	base, err := url.Parse(siteURL)
 	if err != nil || base.Host == "" {

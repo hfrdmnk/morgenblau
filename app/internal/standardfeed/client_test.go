@@ -25,7 +25,6 @@ func (f *fakeResolver) Lookup(_ context.Context, atid syntax.AtIdentifier) (*ide
 	return nil, fmt.Errorf("unknown identity %s", atid)
 }
 
-// identityFor builds an identity whose PDS endpoint points at the test server.
 func identityFor(t *testing.T, didStr, pds string) (syntax.DID, *identity.Identity) {
 	t.Helper()
 	did, err := syntax.ParseDID(didStr)
@@ -128,7 +127,7 @@ func TestGetPublication_HandleAuthorityNormalizesURI(t *testing.T) {
 		t.Fatalf("GetPublication: %v", err)
 	}
 	if pub.URI != didURI {
-		t.Fatalf("URI not DID-normalized: %q", pub.URI)
+		t.Fatalf("URI = %q, want the DID form %q that documents store as their site", pub.URI, didURI)
 	}
 }
 
@@ -332,7 +331,7 @@ func TestListDocuments_PagesAndFilters(t *testing.T) {
 		t.Fatalf("filtered docs: %+v", docs)
 	}
 	if len(cursors) != 2 || cursors[1] != "page2" {
-		t.Fatalf("cursor sequence: %v", cursors)
+		t.Fatalf("cursor sequence: %v; ListDocuments must page until the cursor is empty, or the sweep's diff hard-deletes entries missing from a partial snapshot", cursors)
 	}
 }
 
@@ -359,7 +358,7 @@ func TestListDocuments_HandleAuthorityMatchesDIDSite(t *testing.T) {
 		t.Fatalf("ListDocuments: %v", err)
 	}
 	if len(docs) != 1 || docs[0].URI != "at://"+pubDID+"/site.standard.document/3one" {
-		t.Fatalf("handle-authority pub should match DID-form site: %+v", docs)
+		t.Fatalf("handle-authority pub should match DID-form site, since documents store the DID-form uri: %+v", docs)
 	}
 }
 

@@ -1,5 +1,3 @@
-// Package standardfeed reads site.standard.* records from publisher repos via unauthenticated XRPC.
-// SPEC <sync-architecture> Tier-2 kinds.
 package standardfeed
 
 import (
@@ -18,19 +16,16 @@ const (
 	CollectionSubscription = "site.standard.graph.subscription"
 )
 
-// Publication is the trimmed shape of a site.standard.publication record.
-// URI is DID-normalized so it matches document site fields regardless of the lookup authority.
 type Publication struct {
 	URI         string
 	CID         string
 	DID         string
 	Name        string
-	URL         string // base publication URL, trailing slash stripped
+	URL         string
 	Description string
-	IconURL     string // com.atproto.sync.getBlob URL; empty when no icon
+	IconURL     string
 }
 
-// Document is the trimmed shape of a site.standard.document record; Site is the publication at-uri or an https URL for loose documents.
 type Document struct {
 	URI           string
 	CID           string
@@ -45,13 +40,10 @@ type Document struct {
 	CoverImageURL string
 }
 
-// Resolver is the identity lookup the client needs; atid may be a DID or a handle since at-uri authorities allow either.
 type Resolver interface {
 	Lookup(ctx context.Context, atid syntax.AtIdentifier) (*identity.Identity, error)
 }
 
-// Client reads records from arbitrary publisher repos. httpClient must be the
-// safehttp client: PDS endpoints come from attacker-controllable DID documents.
 type Client struct {
 	resolver Resolver
 	http     *http.Client
@@ -74,7 +66,6 @@ func blobURL(pdsEndpoint string, did syntax.DID, cid string) string {
 	return u.String()
 }
 
-// $link is atproto's blob-ref CID field.
 func blobRefCID(v any) string {
 	blob, ok := v.(map[string]any)
 	if !ok {
@@ -88,7 +79,6 @@ func blobRefCID(v any) string {
 	return link
 }
 
-// stringSlice skips non-string members instead of failing on malformed input.
 func stringSlice(v any) []string {
 	raw, ok := v.([]any)
 	if !ok {

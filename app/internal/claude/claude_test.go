@@ -15,7 +15,6 @@ import (
 	"time"
 )
 
-// fakeAPI stands in for the Messages API: it records each request body and answers with a canned reply.
 type fakeAPI struct {
 	mu       sync.Mutex
 	bodies   []map[string]any
@@ -193,7 +192,6 @@ func TestEachCallIsBoundedInTime(t *testing.T) {
 	}
 }
 
-// recordingTransport answers every request itself, so a test can see where the client would have gone.
 type recordingTransport struct {
 	mu   sync.Mutex
 	reqs []*http.Request

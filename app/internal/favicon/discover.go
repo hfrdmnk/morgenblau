@@ -1,5 +1,3 @@
-// Package favicon resolves a website's best favicon URL from its HTML
-// <link rel=icon> hints, falling back to /favicon.ico; it returns URLs only, never image bytes.
 package favicon
 
 import (
@@ -9,13 +7,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
 	"golang.org/x/net/html"
 )
 
-// HTTPDoer is the minimal *http.Client slice this package needs; tests inject a stub.
 type HTTPDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
@@ -23,12 +21,9 @@ type HTTPDoer interface {
 const (
 	maxHTMLBytes = 256 << 10
 	maxIconBytes = 256 << 10
-	// PoliteUA mimics a browser: CDNs like Cloudflare gate HTML/image responses on
-	// absence of "Go-http-client" in the UA while leaving /feed/ paths open.
-	PoliteUA = "Mozilla/5.0 (compatible; Morgenblau/0.1; +https://app.morgen.blue/about)"
+	PoliteUA     = "Mozilla/5.0 (compatible; Morgenblau/0.1; +https://app.morgen.blue/about)"
 )
 
-// Discover walks siteURL and returns the best validated favicon URL, or an error if no candidate (including /favicon.ico) returns 2xx.
 func Discover(ctx context.Context, client HTTPDoer, siteURL string) (string, error) {
 	base, err := url.Parse(strings.TrimSpace(siteURL))
 	if err != nil || base.Scheme == "" || base.Host == "" {
@@ -36,7 +31,6 @@ func Discover(ctx context.Context, client HTTPDoer, siteURL string) (string, err
 	}
 
 	candidates, finalURL := collectCandidates(ctx, client, base)
-	// Fallback origin is the final URL after redirects, or the original siteURL.
 	fallbackBase := base
 	if finalURL != nil {
 		fallbackBase = finalURL
@@ -71,7 +65,7 @@ type candidate struct {
 	href     string
 	rel      string
 	mimeType string
-	size     int // largest dimension parsed from sizes attribute; 0 = unknown
+	size     int
 }
 
 func collectCandidates(ctx context.Context, client HTTPDoer, site *url.URL) ([]candidate, *url.URL) {
@@ -103,7 +97,6 @@ func collectCandidates(ctx context.Context, client HTTPDoer, site *url.URL) ([]c
 	return extract(doc, finalURL), finalURL
 }
 
-// extract walks the tree for <link> elements whose rel is an icon variant, resolving hrefs against base.
 func extract(n *html.Node, base *url.URL) []candidate {
 	var out []candidate
 	var walk func(*html.Node)
@@ -156,15 +149,12 @@ func candidateFromLink(n *html.Node, base *url.URL) (candidate, bool) {
 	}, true
 }
 
-// normalizedRel returns the canonical icon rel token, or ""; mask-icon is excluded because Safari's monochrome pinned-tab icon renders solid black outside the browser's tinting.
 func normalizedRel(rel string) string {
-	// Order here doesn't determine ranking (see rank()); this only checks that some token is an icon variant.
 	for tok := range strings.FieldsSeq(strings.ToLower(rel)) {
 		switch tok {
 		case "icon":
 			return "icon"
 		case "shortcut":
-			// "shortcut icon" appears as two tokens; the icon token catches it.
 			continue
 		case "apple-touch-icon":
 			return "apple-touch-icon"
@@ -175,7 +165,6 @@ func normalizedRel(rel string) string {
 	return ""
 }
 
-// parseSizes extracts the largest dimension from a sizes attribute (e.g. "32x32" or "any"); returns 0 if unknown.
 func parseSizes(s string) int {
 	if s == "" {
 		return 0
@@ -202,7 +191,6 @@ func parseSizes(s string) int {
 	return best
 }
 
-// rank sorts candidates best-first: SVG, then larger size, then rel preference.
 func rank(cs []candidate) {
 	relWeight := func(r string) int {
 		switch r {
@@ -219,14 +207,7 @@ func rank(cs []candidate) {
 	isSVG := func(c candidate) bool {
 		return c.mimeType == "image/svg+xml" || strings.HasSuffix(strings.ToLower(c.href), ".svg")
 	}
-	// insertion sort; n is tiny in practice
-	for i := 1; i < len(cs); i++ {
-		j := i
-		for j > 0 && less(cs[j], cs[j-1], isSVG, relWeight) {
-			cs[j-1], cs[j] = cs[j], cs[j-1]
-			j--
-		}
-	}
+	sort.SliceStable(cs, func(i, j int) bool { return less(cs[i], cs[j], isSVG, relWeight) })
 }
 
 func less(a, b candidate, isSVG func(candidate) bool, weight func(string) int) bool {
@@ -240,7 +221,6 @@ func less(a, b candidate, isSVG func(candidate) bool, weight func(string) int) b
 	return weight(a.rel) > weight(b.rel)
 }
 
-// validate confirms rawURL returns 2xx with an image Content-Type (or application/octet-stream, which some CDNs use for .ico).
 func validate(ctx context.Context, client HTTPDoer, rawURL string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -253,7 +233,6 @@ func validate(ctx context.Context, client HTTPDoer, rawURL string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	// Drain capped body so the connection can be reused.
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxIconBytes))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("favicon: %s returned %d", rawURL, resp.StatusCode)

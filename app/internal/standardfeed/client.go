@@ -56,7 +56,6 @@ func (c *Client) apiClient(endpoint string) *atclient.APIClient {
 	return atxrpc.New(endpoint, c.http)
 }
 
-// GetPublication fetches and maps a site.standard.publication record, DID-normalizing its URI.
 func (c *Client) GetPublication(ctx context.Context, rawURI string) (*Publication, error) {
 	ref, err := c.resolveRepo(ctx, rawURI, CollectionPublication)
 	if err != nil {
@@ -95,7 +94,6 @@ func (c *Client) GetPublication(ctx context.Context, rawURI string) (*Publicatio
 	return pub, nil
 }
 
-// GetDocument fetches and maps a single site.standard.document record.
 func (c *Client) GetDocument(ctx context.Context, rawURI string) (*Document, error) {
 	ref, err := c.resolveRepo(ctx, rawURI, CollectionDocument)
 	if err != nil {
@@ -118,7 +116,6 @@ func (c *Client) GetDocument(ctx context.Context, rawURI string) (*Document, err
 	return &doc, nil
 }
 
-// ListDocuments returns pubURI's documents; it only terminates on an empty cursor, since stopping early would let the sweep's diff hard-delete entries missing from a partial snapshot.
 func (c *Client) ListDocuments(ctx context.Context, pubURI string) ([]Document, error) {
 	ref, err := c.resolveRepo(ctx, pubURI, CollectionPublication)
 	if err != nil {
@@ -126,7 +123,6 @@ func (c *Client) ListDocuments(ctx context.Context, pubURI string) ([]Document, 
 	}
 	client := c.apiClient(ref.endpoint)
 
-	// site stores the DID-form uri; pubURI may be handle-form, so match both.
 	didURI := fmt.Sprintf("at://%s/%s/%s", ref.did, CollectionPublication, ref.uri.RecordKey())
 
 	var (
