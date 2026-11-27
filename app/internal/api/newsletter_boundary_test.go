@@ -14,8 +14,7 @@ import (
 
 const newsletterImport = "morgenblau/internal/newsletter"
 
-// Every PDS read or write in this package goes through one of these clients.
-var pdsImports = map[string]bool{
+var pdsClientImports = map[string]bool{
 	"morgenblau/internal/atprepo":                       true,
 	"github.com/bluesky-social/indigo/atproto/atclient": true,
 }
@@ -26,7 +25,6 @@ type apiDecl struct {
 	sink       string
 }
 
-// Taint flows from callee to caller, so any declaration that can reach newsletter values must not also reach a PDS or shared-table write.
 func TestNewsletterDeclarationsNeverReachPDSOrSharedTableWrites(t *testing.T) {
 	writes := sharedTableWriteQueries(t)
 	decls := parseAPIDecls(t, writes)
@@ -94,7 +92,6 @@ func parseAPIDecls(t *testing.T, writes map[string]bool) map[string]*apiDecl {
 	return decls
 }
 
-// Methods fold into their receiver type, since a selector call cannot be resolved without type information.
 func declBodies(node ast.Decl) map[string]ast.Node {
 	bodies := map[string]ast.Node{}
 	switch decl := node.(type) {
@@ -139,7 +136,7 @@ func collectDeclRefs(decl *apiDecl, body ast.Node, imports map[string]string, wr
 				switch importPath := imports[pkg.Name]; {
 				case importPath == newsletterImport:
 					decl.newsletter = true
-				case pdsImports[importPath] && decl.sink == "":
+				case pdsClientImports[importPath] && decl.sink == "":
 					decl.sink = importPath
 				case importPath == "morgenblau/internal/database/db" && writes[strings.TrimSuffix(node.Sel.Name, "Params")] && decl.sink == "":
 					decl.sink = "shared-table write " + node.Sel.Name

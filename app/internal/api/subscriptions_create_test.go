@@ -44,7 +44,6 @@ func TestSubscriptionsCreate_HappyPath_FullChoiceA(t *testing.T) {
 		t.Errorf("dispatcher = %v", disp.dispatched)
 	}
 
-	// Tier-1 index should now show the new row.
 	rows, _ := idx.ListUserSubscriptions(context.Background(), "did:plc:alice")
 	if len(rows) != 1 {
 		t.Errorf("Tier-1 rows = %d", len(rows))
@@ -102,7 +101,6 @@ func TestSubscriptionsCreate_DedupeGuard_Idempotent(t *testing.T) {
 	}
 }
 
-// One generated feed answers at /feed/<id> and its legacy /web/<id>; following it at either is following it.
 func TestSubscriptionsCreate_DedupesAGeneratedFeedAcrossItsURLs(t *testing.T) {
 	const current, legacy = "https://app.example.com/feed/abc", "https://app.example.com/web/abc"
 	aliases := func(feedURL string) []string {
@@ -187,7 +185,6 @@ func TestSubscriptionsCreate_Validation(t *testing.T) {
 
 const blogFeed = "https://blog.example.com/feed.xml"
 
-// seedSiteSubscription gives alice one subscription of kind keyed by feedURL, with siteURL as its catalog site_url (nil when empty).
 func seedSiteSubscription(idx *fakeIndex, kind, feedURL, siteURL string) {
 	if idx.rows["did:plc:alice"] == nil {
 		idx.rows["did:plc:alice"] = map[string]db.UserSubscription{}
@@ -312,7 +309,6 @@ func TestSubscriptionsCreate_DedupeProbeError_500(t *testing.T) {
 	}
 }
 
-// upsertErrIndex is a fakeIndex variant whose UpsertUserSubscription always errors, to exercise the Tier-1-failure to sync_user dispatch recovery path.
 type upsertErrIndex struct{ *fakeIndex }
 
 func (e upsertErrIndex) UpsertUserSubscription(_ context.Context, _ db.UpsertUserSubscriptionParams) error {
@@ -339,8 +335,6 @@ func TestSubscriptionsCreate_Tier1Failure_DispatchesSyncUser(t *testing.T) {
 	}
 }
 
-// --- standardfeed create ---
-
 const standardSubCollection = "site.standard.graph.subscription"
 
 func TestSubscriptionsCreate_Standardfeed_DefaultsCreateOnlyStandardRecord(t *testing.T) {
@@ -357,9 +351,8 @@ func TestSubscriptionsCreate_Standardfeed_DefaultsCreateOnlyStandardRecord(t *te
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
-	// Exactly one PDS write (the portable standard record); no sidecar since the picker didn't customize anything.
 	if pds.applyCalls != 1 || pds.creates != 0 || len(pds.applied) != 1 {
-		t.Fatalf("PDS applyWrites=%d creates=%v writes=%+v, want one existence write", pds.applyCalls, pds.creates, pds.applied)
+		t.Fatalf("PDS applyWrites=%d creates=%v writes=%+v, want one existence write and no sidecar, since the picker customized nothing", pds.applyCalls, pds.creates, pds.applied)
 	}
 	if pds.applied[0].collection != standardSubCollection {
 		t.Errorf("collection = %q, want %s", pds.applied[0].collection, standardSubCollection)
@@ -375,7 +368,6 @@ func TestSubscriptionsCreate_Standardfeed_DefaultsCreateOnlyStandardRecord(t *te
 		t.Errorf("standard record must not carry a blue.morgen source union: %v", rec)
 	}
 
-	// Tier-2 catalog row keyed by the publication at-uri, kind standardfeed.
 	if len(idx.feedParams) != 1 || idx.feedParams[0].FeedUrl != testPublication {
 		t.Fatalf("UpsertFeed params = %+v", idx.feedParams)
 	}
@@ -385,8 +377,10 @@ func TestSubscriptionsCreate_Standardfeed_DefaultsCreateOnlyStandardRecord(t *te
 	if idx.feedParams[0].SiteUrl == nil || *idx.feedParams[0].SiteUrl != "https://blog.example" {
 		t.Errorf("UpsertFeed siteUrl = %v", idx.feedParams[0].SiteUrl)
 	}
+	if idx.feedParams[0].Title != nil {
+		t.Errorf("UpsertFeed title = %q, want nil: feeds.title is the cached publication name, owned by the fetch pipeline", *idx.feedParams[0].Title)
+	}
 
-	// Tier-1 row: existence rkey is the STANDARD record's rkey, no sidecar.
 	row, err := idx.GetUserSubscriptionByFeedURL(context.Background(), db.GetUserSubscriptionByFeedURLParams{
 		Did: "did:plc:alice", FeedUrl: testPublication,
 	})
@@ -403,7 +397,6 @@ func TestSubscriptionsCreate_Standardfeed_DefaultsCreateOnlyStandardRecord(t *te
 		t.Errorf("row sidecar_rkey = %v, want nil", *row.SidecarRkey)
 	}
 
-	// Fetch dispatched for the publication key.
 	if len(disp.dispatched) != 1 || disp.dispatched[0] != testPublication {
 		t.Errorf("dispatched = %v", disp.dispatched)
 	}
@@ -536,7 +529,6 @@ func TestSubscriptionsCreate_Standardfeed_AmbiguousCommitFreshRetryAdoptsPair(t 
 		t.Fatalf("ambiguous commit did not persist the pair: %+v", pds.listed)
 	}
 
-	// A new HTTP request has no local row to dedupe against. PDS preflight must adopt the committed pair.
 	pds.getErr = nil
 	second := SubscriptionsCreateHandler(idx, idx, pds, disp, nil)
 	secondResp := httptest.NewRecorder()
@@ -643,7 +635,6 @@ func TestSubscriptionsCreate_Standardfeed_StaleScope_403(t *testing.T) {
 	disp := &fakeDispatcher{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, disp, nil)
 
-	// withSession carries no scopes, simulating a pre-change grant.
 	body := `{"publication":"` + testPublication + `"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()
@@ -716,14 +707,12 @@ func TestSubscriptionsCreate_PrimaryAndTags_PersistedEverywhere(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
 
-	// PDS record map carries primary + tags.
 	if pds.lastRec["primary"] != true {
 		t.Errorf("PDS record primary = %v, want true", pds.lastRec["primary"])
 	}
 	if tags, ok := pds.lastRec["tags"].([]string); !ok || len(tags) != 2 || tags[0] != "News" || tags[1] != "Tech" {
 		t.Errorf("PDS record tags = %v (%T), want [News Tech]", pds.lastRec["tags"], pds.lastRec["tags"])
 	}
-	// Rev-2 shape: identity lives in the required source union, not flat.
 	recSource, ok := pds.lastRec["source"].(map[string]any)
 	if !ok || recSource["$type"] != "blue.morgen.feed.subscription#rssFeed" || recSource["feedUrl"] != "https://example.test/feed.xml" {
 		t.Errorf("PDS record source = %v, want rssFeed variant", pds.lastRec["source"])
@@ -732,7 +721,6 @@ func TestSubscriptionsCreate_PrimaryAndTags_PersistedEverywhere(t *testing.T) {
 		t.Errorf("PDS record must not carry flat feedUrl: %v", pds.lastRec["feedUrl"])
 	}
 
-	// Tier-1 upsert persisted them (round-trip via the stored row).
 	row, err := idx.GetUserSubscriptionByFeedURL(context.Background(), db.GetUserSubscriptionByFeedURLParams{
 		Did:     "did:plc:alice",
 		FeedUrl: "https://example.test/feed.xml",
@@ -747,7 +735,6 @@ func TestSubscriptionsCreate_PrimaryAndTags_PersistedEverywhere(t *testing.T) {
 		t.Errorf("stored tags = %v, want JSON [News Tech]", row.Tags)
 	}
 
-	// Response wire echoes them.
 	var got subscriptionResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
@@ -790,7 +777,6 @@ func TestSubscriptionsCreate_DefaultsOmitPrimaryAndTags(t *testing.T) {
 	if rec.Primary {
 		t.Errorf("response primary = true, want false")
 	}
-	// tags is `omitempty` so it should be absent from JSON entirely.
 	if strings.Contains(rr.Body.String(), `"tags"`) {
 		t.Errorf("response should omit tags key when empty: %s", rr.Body.String())
 	}
@@ -801,16 +787,16 @@ func TestSubscriptionsCreate_TagNormalization(t *testing.T) {
 	pds := &fakePDS{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, &fakeDispatcher{}, nil)
 
-	long := strings.Repeat("x", 65) // 65 runes > 64, must be dropped
+	over64Graphemes := strings.Repeat("x", 65)
 	tags := []string{
-		" News ", // trimmed → "News"
-		"news",   // case-dup of News → dropped, first-seen casing kept
-		"",       // blank → dropped
-		"  ",     // blank → dropped
+		" News ",
+		"news",
+		"",
+		"  ",
 		"Tech",
-		"TECH",                                 // case-dup → dropped
-		long,                                   // over 64 graphemes → dropped
-		"a", "b", "c", "d", "e", "f", "g", "h", // pushes well past 10 total
+		"TECH",
+		over64Graphemes,
+		"a", "b", "c", "d", "e", "f", "g", "h",
 	}
 	jsonTags, _ := json.Marshal(tags)
 	body := `{"feedUrl":"https://example.test/feed.xml","tags":` + string(jsonTags) + `}`
@@ -839,7 +825,6 @@ func TestSubscriptionsCreate_TagNormalization(t *testing.T) {
 			t.Errorf("over-64-grapheme tag survived: %q", tag)
 		}
 	}
-	// "news"/"TECH" must not appear (case-dedupe).
 	seen := map[string]int{}
 	for _, tag := range out {
 		seen[strings.ToLower(tag)]++
@@ -851,14 +836,13 @@ func TestSubscriptionsCreate_TagNormalization(t *testing.T) {
 	}
 }
 
-// TestSubscriptionsCreate_InvalidRecord_500_NoWrite proves an over-cap title (unenforced at the app-input layer) is rejected before the PDS write, not merely logged.
 func TestSubscriptionsCreate_InvalidRecord_500_NoWrite(t *testing.T) {
 	idx := newFakeIndex()
 	pds := &fakePDS{}
 	disp := &fakeDispatcher{}
 	h := SubscriptionsCreateHandler(idx, idx, pds, disp, nil)
 
-	overlong := strings.Repeat("x", 200) // > maxGraphemes:128
+	overlong := strings.Repeat("x", 200)
 	body := `{"feedUrl":"https://example.test/feed.xml","title":"` + overlong + `"}`
 	req := withSession(httptest.NewRequest(http.MethodPost, "/api/subscriptions", strings.NewReader(body)), "did:plc:alice", "sid-1")
 	rr := httptest.NewRecorder()

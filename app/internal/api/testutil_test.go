@@ -10,7 +10,6 @@ import (
 	"morgenblau/internal/oauth/scopes"
 )
 
-// withSession injects a scope-less session (the pre-standardfeed grant shape) into the context, sparing tests a real OAuth dance.
 func withSession(req *http.Request, did string, sid string) *http.Request {
 	d, _ := syntax.ParseDID(did)
 	sess := &session.Session{
@@ -19,7 +18,6 @@ func withSession(req *http.Request, did string, sid string) *http.Request {
 	return req.WithContext(auth.WithSession(req.Context(), sess))
 }
 
-// withStandardWriteSession is withSession plus the standard subscription write scope.
 func withStandardWriteSession(req *http.Request, did string, sid string) *http.Request {
 	d, _ := syntax.ParseDID(did)
 	sess := &session.Session{

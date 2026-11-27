@@ -12,13 +12,10 @@ import (
 	"morgenblau/internal/feedfinder"
 )
 
-// --- POST /api/subscriptions/resolve ---
-
 type resolveRequest struct {
 	URL string `json:"url"`
 }
 
-// candidateWire adds the sibling annotation: set when the user already subscribes to the same site under the other kind.
 type candidateWire struct {
 	feedfinder.Candidate
 	SubscribedVia *subscribedVia `json:"subscribedVia,omitempty"`
@@ -34,25 +31,21 @@ type resolveResponse struct {
 	ExistingSubscriptions []existingSubMeta `json:"existingSubscriptions"`
 }
 
-// existingSubMeta flags an already-subscribed candidate; FeedURL carries the catalog key (publication at-uri for standardfeed) so the picker can match against publication ?? feedUrl.
 type existingSubMeta struct {
 	FeedURL string  `json:"feedUrl"`
 	Rkey    string  `json:"rkey"`
 	Title   *string `json:"title"`
 }
 
-// ResolveReader is the read slice the resolve handler needs: the per-candidate dedupe probe plus the sibling-guard join.
 type ResolveReader interface {
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error)
 	ListUserSubscriptionsWithSiteURL(ctx context.Context, did string) ([]db.ListUserSubscriptionsWithSiteURLRow, error)
 }
 
-// FeedFinder is the slice of *feedfinder.Finder we depend on.
 type FeedFinder interface {
 	Resolve(ctx context.Context, url string) ([]feedfinder.Candidate, error)
 }
 
-// SubscriptionsResolveHandler turns a pasted URL into feed candidates, flags ones the user already subscribes to, and annotates cross-kind siblings.
 func SubscriptionsResolveHandler(reader ResolveReader, finder FeedFinder, aliases FeedAliases) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -76,7 +69,6 @@ func SubscriptionsResolveHandler(reader ResolveReader, finder FeedFinder, aliase
 			return
 		}
 
-		// Sibling annotation is best-effort UX sugar; a failed join never fails the resolve.
 		siblings := map[string][]subscribedVia{}
 		if subs, err := reader.ListUserSubscriptionsWithSiteURL(r.Context(), sess.Data.AccountDID.String()); err != nil {
 			slog.Warn("/api/subscriptions/resolve: sibling join failed", "err", err)
@@ -99,7 +91,6 @@ func SubscriptionsResolveHandler(reader ResolveReader, finder FeedFinder, aliase
 		existing := make([]existingSubMeta, 0)
 		out := make([]candidateWire, 0, len(cands))
 		for _, c := range cands {
-			// Candidate identity is publication at-uri for standardfeed or feed URL for rss, the same key the create path dedupes on.
 			probeKey := c.FeedURL
 			if c.Publication != "" {
 				probeKey = c.Publication
@@ -148,7 +139,6 @@ func candidateSiblingKey(c feedfinder.Candidate) (string, string) {
 	return rssSiblingKey(c.SiteURL, c.FeedURL), kind
 }
 
-// Keyed like the resolve sibling annotation, so the server rejects exactly the candidates the picker disables.
 func rejectCrossKindSite(w http.ResponseWriter, r *http.Request, reader IndexReader, did, kind, siteKey, op string) bool {
 	if siteKey == "" {
 		return false

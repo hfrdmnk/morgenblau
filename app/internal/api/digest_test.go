@@ -223,13 +223,12 @@ func TestDigest_MarksEntriesFromPrimarySources(t *testing.T) {
 	if len(got.Entries) != len(want) {
 		t.Fatalf("entries = %+v", got.Entries)
 	}
-	// The reader steps through this order, so it must match the digest page: primary first, newest first within each group.
 	var order []string
 	for _, entry := range got.Entries {
 		order = append(order, entry.EntrySlug)
 	}
 	if want := []string{"primary-feed", "primary-newsletter", "other-feed", "other-newsletter"}; !slices.Equal(order, want) {
-		t.Errorf("order = %v, want %v", order, want)
+		t.Errorf("order = %v, want %v: the reader's previous and next step through this order, so it must match the digest page", order, want)
 	}
 	for _, entry := range got.Entries {
 		primary := entry.Source.Primary != nil && *entry.Source.Primary
@@ -352,7 +351,7 @@ func TestDigest_JobCompletingAfterEntrySnapshotRequiresAnotherRead(t *testing.T)
 	}
 	first := read()
 	if len(first.Entries) != 0 || !first.HasActiveJob {
-		t.Fatalf("stale snapshot must request another read: %+v", first)
+		t.Fatalf("stale snapshot must request another read: %+v; the handler samples the active job before listing entries, so a job finishing mid-read never makes that list look final", first)
 	}
 	next := read()
 	if next.HasActiveJob || len(next.Entries) != 1 || next.Entries[0].Title == nil || *next.Entries[0].Title != title {

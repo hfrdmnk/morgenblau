@@ -20,8 +20,6 @@ import (
 
 const previewLimit = 3
 
-// --- POST /api/subscriptions/preview ---
-
 type previewRequest struct {
 	FeedURL     string `json:"feedUrl"`
 	Publication string `json:"publication"`
@@ -38,19 +36,15 @@ type previewResponse struct {
 	Items []previewItem `json:"items"`
 }
 
-// FeedFetcher is the slice of *fetcher.Fetcher the preview needs; it shares the sync pipeline's guarded client and worker pool.
 type FeedFetcher interface {
 	Fetch(ctx context.Context, rawURL string, state fetcher.FeedState) (*fetcher.Result, error)
 }
 
-// DocumentLister is the slice of *standardfeed.Client the preview needs.
 type DocumentLister interface {
 	GetPublication(ctx context.Context, rawURI string) (*standardfeed.Publication, error)
 	ListDocuments(ctx context.Context, pubURI string) ([]standardfeed.Document, error)
 }
 
-// SubscriptionsPreviewHandler returns a candidate's newest posts before the reader follows it; nothing is stored.
-// A YouTube feed that fails during a YouTube outage answers codeYouTubeDown, since following the channel still works.
 func SubscriptionsPreviewHandler(feeds FeedFetcher, docs DocumentLister, youtube YouTubeFeedHealth) http.Handler {
 	sanitizer := bluemonday.UGCPolicy()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +60,7 @@ func SubscriptionsPreviewHandler(feeds FeedFetcher, docs DocumentLister, youtube
 			writeError(w, http.StatusBadRequest, codeInvalidRequest, "Send either feedUrl or publication")
 			return
 		}
-		items, err := previewItems(r.Context(), feeds, docs, feedURL, pub)
+		items, err := unsanitizedPreviewItems(r.Context(), feeds, docs, feedURL, pub)
 		if err != nil {
 			slog.Warn("/api/subscriptions/preview: upstream failed", "feed", feedURL+pub, "err", err)
 			if feedfinder.IsYouTubeFeedURL(feedURL) {
@@ -82,10 +76,8 @@ func SubscriptionsPreviewHandler(feeds FeedFetcher, docs DocumentLister, youtube
 			writeError(w, http.StatusBadGateway, codeUpstreamError, "Couldn't load recent posts")
 			return
 		}
-		// Undated items sort last; feeds list newest first more often than not, so the stable sort keeps their order.
 		slices.SortStableFunc(items, func(a, b previewItem) int { return cmp.Compare(b.PublishedAt, a.PublishedAt) })
 		items = items[:min(len(items), previewLimit)]
-		// Sanitizing only the kept items spares a full-content feed's hundred bodies.
 		for i := range items {
 			items[i].ContentHTML = sanitizer.Sanitize(items[i].ContentHTML)
 		}
@@ -93,8 +85,7 @@ func SubscriptionsPreviewHandler(feeds FeedFetcher, docs DocumentLister, youtube
 	})
 }
 
-// Bodies follow the sync pipelines, so a previewed post reads as it will in the newspaper; they are unsanitized until the handler trims the list.
-func previewItems(ctx context.Context, feeds FeedFetcher, docs DocumentLister, feedURL, pub string) ([]previewItem, error) {
+func unsanitizedPreviewItems(ctx context.Context, feeds FeedFetcher, docs DocumentLister, feedURL, pub string) ([]previewItem, error) {
 	items := []previewItem{}
 	if pub != "" {
 		publication, err := docs.GetPublication(ctx, pub)
@@ -139,8 +130,6 @@ func previewItems(ctx context.Context, feeds FeedFetcher, docs DocumentLister, f
 	return items, nil
 }
 
-// --- POST /api/subscriptions/preview/article ---
-
 type previewArticleRequest struct {
 	URL string `json:"url"`
 }
@@ -149,9 +138,7 @@ type previewArticleResponse struct {
 	ContentHTML string `json:"contentHtml"`
 }
 
-// SubscriptionsPreviewArticleHandler extracts a previewed post the way the reader does, without an entry to cache it on.
-// httpClient must be the safehttp client: the URL comes from a feed the reader has not followed yet.
-func SubscriptionsPreviewArticleHandler(httpClient *http.Client) http.Handler {
+func SubscriptionsPreviewArticleHandler(safeClient *http.Client) http.Handler {
 	sanitizer := bluemonday.UGCPolicy()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := requireSession(w, r); !ok {
@@ -166,7 +153,7 @@ func SubscriptionsPreviewArticleHandler(httpClient *http.Client) http.Handler {
 			writeError(w, http.StatusBadRequest, codeInvalidRequest, "url must be a website address")
 			return
 		}
-		content, err := extractReadable(r.Context(), httpClient, u.String(), sanitizer)
+		content, err := extractReadable(r.Context(), safeClient, u.String(), sanitizer)
 		if err != nil {
 			slog.Warn("/api/subscriptions/preview/article: extract failed", "url", u.String(), "err", err)
 			writeError(w, http.StatusBadGateway, codeUpstreamError, "Couldn't load the article")
@@ -175,8 +162,6 @@ func SubscriptionsPreviewArticleHandler(httpClient *http.Client) http.Handler {
 		writeJSON(w, previewArticleResponse{ContentHTML: content})
 	})
 }
-
-// --- POST /api/subscriptions/profile ---
 
 type profileRequest struct {
 	URL string `json:"url"`
@@ -199,13 +184,10 @@ type profileResponse struct {
 	Profile *profileWire `json:"profile"`
 }
 
-// ProfileFetcher reads a site's SocialSpec files; nil, nil means it publishes none.
 type ProfileFetcher func(ctx context.Context, origin string) (*socialspec.Profile, error)
 
-// profileTimeout keeps a slow site from holding the add-source sheet, which waits for the profile alongside resolve.
 const profileTimeout = 6 * time.Second
 
-// SubscriptionsProfileHandler returns the SocialSpec profile of a pasted URL's site, flagging the follows the reader already has.
 func SubscriptionsProfileHandler(reader subscriptionByFeedURL, fetch ProfileFetcher, aliases FeedAliases) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)

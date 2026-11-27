@@ -209,7 +209,7 @@ func TestImportTwoSessionsCreateOneRecord(t *testing.T) {
 		}
 	}
 	if pds.creates != 1 || pds.puts != 1 || !sameTagSet(recordTags(pds.listed[subscriptionCollection][0].Value), []string{"First", "Second"}) {
-		t.Fatalf("duplicate or lost tags: creates=%d puts=%d records=%+v", pds.creates, pds.puts, pds.listed)
+		t.Fatalf("duplicate or lost tags: creates=%d puts=%d records=%+v; each import reads the repo head before listing, so a create landing after its listing fails its conditional write", pds.creates, pds.puts, pds.listed)
 	}
 }
 

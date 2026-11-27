@@ -206,7 +206,6 @@ func TestMeProfile_FlagsOnlyListedAdmins(t *testing.T) {
 	}
 }
 
-// The header shows the feedback button only when the server can mail feedback.
 func TestMeProfile_ReportsWhetherFeedbackIsSetUp(t *testing.T) {
 	src := &fakeProfileSource{profiles: map[syntax.DID]profiles.Profile{
 		"did:plc:reader": {DID: "did:plc:reader", Handle: "reader.example"},

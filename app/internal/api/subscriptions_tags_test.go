@@ -12,8 +12,6 @@ import (
 	"morgenblau/internal/websource"
 )
 
-// --- List handler ---
-
 func TestSubscriptionsList_FromIndex(t *testing.T) {
 	idx := newFakeIndex()
 	idx.rows["did:plc:alice"] = map[string]db.UserSubscription{
@@ -50,7 +48,6 @@ func TestSubscriptionsList_Standardfeed_CatalogTitleFallback(t *testing.T) {
 			AtUri:   "at://did:plc:alice/" + standardSubCollection + "/3std",
 			FeedUrl: testPublication,
 			Kind:    "standardfeed",
-			// No user title: the wire falls back to the cached catalog title.
 		},
 	}
 	idx.catalogTitles[testPublication] = ptrString("Publication Name")
@@ -76,7 +73,6 @@ func TestSubscriptionsList_Standardfeed_CatalogTitleFallback(t *testing.T) {
 	if got[0].Title != "Publication Name" {
 		t.Errorf("wire title = %q, want catalog fallback", got[0].Title)
 	}
-	// The value map mirrors the PDS record; no user title there.
 	if _, ok := got[0].Value["title"]; ok {
 		t.Errorf("value.title should stay absent without a user title: %v", got[0].Value)
 	}
@@ -256,12 +252,10 @@ func TestSubscriptionsList_CarriesLastFetchedAt(t *testing.T) {
 	}
 }
 
-// --- Tags handler ---
-
 func TestSubscriptionsTags_DistinctSortedUnion(t *testing.T) {
 	idx := newFakeIndex()
 	aliceA := `["News","Tech"]`
-	aliceB := `["news","Design","apple"]` // "news" dups News (case), keep first-seen "News"
+	aliceB := `["news","Design","apple"]`
 	bobTags := `["BobOnly"]`
 	idx.rows["did:plc:alice"] = map[string]db.UserSubscription{
 		"https://a.test/feed.xml": {Did: "did:plc:alice", Rkey: "1", FeedUrl: "https://a.test/feed.xml", Tags: &aliceA},
@@ -285,7 +279,6 @@ func TestSubscriptionsTags_DistinctSortedUnion(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	// Case-insensitive sort ascending, first-seen casing, bob excluded.
 	want := []string{"apple", "Design", "News", "Tech"}
 	if len(got.Tags) != len(want) {
 		t.Fatalf("tags = %v, want %v", got.Tags, want)
@@ -297,7 +290,6 @@ func TestSubscriptionsTags_DistinctSortedUnion(t *testing.T) {
 	}
 }
 
-// Guards route precedence: Go's ServeMux must treat the literal /api/subscriptions/tags as more specific than /api/subscriptions/{rkey}, or the wildcard swallows it. Mirrors routes.go order.
 func TestSubscriptionsTags_RouteWinsOverRkeyWildcard(t *testing.T) {
 	idx := newFakeIndex()
 	fakeDetail := newFakeSourceDetail()
@@ -312,9 +304,8 @@ func TestSubscriptionsTags_RouteWinsOverRkeyWildcard(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
-	// The tags handler emits {"tags":...}; the rkey handler would 404 or emit a detail wire, so this asserts the tags shape won.
 	if body := strings.TrimSpace(rr.Body.String()); body != `{"tags":[]}` {
-		t.Errorf("wildcard route swallowed /tags: body = %q", body)
+		t.Errorf("wildcard route swallowed /tags: body = %q; registered as in routes.go, ServeMux must rank the literal /api/subscriptions/tags above /api/subscriptions/{rkey}", body)
 	}
 }
 

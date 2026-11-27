@@ -15,28 +15,25 @@ import (
 	"morgenblau/internal/newsletter"
 )
 
-// DigestReader is the slice of *db.Queries the digest handler depends on.
 type DigestReader interface {
 	ListDigestForUser(ctx context.Context, arg db.ListDigestForUserParams) ([]db.ListDigestForUserRow, error)
 }
 
-// EntryWire is the on-the-wire entry shape; Body is pre-sanitized HTML the frontend trusts as-is.
 type EntryWire struct {
-	ID          any                    `json:"id"`
-	EntrySlug   string                 `json:"entrySlug"`
-	Title       *string                `json:"title"`
-	URL         *string                `json:"url,omitempty"`
-	ContentType string                 `json:"contentType"`
-	PublishedAt string                 `json:"publishedAt"`
-	Source      SourceMeta             `json:"source"`
-	Body        *string                `json:"body"`
-	Metadata    *string                `json:"metadata,omitempty"`
-	Image       *string                `json:"image,omitempty"`
-	Newsletter  *NewsletterMessageMeta `json:"newsletter,omitempty"`
-	SavedState  *SavedState            `json:"savedState"`
+	ID            any                    `json:"id"`
+	EntrySlug     string                 `json:"entrySlug"`
+	Title         *string                `json:"title"`
+	URL           *string                `json:"url,omitempty"`
+	ContentType   string                 `json:"contentType"`
+	PublishedAt   string                 `json:"publishedAt"`
+	Source        SourceMeta             `json:"source"`
+	SanitizedBody *string                `json:"body"`
+	Metadata      *string                `json:"metadata,omitempty"`
+	Image         *string                `json:"image,omitempty"`
+	Newsletter    *NewsletterMessageMeta `json:"newsletter,omitempty"`
+	SavedState    *SavedState            `json:"savedState"`
 }
 
-// SavedState mirrors the frontend's view; Rkey is what the client DELETEs on un-save.
 type SavedState struct {
 	Kind string   `json:"kind,omitempty"`
 	ID   string   `json:"id,omitempty"`
@@ -51,19 +48,16 @@ type SourceMeta struct {
 	Title      *string `json:"title"`
 	SiteURL    *string `json:"siteUrl"`
 	FaviconURL *string `json:"faviconUrl"`
-	// Rkey links an entry to its source page; the source-list path leaves it empty, as the client is already there.
-	Rkey    string `json:"rkey,omitempty"`
-	Primary bool   `json:"primary,omitempty"`
+	Rkey       string  `json:"rkey,omitempty"`
+	Primary    bool    `json:"primary,omitempty"`
 }
 
-// DigestResponse adds in-flight metadata so the frontend can swap empty-state copy without a second round-trip.
 type DigestResponse struct {
 	Date         string      `json:"date"`
 	Entries      []EntryWire `json:"entries"`
 	HasActiveJob bool        `json:"hasActiveJob"`
 }
 
-// JobsActiveProbe is the slice of jobs.Tracker used to pick in-flight vs steady-state empty copy.
 type JobsActiveProbe interface {
 	ActiveForUser(did syntax.DID) *jobs.Job
 }
@@ -72,7 +66,6 @@ type newsletterDigestReader interface {
 	ListDigestMessages(context.Context, string, time.Time, time.Time) ([]newsletter.Message, error)
 }
 
-// DigestHandler returns entries for the requested browser-local calendar day, joined across the user's Tier-1 subscriptions.
 func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe, privateReaders ...newsletterDigestReader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -88,7 +81,6 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe, privateReaders 
 			writeError(w, http.StatusBadRequest, codeInvalidRequest, err.Error())
 			return
 		}
-		// Sampling first prevents a completed job from making an earlier entry snapshot look final.
 		hasActive := jobsSrc != nil && jobsSrc.ActiveForUser(sess.Data.AccountDID) != nil
 		rows, err := reader.ListDigestForUser(r.Context(), db.ListDigestForUserParams{
 			Did:           did,
@@ -125,7 +117,6 @@ func DigestHandler(reader DigestReader, jobsSrc JobsActiveProbe, privateReaders 
 			})
 		}
 
-		// The page and the reader's previous/next both follow this order, so primary sources lead here rather than in the client.
 		sort.SliceStable(entries, func(i, j int) bool {
 			return entries[i].Source.Primary && !entries[j].Source.Primary
 		})
@@ -157,7 +148,6 @@ func digestDayBounds(dateStr, timezone string, now time.Time) (string, time.Time
 	return dateStr, day.UTC(), day.AddDate(0, 0, 1).UTC(), nil
 }
 
-// entryListFields is the shared field set behind the entry-list row-to-wire mappers, since the three list queries differ only in filter, not shape.
 type entryListFields struct {
 	ID           int64
 	EntrySlug    string
@@ -177,15 +167,15 @@ type entryListFields struct {
 func entryListRowToWire(f entryListFields) EntryWire {
 	entryURL := f.Url
 	return EntryWire{
-		ID:          f.ID,
-		EntrySlug:   f.EntrySlug,
-		Title:       f.Title,
-		URL:         &entryURL,
-		ContentType: f.ContentType,
-		PublishedAt: f.PublishedAt,
-		Source:      buildSourceMeta(f.FeedUrl, displayTitle(f.FeedTitle, f.CatalogTitle), f.FeedSiteUrl, f.FeedIconUrl),
-		Body:        f.ContentHtml,
-		Metadata:    f.Metadata,
+		ID:            f.ID,
+		EntrySlug:     f.EntrySlug,
+		Title:         f.Title,
+		URL:           &entryURL,
+		ContentType:   f.ContentType,
+		PublishedAt:   f.PublishedAt,
+		Source:        buildSourceMeta(f.FeedUrl, displayTitle(f.FeedTitle, f.CatalogTitle), f.FeedSiteUrl, f.FeedIconUrl),
+		SanitizedBody: f.ContentHtml,
+		Metadata:      f.Metadata,
 	}
 }
 
@@ -211,7 +201,6 @@ func digestRowToWire(row db.ListDigestForUserRow) EntryWire {
 	return wire
 }
 
-// displayTitle prefers the user's per-subscription title over the catalog title (publication name for standardfeed, NULL for rss).
 func displayTitle(userTitle, catalogTitle *string) *string {
 	if userTitle != nil && *userTitle != "" {
 		return userTitle
@@ -219,7 +208,6 @@ func displayTitle(userTitle, catalogTitle *string) *string {
 	return catalogTitle
 }
 
-// buildSourceMeta returns the cached source favicon, or nil when none is known.
 func buildSourceMeta(feedURL string, title, siteURL, feedIconURL *string) SourceMeta {
 	var favicon *string
 	if feedIconURL != nil && *feedIconURL != "" {

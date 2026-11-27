@@ -13,9 +13,6 @@ import (
 	"morgenblau/internal/websource"
 )
 
-// --- POST /api/web-sources ---
-
-// WebSourceCreator is the slice of *websource.Service the create route needs.
 type WebSourceCreator interface {
 	Create(ctx context.Context, did, listingURL, anchorURL string) (websource.Preview, error)
 }
@@ -32,23 +29,20 @@ type webSourceItemWire struct {
 }
 
 type webSourceWire struct {
-	ID           string              `json:"id"`
-	FeedURL      string              `json:"feedUrl"`
-	Title        string              `json:"title"`
-	SiteURL      string              `json:"siteUrl"`
-	Health       websource.Health    `json:"health"`
-	HealthReason string              `json:"healthReason"`
-	NeedsAnchor  bool                `json:"needsAnchor"`
-	Items        []webSourceItemWire `json:"items"`
-	ItemCount    int                 `json:"itemCount"`
-	// AnchorRejected says the reader's post left the source, and this preview, as they were.
+	ID             string                    `json:"id"`
+	FeedURL        string                    `json:"feedUrl"`
+	Title          string                    `json:"title"`
+	SiteURL        string                    `json:"siteUrl"`
+	Health         websource.Health          `json:"health"`
+	HealthReason   string                    `json:"healthReason"`
+	NeedsAnchor    bool                      `json:"needsAnchor"`
+	Items          []webSourceItemWire       `json:"items"`
+	ItemCount      int                       `json:"itemCount"`
 	AnchorRejected websource.AnchorRejection `json:"anchorRejected,omitempty"`
 }
 
-// webSourceWriteTimeout outlasts websource.SetupTimeout, so a slow setup ends in an answer rather than a dropped connection.
 const webSourceWriteTimeout = websource.SetupTimeout + 10*time.Second
 
-// WebSourcesCreateHandler generates (or reuses) the site's web source and returns a preview; it writes only server-owned storage, never the PDS.
 func WebSourcesCreateHandler(svc WebSourceCreator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -64,11 +58,9 @@ func WebSourcesCreateHandler(svc WebSourceCreator) http.Handler {
 			writeError(w, http.StatusBadRequest, codeInvalidRequest, "url is required")
 			return
 		}
-		// Past the server's WriteTimeout the reader would get a dropped connection after the model was paid for.
 		if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(webSourceWriteTimeout)); err != nil {
 			slog.Warn("/api/web-sources: cannot extend the write deadline", "err", err)
 		}
-		// Closing the dialog must not abandon a setup that is already spending; the service bounds it with its own deadline.
 		ctx := context.WithoutCancel(r.Context())
 		preview, err := svc.Create(ctx, sess.Data.AccountDID.String(), body.URL, strings.TrimSpace(body.AnchorURL))
 		var limited *websource.RateLimitError

@@ -17,22 +17,19 @@ import (
 	"morgenblau/internal/websource"
 )
 
-// testPublication is the canonical standardfeed publication at-uri shared across resolve, create, and list tests.
 const testPublication = "at://did:plc:publisher/site.standard.publication/3pub"
-
-// --- Tier-1 index reader/writer test doubles ---
 
 type fakeIndex struct {
 	mu                  sync.Mutex
-	rows                map[string]map[string]db.UserSubscription // did → feedURL → row
+	rows                map[string]map[string]db.UserSubscription
 	getFeedErr          error
-	upsertedFeeds       []string              // feed URLs passed to UpsertFeed, in call order
-	feedParams          []db.UpsertFeedParams // full UpsertFeed args, in call order
-	catalogTitles       map[string]*string    // feedURL → feeds.title for the stats join
-	siteURLs            map[string]*string    // feedURL → feeds.site_url for the sibling join
-	lastFetchedAt       map[string]*string    // feedURL → feeds.last_fetched_at for the stats join
-	consecutiveFailures map[string]int64      // feedURL → feeds.consecutive_failures for the stats join
-	webHealth           map[string][2]string  // feedURL → web_sources (health, health_reason) for own generated feeds
+	upsertedFeeds       []string
+	feedParams          []db.UpsertFeedParams
+	catalogTitles       map[string]*string
+	siteURLs            map[string]*string
+	lastFetchedAt       map[string]*string
+	consecutiveFailures map[string]int64
+	webHealth           map[string][2]string
 	youtubeFeeds        db.CountYouTubeFeedFailuresRow
 	lastWebFeedPrefixes websource.FeedPrefixes
 }
@@ -114,7 +111,6 @@ func (f *fakeIndex) CountYouTubeFeedFailures(context.Context, string) (db.CountY
 func (f *fakeIndex) ListUserSubscriptionTags(_ context.Context, did string) ([]*string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	// Mirror the query's ORDER BY rkey so "first-seen casing wins" is deterministic; ranging the map directly would randomize order.
 	rows := make([]db.UserSubscription, 0, len(f.rows[did]))
 	for _, r := range f.rows[did] {
 		rows = append(rows, r)
@@ -166,7 +162,6 @@ func (f *fakeIndex) UpsertUserSubscription(_ context.Context, arg db.UpsertUserS
 	if _, ok := f.rows[arg.Did]; !ok {
 		f.rows[arg.Did] = map[string]db.UserSubscription{}
 	}
-	// Mirror the query's NULLIF trick: empty/zero kind persists as rss.
 	kind, _ := arg.Kind.(string)
 	if kind == "" {
 		kind = "rss"
@@ -187,8 +182,6 @@ func (f *fakeIndex) UpsertUserSubscription(_ context.Context, arg db.UpsertUserS
 	return nil
 }
 
-// --- Finder + PDS writer + fetch dispatcher doubles ---
-
 type fakeFinder struct {
 	candidates []feedfinder.Candidate
 	err        error
@@ -198,7 +191,6 @@ func (f *fakeFinder) Resolve(_ context.Context, _ string) ([]feedfinder.Candidat
 	return f.candidates, f.err
 }
 
-// pdsWrite captures one CreateRecord call: which collection got which record.
 type pdsWrite struct {
 	collection string
 	rkey       string
@@ -216,18 +208,18 @@ type fakePDS struct {
 	lastPutRkey         string
 	created             []pdsWrite
 	applied             []pdsWrite
-	appliedDeletes      []string                          // "collection/rkey" deleted through ApplyWrites, in order
-	deleted             []string                          // "collection/rkey", in call order
-	listed              map[string][]atprepo.ListedRecord // canned ListRecords result per collection
+	appliedDeletes      []string
+	deleted             []string
+	listed              map[string][]atprepo.ListedRecord
 	listErr             error
 	listCalls           int
-	createErr           map[string]error // per-collection CreateRecord failure
-	applyErr            error            // ApplyWrites failure
-	applyAfterCommitErr error            // ApplyWrites transport failure after records have been committed
+	createErr           map[string]error
+	applyErr            error
+	applyAfterCommitErr error
 	getErr              error
 	getCalls            int
-	deleteErr           error // DeleteRecord failure, applied to every call
-	putErr              error // PutRecord failure, applied to every call
+	deleteErr           error
+	putErr              error
 }
 
 func (p *fakePDS) CreateRecord(_ context.Context, sess *session.Session, collection syntax.NSID, record map[string]any) (*atprepo.RecordRef, error) {

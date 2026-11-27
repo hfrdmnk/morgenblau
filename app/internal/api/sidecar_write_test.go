@@ -24,8 +24,6 @@ func sweepTestSession() *session.Session {
 	return &session.Session{Data: &session.Data{AccountDID: d, SessionID: "sid-1"}}
 }
 
-// --- deleteStandardSubscription ---
-
 func standardDeletePDS() *fakePDS {
 	return &fakePDS{listed: map[string][]atprepo.ListedRecord{
 		standardSubCollection: {
@@ -99,8 +97,6 @@ func TestDeleteStandardSubscription_NothingLeftCommitsNothing(t *testing.T) {
 		t.Errorf("applyWrites calls = %d, want 0", pds.applyCalls)
 	}
 }
-
-// --- writeSidecarPair (half B prototype) ---
 
 func TestWriteSidecarPair_ExistenceOnly_CreatesExistence(t *testing.T) {
 	pds := &fakePDS{}
@@ -189,10 +185,10 @@ func TestWriteSidecarPair_SidecarOnly_PutsWhenRkeyKnown(t *testing.T) {
 	pds := &fakePDS{}
 	rr := httptest.NewRecorder()
 	spec := sidecarWriteSpec{
-		Sidecar:           map[string]any{"note": "extra"},
-		SidecarCollection: syntax.NSID(sidecarCollection),
-		SidecarRkey:       "3existing",
-		SidecarOp:         "sidecar write failed",
+		Sidecar:             map[string]any{"note": "extra"},
+		SidecarCollection:   syntax.NSID(sidecarCollection),
+		ExistingSidecarRkey: "3existing",
+		SidecarOp:           "sidecar write failed",
 	}
 	result, ok := writeSidecarPair(context.Background(), rr, sweepTestSession(), pds, spec)
 
@@ -267,10 +263,10 @@ func TestWriteSidecarPair_SidecarPutFails_502(t *testing.T) {
 	pds := &fakePDS{putErr: errors.New("pds down")}
 	rr := httptest.NewRecorder()
 	spec := sidecarWriteSpec{
-		Sidecar:           map[string]any{"note": "extra"},
-		SidecarCollection: syntax.NSID(sidecarCollection),
-		SidecarRkey:       "3existing",
-		SidecarOp:         "sidecar write failed",
+		Sidecar:             map[string]any{"note": "extra"},
+		SidecarCollection:   syntax.NSID(sidecarCollection),
+		ExistingSidecarRkey: "3existing",
+		SidecarOp:           "sidecar write failed",
 	}
 	_, ok := writeSidecarPair(context.Background(), rr, sweepTestSession(), pds, spec)
 

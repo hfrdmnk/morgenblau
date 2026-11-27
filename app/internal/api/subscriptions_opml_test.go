@@ -96,7 +96,7 @@ func TestImportTagsDoNotTruncate(t *testing.T) {
 	}
 	for _, invalid := range [][]string{{strings.Repeat("x", 65)}, {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"}} {
 		if _, err := mergeImportTags(nil, invalid); err == nil {
-			t.Fatalf("accepted %v", invalid)
+			t.Fatalf("accepted %v; an import reports tags over the lexicon's cap instead of dropping the overflow the way normalizeTags does", invalid)
 		}
 	}
 }

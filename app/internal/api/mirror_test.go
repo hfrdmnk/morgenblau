@@ -19,7 +19,6 @@ const mirrorDID = "did:plc:alice"
 
 var errMirrorDown = errors.New("mirror write failed")
 
-// recordingRepair counts repair dispatches so tests can assert exactly-once, and can fail the dispatch itself.
 type recordingRepair struct {
 	mu    sync.Mutex
 	calls []string
@@ -57,8 +56,6 @@ type failingSubscriptionMirror struct{ *rkeyIndex }
 func (failingSubscriptionMirror) DeleteUserSubscription(context.Context, db.DeleteUserSubscriptionParams) error {
 	return errMirrorDown
 }
-
-// --- commitThenMirror ---
 
 func TestCommitThenMirror_FailedCommitSkipsTheMirror(t *testing.T) {
 	repair := &recordingRepair{}
@@ -106,8 +103,6 @@ func TestCommitThenMirror_MirrorFailureReportsTheCommitAndDispatchesOneRepair(t 
 func mirrorSession() *session.Session {
 	return &session.Session{Data: &session.Data{AccountDID: syntax.DID(mirrorDID), SessionID: "sid-1"}}
 }
-
-// --- saves ---
 
 func TestSavesCreate_MirrorFailure_SucceedsAndDispatchesRepair(t *testing.T) {
 	idx := newFakeSavesIndex()
@@ -181,8 +176,6 @@ func TestSavesDelete_MirrorFailure_SucceedsAndDispatchesRepair(t *testing.T) {
 		t.Errorf("repair dispatches = %d, want 1", got)
 	}
 }
-
-// --- subscriptions ---
 
 func TestSubscriptionsDelete_MirrorFailure_SucceedsAndDispatchesRepair(t *testing.T) {
 	idx := newRkeyIndex()

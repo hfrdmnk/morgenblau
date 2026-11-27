@@ -22,7 +22,6 @@ import (
 
 const saveCollection = lexicon.Save
 
-// SaveWire is the on-the-wire save shape; GET /api/saves additionally joins entry title/slug/target when cached. Only POST carries a cid, since user_saves has no cid column.
 type SaveWire struct {
 	URI       string   `json:"uri,omitempty"`
 	CID       string   `json:"cid,omitempty"`
@@ -36,14 +35,12 @@ type SaveWire struct {
 	Tags      []string `json:"tags,omitempty"`
 }
 
-// SavesIndexReader is the slice of db.Queries the saves handlers use for reads.
 type SavesIndexReader interface {
 	GetUserSave(ctx context.Context, arg db.GetUserSaveParams) (db.UserSave, error)
 	GetUserSaveByItemURL(ctx context.Context, arg db.GetUserSaveByItemURLParams) (db.UserSave, error)
 	ListUserSaves(ctx context.Context, did string) ([]db.ListUserSavesRow, error)
 }
 
-// SavesIndexWriter is the slice used for writes.
 type SavesIndexWriter interface {
 	UpsertUserSave(ctx context.Context, arg db.UpsertUserSaveParams) error
 	DeleteUserSave(ctx context.Context, arg db.DeleteUserSaveParams) error
@@ -62,14 +59,11 @@ type newsletterSaveWire struct {
 	Tags      []string `json:"tags,omitempty"`
 }
 
-// --- POST /api/saves ---
-
 type savesCreateRequest struct {
 	ItemURL string `json:"itemUrl"`
 	FeedURL string `json:"feedUrl"`
 }
 
-// SavesCreateHandler writes a save record to the PDS and mirrors it into the Tier-1 cache; idempotent on (did, itemUrl).
 func SavesCreateHandler(reader SavesIndexReader, writer SavesIndexWriter, pds atprepo.Writer, disp RepairDispatcher) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -148,9 +142,6 @@ func SavesCreateHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 	})
 }
 
-// --- DELETE /api/saves/{rkey} ---
-
-// SavesDeleteHandler tombstones the PDS record and removes the Tier-1 row.
 func SavesDeleteHandler(reader SavesIndexReader, writer SavesIndexWriter, pds atprepo.Writer, disp RepairDispatcher) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -166,7 +157,6 @@ func SavesDeleteHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 		_, err := reader.GetUserSave(r.Context(), db.GetUserSaveParams{Did: didStr, Rkey: rkey})
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				// Collapse "not yours" and "doesn't exist" to 404 to avoid leaking existence.
 				writeError(w, http.StatusNotFound, codeNotFound, "not found")
 				return
 			}
@@ -190,16 +180,11 @@ func SavesDeleteHandler(reader SavesIndexReader, writer SavesIndexWriter, pds at
 	})
 }
 
-// --- PATCH /api/saves/{rkey} ---
-
-// saveRecordRepo reads the current record before rewriting it, so fields Morgenblau doesn't edit (comment, facets) survive a tag change;
-// the write is conditional on the CID it read, so another client's edit in between is never overwritten.
 type saveRecordRepo interface {
 	atprepo.RecordGetter
 	PutRecordIfCID(ctx context.Context, sess *session.Session, collection syntax.NSID, rkey string, record map[string]any, cid string) (*atprepo.RecordRef, error)
 }
 
-// SavesPatchHandler replaces a save's tags on its PDS record and mirrors them into the Tier-1 row.
 func SavesPatchHandler(reader SavesIndexReader, writer SavesIndexWriter, pds saveRecordRepo, disp RepairDispatcher) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -279,8 +264,6 @@ func SavesPatchHandler(reader SavesIndexReader, writer SavesIndexWriter, pds sav
 	})
 }
 
-// --- GET /api/saves/tags ---
-
 type saveTagsReader interface {
 	ListUserSaveTags(ctx context.Context, did string) ([]*string, error)
 }
@@ -289,7 +272,6 @@ type newsletterSaveTagLister interface {
 	ListSaveTags(context.Context, string) ([]string, error)
 }
 
-// SavesTagsHandler suggests the tags already on the reader's saves, URL and newsletter alike.
 func SavesTagsHandler(reader saveTagsReader, privateListers ...newsletterSaveTagLister) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -320,9 +302,6 @@ func SavesTagsHandler(reader saveTagsReader, privateListers ...newsletterSaveTag
 	})
 }
 
-// --- GET /api/saves ---
-
-// SavesListHandler returns the user's saves, newest first, joining entry title/slug/target when the entry is still cached.
 func SavesListHandler(reader SavesIndexReader, privateListers ...newsletterSaveLister) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -368,7 +347,6 @@ func SavesListHandler(reader SavesIndexReader, privateListers ...newsletterSaveL
 }
 
 func saveListRowToWire(row db.ListUserSavesRow) SaveWire {
-	// The save's own feedUrl is optional (a save can predate knowing the feed), so the joined entry's feed stands in.
 	feedURL := derefStr(row.FeedUrl)
 	if feedURL == "" {
 		feedURL = derefStr(row.EntryFeedUrl)

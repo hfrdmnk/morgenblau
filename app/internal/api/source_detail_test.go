@@ -12,12 +12,10 @@ import (
 	"morgenblau/internal/websource"
 )
 
-// --- Source detail (GET /api/subscriptions/{rkey}) ---
-
 type fakeSourceDetail struct {
-	rows         map[string]map[string]db.GetUserSourceWithStatsRow // did → rkey → row
-	subRows      map[string]map[string]db.UserSubscription          // did → rkey → row
-	entries      map[string][]db.ListEntriesForSourceRow            // feed_url → rows
+	rows         map[string]map[string]db.GetUserSourceWithStatsRow
+	subRows      map[string]map[string]db.UserSubscription
+	entries      map[string][]db.ListEntriesForSourceRow
 	err          error
 	params       db.GetUserSourceWithStatsParams
 	youtubeFeeds db.CountYouTubeFeedFailuresRow
@@ -131,7 +129,6 @@ func TestSubscriptionGet_HappyPath(t *testing.T) {
 	if got.SavedByYou != 7 {
 		t.Errorf("savedByYou = %d, want 7", got.SavedByYou)
 	}
-	// primary/tags feed the edit-dialog prefill on the detail page.
 	if !got.Primary {
 		t.Errorf("primary = false, want true")
 	}
@@ -140,7 +137,6 @@ func TestSubscriptionGet_HappyPath(t *testing.T) {
 	}
 }
 
-// The detail page shows the same health as the Sources list, so both read it through one rule.
 func TestSubscriptionGet_CarriesFetchAndGeneratedHealth(t *testing.T) {
 	prefixes := websource.FeedPrefixes{Current: "https://app.example.com/feed/", Legacy: "https://app.example.com/web/"}
 	next := "2026-10-14T15:00:00Z"
@@ -213,8 +209,6 @@ func TestSubscriptionGet_ForeignRkey_404(t *testing.T) {
 		t.Errorf("status = %d, want 404", rr.Code)
 	}
 }
-
-// --- Source entries (GET /api/subscriptions/{rkey}/entries) ---
 
 func TestSubscriptionEntries_HappyPath(t *testing.T) {
 	fake := newFakeSourceDetail()
@@ -302,7 +296,6 @@ func TestSubscriptionEntries_LimitHonored(t *testing.T) {
 	fake.subRows["did:plc:alice"] = map[string]db.UserSubscription{
 		"3la": {Did: "did:plc:alice", Rkey: "3la", FeedUrl: feed},
 	}
-	// Stub 250 entries; the handler should ask for at most 200.
 	rows := make([]db.ListEntriesForSourceRow, 250)
 	for i := range rows {
 		title := "x"

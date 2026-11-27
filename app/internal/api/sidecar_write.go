@@ -13,7 +13,6 @@ import (
 	"morgenblau/internal/standardfeed"
 )
 
-// deleteStandardSubscription deletes every existence record for the publication, duplicates included since one would resurrect it on reconcile, and the sidecar in one applyWrites commit.
 func deleteStandardSubscription(ctx context.Context, w http.ResponseWriter, sess *session.Session, pds atprepo.Lister, publication, sidecarRkey string) bool {
 	const op = "/api/subscriptions DELETE: standard subscription"
 	var writes []atprepo.RecordWrite
@@ -29,7 +28,6 @@ func deleteStandardSubscription(ctx context.Context, w http.ResponseWriter, sess
 		}
 	}
 	if sidecarRkey != "" {
-		// A delete of a record the PDS no longer holds would fail the whole commit, so only a listed sidecar joins it.
 		sidecars, err := pds.ListRecords(ctx, sess, syntax.NSID(subscriptionCollection))
 		if err != nil {
 			slog.Warn(op+": sidecar list failed", "err", err)
@@ -60,30 +58,27 @@ func deleteStandardSubscription(ctx context.Context, w http.ResponseWriter, sess
 	return true
 }
 
-// sidecarWriteSpec describes one PDS mutation: optional existence record, optional lazy sidecar; a non-empty SidecarRkey puts instead of creating, so one spec covers every caller without mode flags.
 type sidecarWriteSpec struct {
 	Existence           map[string]any
 	ExistenceCollection syntax.NSID
 	ExistenceRkey       syntax.RecordKey
-	ExistenceOp         string // slog op logged if the existence write fails
+	ExistenceOp         string
 
-	Sidecar           map[string]any
-	SidecarCollection syntax.NSID
-	SidecarRkey       string // existing rkey: puts here instead of creating
-	SidecarCreateRkey syntax.RecordKey
-	SidecarOp         string // slog op logged if the sidecar write fails
+	Sidecar             map[string]any
+	SidecarCollection   syntax.NSID
+	ExistingSidecarRkey string
+	SidecarCreateRkey   syntax.RecordKey
+	SidecarOp           string
 }
 
-// sidecarWriteResult is what writeSidecarPair actually wrote, for the caller to fold into its Tier-1 mirror.
 type sidecarWriteResult struct {
 	ExistenceRef *atprepo.RecordRef
-	SidecarRkey  string // set whether created or put; empty if spec.Sidecar was nil
+	SidecarRkey  string
 }
 
-// writeSidecarPair creates records with known rkeys in one PDS commit.
 func writeSidecarPair(ctx context.Context, w http.ResponseWriter, sess *session.Session, pds atprepo.Writer, spec sidecarWriteSpec) (sidecarWriteResult, bool) {
 	var out sidecarWriteResult
-	if spec.Existence != nil && spec.Sidecar != nil && spec.SidecarRkey == "" && (spec.ExistenceRkey == "" || spec.SidecarCreateRkey == "") {
+	if spec.Existence != nil && spec.Sidecar != nil && spec.ExistingSidecarRkey == "" && (spec.ExistenceRkey == "" || spec.SidecarCreateRkey == "") {
 		slog.Warn(spec.SidecarOp, "err", "atomic record creation requires client-chosen rkeys")
 		writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
 		return out, false
@@ -92,7 +87,7 @@ func writeSidecarPair(ctx context.Context, w http.ResponseWriter, sess *session.
 	if spec.Existence != nil && spec.ExistenceRkey != "" {
 		writes = append(writes, atprepo.RecordWrite{Collection: spec.ExistenceCollection, Rkey: spec.ExistenceRkey, Record: spec.Existence})
 	}
-	if spec.Sidecar != nil && spec.SidecarRkey == "" && spec.SidecarCreateRkey != "" {
+	if spec.Sidecar != nil && spec.ExistingSidecarRkey == "" && spec.SidecarCreateRkey != "" {
 		writes = append(writes, atprepo.RecordWrite{Collection: spec.SidecarCollection, Rkey: spec.SidecarCreateRkey, Record: spec.Sidecar})
 	}
 	if len(writes) > 0 {
@@ -133,7 +128,7 @@ func writeSidecarPair(ctx context.Context, w http.ResponseWriter, sess *session.
 		out.ExistenceRef = ref
 	}
 	if spec.Sidecar != nil {
-		if spec.SidecarRkey == "" {
+		if spec.ExistingSidecarRkey == "" {
 			ref, err := pds.CreateRecord(ctx, sess, spec.SidecarCollection, spec.Sidecar)
 			if err != nil {
 				slog.Warn(spec.SidecarOp, "err", err)
@@ -142,12 +137,12 @@ func writeSidecarPair(ctx context.Context, w http.ResponseWriter, sess *session.
 			}
 			out.SidecarRkey = atprepo.RkeyFromATURI(ref.URI)
 		} else {
-			if _, err := pds.PutRecord(ctx, sess, spec.SidecarCollection, spec.SidecarRkey, spec.Sidecar); err != nil {
+			if _, err := pds.PutRecord(ctx, sess, spec.SidecarCollection, spec.ExistingSidecarRkey, spec.Sidecar); err != nil {
 				slog.Warn(spec.SidecarOp, "err", err)
 				writeError(w, http.StatusBadGateway, codeUpstreamError, "upstream PDS error")
 				return out, false
 			}
-			out.SidecarRkey = spec.SidecarRkey
+			out.SidecarRkey = spec.ExistingSidecarRkey
 		}
 	}
 	return out, true

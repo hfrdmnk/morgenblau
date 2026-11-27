@@ -71,9 +71,8 @@ func TestEntryBodyImage_StreamsAnImageTheStoredArticleShows(t *testing.T) {
 					t.Errorf("%s = %q, want %q", header, got, want)
 				}
 			}
-			// An SVG opened on its own would otherwise run script on the app's origin.
 			if rr.Header().Get("Content-Security-Policy") == "" {
-				t.Error("missing Content-Security-Policy")
+				t.Error("missing Content-Security-Policy: an SVG opened on its own would run its scripts on the app's origin")
 			}
 		})
 	}
@@ -91,7 +90,7 @@ func TestEntryBodyImage_RefusesWhatItShouldNotServe(t *testing.T) {
 		fetches bool
 	}{
 		{"feed not followed", notFollowed, "../img/chart.png?a=1&b=2", http.StatusNotFound, false},
-		{"src not in the article", bodyImageReader(upstream.URL + "/posts/a"), upstream.URL + "/img/chart.png?a=1&b=2", http.StatusNotFound, false},
+		{"src the article writes differently, so URL normalization stays out of the check", bodyImageReader(upstream.URL + "/posts/a"), upstream.URL + "/img/chart.png?a=1&b=2", http.StatusNotFound, false},
 		{"missing src", bodyImageReader(upstream.URL + "/posts/a"), "", http.StatusNotFound, false},
 		{"not an image", bodyImageReader(upstream.URL + "/posts/a"), "/img/page", http.StatusBadGateway, true},
 		{"over the size cap", bodyImageReader(upstream.URL + "/posts/a"), "/img/huge.png", http.StatusBadGateway, true},

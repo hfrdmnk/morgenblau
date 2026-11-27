@@ -21,7 +21,6 @@ import (
 
 const avatarCID = "bafkreiexampleavatar"
 
-// avatarUpstream serves a 400x200 PNG whose outer quarters are green, so a squashed thumbnail shows green and a centre crop shows only red then blue.
 func avatarUpstream(t *testing.T) (*httptest.Server, *atomic.Int64) {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, 400, 200))
@@ -115,17 +114,16 @@ func TestMeProfile_PointsAvatarAtThumbnail(t *testing.T) {
 }
 
 func TestAvatar_AcceptsWebP(t *testing.T) {
-	// An 8x4 solid red lossless WebP.
-	body, _ := base64.StdEncoding.DecodeString("UklGRhwAAABXRUJQVlA4TA8AAAAvB8AAAAcQ/Y/+ByKi/wEA")
+	solidRed8x4LosslessWebP, _ := base64.StdEncoding.DecodeString("UklGRhwAAABXRUJQVlA4TA8AAAAvB8AAAAcQ/Y/+ByKi/wEA")
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/webp")
-		_, _ = w.Write(body)
+		_, _ = w.Write(solidRed8x4LosslessWebP)
 	}))
 	t.Cleanup(upstream.Close)
 	rr := httptest.NewRecorder()
 	AvatarHandler(avatarProfiles(upstream.URL), upstream.Client()).ServeHTTP(rr, avatarRequest(avatarCID))
 	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+		t.Fatalf("status = %d, body = %s; image.Decode reads WebP only while golang.org/x/image/webp is imported for its side effect", rr.Code, rr.Body.String())
 	}
 	img, err := jpeg.Decode(rr.Body)
 	if err != nil {
@@ -137,7 +135,6 @@ func TestAvatar_AcceptsWebP(t *testing.T) {
 }
 
 func TestAvatar_RefusesImagesTooLargeToDecodeSafely(t *testing.T) {
-	// Only the header matters: decoding is refused from the claimed dimensions before any pixels are allocated.
 	var body bytes.Buffer
 	if err := png.Encode(&body, image.NewGray(image.Rect(0, 0, avatarMaxSide+1, 1))); err != nil {
 		t.Fatal(err)
@@ -150,6 +147,6 @@ func TestAvatar_RefusesImagesTooLargeToDecodeSafely(t *testing.T) {
 	rr := httptest.NewRecorder()
 	AvatarHandler(avatarProfiles(upstream.URL), upstream.Client()).ServeHTTP(rr, avatarRequest(avatarCID))
 	if rr.Code != http.StatusBadGateway {
-		t.Fatalf("status = %d, want 502", rr.Code)
+		t.Fatalf("status = %d, want 502: the header's claimed dimensions refuse the image before decoding, so a small file cannot allocate gigabytes of pixels", rr.Code)
 	}
 }

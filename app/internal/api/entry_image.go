@@ -22,22 +22,18 @@ import (
 )
 
 const (
-	// The widest slot is the full-width phone layout, about 350 CSS px on 2x screens.
-	entryImageWidth         = 720
-	entryImageFetchTimeout  = 10 * time.Second
-	entryImageMaxBytes      = 8 * 1024 * 1024
-	entryImageMaxPixels     = 16_000_000
-	entryImageCacheCapacity = 256
-	// Each decode can hold tens of megabytes on a 512MB machine, so only a couple run at once.
-	entryImageMaxDecodes = 2
-	// Article images stream through unchanged, never buffered, so their cap can sit above the preview's.
+	widestDigestSlotCSSPx      = 360
+	entryImageWidth            = 2 * widestDigestSlotCSSPx
+	entryImageFetchTimeout     = 10 * time.Second
+	entryImageMaxBytes         = 8 * 1024 * 1024
+	entryImageMaxPixels        = 16_000_000
+	entryImageCacheCapacity    = 256
+	entryImageMaxDecodes       = 2
 	entryBodyImageMaxBytes     = 20 * 1024 * 1024
 	entryBodyImageFetchTimeout = 30 * time.Second
-	// An SVG opened directly from the proxy URL would otherwise run its scripts on the app's origin.
-	entryBodyImageCSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+	entryBodyImageCSP          = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
 )
 
-// entryImagePath points a digest entry at the image proxy, or returns nil when its stored image is not one the proxy may fetch.
 func entryImagePath(slug string, metadata *string, entryURL string) *string {
 	if entryImageURL(metadata, entryURL) == "" {
 		return nil
@@ -46,7 +42,6 @@ func entryImagePath(slug string, metadata *string, entryURL string) *string {
 	return &path
 }
 
-// entryImageURL resolves the stored preview image against the post URL; feeds may give it relative to the post.
 func entryImageURL(metadata *string, entryURL string) string {
 	if metadata == nil {
 		return ""
@@ -60,7 +55,6 @@ func entryImageURL(metadata *string, entryURL string) string {
 	return resolveImageURL(meta.Image, entryURL)
 }
 
-// resolveImageURL resolves an image reference against the post URL, returning "" for anything but an absolute http(s) URL.
 func resolveImageURL(raw, entryURL string) string {
 	if strings.TrimSpace(raw) == "" {
 		return ""
@@ -78,8 +72,6 @@ func resolveImageURL(raw, entryURL string) string {
 	return ref.String()
 }
 
-// EntryImageHandler serves a resized copy of an entry's preview image, so readers never load the publisher's original or reveal their address to it.
-// It only fetches the image the sync pipeline stored for an entry the requester follows.
 func EntryImageHandler(reader EntryReader, client *http.Client) http.Handler {
 	cache, _ := lru.New[string, []byte](entryImageCacheCapacity)
 	decodes := make(chan struct{}, entryImageMaxDecodes)
@@ -123,7 +115,6 @@ func fetchEntryImage(ctx context.Context, client *http.Client, src string, decod
 	if resp.ContentLength > entryImageMaxBytes {
 		return nil, fmt.Errorf("image is %d bytes, over the %d byte limit", resp.ContentLength, entryImageMaxBytes)
 	}
-	// A truncated body would decode as a corrupt image, so an oversized one is refused rather than cut.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, entryImageMaxBytes+1))
 	if err != nil {
 		return nil, err
@@ -131,7 +122,6 @@ func fetchEntryImage(ctx context.Context, client *http.Client, src string, decod
 	if len(body) > entryImageMaxBytes {
 		return nil, fmt.Errorf("image is over the %d byte limit", entryImageMaxBytes)
 	}
-	// A small compressed file can claim enormous dimensions; checking the header first keeps decoding from allocating gigabytes.
 	config, _, err := image.DecodeConfig(bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -156,8 +146,6 @@ func fetchEntryImage(ctx context.Context, client *http.Client, src string, decod
 	return out.Bytes(), nil
 }
 
-// EntryBodyImageHandler streams an image from an article the requester follows, so reading it never reveals their address to the publisher.
-// src must be the raw src of an <img> in the entry's stored feed body or extracted article; comparing raw values keeps browser and Go URL normalization out of the check.
 func EntryBodyImageHandler(reader EntryReader, client *http.Client) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		entry, _, _, ok := loadAndAuthorize(w, r, reader)
@@ -195,7 +183,6 @@ func EntryBodyImageHandler(reader EntryReader, client *http.Client) http.Handler
 	})
 }
 
-// bodyShowsImage reports whether the stored HTML has an <img> whose src is exactly raw.
 func bodyShowsImage(body *string, raw string) bool {
 	if body == nil {
 		return false
@@ -221,7 +208,6 @@ func bodyShowsImage(body *string, raw string) bool {
 	}
 }
 
-// getImage GETs src as Morgenblau and returns the response only for a 2xx status.
 func getImage(ctx context.Context, client *http.Client, src string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, src, nil)
 	if err != nil {
@@ -239,7 +225,6 @@ func getImage(ctx context.Context, client *http.Client, src string) (*http.Respo
 	return resp, nil
 }
 
-// previewImage centre-crops src into the 4:3 to 2:1 range the digest layouts show, then scales it down to entryImageWidth, never up.
 func previewImage(src image.Image) *image.RGBA {
 	crop := src.Bounds()
 	w, h := crop.Dx(), crop.Dy()
@@ -255,7 +240,6 @@ func previewImage(src image.Image) *image.RGBA {
 	width := min(crop.Dx(), entryImageWidth)
 	height := max(crop.Dy()*width/crop.Dx(), 1)
 	dst := image.NewRGBA(image.Rect(0, 0, width, height))
-	// JPEG has no alpha, so transparency lands on white instead of black.
 	draw.Draw(dst, dst.Bounds(), image.White, image.Point{}, draw.Src)
 	draw.BiLinear.Scale(dst, dst.Bounds(), src, crop, draw.Over, nil)
 	return dst

@@ -20,6 +20,8 @@ import (
 	"morgenblau/internal/tags"
 )
 
+const maxImportSourcesPerBatch = 5
+
 func SubscriptionsImportPrepareHandler(pds atprepo.Lister) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -133,9 +135,8 @@ func SubscriptionsImportHandler(writer ImportIndex, pds ImportRepo, disp FetchDi
 		if !decodeJSON(w, r, &body) {
 			return
 		}
-		// Small batches leave time for the response within the server's 30-second write deadline.
-		if len(body.Sources) == 0 || len(body.Sources) > 5 {
-			writeError(w, 400, codeInvalidRequest, "Import between 1 and 5 sources per batch")
+		if len(body.Sources) == 0 || len(body.Sources) > maxImportSourcesPerBatch {
+			writeError(w, 400, codeInvalidRequest, fmt.Sprintf("Import between 1 and %d sources per batch", maxImportSourcesPerBatch))
 			return
 		}
 		plan := prepareImportSources(body.Sources)
@@ -172,7 +173,6 @@ func importSubscription(ctx context.Context, sess *session.Session, incoming imp
 		if err != nil {
 			return "", fmt.Errorf("Could not read the local subscription index. Please retry.")
 		}
-		// Capturing the head before listing makes absence checks safe against competing or delayed creates.
 		head, err := pds.GetLatestCommit(ctx, sess)
 		if err != nil {
 			return "", fmt.Errorf("Could not read your PDS repository head. Please retry.")
@@ -185,7 +185,6 @@ func importSubscription(ctx context.Context, sess *session.Session, incoming imp
 		if err != nil {
 			return "", err
 		}
-		// A source followed at an alias URL merges into that subscription, whose local row is keyed by its own URL; re-read it in order.
 		if followed, _ := rssImportSource(old.Value); found && followed.FeedURL != incoming.FeedURL && !rekeyed {
 			incoming.FeedURL, rekeyed = followed.FeedURL, true
 			attempt--
@@ -282,7 +281,6 @@ func writeImportSubscription(ctx context.Context, sess *session.Session, incomin
 		slog.Warn("subscription import: PDS write failed", "err", commitErr)
 		return "", fmt.Errorf("Could not confirm the PDS write. Retry safely to check or finish this source.")
 	}
-	// A previous create may have committed without reaching its fetch dispatch.
 	disp.StartFetchOneFeed(sess.Data.AccountDID, source.FeedURL)
 	return status, nil
 }

@@ -13,7 +13,6 @@ var youtubeImportChannelID = regexp.MustCompile(`^UC[A-Za-z0-9_-]{22}$`)
 func parseYouTubeCSV(input string) (importPlan, error) {
 	r := csv.NewReader(strings.NewReader(strings.TrimPrefix(input, "\ufeff")))
 	r.FieldsPerRecord = 3
-	// Takeout localizes the header names, but keeps the column order.
 	if _, err := r.Read(); err != nil {
 		return importPlan{}, fmt.Errorf("Choose the YouTube subscriptions CSV file from Google Takeout")
 	}

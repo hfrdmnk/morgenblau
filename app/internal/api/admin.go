@@ -22,7 +22,6 @@ type AdminUsageReader interface {
 	ListAccountsLastActive(ctx context.Context) ([]db.ListAccountsLastActiveRow, error)
 }
 
-// AdminProfileSource resolves profiles for a caller that may give up; *profiles.Cache satisfies it.
 type AdminProfileSource interface {
 	Lookup(ctx context.Context, did syntax.DID) (profiles.Profile, error)
 }
@@ -54,13 +53,10 @@ type adminUsageResponse struct {
 	People []adminPerson    `json:"people"`
 }
 
-// profileLookups bounds concurrent identity resolution so one admin page load cannot fan out to every reader's PDS at once.
-const profileLookups = 8
+const maxConcurrentProfileLookups = 8
 
-// adminProfileBudget stops new profile lookups after this long; with identity lookups capped at 10s the page answers well inside the server's write timeout, and unresolved accounts show their DID.
 const adminProfileBudget = 3 * time.Second
 
-// requireAdmin refuses unless the auth gate admitted this request to an admin path, so a handler mounted anywhere else reads nothing.
 func requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 	if !auth.IsAdmin(r.Context()) {
 		NotFound(w, r)
@@ -69,7 +65,6 @@ func requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// AdminUsageHandler lists every account the server knows with counts of its regular, generated and newsletter sources; newsletters may be nil when delivery is off.
 func AdminUsageHandler(reader AdminUsageReader, newsletters NewsletterUsageCounter, src AdminProfileSource, webFeeds websource.FeedPrefixes) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !requireAdmin(w, r) {
@@ -135,11 +130,10 @@ func AdminUsageHandler(reader AdminUsageReader, newsletters NewsletterUsageCount
 	})
 }
 
-// resolveProfiles leaves an account it cannot resolve with an empty handle, so the page falls back to its DID.
 func resolveProfiles(ctx context.Context, src AdminProfileSource, people []adminPerson) {
 	ctx, cancel := context.WithTimeout(ctx, adminProfileBudget)
 	defer cancel()
-	sem := make(chan struct{}, profileLookups)
+	sem := make(chan struct{}, maxConcurrentProfileLookups)
 	var wg sync.WaitGroup
 	for i := range people {
 		did, err := syntax.ParseDID(people[i].DID)

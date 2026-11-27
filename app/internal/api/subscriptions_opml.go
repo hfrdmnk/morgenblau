@@ -154,7 +154,6 @@ func mergeImportTags(existing, incoming []string) ([]string, error) {
 	if len(out) == 0 {
 		return nil, nil
 	}
-	// Validate the union rather than normalizeTags, which silently discards overflow.
 	if err := lexicon.ValidateRecord(subscriptionCollection, map[string]any{
 		"source": sourceUnion("rss", "https://example.com/feed", ""), "createdAt": "2026-01-01T00:00:00Z", "tags": out,
 	}); err != nil {
@@ -165,10 +164,10 @@ func mergeImportTags(existing, incoming []string) ([]string, error) {
 
 func validateImportSource(s importSource) error {
 	u, err := url.Parse(s.FeedURL)
-	if err != nil || !isValidFeedURL(s.FeedURL) || u.User != nil || u.Fragment != "" {
+	if err != nil || !isWellFormedFeedURL(s.FeedURL) || u.User != nil || u.Fragment != "" {
 		return fmt.Errorf("A valid HTTP or HTTPS feed URL is required")
 	}
-	if s.SiteURL != "" && !isValidFeedURL(s.SiteURL) {
+	if s.SiteURL != "" && !isWellFormedFeedURL(s.SiteURL) {
 		return fmt.Errorf("Invalid website URL")
 	}
 	if err := lexicon.ValidateRecord(subscriptionCollection, importRecord(s, "2026-01-01T00:00:00Z")); err != nil {
@@ -205,7 +204,6 @@ type taggedOutline struct {
 	tags    []string
 }
 
-// encodeOPMLDocument puts untagged outlines at the top level; with folders, each tag becomes a folder holding every outline that carries it.
 func encodeOPMLDocument(title string, outlines []taggedOutline, folders bool) (string, error) {
 	doc := opmlDocument{Version: "2.0", Title: title, Body: &opmlBody{}}
 	byTag := map[string][]opmlOutline{}

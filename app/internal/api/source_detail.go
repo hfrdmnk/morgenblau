@@ -12,30 +12,24 @@ import (
 	"morgenblau/internal/websource"
 )
 
-// sourceEntriesLimit caps the per-source entry list at 200; pagination is deferred until a real source needs more.
 const sourceEntriesLimit int64 = 200
 
-// SubscriptionDetailWire extends the list wire with detail-page stats, kept separate so the list response doesn't carry always-zero fields.
 type SubscriptionDetailWire struct {
 	SubscriptionWire
 	TotalEntries int64 `json:"totalEntries"`
 	SavedByYou   int64 `json:"savedByYou"`
 }
 
-// SourceDetailReader is the narrow read used by SubscriptionGetHandler.
 type SourceDetailReader interface {
 	YouTubeFeedHealth
 	GetUserSourceWithStats(ctx context.Context, arg db.GetUserSourceWithStatsParams) (db.GetUserSourceWithStatsRow, error)
 }
 
-// SourceEntriesReader is the narrow read used by SubscriptionEntriesHandler.
 type SourceEntriesReader interface {
 	GetUserSubscription(ctx context.Context, arg db.GetUserSubscriptionParams) (db.UserSubscription, error)
 	ListEntriesForSource(ctx context.Context, arg db.ListEntriesForSourceParams) ([]db.ListEntriesForSourceRow, error)
 }
 
-// SubscriptionGetHandler returns a subscription with feed stats; frequency and health use the same rules as the list endpoint.
-// webFeeds names this server's generated feeds; the zero value marks no subscription as generated.
 func SubscriptionGetHandler(reader SourceDetailReader, webFeeds websource.FeedPrefixes) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)
@@ -80,7 +74,6 @@ func SubscriptionGetHandler(reader SourceDetailReader, webFeeds websource.FeedPr
 	})
 }
 
-// SubscriptionEntriesHandler returns up to sourceEntriesLimit newest entries; ownership is verified explicitly so a requester can't probe other users' rkeys.
 func SubscriptionEntriesHandler(reader SourceEntriesReader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)

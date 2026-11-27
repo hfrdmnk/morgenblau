@@ -14,7 +14,6 @@ import (
 	"morgenblau/internal/oauth/scopes"
 )
 
-// ProfileSource is the slice of *profiles.Cache the handlers depend on.
 type ProfileSource interface {
 	Get(ctx context.Context, did syntax.DID) (profiles.Profile, error)
 }
@@ -27,18 +26,13 @@ type ProfileAddressInitializer interface {
 	CreateAddress(context.Context, string) (string, error)
 }
 
-// meResponse is the session user's profile plus session-health flags for calm prompting.
 type meResponse struct {
 	profiles.Profile
-	// NeedsReauth is true when the session predates the standardfeed scopes; standard-record writes will 403 until the user re-logs-in.
 	NeedsReauth bool `json:"needsReauth"`
-	// IsAdmin only decides whether the shell links to /admin; the auth gate alone grants access.
-	IsAdmin bool `json:"isAdmin"`
-	// Feedback tells the header whether FEEDBACK_EMAIL is set, so it offers the feedback button only when sending can work.
-	Feedback bool `json:"feedback"`
+	IsAdmin     bool `json:"isAdmin"`
+	Feedback    bool `json:"feedback"`
 }
 
-// MeProfileHandler returns the session user's profile plus needsReauth; cache-first, because every hard page load blocks on this call and a PDS round-trip would stall the shell.
 func MeProfileHandler(src ProfileSource, starter ProfileSyncStarter, addresses ProfileAddressInitializer, admins auth.Admins, feedback bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r)

@@ -8,14 +8,12 @@ import (
 	"morgenblau/internal/session"
 )
 
-// RepairDispatcher kicks a sync_user reconcile for one user; handlers reach for it when a local mirror write diverges from the PDS.
 type RepairDispatcher interface {
 	StartManualRefresh(ctx context.Context, did syntax.DID, sessionID string) (string, error)
 }
 
-// commitThenMirror mirrors only after commit succeeded, and a failed mirror dispatches a reconcile instead of failing the committed request; commit writes its own error response.
-func commitThenMirror[T any](ctx context.Context, disp RepairDispatcher, sess *session.Session, op string, commit func() (T, bool), mirror func(T) error) (T, bool) {
-	out, ok := commit()
+func commitThenMirror[T any](ctx context.Context, disp RepairDispatcher, sess *session.Session, op string, commitOrWriteError func() (T, bool), mirror func(T) error) (T, bool) {
+	out, ok := commitOrWriteError()
 	if !ok {
 		return out, false
 	}

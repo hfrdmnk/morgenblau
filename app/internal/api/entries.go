@@ -21,7 +21,6 @@ import (
 	"morgenblau/internal/tags"
 )
 
-// EntryReader reads entries, verifies subscription ownership, and looks up whether the requester saved this entry.
 type EntryReader interface {
 	GetFeedEntryBySlug(ctx context.Context, slug string) (db.FeedEntry, error)
 	GetUserSubscriptionByFeedURL(ctx context.Context, arg db.GetUserSubscriptionByFeedURLParams) (db.UserSubscription, error)
@@ -29,7 +28,6 @@ type EntryReader interface {
 	GetUserSaveByItemURL(ctx context.Context, arg db.GetUserSaveByItemURLParams) (db.UserSave, error)
 }
 
-// EntryExtractWriter persists readability-extracted bodies.
 type EntryExtractWriter interface {
 	UpdateFeedEntryExtractedBody(ctx context.Context, arg db.UpdateFeedEntryExtractedBodyParams) error
 }
@@ -38,7 +36,6 @@ type newsletterEntryReader interface {
 	GetMessageBySlug(context.Context, string, string) (newsletter.Message, error)
 }
 
-// EntryHandler returns the full entry plus source metadata and saved-state, avoiding a second round-trip for the frontend.
 func EntryHandler(reader EntryReader, privateReaders ...newsletterEntryReader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if len(privateReaders) > 0 && privateReaders[0] != nil {
@@ -67,9 +64,7 @@ func EntryHandler(reader EntryReader, privateReaders ...newsletterEntryReader) h
 	})
 }
 
-// EntryExtractHandler runs readability extraction on entry.url, sanitizes it, and caches the result.
-// httpClient must be a safehttp-built client, since entry.url is attacker-controlled and could pivot to internal hosts.
-func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter, httpClient *http.Client) http.Handler {
+func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter, safeClient *http.Client) http.Handler {
 	sanitizer := bluemonday.UGCPolicy()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		entry, sub, feed, ok := loadAndAuthorize(w, r, reader)
@@ -84,13 +79,12 @@ func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter, httpClie
 			return
 		}
 
-		// Path-less standardfeed documents have no canonical URL to extract from (body was prefilled at ingest), so return as-is rather than fetching "".
 		if entry.Url == "" {
 			writeJSON(w, entryRowToWire(entry, sub, feed, saved))
 			return
 		}
 
-		extracted, err := extractReadable(r.Context(), httpClient, entry.Url, sanitizer)
+		extracted, err := extractReadable(r.Context(), safeClient, entry.Url, sanitizer)
 		if err != nil {
 			slog.Warn("/api/entries/{id}/extract: extract failed", "url", entry.Url, "err", err)
 			writeError(w, http.StatusBadGateway, codeUpstreamError, "extraction failed")
@@ -108,7 +102,6 @@ func EntryExtractHandler(reader EntryReader, writer EntryExtractWriter, httpClie
 	})
 }
 
-// loadAndAuthorize fetches the entry by slug, verifies feed subscription, and resolves feed metadata, writing the error and returning false on any failure.
 func loadAndAuthorize(w http.ResponseWriter, r *http.Request, reader EntryReader) (db.FeedEntry, db.UserSubscription, db.Feed, bool) {
 	sess, ok := requireSession(w, r)
 	if !ok {
@@ -128,7 +121,6 @@ func loadAndAuthorize(w http.ResponseWriter, r *http.Request, reader EntryReader
 		writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
 		return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 	}
-	// Not subscribed collapses to 404, same as every other missing-or-not-owned resource.
 	sub, err := reader.GetUserSubscriptionByFeedURL(r.Context(), db.GetUserSubscriptionByFeedURLParams{
 		Did:     sess.Data.AccountDID.String(),
 		FeedUrl: entry.FeedUrl,
@@ -141,7 +133,6 @@ func loadAndAuthorize(w http.ResponseWriter, r *http.Request, reader EntryReader
 		writeError(w, http.StatusNotFound, codeNotFound, "not found")
 		return db.FeedEntry{}, db.UserSubscription{}, db.Feed{}, false
 	}
-	// A missing feed row is unexpected (a subscription implies one) but doesn't fail the request; the frontend renders fallbacks.
 	feed, err := reader.GetFeed(r.Context(), entry.FeedUrl)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusInternalServerError, codeInternalError, "internal error")
@@ -159,20 +150,19 @@ func entryRowToWire(row db.FeedEntry, sub db.UserSubscription, feed db.Feed, sav
 	source.Rkey = sub.Rkey
 	entryURL := row.Url
 	return EntryWire{
-		ID:          row.ID,
-		EntrySlug:   row.EntrySlug,
-		Title:       row.Title,
-		URL:         &entryURL,
-		ContentType: row.ContentType,
-		PublishedAt: row.PublishedAt,
-		Source:      source,
-		Body:        body,
-		Metadata:    row.Metadata,
-		SavedState:  saved,
+		ID:            row.ID,
+		EntrySlug:     row.EntrySlug,
+		Title:         row.Title,
+		URL:           &entryURL,
+		ContentType:   row.ContentType,
+		PublishedAt:   row.PublishedAt,
+		Source:        source,
+		SanitizedBody: body,
+		Metadata:      row.Metadata,
+		SavedState:    saved,
 	}
 }
 
-// lookupSavedState returns the save record for itemURL, or nil on a missing row or any other error (the save button degrades to unsaved rather than failing the page).
 func lookupSavedState(ctx context.Context, reader EntryReader, itemURL string) *SavedState {
 	sess := auth.SessionFromContext(ctx)
 	if sess == nil || sess.Data == nil {

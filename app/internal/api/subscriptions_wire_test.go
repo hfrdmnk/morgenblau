@@ -8,7 +8,7 @@ import (
 
 func TestFrequencyBucket(t *testing.T) {
 	now := mustParseTime(t, "2026-05-21T12:00:00Z")
-	long := now.AddDate(-1, 0, 0).Format(time.RFC3339) // first post a year ago, "New" doesn't apply
+	aYearAgo := now.AddDate(-1, 0, 0).Format(time.RFC3339)
 	young := now.AddDate(0, 0, -10).Format(time.RFC3339)
 
 	cases := []struct {
@@ -21,12 +21,12 @@ func TestFrequencyBucket(t *testing.T) {
 		{"cadence wins over recency", young, 99, 99, 99, 99, "daily"},
 		{"new is fallback when no cadence fires", young, 0, 0, 0, 0, "new"},
 		{"new is fallback when below all thresholds", young, 0, 0, 0, 1, "new"},
-		{"daily ≥5/7d", long, 5, 5, 5, 5, "daily"},
-		{"weekly ≥3/28d", long, 0, 3, 3, 3, "weekly"},
-		{"biweekly ≥3/56d", long, 0, 0, 3, 3, "biweekly"},
-		{"monthly ≥2/84d", long, 0, 0, 0, 2, "monthly"},
-		{"irregular below every threshold", long, 0, 0, 0, 1, "irregular"},
-		{"highest-cadence bucket wins", long, 5, 1, 1, 1, "daily"},
+		{"daily ≥5/7d", aYearAgo, 5, 5, 5, 5, "daily"},
+		{"weekly ≥3/28d", aYearAgo, 0, 3, 3, 3, "weekly"},
+		{"biweekly ≥3/56d", aYearAgo, 0, 0, 3, 3, "biweekly"},
+		{"monthly ≥2/84d", aYearAgo, 0, 0, 0, 2, "monthly"},
+		{"irregular below every threshold", aYearAgo, 0, 0, 0, 1, "irregular"},
+		{"highest-cadence bucket wins", aYearAgo, 5, 1, 1, 1, "daily"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -48,8 +48,8 @@ func mustParseTime(t *testing.T, s string) time.Time {
 }
 
 func TestNormalizeTags(t *testing.T) {
-	long := strings.Repeat("é", 65) // 65 graphemes/runes, must drop
-	in := []string{" a ", "A", "", "  ", "b", "B", long, "c"}
+	over64Runes := strings.Repeat("é", 65)
+	in := []string{" a ", "A", "", "  ", "b", "B", over64Runes, "c"}
 	got := normalizeTags(in)
 	want := []string{"a", "b", "c"}
 	if len(got) != len(want) {
@@ -61,7 +61,6 @@ func TestNormalizeTags(t *testing.T) {
 		}
 	}
 
-	// Cap at 10.
 	many := make([]string, 0, 15)
 	for i := 0; i < 15; i++ {
 		many = append(many, string(rune('a'+i)))
@@ -70,8 +69,16 @@ func TestNormalizeTags(t *testing.T) {
 		t.Errorf("cap: len = %d, want 10", n)
 	}
 
-	// Empty in → nil/empty out.
 	if got := normalizeTags(nil); len(got) != 0 {
 		t.Errorf("nil input → %v", got)
+	}
+}
+
+func TestSiblingKeyKeepsThePathSoPublicationsSharingAHostStayApart(t *testing.T) {
+	if one, two := siblingKey("https://publications.example.com/one"), siblingKey("https://publications.example.com/two"); one == two {
+		t.Errorf("siblingKey = %q for both publications, want them apart: hosts like leaflet.pub serve many publications, one per path", one)
+	}
+	if got, want := siblingKey("https://WWW.Example.com/blog/"), siblingKey("https://example.com/blog"); got != want {
+		t.Errorf("siblingKey = %q, want %q: case, www. and a trailing slash do not make another site", got, want)
 	}
 }

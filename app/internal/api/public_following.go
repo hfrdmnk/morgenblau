@@ -16,7 +16,6 @@ import (
 	"morgenblau/internal/tags"
 )
 
-// PublicFollowingReader is the narrow read behind /user/{did}/following.*.
 type PublicFollowingReader interface {
 	PublicFollowingEnabled(ctx context.Context, did string) (bool, error)
 	ListPublicFollowingSources(ctx context.Context, did string) ([]db.ListPublicFollowingSourcesRow, error)
@@ -39,7 +38,6 @@ type publicFollowing struct {
 
 var publicKinds = []string{"rss", "youtube", "standardfeed"}
 
-// PublicFollowingHandler serves an opted-in reader's feed subscriptions as format "json" or "opml" (SPEC <feed-sources>).
 func PublicFollowingHandler(store PublicFollowingReader, format string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		did, err := syntax.ParseDID(r.PathValue("did"))
@@ -111,7 +109,6 @@ func toPublicSource(row db.ListPublicFollowingSourcesRow) publicSource {
 	return s
 }
 
-// publicOutlines links a publication through its site, since it has no feed URL; one whose site is not known yet has nothing to link.
 func publicOutlines(sources []publicSource) []taggedOutline {
 	outlines := make([]taggedOutline, 0, len(sources))
 	for _, s := range sources {
@@ -127,7 +124,6 @@ func publicOutlines(sources []publicSource) []taggedOutline {
 	return outlines
 }
 
-// publicFilter parses the query into a predicate; a non-empty problem means a value it does not understand.
 func publicFilter(q url.Values, format string) (keep func(publicSource) bool, folders bool, problem string) {
 	onlyTags, skipTags := publicList(q, "tag"), publicList(q, "excludeTag")
 	onlyKinds, skipKinds := publicList(q, "kind"), publicList(q, "excludeKind")
@@ -160,7 +156,6 @@ func publicFilter(q url.Values, format string) (keep func(publicSource) bool, fo
 	}, folders, ""
 }
 
-// publicList reads a filter given as repeated or comma-separated values, lowercased so tags match the way the app dedupes them.
 func publicList(q url.Values, name string) []string {
 	var out []string
 	for _, value := range q[name] {
@@ -172,8 +167,6 @@ func publicList(q url.Values, name string) []string {
 	}
 	return out
 }
-
-// --- GET/PUT /api/public-following ---
 
 type PublicFollowingSettingReader interface {
 	PublicFollowingEnabled(ctx context.Context, did string) (bool, error)

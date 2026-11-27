@@ -46,7 +46,6 @@ func (f *fakeProfileSource) Lookup(ctx context.Context, did syntax.DID) (profile
 	return f.Get(ctx, did)
 }
 
-// hangingProfiles answers fast for one DID and, like an unresponsive PDS, holds every other lookup until the caller gives up.
 type hangingProfiles struct{ fast syntax.DID }
 
 func (h hangingProfiles) Lookup(ctx context.Context, did syntax.DID) (profiles.Profile, error) {

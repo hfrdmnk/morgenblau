@@ -193,9 +193,7 @@ func newsletterSourceActionHandler(action func(context.Context, string, string) 
 	})
 }
 
-// NewsletterUnsubscribeHandler sends the RFC 8058 one-click unsubscribe and deletes the source only once the sender confirms with a 2xx; any other outcome changes nothing.
-// client must guard against SSRF, since the URL comes from incoming mail.
-func NewsletterUnsubscribeHandler(service newsletterUnsubscribeService, client *http.Client) http.Handler {
+func NewsletterUnsubscribeHandler(service newsletterUnsubscribeService, safeClient *http.Client) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		privateResponse(w)
 		sess, ok := requireSession(w, r)
@@ -208,7 +206,7 @@ func NewsletterUnsubscribeHandler(service newsletterUnsubscribeService, client *
 			writeNewsletterError(w, err)
 			return
 		}
-		if err := postOneClickUnsubscribe(r.Context(), client, target); err != nil {
+		if err := postOneClickUnsubscribe(r.Context(), safeClient, target); err != nil {
 			writeError(w, http.StatusBadGateway, codeUpstreamError, "The newsletter didn’t confirm the unsubscribe, so nothing was changed.")
 			return
 		}
@@ -220,7 +218,6 @@ func NewsletterUnsubscribeHandler(service newsletterUnsubscribeService, client *
 	})
 }
 
-// NewsletterDeleteHandler deletes a newsletter the reader unsubscribed from by hand; mail that still arrives starts a new source.
 func NewsletterDeleteHandler(service newsletterUnsubscribeService) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		privateResponse(w)
@@ -246,11 +243,7 @@ func postOneClickUnsubscribe(ctx context.Context, client *http.Client, target st
 	oneClick.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := oneClick.Do(req)
 	if err != nil {
-		// The URL is personalized to this reader, so only the underlying cause reaches the log.
-		var urlErr *url.Error
-		if errors.As(err, &urlErr) {
-			err = urlErr.Err
-		}
+		err = withoutPersonalizedURL(err)
 		slog.Warn("newsletter unsubscribe request failed", "err", err)
 		return err
 	}
@@ -261,6 +254,14 @@ func postOneClickUnsubscribe(ctx context.Context, client *http.Client, target st
 		return errors.New("unsubscribe not confirmed")
 	}
 	return nil
+}
+
+func withoutPersonalizedURL(err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return urlErr.Err
+	}
+	return err
 }
 
 func NewsletterEntriesHandler(service newsletterSourceService) http.Handler {
@@ -373,7 +374,6 @@ func NewsletterSaveDeleteHandler(service newsletterSaveService) http.Handler {
 	})
 }
 
-// NewsletterSaveTagsHandler replaces a newsletter save's tags, which stay in Morgenblau's database like the save itself.
 func NewsletterSaveTagsHandler(service newsletterSaveService) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		privateResponse(w)
@@ -467,7 +467,7 @@ func newsletterMessageToWire(message newsletter.Message) EntryWire {
 	return EntryWire{
 		ID: message.ID, EntrySlug: message.EntrySlug, Title: &title,
 		ContentType: "newsletter", PublishedAt: message.ReceivedAt.Format(time.RFC3339),
-		Source: SourceMeta{Kind: "newsletter", ID: message.SourceID, Title: &sourceTitle, Primary: message.SourcePrimary}, Body: &body,
+		Source: SourceMeta{Kind: "newsletter", ID: message.SourceID, Title: &sourceTitle, Primary: message.SourcePrimary}, SanitizedBody: &body,
 		Newsletter: &NewsletterMessageMeta{
 			MessageID: message.ID, SenderName: message.SenderName, SenderAddress: message.SenderAddress,
 			SentAt: sentAt, HasBlockedRemoteImages: message.HasBlockedRemoteImages, RemoteImagesAllowed: message.RemoteImagesAllowed,
