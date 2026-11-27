@@ -4,9 +4,6 @@ import { Link as RouterLink } from 'wouter';
 
 import { cn } from 'cn';
 
-// The app's frame: the classes named here live in src/index.css, which owns their sticky and fixed placement and safe-area math.
-
-// Block flow, not a flex column: `.app-shell > main` centres the page with auto margins, which a flex column would shrink to fit.
 function AppShellLayout(props: Omit<ComponentProps<'div'>, 'className' | 'style'>) {
     return <div className="app-shell min-h-dvh bg-background" {...props} />;
 }
@@ -24,7 +21,6 @@ function Banner({ tone, children }: { tone: 'admin' | 'quiet'; children: ReactNo
     return <div className={banner({ tone })}>{children}</div>;
 }
 
-// A brand-mark or back link on the left, the page's own navigation in the middle, account controls on the right.
 function AppHeaderBar(props: Omit<ComponentProps<'header'>, 'className' | 'style'>) {
     return (
         <header
@@ -38,7 +34,6 @@ function ModeNav(props: Omit<ComponentProps<'nav'>, 'className' | 'style'>) {
     return <nav className="app-mode-nav select-none" {...props} />;
 }
 
-// The artwork shows only in the phone tab bar; the current mode's takes the brand blue.
 function ModeLink({
     href,
     current,
@@ -63,7 +58,6 @@ function ModeLink({
     );
 }
 
-// Touch-tall, with no side padding, so the first label starts on the page's edge like the logo and content around it.
 function SettingsTab({
     href,
     current,
@@ -82,8 +76,6 @@ function SettingsTab({
     );
 }
 
-// The phone's day control: an arrow either side of the date, each a 44px touch target. The row bleeds into the gutter by the
-// space around each arrow, so the arrows themselves line up with the page's edges.
 function DayStepper(props: Omit<ComponentProps<'nav'>, 'className' | 'style'>) {
     return (
         <nav
@@ -93,7 +85,6 @@ function DayStepper(props: Omit<ComponentProps<'nav'>, 'className' | 'style'>) {
     );
 }
 
-// The desktop row of days; the selected one sits in the centre column, which the mask in `.digest-date-nav` relies on.
 function DateStrip(props: Omit<ComponentProps<'nav'>, 'className' | 'style'>) {
     return (
         <nav
@@ -103,7 +94,6 @@ function DateStrip(props: Omit<ComponentProps<'nav'>, 'className' | 'style'>) {
     );
 }
 
-// Each column is as wide as two digits; a flex column centres the month even where it is wider than that.
 function DateStripDay({
     href,
     day,
@@ -132,7 +122,6 @@ function DateStripDay({
     );
 }
 
-// Holds a day's column before the strip reaches today, so the selected day stays in the centre.
 function DateStripSpacer() {
     return (
         <span aria-hidden="true" className="invisible w-5 text-center text-sm">

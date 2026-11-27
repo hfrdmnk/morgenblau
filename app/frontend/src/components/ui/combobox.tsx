@@ -5,7 +5,6 @@ import { cn } from 'cn';
 
 const Combobox = ComboboxPrimitive.Root;
 
-// Autocomplete keeps free-form input text as the value; its other parts are the combobox parts below.
 const Autocomplete = AutocompletePrimitive.Root;
 
 const ComboboxInput = ComboboxPrimitive.Input;
@@ -57,7 +56,6 @@ function ComboboxList({ className, ...props }: ComboboxPrimitive.List.Props) {
     );
 }
 
-// padded: an item whose content stacks two lines, such as a name over a handle, which would otherwise touch the highlight's edges.
 function ComboboxItem({ className, padded = false, ...props }: ComboboxPrimitive.Item.Props & { padded?: boolean }) {
     return (
         <ComboboxPrimitive.Item

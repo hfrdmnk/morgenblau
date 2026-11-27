@@ -6,8 +6,6 @@ import { CheckIcon, ChevronDownIcon } from '@/components/icons';
 import { DialogBackdrop, DialogPopup } from '@/components/ui/dialog';
 import { cn } from 'cn';
 
-// The ⌘K palette's surface: a dialog high on the screen, a search bar, and the cmdk list, groups and rows inside it.
-
 function CommandDialog({
     title,
     children,
@@ -15,7 +13,6 @@ function CommandDialog({
 }: Omit<Dialog.Popup.Props, 'className' | 'style'> & { title: string }) {
     return (
         <Dialog.Portal>
-            {/* A keyboard palette opened many times a day appears at once, without the dialogs' entrance. */}
             <DialogBackdrop className="transition-none" />
             <DialogPopup
                 className="top-(--palette-top) max-w-xl translate-y-0 overflow-hidden p-0 transition-none"
@@ -28,7 +25,6 @@ function CommandDialog({
     );
 }
 
-// A step's title sits before the input as a chip, so Backspace on an empty query reads as stepping back out of it.
 function CommandSearch({
     chip,
     ...props
@@ -82,7 +78,6 @@ function CommandItem({
     );
 }
 
-// Drawn only: the row it sits in is the control, and announces its state itself.
 function CommandToggle({ on }: { on: boolean }) {
     return (
         <span
@@ -102,7 +97,6 @@ function CommandToggle({ on }: { on: boolean }) {
     );
 }
 
-// Keeps its width when unchecked, so checked and unchecked rows' labels line up.
 function CommandCheck({ checked }: { checked: boolean }) {
     return (
         <span className="flex size-4 shrink-0 items-center justify-center">

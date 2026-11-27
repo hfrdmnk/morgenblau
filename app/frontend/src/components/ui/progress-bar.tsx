@@ -5,7 +5,6 @@ type ProgressBarProps = Omit<ComponentProps<'div'>, 'className' | 'style' | 'chi
     max: number;
 };
 
-// The fill slides in with transform, so progress never transitions the bar's width.
 function ProgressBar({ value, max, ...props }: ProgressBarProps) {
     return (
         <div

@@ -2,7 +2,6 @@ import type { ComponentProps, ReactNode } from 'react';
 
 import '@/pages/reader.css';
 
-// A video's transcript in the reader's typography (.reader-transcript in src/pages/reader.css); stuck tells it the player is pinned above.
 function TranscriptList({
     font,
     stuck,
@@ -19,7 +18,6 @@ function TranscriptList({
     );
 }
 
-// Until the player is ready a passage only shows its time; once it is, the time plays from there and the passage joins its PostList.
 function TranscriptPassage({
     time,
     label,

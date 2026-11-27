@@ -3,8 +3,6 @@ import type { ComponentProps } from 'react';
 import { PenIcon } from '@/components/icons';
 import { cn } from 'cn';
 
-// A name edited in place, as a heading: the field sizes to its text, and an underline draws in on focus, or stays while invalid.
-// The label spans the name and its pen, so a click anywhere on either edits the name.
 function NameField({
     invalid = false,
     disabled,

@@ -13,7 +13,6 @@ function Switch(props: Omit<SwitchPrimitive.Root.Props, 'className' | 'style'>) 
     );
 }
 
-// The switch's text, pointed at it with htmlFor, so a click on the words toggles it too.
 function SwitchLabel(props: Omit<ComponentProps<'label'>, 'className' | 'style'>) {
     return <label data-slot="switch-label" className="cursor-pointer select-none" {...props} />;
 }

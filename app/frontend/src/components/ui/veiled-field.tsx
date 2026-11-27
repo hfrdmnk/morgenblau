@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link as RouterLink } from 'wouter';
 
-// A field drawn blurred under a label, linking to the app page where the real value lives.
 function VeiledFieldLink({
     href,
     onClick,

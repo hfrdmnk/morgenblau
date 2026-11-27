@@ -3,7 +3,6 @@ import { Toaster as Sonner } from 'sonner';
 import { AlertIcon, ArrowRightIcon, CheckIcon, InfoIcon, LoadingIcon } from '@/components/icons';
 import { useMediaQuery } from '@/hooks/use-media-query';
 
-// Bottom-left keeps toasts off the right-hand sheet on wide screens; phones have a bottom sheet and nav, so toasts stay on top.
 export function Toaster() {
     const wide = useMediaQuery('(min-width: 40rem)');
     return (
@@ -43,7 +42,6 @@ export function LinkToast({
 }) {
     return (
         <button
-            // Sonner draws the card around custom content; the button fills it, padding included, so the whole card is the target.
             className="group -m-4 flex w-bleed-4 cursor-pointer items-start gap-3 rounded-lg p-4 text-left font-normal"
             onClick={onClick}
             type="button"

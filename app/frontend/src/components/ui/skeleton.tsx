@@ -8,7 +8,6 @@ type SkeletonProps<T> = {
     children: ReactNode | ((data: T) => ReactNode);
 };
 
-// Plain children always show as bars; a render function shows `sample` as bars until `data` arrives, then mounts the content fresh.
 export function Skeleton<T>({ data, sample, error, label, children }: SkeletonProps<T>) {
     if (error) return error;
     if (typeof children !== 'function') return <Placeholder label={label}>{children}</Placeholder>;
@@ -16,10 +15,8 @@ export function Skeleton<T>({ data, sample, error, label, children }: SkeletonPr
     return <Placeholder label={label}>{sample === undefined ? null : children(sample)}</Placeholder>;
 }
 
-// Inside another skeleton's sample, such as a source's posts under its header, the outer copy already draws the bars.
 const InSample = createContext(false);
 
-// A skeleton that takes over from another in the same commit continues its hold and pulse instead of restarting them.
 let showing = 0;
 let startedAt: number | null = null;
 
@@ -58,7 +55,6 @@ function Placeholder({ label, children }: { label: string; children: ReactNode }
     );
 }
 
-// React owns the sample's text nodes, so the bars go on a copy with each text node wrapped in a span.
 function barred(source: HTMLElement) {
     const range = document.createRange();
     range.selectNodeContents(source);

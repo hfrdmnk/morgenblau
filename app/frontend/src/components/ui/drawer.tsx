@@ -28,7 +28,6 @@ function DrawerViewport({ side, className, ...props }: Drawer.Viewport.Props & {
     );
 }
 
-// Slides from the edge it is swiped back to; a swipe drives the transform directly, so its transition pauses while swiping.
 function DrawerPopup({ side, className, ...props }: Drawer.Popup.Props & { side: Side }) {
     return (
         <Drawer.Popup
@@ -45,7 +44,6 @@ function DrawerPopup({ side, className, ...props }: Drawer.Popup.Props & { side:
     );
 }
 
-// The grab handle a bottom sheet shows above its content.
 function DrawerHandle() {
     return (
         <div
@@ -56,7 +54,6 @@ function DrawerHandle() {
     );
 }
 
-// The scrolling body under a sheet's header; min-h-0 lets it shrink inside the popup's column so it, not the sheet, scrolls.
 function DrawerContent({ className, ...props }: Drawer.Content.Props) {
     return (
         <Drawer.Content
@@ -67,7 +64,6 @@ function DrawerContent({ className, ...props }: Drawer.Content.Props) {
     );
 }
 
-// Sticks to the bottom of DrawerContent, bleeding across its padding, so a screen taller than the sheet keeps its actions in view.
 function DrawerFooter({ className, ...props }: ComponentProps<'div'>) {
     return (
         <div
