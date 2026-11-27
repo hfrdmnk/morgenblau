@@ -21,7 +21,6 @@ type coreHarness struct {
 	desiredKeys  []string
 	updatedGuard bool
 	changedGuard bool
-	deleteFirst  bool
 	snapshotErr  error
 	upsertFail   map[string]error
 	deleteFail   map[string]error
@@ -34,9 +33,8 @@ type coreHarness struct {
 
 func (h *coreHarness) pass() reconcilePass[coreRow] {
 	p := reconcilePass[coreRow]{
-		collection:  "testcollection",
-		snapshotAt:  guardSnapshotAt,
-		deleteFirst: h.deleteFirst,
+		collection: "testcollection",
+		snapshotAt: guardSnapshotAt,
 		snapshot: func(_ context.Context, q SyncStore) ([]coreRow, error) {
 			h.store, h.sawStore = q, true
 			if h.snapshotErr != nil {
@@ -224,7 +222,7 @@ func TestReconcileCollection_PerStatementErrorsFailThePass(t *testing.T) {
 	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); err == nil {
 		t.Fatal("reconcile returned nil despite a failed local write")
 	}
-	assertOps(t, h.ops, "upsert:c")
+	assertOps(t, h.ops, "delete:a")
 	if tx.inner == nil {
 		t.Error("tx closure returned nil; the batch would commit despite the failed write")
 	}
@@ -287,10 +285,8 @@ func TestReconcileCollection_CommitProofOnlyAfterTheTransactionCommits(t *testin
 	}
 }
 
-// Where a non-rkey unique index exists, a rekeyed record's stale row must vacate before its replacement upserts.
-func TestReconcileCollection_DeleteFirstOrdersTheWholePass(t *testing.T) {
+func TestReconcileCollection_StaleRowsLeaveBeforeDesiredRowsUpsert(t *testing.T) {
 	h := &coreHarness{
-		deleteFirst: true,
 		local:       []coreRow{{rkey: "old"}},
 		desiredKeys: []string{"new"},
 	}
@@ -299,13 +295,14 @@ func TestReconcileCollection_DeleteFirstOrdersTheWholePass(t *testing.T) {
 	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
 		t.Fatal(err)
 	}
-	assertOps(t, h.ops, "delete:old", "upsert:new")
+	if len(h.ops) != 2 || h.ops[0] != "delete:old" || h.ops[1] != "upsert:new" {
+		t.Fatalf("ops = %v, want [delete:old upsert:new]: a record recreated under a new rkey keeps its other unique keys, such as UNIQUE(did, feed_url), so its stale row must leave first", h.ops)
+	}
 }
 
-func TestReconcileCollection_DeleteFirstDeleteFailureRollsBack(t *testing.T) {
+func TestReconcileCollection_StaleDeleteFailureRollsBack(t *testing.T) {
 	boom := errors.New("delete boom")
 	h := &coreHarness{
-		deleteFirst: true,
 		local:       []coreRow{{rkey: "old"}},
 		desiredKeys: []string{"new"},
 		deleteFail:  map[string]error{"old": boom},
@@ -327,10 +324,9 @@ func TestReconcileCollection_DeleteFirstDeleteFailureRollsBack(t *testing.T) {
 	}
 }
 
-func TestReconcileCollection_DeleteFirstDesiredWriteFailureRollsBackStaleDelete(t *testing.T) {
+func TestReconcileCollection_DesiredWriteFailureRollsBackStaleDelete(t *testing.T) {
 	boom := errors.New("upsert boom")
 	h := &coreHarness{
-		deleteFirst: true,
 		local:       []coreRow{{rkey: "old"}},
 		desiredKeys: []string{"new"},
 		upsertFail:  map[string]error{"new": boom},
@@ -350,19 +346,6 @@ func TestReconcileCollection_DeleteFirstDesiredWriteFailureRollsBackStaleDelete(
 	if tx.inner == nil {
 		t.Error("tx closure returned nil; the stale delete would commit")
 	}
-}
-
-func TestReconcileCollection_WithoutDeleteFirstUpsertsLead(t *testing.T) {
-	h := &coreHarness{
-		local:       []coreRow{{rkey: "old"}},
-		desiredKeys: []string{"new"},
-	}
-	tx := &txSpy{}
-
-	if _, err := reconcileCollection(context.Background(), tx.run, h.pass()); err != nil {
-		t.Fatal(err)
-	}
-	assertOps(t, h.ops, "upsert:new", "delete:old")
 }
 
 // Every statement goes through the pass's own closures, so the core can never reach a non-tx store and block on the sole writer connection.

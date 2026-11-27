@@ -63,6 +63,36 @@ func TestSyncUser_FailsWhenTheSavesTransactionDoesNotCommit(t *testing.T) {
 	}
 }
 
+func TestSyncUser_ConvergesASaveRecreatedUnderANewRkey(t *testing.T) {
+	dbs := openMigratedSyncDB(t)
+	ctx := context.Background()
+	did := mustDID("did:plc:alice")
+	if err := db.New(dbs.Writer).UpsertUserSave(ctx, db.UpsertUserSaveParams{
+		Did: did.String(), Rkey: "3old", AtUri: "at://did:plc:alice/blue.morgen.feed.save/3old",
+		ItemUrl: "https://example.com/post", CreatedAt: "2026-07-20T12:00:00Z", UpdatedAt: "2026-07-20T12:00:00Z",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	lister := &fakeLister{saves: []PDSSave{{URI: "at://did:plc:alice/blue.morgen.feed.save/3new", Rkey: "3new", ItemURL: "https://example.com/post", CreatedAt: "2026-07-21T12:00:00Z"}}}
+	tracker := jobs.New()
+	eng := NewEngine(tracker, db.New(dbs.Writer), lister, &countingFetcher{}, &nopResumer{}, nil).WithTxRunner(dbs.Writer)
+
+	id, err := eng.SyncUser(ctx, did, "sid-1", jobs.TriggerManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job := waitForTerminalJob(t, tracker, id, did); job.Status != jobs.StatusDone {
+		t.Fatalf("status = %q, want done: the stale row must leave before the new rkey upserts, or UNIQUE(did, item_url) rejects the saves pass", job.Status)
+	}
+	saves, err := db.New(dbs.Reader).ListUserSavesForSync(ctx, did.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saves) != 1 || saves[0].Rkey != "3new" {
+		t.Errorf("saves = %+v, want one row under 3new", saves)
+	}
+}
+
 func openMigratedSyncDB(t *testing.T) *database.DB {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "test.db")

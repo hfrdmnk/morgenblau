@@ -102,8 +102,6 @@ func (e *Engine) reconcileRSS(
 		deleteRow: func(ctx context.Context, q SyncStore, rkey string) error {
 			return q.DeleteUserSubscription(ctx, db.DeleteUserSubscriptionParams{Did: didStr, Rkey: rkey})
 		},
-		// A subscription delete+recreated on the PDS keeps its feed URL, so the stale row must vacate before the new rkey upserts or UNIQUE(did, feed_url) rejects it.
-		deleteFirst: true,
 	})
 }
 
@@ -188,8 +186,6 @@ func (e *Engine) reconcileStandardfeed(
 		deleteRow: func(ctx context.Context, q SyncStore, rkey string) error {
 			return q.DeleteUserSubscription(ctx, db.DeleteUserSubscriptionParams{Did: didStr, Rkey: rkey})
 		},
-		// A canonical-rkey change (duplicate collapse, delete+recreate elsewhere) would trip UNIQUE(did, feed_url) if the new upsert ran before the stale row was gone.
-		deleteFirst: true,
 	})
 	if err != nil {
 		slog.Warn("reconcile: standardfeed tx failed", "did", didStr, "err", err)

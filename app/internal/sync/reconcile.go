@@ -39,9 +39,6 @@ type reconcilePass[L any] struct {
 	desired []desiredRow
 
 	deleteRow func(ctx context.Context, q SyncStore, rkey string) error
-
-	// deleteFirst is required wherever a unique index other than rkey means a rekeyed record must vacate before its replacement upserts.
-	deleteFirst bool
 }
 
 // committed proves one reconcile pass's transaction committed; only reconcileCollection mints it, so finishSync cannot be satisfied by a swallowed error.
@@ -82,49 +79,33 @@ func reconcileCollection[L any](ctx context.Context, runTx txRunner, p reconcile
 			}
 		}
 
-		deleteStale := func() error {
-			for _, row := range local {
-				rkey := p.rkeyOf(row)
-				if _, alive := keep[rkey]; alive {
-					continue
-				}
-				if _, fresh := changedDuringListing[rkey]; fresh {
-					slog.Debug("reconcile: delete skipped, local row changed during the PDS listing", "collection", p.collection, "rkey", rkey)
-					continue
-				}
-				if err := p.deleteRow(ctx, q, rkey); err != nil {
-					return fmt.Errorf("reconcile %s delete %q: %w", p.collection, rkey, err)
-				}
+		for _, row := range local {
+			rkey := p.rkeyOf(row)
+			if _, alive := keep[rkey]; alive {
+				continue
 			}
-			return nil
-		}
-		upsertDesired := func() error {
-			for _, d := range p.desired {
-				if _, deleted := deletedDuringListing[d.rkey]; deleted {
-					slog.Debug("reconcile: upsert skipped, local row was deleted during the PDS listing", "collection", p.collection, "rkey", d.rkey)
-					continue
-				}
-				if _, fresh := changedDuringListing[d.rkey]; fresh {
-					slog.Debug("reconcile: upsert skipped, local row changed during the PDS listing", "collection", p.collection, "rkey", d.rkey)
-					continue
-				}
-				if err := d.write(ctx, q); err != nil {
-					return fmt.Errorf("reconcile %s upsert %q: %w", p.collection, d.rkey, err)
-				}
+			if _, fresh := changedDuringListing[rkey]; fresh {
+				slog.Debug("reconcile: delete skipped, local row changed during the PDS listing", "collection", p.collection, "rkey", rkey)
+				continue
 			}
-			return nil
-		}
-
-		if p.deleteFirst {
-			if err := deleteStale(); err != nil {
-				return err
+			if err := p.deleteRow(ctx, q, rkey); err != nil {
+				return fmt.Errorf("reconcile %s delete %q: %w", p.collection, rkey, err)
 			}
-			return upsertDesired()
 		}
-		if err := upsertDesired(); err != nil {
-			return err
+		for _, d := range p.desired {
+			if _, deleted := deletedDuringListing[d.rkey]; deleted {
+				slog.Debug("reconcile: upsert skipped, local row was deleted during the PDS listing", "collection", p.collection, "rkey", d.rkey)
+				continue
+			}
+			if _, fresh := changedDuringListing[d.rkey]; fresh {
+				slog.Debug("reconcile: upsert skipped, local row changed during the PDS listing", "collection", p.collection, "rkey", d.rkey)
+				continue
+			}
+			if err := d.write(ctx, q); err != nil {
+				return fmt.Errorf("reconcile %s upsert %q: %w", p.collection, d.rkey, err)
+			}
 		}
-		return deleteStale()
+		return nil
 	})
 	if err != nil {
 		return nil, err
