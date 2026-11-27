@@ -15,7 +15,6 @@ import (
 	"morgenblau/internal/safehttp"
 )
 
-// newTestFetcher allows loopback so httptest.NewServer is reachable.
 func newTestFetcher() *Fetcher {
 	return New(WithSafeHTTPOptions(safehttp.WithAllowLoopback()))
 }
@@ -109,7 +108,6 @@ func TestFetch_RedirectCap(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// 10 hops > MaxRedirects (5).
 	redirector = func(w http.ResponseWriter, r *http.Request) {
 		next := r.URL.Path + "x"
 		if len(next) > 10 {
@@ -140,7 +138,6 @@ func TestFetch_BodyCap(t *testing.T) {
 
 func TestFetch_Singleflight_CollapsesConcurrent(t *testing.T) {
 	var hits int32
-	// Block briefly to let two callers stack up before responding.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddInt32(&hits, 1)
 		time.Sleep(50 * time.Millisecond)
@@ -166,7 +163,6 @@ func TestFetch_Singleflight_CollapsesConcurrent(t *testing.T) {
 	}
 }
 
-// TestFetch_PerHostCap: two hosts run concurrently; requests to the same host serialize behind PerHostCap.
 func TestFetch_PerHostCap(t *testing.T) {
 	const slow = 100 * time.Millisecond
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -181,7 +177,6 @@ func TestFetch_PerHostCap(t *testing.T) {
 
 	f := newTestFetcher()
 
-	// Two parallel hosts should finish within ~slow.
 	t0 := time.Now()
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -199,7 +194,6 @@ func TestFetch_PerHostCap(t *testing.T) {
 		t.Errorf("two hosts ran serially: %v (want < %v)", parallel, 2*slow)
 	}
 
-	// Three requests on the same host: PerHostCap=2, so this takes at least ~2*slow.
 	t1 := time.Now()
 	var wg2 sync.WaitGroup
 	for i := 0; i < 3; i++ {
@@ -313,7 +307,6 @@ func TestFetch_TimeoutClassified(t *testing.T) {
 	defer srv.Close()
 
 	f := newTestFetcher()
-	// Force a timeout via a 50ms context rather than exposing a client knob.
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
@@ -321,8 +314,7 @@ func TestFetch_TimeoutClassified(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
-	// http.Client wraps context cancellation as context.DeadlineExceeded, so we accept either that or ErrTimeout.
 	if !errors.Is(err, ErrTimeout) && !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("err = %v, want timeout-like", err)
+		t.Errorf("err = %v, want ErrTimeout or the context.DeadlineExceeded http.Client wraps a context deadline in", err)
 	}
 }

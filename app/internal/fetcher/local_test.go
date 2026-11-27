@@ -17,7 +17,6 @@ import (
 const localRSS = `<?xml version="1.0"?><rss version="2.0"><channel><title>Example Publication</title><link>https://news.example.com/</link><description>d</description>` +
 	`<item><title>First post</title><link>https://news.example.com/posts/first</link><guid>https://news.example.com/posts/first</guid></item></channel></rss>`
 
-// onOrigin claims the /feed/ feeds of one origin, the way the server's generated feeds are recognized.
 func onOrigin(origin string) func(*url.URL) bool {
 	return func(u *url.URL) bool {
 		return u.Scheme+"://"+u.Host == origin && strings.HasPrefix(u.Path, "/feed/")
@@ -38,17 +37,17 @@ func TestLocalFeedsAreAnsweredInProcess(t *testing.T) {
 		w.Header().Set("ETag", `"v1"`)
 		_, _ = io.WriteString(w, localRSS)
 	})
-	// Nothing listens on port 1, so only the in-process path can answer.
-	f := New(WithLocalFeeds(onOrigin("http://127.0.0.1:1"), feeds))
+	const unreachableOrigin = "http://127.0.0.1:1"
+	f := New(WithLocalFeeds(onOrigin(unreachableOrigin), feeds))
 
-	res, err := f.Fetch(context.Background(), "http://127.0.0.1:1/feed/abc", FeedState{})
+	res, err := f.Fetch(context.Background(), unreachableOrigin+"/feed/abc", FeedState{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.Feed == nil || len(res.Feed.Items) != 1 || res.ETag != `"v1"` || res.StatusCode != http.StatusOK {
 		t.Fatalf("result = %+v", res)
 	}
-	res, err = f.Fetch(context.Background(), "http://127.0.0.1:1/feed/abc", FeedState{ETag: `"v1"`})
+	res, err = f.Fetch(context.Background(), unreachableOrigin+"/feed/abc", FeedState{ETag: `"v1"`})
 	if err != nil || !res.NotModified {
 		t.Fatalf("conditional fetch = %+v, %v; want 304", res, err)
 	}

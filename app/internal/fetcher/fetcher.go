@@ -1,5 +1,3 @@
-// Package fetcher fetches upstream feeds through a single Fetch method that
-// hides worker-pool, per-host, and conditional-GET machinery from callers.
 package fetcher
 
 import (
@@ -23,30 +21,20 @@ import (
 )
 
 const (
-	// WorkerPoolSize bounds concurrent fetches process-wide (SPEC fetcher posture).
 	WorkerPoolSize = 16
-	// PerHostCap limits simultaneous fetches per registrable domain, preventing thundering herds on shared hosts like Substack or Medium.
-	PerHostCap = 2
-	// MaxRedirects rejects feeds that redirect more than curl's default.
-	MaxRedirects = 5
-	// MaxBodyBytes caps a single response body; larger feeds are treated as misconfigured or hostile.
-	MaxBodyBytes = 5 << 20 // 5 MiB
-	// FetchTimeout governs the whole request, including redirects.
-	FetchTimeout = 30 * time.Second
-	// UserAgent identifies Morgenblau's fetcher to upstream publishers.
-	UserAgent = safehttp.UserAgent
+	PerHostCap     = 2
+	MaxRedirects   = 5
+	MaxBodyBytes   = 5 << 20
+	FetchTimeout   = 30 * time.Second
+	UserAgent      = safehttp.UserAgent
 )
 
-// ErrTooManyRedirects signals the redirect chain exceeded MaxRedirects; the sync pipeline applies internal/backoff to retries on this and HTTPError.
 var ErrTooManyRedirects = errors.New("fetcher: too many redirects")
 
-// ErrBodyTooLarge signals the upstream response exceeded MaxBodyBytes.
 var ErrBodyTooLarge = errors.New("fetcher: response body exceeds cap")
 
-// ErrTimeout signals the fetch exceeded FetchTimeout, distinct from generic context cancellation so callers can tell them apart.
 var ErrTimeout = errors.New("fetcher: timeout")
 
-// HTTPError reports a non-2xx upstream response; RetryAfter is zero when the header is absent or unparseable.
 type HTTPError struct {
 	StatusCode int
 	RetryAfter time.Duration
@@ -54,18 +42,15 @@ type HTTPError struct {
 
 func (e *HTTPError) Error() string { return fmt.Sprintf("fetcher: upstream %d", e.StatusCode) }
 
-// ParseRetryAfter delegates to backoff, which owns retry-hint parsing for every outbound path.
 func ParseRetryAfter(v string, now time.Time) (time.Duration, bool) {
 	return backoff.ParseRetryAfter(v, now)
 }
 
-// FeedState carries the caller's ETag/Last-Modified for conditional GET and is stored back after a fetch.
 type FeedState struct {
 	ETag         string
 	LastModified string
 }
 
-// Result is Fetch's return value. NotModified means the upstream sent 304, so the caller can skip parsing; ETag/LastModified are echoed back for re-storage even then.
 type Result struct {
 	Feed         *gofeed.Feed
 	NotModified  bool
@@ -74,35 +59,30 @@ type Result struct {
 	LastModified string
 }
 
-// Fetcher is the process-wide singleton (one instance per server).
 type Fetcher struct {
 	client     *http.Client
 	localFeeds *localFeeds
-	workers    chan struct{} // capacity = WorkerPoolSize
+	workers    chan struct{}
 	sf         singleflight.Group
 
 	hostMu  sync.Mutex
-	hostSem map[string]chan struct{} // host → semaphore (capacity PerHostCap)
+	hostSem map[string]chan struct{}
 }
 
-// Option lets tests tweak fetcher knobs without exposing internals.
 type Option func(*Fetcher)
 
-// WithTransport swaps the RoundTripper only, so tests keep the safe client's redirect-checking behavior.
 func WithTransport(rt http.RoundTripper) Option {
 	return func(f *Fetcher) {
 		f.client.Transport = rt
 	}
 }
 
-// WithSafeHTTPOptions rebuilds the client with safehttp options; outside tests only a verify run's fixture feed port uses it.
 func WithSafeHTTPOptions(opts ...safehttp.Option) Option {
 	return func(f *Fetcher) {
 		f.client = buildSafeClient(opts...)
 	}
 }
 
-// New builds a process-wide fetcher with default knobs.
 func New(opts ...Option) *Fetcher {
 	f := &Fetcher{
 		workers: make(chan struct{}, WorkerPoolSize),
@@ -119,7 +99,6 @@ func New(opts ...Option) *Fetcher {
 	return f
 }
 
-// buildSafeClient remaps safehttp's redirect-cap sentinel to ErrTooManyRedirects so callers' errors.Is checks keep working.
 func buildSafeClient(opts ...safehttp.Option) *http.Client {
 	c := safehttp.NewClient(FetchTimeout, MaxRedirects, opts...)
 	inner := c.CheckRedirect
@@ -135,7 +114,6 @@ func buildSafeClient(opts ...safehttp.Option) *http.Client {
 	return c
 }
 
-// Fetch issues a conditional GET for rawURL, collapsing concurrent calls to the same URL via singleflight.
 func (f *Fetcher) Fetch(ctx context.Context, rawURL string, state FeedState) (*Result, error) {
 	v, err, _ := f.sf.Do(rawURL, func() (any, error) {
 		return f.fetchOne(ctx, rawURL, state)
@@ -152,7 +130,6 @@ func (f *Fetcher) fetchOne(ctx context.Context, rawURL string, state FeedState) 
 		return nil, fmt.Errorf("parse url: %w", err)
 	}
 
-	// Worker-pool admission bounds concurrency across all hosts so cheap feeds can't starve other work.
 	select {
 	case f.workers <- struct{}{}:
 	case <-ctx.Done():
@@ -160,7 +137,6 @@ func (f *Fetcher) fetchOne(ctx context.Context, rawURL string, state FeedState) 
 	}
 	defer func() { <-f.workers }()
 
-	// Per-host semaphore keyed by registrable domain matters most for shared hosts like Substack, where one company hosts many feeds.
 	sem := f.hostSemaphore(host)
 	select {
 	case sem <- struct{}{}:
@@ -187,7 +163,6 @@ func (f *Fetcher) fetchOne(ctx context.Context, rawURL string, state FeedState) 
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, ErrTimeout
 		}
-		// http.Client wraps CheckRedirect errors in *url.Error.
 		var urlErr *url.Error
 		if errors.As(err, &urlErr) && errors.Is(urlErr.Err, ErrTooManyRedirects) {
 			return nil, ErrTooManyRedirects
@@ -211,7 +186,6 @@ func (f *Fetcher) fetchOne(ctx context.Context, rawURL string, state FeedState) 
 		return out, &HTTPError{StatusCode: resp.StatusCode, RetryAfter: ra}
 	}
 
-	// Cap body before parsing, bounding peak memory at MaxBodyBytes.
 	limited := io.LimitReader(resp.Body, MaxBodyBytes+1)
 	body, err := io.ReadAll(limited)
 	if err != nil {
@@ -221,8 +195,6 @@ func (f *Fetcher) fetchOne(ctx context.Context, rawURL string, state FeedState) 
 		return out, ErrBodyTooLarge
 	}
 
-	// gofeed.Parser lazily inits translators via unguarded read-then-write, so a
-	// shared parser races under concurrent fetches; use a fresh one each time.
 	feed, err := gofeed.NewParser().Parse(bytes.NewReader(body))
 	if err != nil {
 		return out, fmt.Errorf("parse feed: %w", err)
@@ -242,7 +214,6 @@ func (f *Fetcher) hostSemaphore(host string) chan struct{} {
 	return sem
 }
 
-// registrableDomain returns the eTLD+1 for per-host keying, falling back to the raw host if the PSL doesn't recognize it (e.g. localhost in tests).
 func registrableDomain(rawURL string) (string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
