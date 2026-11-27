@@ -120,7 +120,6 @@ func messageFromDigestRow(row db.ListNewsletterMessagesForDigestRow) (Message, e
 	return messageFromFields(messageFields{id: row.ID, entrySlug: row.EntrySlug, sourceID: row.SourceID, sourceTitle: row.SourceTitle, sourcePrimary: row.SourcePrimary, title: row.Title, senderName: row.SenderName, senderAddress: row.SenderAddress, sentAt: row.SentAt, receivedAt: row.ReceivedAt, bodyHTMLBlocked: row.BodyHtmlBlocked, bodyHTMLRemote: row.BodyHtmlRemote, bodyText: row.BodyText, hasBlockedRemoteImages: row.HasBlockedRemoteImages, remoteImagesAllowed: row.RemoteImagesAllowed, saveID: row.SaveID, savedAt: row.SavedAt, saveTags: row.SaveTags})
 }
 
-// parseTags reads a stored tags array; a malformed value reads as untagged rather than failing the page.
 func parseTags(value string) []string {
 	var tags []string
 	if value == "" || json.Unmarshal([]byte(value), &tags) != nil {

@@ -20,7 +20,6 @@ type track struct {
 	lang, kind, path string
 }
 
-// fakePlayer builds an InnerTube player answer whose caption tracks point back at origin.
 func fakePlayer(origin string, defaultCaption int, length int, tracks ...track) map[string]any {
 	captionTracks := []map[string]any{}
 	for _, tr := range tracks {
@@ -53,7 +52,6 @@ const manualJSON3 = `{"events":[
 	{"tStartMs":6060,"dDurationMs":4653,"segs":[{"utf8":"It is written & rendered\nat 28x28."}]}
 ]}`
 
-// fakeYouTube serves the player endpoint and any caption paths; it counts every request per path.
 type fakeYouTube struct {
 	t       *testing.T
 	server  *httptest.Server
@@ -109,12 +107,11 @@ func (f *fakeYouTube) client() *Client {
 	return New(safehttp.NewClient(5*time.Second, 3, safehttp.WithAllowLoopback()), f.server.URL)
 }
 
-func TestFetch_PicksTheManualTrackInTheDefaultCaptionLanguage(t *testing.T) {
+func TestFetch_PicksTheManualTrackInTheDefaultCaptionLanguageEvenWhenASRIsTheDefault(t *testing.T) {
 	yt := newFakeYouTube(t)
 	yt.serveCaption("/ar", manualJSON3)
 	yt.serveCaption("/en-asr", `{"events":[]}`)
 	yt.serveCaption("/en", manualJSON3)
-	// YouTube marks the English ASR track as default for the audio; the English manual track must still win.
 	yt.player = func(origin string) (int, any) {
 		return http.StatusOK, fakePlayer(origin, 1, 600, track{"ar", "", "/ar?v=1"}, track{"en", "asr", "/en-asr?v=1"}, track{"en", "", "/en?v=1"})
 	}
@@ -145,11 +142,10 @@ func TestFetch_PicksTheManualTrackInTheDefaultCaptionLanguage(t *testing.T) {
 	}
 }
 
-func TestFetch_WithoutADefaultFallsBackToTheSpokenLanguage(t *testing.T) {
+func TestFetch_WithoutADefaultTheSpokenLanguagesASRTrackBeatsTheFirstManualTrack(t *testing.T) {
 	yt := newFakeYouTube(t)
 	yt.serveCaption("/de", manualJSON3)
 	yt.serveCaption("/fr-asr", manualJSON3)
-	// Only an ASR track exists in the spoken language, so it beats the first-listed manual track.
 	yt.player = func(origin string) (int, any) {
 		return http.StatusOK, fakePlayer(origin, -1, 600, track{"de", "", "/de?v=1"}, track{"fr", "asr", "/fr-asr?v=1"})
 	}
@@ -163,11 +159,10 @@ func TestFetch_WithoutADefaultFallsBackToTheSpokenLanguage(t *testing.T) {
 	}
 }
 
-func TestFetch_AutoDubbedVideoKeepsTheOriginalAudiosCaptions(t *testing.T) {
+func TestFetch_AutoDubbedVideoWithoutADefaultIndexFollowsTheAudioTracksCaptionRanking(t *testing.T) {
 	yt := newFakeYouTube(t)
 	yt.serveCaption("/ar-asr", manualJSON3)
 	yt.serveCaption("/en-asr", manualJSON3)
-	// Each auto-dub brings its own ASR track, listed alphabetically; the audio tracks name only their caption order, with no default index.
 	yt.player = func(origin string) (int, any) {
 		player := fakePlayer(origin, -1, 600, track{"ar", "asr", "/ar-asr?v=1"}, track{"bn", "asr", "/bn-asr?v=1"}, track{"en", "asr", "/en-asr?v=1"})
 		renderer := player["captions"].(map[string]any)["playerCaptionsTracklistRenderer"].(map[string]any)
@@ -266,7 +261,6 @@ func TestFetch_BlockedStartsACooldownThatSkipsYouTube(t *testing.T) {
 			if got := yt.hits["/youtubei/v1/player"].Load(); got != 2 {
 				t.Fatalf("player calls after cooldown = %d, want 2", got)
 			}
-			// A second block doubles the wait.
 			now = now.Add(29 * time.Minute)
 			_, _ = client.Fetch(context.Background(), "abcdefghijk")
 			if got := yt.hits["/youtubei/v1/player"].Load(); got != 2 {
@@ -283,7 +277,7 @@ func TestFetch_EmptyCaptionBodyIsABlock(t *testing.T) {
 		return http.StatusOK, fakePlayer(origin, 0, 600, track{"en", "", "/en?v=1"})
 	}
 	if _, err := yt.client().Fetch(context.Background(), "abcdefghijk"); !errors.Is(err, ErrBlocked) {
-		t.Fatalf("err = %v, want ErrBlocked", err)
+		t.Fatalf("err = %v, want ErrBlocked: an empty answer to a signed track URL is how a throttled timedtext call looks", err)
 	}
 }
 

@@ -68,7 +68,8 @@ trustworthy understanding unhurried uplifting valiant versatile vivacious
 wholehearted wondrous woolly zestful
 `)
 
-// Animal vocabulary is adapted from unique-names-generator; see address-words.LICENSE.
+// The animal vocabulary is adapted from unique-names-generator under the MIT License in address-words.LICENSE.
+// https://github.com/andreasonny83/unique-names-generator/blob/10ff70b131c8a080e88c315a55e45a0f5caadd24/src/dictionaries/animals.ts
 var addressAnimals = strings.Fields(`
 badger goose aardvark aardwolf albatross alligator alpaca anaconda angelfish
 anglerfish ant anteater antelope antlion ape aphid armadillo asp baboon bandicoot

@@ -93,17 +93,6 @@
   "internal/middleware/auth/alpha.go": 1,
   "internal/middleware/auth/auth.go": 26,
   "internal/middleware/auth/auth_test.go": 17,
-  "internal/newsletter/address.go": 1,
-  "internal/newsletter/boundary_test.go": 2,
-  "internal/newsletter/mime.go": 2,
-  "internal/newsletter/rows.go": 1,
-  "internal/newsletter/service.go": 7,
-  "internal/newsletter/service_test.go": 1,
-  "internal/newsletter/types.go": 2,
-  "internal/newsletter/webhook.go": 9,
-  "internal/newsletter/webhook_test.go": 3,
-  "internal/safehttp/safehttp.go": 17,
-  "internal/safehttp/safehttp_test.go": 7,
   "internal/sync/entryslug.go": 2,
   "internal/sync/feedpipeline.go": 34,
   "internal/sync/feedpipeline_helpers_test.go": 2,
@@ -192,8 +181,5 @@
   "internal/websource/types.go": 36,
   "internal/websource/webfeedgen.go": 11,
   "internal/websource/webfeedgen_spend_test.go": 1,
-  "internal/websource/webfeedgen_test.go": 3,
-  "internal/youtube/boundary_test.go": 1,
-  "internal/youtube/youtube.go": 18,
-  "internal/youtube/youtube_test.go": 6
+  "internal/websource/webfeedgen_test.go": 3
 }
