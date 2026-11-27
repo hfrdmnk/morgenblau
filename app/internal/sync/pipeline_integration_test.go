@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"slices"
 	"sync"
 	"testing"
@@ -18,61 +17,6 @@ import (
 	"morgenblau/internal/safehttp"
 	"morgenblau/internal/standardfeed"
 )
-
-// pipelineSchemaSQL must stay in sync with the feed catalog in internal/database/migrations.
-const pipelineSchemaSQL = `
-CREATE TABLE feeds (
-    feed_url         TEXT PRIMARY KEY,
-    kind             TEXT NOT NULL DEFAULT 'rss',
-    site_url         TEXT,
-    title            TEXT,
-    etag             TEXT,
-    last_modified    TEXT,
-    last_fetched_at  TEXT,
-    icon_url         TEXT,
-    icon_fetched_at  TEXT,
-    created_at       TEXT NOT NULL,
-    updated_at       TEXT NOT NULL,
-    consecutive_failures INTEGER NOT NULL DEFAULT 0,
-    next_fetch_at    TEXT,
-    orphaned_at      TEXT,
-    lone_failures    INTEGER NOT NULL DEFAULT 0,
-    channel_gone_at  TEXT
-);
-CREATE TABLE feed_entries (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    feed_url        TEXT NOT NULL,
-    guid            TEXT NOT NULL,
-    entry_slug      TEXT NOT NULL,
-    url             TEXT NOT NULL,
-    title           TEXT,
-    content_html    TEXT,
-    content_type    TEXT NOT NULL,
-    published_at    TEXT NOT NULL,
-    fetched_at      TEXT NOT NULL,
-    metadata        TEXT,
-    extracted_body  TEXT,
-    record_cid      TEXT,
-    UNIQUE (feed_url, guid),
-    UNIQUE (entry_slug),
-    FOREIGN KEY (feed_url) REFERENCES feeds(feed_url) ON DELETE CASCADE
-);
-`
-
-// openPipelineTestDB uses a t.TempDir() file, not a :memory: DSN, which would give the reader and writer pools separate databases.
-func openPipelineTestDB(t *testing.T) *database.DB {
-	t.Helper()
-	t.Setenv("DB_PATH", filepath.Join(t.TempDir(), "test.db"))
-	dbs, err := database.Open()
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { dbs.Close() })
-	if _, err := dbs.Writer.ExecContext(context.Background(), pipelineSchemaSQL); err != nil {
-		t.Fatalf("schema: %v", err)
-	}
-	return dbs
-}
 
 // seedCatalogFeed inserts the feeds row FetchAndStore expects to exist; production callers always upsert it before a fetch is ever dispatched.
 func seedCatalogFeed(t *testing.T, dbs *database.DB, feedURL string) {
@@ -96,7 +40,7 @@ func TestFeedPipeline_PublicationDateRepairAndStability(t *testing.T) {
 	}))
 	defer srv.Close()
 	feedURL := srv.URL + "/feed.xml"
-	dbs := openPipelineTestDB(t)
+	dbs := openMigratedSyncDB(t)
 	seedCatalogFeed(t, dbs, feedURL)
 	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	p := NewFeedPipeline(fetcher.New(fetcher.WithSafeHTTPOptions(safehttp.WithAllowLoopback())), db.New(dbs.Writer)).
@@ -160,7 +104,7 @@ func TestFeedPipeline_FetchAndStore_BackoffPersistsAcrossCallsThenRecovers(t *te
 	defer srv.Close()
 	feedURL := srv.URL + "/feed.xml"
 
-	dbs := openPipelineTestDB(t)
+	dbs := openMigratedSyncDB(t)
 	ctx := context.Background()
 	seedCatalogFeed(t, dbs, feedURL)
 
@@ -230,7 +174,7 @@ func TestFeedPipeline_FetchAndStore_BatchCommitsAtomicallyAcrossPools(t *testing
 </item>`))
 	defer closeServer()
 
-	dbs := openPipelineTestDB(t)
+	dbs := openMigratedSyncDB(t)
 	ctx := context.Background()
 	seedCatalogFeed(t, dbs, feedURL)
 	fav := &fakeFaviconDiscoverer{icon: "https://site.example.com/favicon.ico"}
@@ -280,7 +224,7 @@ func TestFeedPipeline_FetchAndStore_SkippedEntryDoesNotLoseSiblings(t *testing.T
 </item>`))
 	defer closeServer()
 
-	dbs := openPipelineTestDB(t)
+	dbs := openMigratedSyncDB(t)
 	ctx := context.Background()
 	seedCatalogFeed(t, dbs, feedURL)
 	p := NewFeedPipeline(fetcher.New(fetcher.WithSafeHTTPOptions(safehttp.WithAllowLoopback())), db.New(dbs.Writer)).
@@ -374,7 +318,7 @@ func TestFeedPipeline_FetchAndStore_EntryUpsertErrorDoesNotFailBatch(t *testing.
 }
 
 func TestStandardfeedPipeline_FetchAndStore_MalformedDocDoesNotLoseSiblings(t *testing.T) {
-	dbs := openPipelineTestDB(t)
+	dbs := openMigratedSyncDB(t)
 	ctx := context.Background()
 
 	goodURI1 := testDocURI + "-a"
@@ -415,7 +359,7 @@ func TestStandardfeedPipeline_FetchAndStore_MalformedDocDoesNotLoseSiblings(t *t
 }
 
 func TestStandardfeedPipeline_FetchAndStore_DeleteSweepAndMalformedProtection(t *testing.T) {
-	dbs := openPipelineTestDB(t)
+	dbs := openMigratedSyncDB(t)
 	ctx := context.Background()
 	seedQ := db.New(dbs.Writer)
 
@@ -488,7 +432,7 @@ func TestFeedPipeline_UndatedItemsFromTheFirstFetchStayUndated(t *testing.T) {
 	}))
 	defer srv.Close()
 	feedURL := srv.URL + "/feed.xml"
-	dbs := openPipelineTestDB(t)
+	dbs := openMigratedSyncDB(t)
 	seedCatalogFeed(t, dbs, feedURL)
 	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
 	p := NewFeedPipeline(fetcher.New(fetcher.WithSafeHTTPOptions(safehttp.WithAllowLoopback())), db.New(dbs.Writer)).
@@ -545,7 +489,7 @@ func TestFeedPipeline_OwnWebFeedUndatedItemsStayUndated(t *testing.T) {
 	}))
 	defer srv.Close()
 	plainURL, webURL := srv.URL+"/feed.xml", srv.URL+"/feed/abc"
-	dbs := openPipelineTestDB(t)
+	dbs := openMigratedSyncDB(t)
 	seedCatalogFeed(t, dbs, plainURL)
 	seedCatalogFeed(t, dbs, webURL)
 	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)

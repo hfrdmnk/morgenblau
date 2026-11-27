@@ -161,7 +161,7 @@
   "internal/sync/globalrefresh_test.go": 4,
   "internal/sync/pdslister.go": 10,
   "internal/sync/pdslister_test.go": 7,
-  "internal/sync/pipeline_integration_test.go": 10,
+  "internal/sync/pipeline_integration_test.go": 8,
   "internal/sync/reconcile.go": 11,
   "internal/sync/reconcile_guard.go": 1,
   "internal/sync/reconcile_guard_test.go": 2,
