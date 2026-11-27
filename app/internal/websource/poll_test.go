@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// followed creates a web source and subscribes a reader to its feed.
 func followed(t *testing.T, env *testEnv) string {
 	t.Helper()
 	preview, err := env.service.Create(context.Background(), testDID, "https://news.example.com/", "")
@@ -21,7 +20,6 @@ func followed(t *testing.T, env *testEnv) string {
 	return preview.Source.ID
 }
 
-// subscribe writes the catalog row and a reader's subscription to it, as the subscribe mirror does.
 func subscribe(t *testing.T, env *testEnv, feedURL string) {
 	t.Helper()
 	if _, err := env.writer.Exec(`INSERT INTO feeds (feed_url, created_at, updated_at) VALUES (?, 't', 't')`, feedURL); err != nil {

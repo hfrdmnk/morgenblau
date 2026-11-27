@@ -12,7 +12,6 @@ import (
 
 const otherReader = "did:plc:otherreader"
 
-// unsureSource is a source whose setup doubted its list, followed by each of followers.
 func unsureSource(t *testing.T, env *testEnv, followers ...string) Preview {
 	t.Helper()
 	env.gen.generated.Health = HealthNeedsAttention
@@ -34,7 +33,6 @@ func unsureSource(t *testing.T, env *testEnv, followers ...string) Preview {
 	return first
 }
 
-// confirmer stands in for the model's one look at an anchored list.
 type confirmer struct {
 	calls int
 	ctx   context.Context
@@ -61,7 +59,6 @@ func anchoredGenerated(onPage bool, c *confirmer) Generated {
 	return gen
 }
 
-// sourceState is everything a reader or the poller could see of a source, so a rejected anchor can prove it moved nothing.
 func sourceState(t *testing.T, env *testEnv, id string) string {
 	t.Helper()
 	var b strings.Builder
@@ -85,7 +82,6 @@ func sourceState(t *testing.T, env *testEnv, id string) string {
 				t.Fatal(err)
 			}
 			for i, c := range cols {
-				// Offering the source to the anchoring reader is bookkeeping for the sweep, not a change to the source.
 				if c == "offered_at" {
 					continue
 				}
@@ -171,7 +167,7 @@ func TestAnAnchorOfASharedSourceThatFailsLeavesItAsItWas(t *testing.T) {
 				t.Errorf("preview = %+v, want the unchanged %+v", got, first)
 			}
 			if after := sourceState(t, env, first.Source.ID); after != before {
-				t.Errorf("source changed:\nbefore %s\nafter  %s", before, after)
+				t.Errorf("source changed beyond offered_at, which offering it to the anchoring reader stamps for the sweep:\nbefore %s\nafter  %s", before, after)
 			}
 			if tc.confirm != nil && tc.confirm.calls != tc.calls {
 				t.Errorf("model checks = %d, want %d", tc.confirm.calls, tc.calls)

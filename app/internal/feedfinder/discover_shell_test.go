@@ -18,7 +18,7 @@ func TestResolve_ClientRenderedListingAcceptsAGuessedFeed(t *testing.T) {
 
 			got := resolveOne(t, srv.URL+"/blog")
 			if got.FeedURL != srv.URL+"/feed.xml" {
-				t.Errorf("FeedURL = %q, want the guessed feed", got.FeedURL)
+				t.Errorf("FeedURL = %q, want the guessed feed: a client-rendered listing has no posts to share with a feed, so sharing none proves nothing", got.FeedURL)
 			}
 		})
 	}

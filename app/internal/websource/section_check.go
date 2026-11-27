@@ -11,13 +11,8 @@ import (
 	"morgenblau/internal/webfeed"
 )
 
-// The one-time section check moves sources stored before setup looked for a section page; once every recipe carries
-// section_checked, this file, its PollDue hook and MarkWebSourceSectionChecked can go.
-
-// sectionChecksPerSweep spreads the check of older sources over sweeps, so a deploy does not stampede sites.
 const sectionChecksPerSweep = 3
 
-// needsSectionCheck is a plain streams or css setup stored before setup looked for a section page.
 func needsSectionCheck(src db.WebSource) bool {
 	var r webfeed.Recipe
 	if src.AnchoredByDid != nil || json.Unmarshal([]byte(src.Recipe), &r) != nil {
@@ -26,15 +21,11 @@ func needsSectionCheck(src db.WebSource) bool {
 	return (r.Mode == webfeed.ModeStreams || r.Mode == webfeed.ModeCSS) && r.Setup.Anchor == "" && !r.Setup.SectionChecked
 }
 
-// checkSection runs one free setup of a source's listing and moves the source when it found a healthy section page that
-// keeps every post readers see now. Any other answer marks the recipe checked; only taken slots leave it for a later sweep.
 func (s *Service) checkSection(ctx context.Context, src db.WebSource) error {
 	listing, err := parseHTTPURL(src.ListingUrl)
 	if err != nil {
 		return err
 	}
-	// A check never waits for readers' slots: one freed near the deadline would leave the setup too little time, and its
-	// timeout would mark the source checked for good.
 	select {
 	case s.slots <- struct{}{}:
 	default:
@@ -62,9 +53,6 @@ func (s *Service) checkSection(ctx context.Context, src db.WebSource) error {
 	return err
 }
 
-// moveToSection stores gen as the source's setup when it moved to a healthy section page holding the source's current
-// posts. Without the model the free setup may read the page differently than the setup in force, so readers must keep
-// the list they followed.
 func (s *Service) moveToSection(ctx context.Context, src db.WebSource, listing *url.URL, gen Generated) (bool, error) {
 	setup, err := newSetupRow(listingKey(listing), listing, gen)
 	if err != nil || setup.key == setup.pastedKey || gen.Health != HealthOK {
@@ -89,7 +77,6 @@ func (s *Service) moveToSection(ctx context.Context, src db.WebSource, listing *
 	return true, err
 }
 
-// currentPosts are the URLs of the source's newest good poll that found any.
 func (s *Service) currentPosts(ctx context.Context, id string) ([]string, error) {
 	rows, err := s.read.ListWebSourcePolls(ctx, db.ListWebSourcePollsParams{SourceID: id, Limit: historyPolls})
 	if err != nil {

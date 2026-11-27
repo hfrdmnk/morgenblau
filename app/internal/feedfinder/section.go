@@ -12,11 +12,8 @@ import (
 	"morgenblau/internal/sitesection"
 )
 
-// maxSectionPages bounds the extra page fetches a feedless page can cost.
 const maxSectionPages = 2
 
-// sectionFeeds runs page discovery on a homepage's writing sections, since a homepage often advertises no feed while its blog does.
-// A pasted subpage is already the listing the reader wants, so its sibling sections would be other streams.
 func (f *Finder) sectionFeeds(ctx context.Context, doc *goquery.Document, base *url.URL, probed map[string]*probedFeed) []Candidate {
 	if strings.Trim(base.Path, "/") != "" {
 		return nil
@@ -40,7 +37,6 @@ func (f *Finder) sectionFeeds(ctx context.Context, doc *goquery.Document, base *
 	return nil
 }
 
-// sectionLinks returns up to maxSectionPages same-host links to a one-segment section path, in page order.
 func sectionLinks(doc *goquery.Document, base *url.URL) []*url.URL {
 	var out []*url.URL
 	seen := map[string]struct{}{}
@@ -64,7 +60,6 @@ func sectionLinks(doc *goquery.Document, base *url.URL) []*url.URL {
 	return out
 }
 
-// fetchSection returns the parsed section page and its final URL, or nil when it is no readable page.
 func (f *Finder) fetchSection(ctx context.Context, section *url.URL) (*goquery.Document, *url.URL) {
 	req, err := newGET(ctx, section.String())
 	if err != nil {

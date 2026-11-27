@@ -25,7 +25,6 @@ const (
 
 var testNow = time.Date(2026, 10, 10, 9, 0, 0, 0, time.UTC)
 
-// exampleRecipe is a plain setup's recipe, which records that setup looked for a section page.
 const exampleRecipe = `{"version":1,"mode":"streams","setup":{"section_checked":true}}`
 
 type pollCall struct {
@@ -34,9 +33,8 @@ type pollCall struct {
 }
 
 type fakeGenerator struct {
-	mu        sync.Mutex
-	generated Generated
-	// generatedFor answers a setup of one listing URL instead of generated.
+	mu           sync.Mutex
+	generated    Generated
 	generatedFor map[string]Generated
 	setupErr     error
 	setups       []string

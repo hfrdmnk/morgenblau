@@ -1,4 +1,3 @@
-// Package feedfinder turns a pasted URL into feed candidates via HTML link-rel, hidden-feed discovery and YouTube channel mapping.
 package feedfinder
 
 import (
@@ -10,6 +9,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -20,50 +20,41 @@ import (
 	"morgenblau/internal/standardfeed"
 )
 
-// maxFeedSniffBytes caps body reads on the passthrough path against a hostile or huge feed.
 const maxFeedSniffBytes = 4 << 20
 
-// Candidate is one feed to subscribe to; rss kind guarantees FeedURL, standardfeed kind guarantees Publication and carries no FeedURL.
 type Candidate struct {
 	FeedURL     string `json:"feedUrl,omitempty"`
-	Kind        string `json:"kind,omitempty"` // "" (rss) | "standardfeed"
+	Kind        string `json:"kind,omitempty"`
 	Publication string `json:"publication,omitempty"`
 	Title       string `json:"title,omitempty"`
 	ContentType string `json:"contentType,omitempty"`
 	SiteURL     string `json:"siteUrl,omitempty"`
 }
 
-// HTTPDoer is the minimal *http.Client method set the finder needs.
 type HTTPDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-// StandardResolver lives on Finder because the article-link probe needs it mid-flow: document → site → publication.
 type StandardResolver interface {
 	GetPublication(ctx context.Context, uri string) (*standardfeed.Publication, error)
 	GetDocument(ctx context.Context, uri string) (*standardfeed.Document, error)
 	FetchWellKnown(ctx context.Context, siteURL string) (string, error)
 }
 
-// Finder resolves URLs to feed candidates.
 type Finder struct {
-	client HTTPDoer
-	// standard enables the Standardfeed probes; nil turns them off.
+	client   HTTPDoer
 	standard StandardResolver
 }
 
-// New builds a Finder using the given HTTP client.
 func New(client HTTPDoer) *Finder {
 	return &Finder{client: client}
 }
 
-// WithStandardResolver enables Standardfeed publication discovery (at-uri passthrough, well-known probe, article link-tag chain).
 func (f *Finder) WithStandardResolver(r StandardResolver) *Finder {
 	f.standard = r
 	return f
 }
 
-// newGET builds a GET request identified as Morgenblau's outbound bot traffic.
 func newGET(ctx context.Context, rawURL string) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -73,12 +64,10 @@ func newGET(ctx context.Context, rawURL string) (*http.Request, error) {
 	return req, nil
 }
 
-// mediaType is the response's Content-Type without its parameters, in the case the server sent.
 func mediaType(resp *http.Response) string {
 	return strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0])
 }
 
-// finalURL is where the client ended up after redirects, or requested when the response does not say.
 func finalURL(resp *http.Response, requested *url.URL) *url.URL {
 	if resp.Request != nil && resp.Request.URL != nil {
 		return resp.Request.URL
@@ -86,7 +75,6 @@ func finalURL(resp *http.Response, requested *url.URL) *url.URL {
 	return requested
 }
 
-// feed content types we recognize as "this URL is already a feed."
 var feedContentTypes = map[string]struct{}{
 	"application/rss+xml":   {},
 	"application/atom+xml":  {},
@@ -96,7 +84,6 @@ var feedContentTypes = map[string]struct{}{
 	"application/xml":       {},
 }
 
-// Resolve walks the strategy stack; an unresolvable URL returns nil, nil while network failures bubble up.
 func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -117,7 +104,6 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 		raw = u.String()
 	}
 
-	// YouTube is checked before fetching since its URL shape is stable, avoiding a round-trip.
 	if host := strings.ToLower(u.Host); strings.HasSuffix(host, "youtube.com") || host == "youtu.be" {
 		c, err := f.resolveYouTube(ctx, u)
 		if err != nil {
@@ -128,19 +114,20 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 		}
 	}
 
-	// The well-known probe runs concurrently with the HTML fetch below and merges in after link-rel extraction.
-	// It's buffered so an early return (passthrough, error) never blocks the goroutine.
-	var wellKnown chan string
+	probeCtx, cancelProbe := context.WithCancel(ctx)
+	var wellKnownURI string
+	var probe sync.WaitGroup
+	defer func() {
+		cancelProbe()
+		probe.Wait()
+	}()
 	if f.standard != nil {
 		origin := (&url.URL{Scheme: u.Scheme, Host: u.Host}).String()
-		wellKnown = make(chan string, 1)
-		go func() {
-			uri, err := f.standard.FetchWellKnown(ctx, origin)
-			if err != nil {
-				uri = "" // best-effort probe: transport error reads as a miss
+		probe.Go(func() {
+			if uri, err := f.standard.FetchWellKnown(probeCtx, origin); err == nil {
+				wellKnownURI = uri
 			}
-			wellKnown <- uri
-		}()
+		})
 	}
 
 	req, err := newGET(ctx, raw)
@@ -156,7 +143,6 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 	base := finalURL(resp, u)
 	ct := mediaType(resp)
 	if _, isFeed := feedContentTypes[strings.ToLower(ct)]; isFeed {
-		// Passthrough: the parsed body gives the dialog its title and the feed's own site link.
 		title, link := sniffFeed(resp.Body)
 		return []Candidate{{FeedURL: raw, ContentType: ct, SiteURL: siteLink(base, link), Title: title}}, nil
 	}
@@ -168,11 +154,11 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 	probed := map[string]*probedFeed{}
 	out := f.pageFeeds(ctx, doc, base, readable, probed)
 	if f.standard != nil {
+		probe.Wait()
 		var pubURIs []string
-		if wkURI := <-wellKnown; wkURI != "" {
-			pubURIs = append(pubURIs, wkURI)
+		if wellKnownURI != "" {
+			pubURIs = append(pubURIs, wellKnownURI)
 		}
-		// Article pages carry <link rel="site.standard.document">; chase document → site → publication.
 		if docURI := extractStandardDocLink(doc); docURI != "" {
 			if sdoc, err := f.standard.GetDocument(ctx, docURI); err == nil && strings.HasPrefix(sdoc.Site, "at://") {
 				pubURIs = append(pubURIs, sdoc.Site)
@@ -186,7 +172,6 @@ func (f *Finder) Resolve(ctx context.Context, raw string) ([]Candidate, error) {
 	return out, nil
 }
 
-// pageFeeds is the advertised-then-hidden discovery shared by the pasted page and its section pages.
 func (f *Finder) pageFeeds(ctx context.Context, doc *goquery.Document, base *url.URL, readable bool, probed map[string]*probedFeed) []Candidate {
 	if out := extractLinkRels(doc, base); len(out) > 0 {
 		return out
@@ -197,8 +182,6 @@ func (f *Finder) pageFeeds(ctx context.Context, doc *goquery.Document, base *url
 	return nil
 }
 
-// resolveATURI resolves a pasted at-uri: publication directly, document via its site, other collections yield nothing.
-// Errors bubble up here, unlike the best-effort probes elsewhere, since an explicit paste deserves feedback.
 func (f *Finder) resolveATURI(ctx context.Context, raw string) ([]Candidate, error) {
 	uri, err := syntax.ParseATURI(raw)
 	if err != nil {
@@ -217,7 +200,6 @@ func (f *Finder) resolveATURI(ctx context.Context, raw string) ([]Candidate, err
 			return nil, err
 		}
 		if !strings.HasPrefix(doc.Site, "at://") {
-			// A loose document's site is an https URL, so there's no publication to resolve.
 			return nil, nil
 		}
 		pub, err := f.standard.GetPublication(ctx, doc.Site)
@@ -229,7 +211,6 @@ func (f *Finder) resolveATURI(ctx context.Context, raw string) ([]Candidate, err
 	return nil, nil
 }
 
-// publicationCandidates dedupes by DID-normalized URI, since well-known may return the handle form while a document's site uses the DID form; failures are skipped as probes stay best-effort.
 func (f *Finder) publicationCandidates(ctx context.Context, uris []string) []Candidate {
 	var out []Candidate
 	seen := make(map[string]struct{}, len(uris))
@@ -256,7 +237,6 @@ func publicationCandidate(pub *standardfeed.Publication) Candidate {
 	}
 }
 
-// extractStandardDocLink pulls the first <link rel="site.standard.document"> at-uri from an article page.
 func extractStandardDocLink(doc *goquery.Document) string {
 	href, _ := doc.Find("link[rel='site.standard.document']").First().Attr("href")
 	href = strings.TrimSpace(href)
@@ -266,7 +246,6 @@ func extractStandardDocLink(doc *goquery.Document) string {
 	return href
 }
 
-// sniffFeed returns the feed's title and site link, or empties if the body can't be read or parsed.
 func sniffFeed(body io.Reader) (title, link string) {
 	buf, err := io.ReadAll(io.LimitReader(body, maxFeedSniffBytes))
 	if err != nil {
@@ -279,7 +258,6 @@ func sniffFeed(body io.Reader) (title, link string) {
 	return strings.TrimSpace(parsed.Title), strings.TrimSpace(parsed.Link)
 }
 
-// siteLink resolves a feed's declared site link; no usable link yields empty, since the feed URL itself is no site.
 func siteLink(feedURL *url.URL, link string) string {
 	if link == "" {
 		return ""
@@ -319,13 +297,8 @@ func extractLinkRels(doc *goquery.Document, base *url.URL) []Candidate {
 	return out
 }
 
-// --- YouTube ---
-
-// ytChannelPath matches a /channel/<id> URL path.
 var ytChannelPath = regexp.MustCompile(`^/channel/([A-Za-z0-9_-]+)$`)
 
-// ytChannelIDInHTML matches the channel ID via JS blob, canonical /channel/ link, or channel_id= feed link.
-// The cookie-less consent-bypass page only has the latter two, so all three forms are needed.
 var ytChannelIDInHTML = regexp.MustCompile(`(?:"channelId":"|/channel/|channel_id=)(UC[A-Za-z0-9_-]{20,})`)
 
 func (f *Finder) resolveYouTube(ctx context.Context, u *url.URL) (*Candidate, error) {
@@ -347,7 +320,6 @@ func (f *Finder) resolveYouTube(ctx context.Context, u *url.URL) (*Candidate, er
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			// Error pages can incidentally contain UC… strings; don't sniff them.
 			_, _ = io.Copy(io.Discard, resp.Body)
 			return nil, nil
 		}
@@ -355,7 +327,6 @@ func (f *Finder) resolveYouTube(ctx context.Context, u *url.URL) (*Candidate, er
 		if err != nil {
 			return nil, err
 		}
-		// First match wins: canonical link, og:url, and feed link precede user content on every YouTube shape seen.
 		if m := ytChannelIDInHTML.FindSubmatch(body); m != nil {
 			channelID = string(m[1])
 		}
@@ -368,7 +339,6 @@ func (f *Finder) resolveYouTube(ctx context.Context, u *url.URL) (*Candidate, er
 	return cand, nil
 }
 
-// fetchYTFeedTitle is best-effort: any error returns an empty string and the dialog falls back to the feed URL.
 func (f *Finder) fetchYTFeedTitle(ctx context.Context, feedURL string) string {
 	req, err := newGET(ctx, feedURL)
 	if err != nil {
@@ -396,9 +366,8 @@ func ytFeedCandidate(channelID string, u *url.URL) *Candidate {
 }
 
 const (
-	ytChannelFeed  = "https://www.youtube.com/feeds/videos.xml?channel_id="
-	ytPlaylistFeed = "https://www.youtube.com/feeds/videos.xml?playlist_id="
-	// A channel's uploads playlist is its ID with UC swapped for UU; the UULF variant leaves out Shorts and live streams.
+	ytChannelFeed      = "https://www.youtube.com/feeds/videos.xml?channel_id="
+	ytPlaylistFeed     = "https://www.youtube.com/feeds/videos.xml?playlist_id="
 	ytLongFormPlaylist = "UULF"
 )
 
@@ -407,7 +376,6 @@ var (
 	ytLongFormPlaylistID = regexp.MustCompile(`^` + ytLongFormPlaylist + `([A-Za-z0-9_-]{22})$`)
 )
 
-// SameYouTubeFeedURLs names a channel's full feed and its long-form feed when raw is either, so following one counts as following the channel.
 func SameYouTubeFeedURLs(raw string) []string {
 	id := ytFeedChannel(raw)
 	if id == "" {
@@ -416,7 +384,6 @@ func SameYouTubeFeedURLs(raw string) []string {
 	return []string{ytChannelFeed + "UC" + id, ytPlaylistFeed + ytLongFormPlaylist + id}
 }
 
-// YouTubeChannelURL is the channel page behind a channel's full or long-form feed, or the page itself; "" for any other URL. The long-form feed names no page of its own.
 func YouTubeChannelURL(raw string) string {
 	id := ytFeedChannel(raw)
 	if u, err := url.Parse(raw); id == "" && err == nil && isYouTubeHost(u.Host) {
@@ -432,10 +399,8 @@ func YouTubeChannelURL(raw string) string {
 	return "https://www.youtube.com/channel/UC" + id
 }
 
-// ytVanityURL is the channel's own handle in its page metadata; featured channels on the page appear only as canonicalBaseUrl.
 var ytVanityURL = regexp.MustCompile(`"vanityChannelUrl":"https?://(?:www\.)?youtube\.com/(@[^"/?]+)"`)
 
-// YouTubeHandleURL reads a channel page for the channel's @handle page; "" when it has none or the page is an error.
 func YouTubeHandleURL(ctx context.Context, client HTTPDoer, channelURL string) (string, error) {
 	body, err := youTubeChannelPage(ctx, client, channelURL)
 	if err != nil {
@@ -452,7 +417,6 @@ var (
 	ytChannelMetadata = []byte(`"channelMetadataRenderer"`)
 )
 
-// YouTubeChannelGone reports a channel page that says the channel does not exist: YouTube answers it with 200, an error alert and no channel metadata. An error status proves nothing.
 func YouTubeChannelGone(ctx context.Context, client HTTPDoer, channelURL string) (bool, error) {
 	body, err := youTubeChannelPage(ctx, client, channelURL)
 	if err != nil {
@@ -461,7 +425,6 @@ func YouTubeChannelGone(ctx context.Context, client HTTPDoer, channelURL string)
 	return bytes.Contains(body, ytErrorAlert) && !bytes.Contains(body, ytChannelMetadata), nil
 }
 
-// youTubeChannelPage is nil for an error status.
 func youTubeChannelPage(ctx context.Context, client HTTPDoer, channelURL string) ([]byte, error) {
 	req, err := newGET(ctx, channelURL)
 	if err != nil {
@@ -479,32 +442,25 @@ func youTubeChannelPage(ctx context.Context, client HTTPDoer, channelURL string)
 	return io.ReadAll(io.LimitReader(resp.Body, maxFeedSniffBytes))
 }
 
-// IsYouTubeFeedURL reports any feed from YouTube's feed server, the one an outage takes down for every channel at once. It matches what the CountYouTubeFeedFailures query counts.
 func IsYouTubeFeedURL(raw string) bool {
 	u, err := url.Parse(raw)
 	return err == nil && u.Scheme == "https" && isYouTubeHost(u.Host) && u.Path == "/feeds/videos.xml" && u.RawQuery != ""
 }
 
 const (
-	// youtubeOutageMinFailing keeps a few dead channels on a small server from reading as an outage.
-	youtubeOutageMinFailing = 3
-	// youtubeOutageLongest is longer than YouTube's feed outages last; a feed failing for longer is failing on its own.
-	youtubeOutageLongest = 48 * time.Hour
-	// YouTubeMutedAfterLoneFailures is about a day of retries on every sweep while YouTube's other feeds fetch; an outage's failures never count toward it.
+	youtubeOutageMinFailing       = 3
+	youtubeOutageLongest          = 48 * time.Hour
 	YouTubeMutedAfterLoneFailures = 48
 )
 
-// YouTubeOutageCutoff is the CountYouTubeFeedFailures failing_since: feeds failing since before it are left out of the outage count.
 func YouTubeOutageCutoff(now time.Time) string {
 	return now.Add(-youtubeOutageLongest).UTC().Format(time.RFC3339)
 }
 
-// YouTubeFeedsDown reports an outage of YouTube's feed server, which fails every channel at once for hours: at least half of the followed YouTube feeds failing together.
 func YouTubeFeedsDown(total, failing int64) bool {
 	return failing >= youtubeOutageMinFailing && failing*2 >= total
 }
 
-// IsYouTubeHandleURL reports a channel's @handle page, the address readers know it by; neither of its feeds names it.
 func IsYouTubeHandleURL(raw string) bool {
 	u, err := url.Parse(raw)
 	return err == nil && isYouTubeHost(u.Host) && strings.HasPrefix(u.Path, "/@")
@@ -515,7 +471,6 @@ func isYouTubeHost(host string) bool {
 	return host == "youtube.com" || host == "www.youtube.com"
 }
 
-// ytFeedChannel is the channel ID after its UC prefix, taken from a channel feed or its long-form playlist feed.
 func ytFeedChannel(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Path != "/feeds/videos.xml" {

@@ -7,7 +7,6 @@ import (
 	"morgenblau/internal/webfeed"
 )
 
-// deadlineJudge answers the judge but lets the setup's deadline pass while it does, as a slow model would.
 type deadlineJudge struct{ cancel context.CancelFunc }
 
 func (m deadlineJudge) Complete(context.Context, webfeed.Prompt) (string, webfeed.Usage, error) {

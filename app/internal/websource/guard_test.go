@@ -165,7 +165,7 @@ func TestPollDuePublishesAnUnsureSetupButKeepsItsDoubt(t *testing.T) {
 			t.Fatalf("step %d: polled %d sources; the reader chose to follow an unsure setup", i, n)
 		}
 		if row := readSource(t, env, id); row.health != string(st.health) || row.reason != st.reason {
-			t.Fatalf("step %d: source = %s %q, want %s %q", i, row.health, row.reason, st.health, st.reason)
+			t.Fatalf("step %d: source = %s %q, want %s %q: only a later setup answers an unsure one, since its own polls trust the very list it doubted", i, row.health, row.reason, st.health, st.reason)
 		}
 	}
 	if it, ok := storedItems(t, env, id)[fresh.URL]; !ok || it.history {
@@ -247,7 +247,7 @@ func TestCreateStoresOnlyWebLinksAndAtMostTwoHundred(t *testing.T) {
 func TestCreateCapsNewSourcesPerReaderPerDay(t *testing.T) {
 	env := newTestEnv(t)
 	ctx := context.Background()
-	for i := range dailySources {
+	for i := range newSourcesPerReaderDay {
 		if _, err := env.service.Create(ctx, testDID, fmt.Sprintf("https://site%d.example.com/", i), ""); err != nil {
 			t.Fatal(err)
 		}
@@ -354,7 +354,7 @@ func TestCreateRunsOneSetupPerReaderAndAFewAtOnce(t *testing.T) {
 	env.gen.beforeSetup = nil
 
 	if _, err := env.service.Create(context.Background(), "did:plc:reader0", "https://another.example.com/", ""); !errors.Is(err, ErrSetupInFlight) {
-		t.Errorf("a second setup for one reader: err = %v, want ErrSetupInFlight", err)
+		t.Errorf("a second setup for one reader: err = %v, want ErrSetupInFlight: it would only double the bill for the same click", err)
 	}
 	env.service.setupTimeout = 100 * time.Millisecond
 	if _, err := env.service.Create(context.Background(), "did:plc:waiting", "https://waiting.example.com/", ""); !errors.Is(err, ErrBusy) {
