@@ -76,9 +76,10 @@ type Result struct {
 
 // Fetcher is the process-wide singleton (one instance per server).
 type Fetcher struct {
-	client  *http.Client
-	workers chan struct{} // capacity = WorkerPoolSize
-	sf      singleflight.Group
+	client     *http.Client
+	localFeeds *localFeeds
+	workers    chan struct{} // capacity = WorkerPoolSize
+	sf         singleflight.Group
 
 	hostMu  sync.Mutex
 	hostSem map[string]chan struct{} // host → semaphore (capacity PerHostCap)
@@ -110,6 +111,10 @@ func New(opts ...Option) *Fetcher {
 	}
 	for _, opt := range opts {
 		opt(f)
+	}
+	if f.localFeeds != nil {
+		f.localFeeds.next = f.client.Transport
+		f.client.Transport = *f.localFeeds
 	}
 	return f
 }

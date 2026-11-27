@@ -95,3 +95,12 @@ func TestLocalFeedErrorsKeepTheirStatus(t *testing.T) {
 		t.Fatalf("err = %v, want HTTP 404", err)
 	}
 }
+
+func TestLocalFeedsSurviveARebuiltSafeClient(t *testing.T) {
+	f := New(WithLocalFeeds(onOrigin("http://127.0.0.1:1"), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, localRSS)
+	})), WithSafeHTTPOptions(safehttp.WithAllowLoopbackPorts(2)))
+	if _, err := f.Fetch(context.Background(), "http://127.0.0.1:1/feed/abc", FeedState{}); err != nil {
+		t.Fatalf("local feed after WithSafeHTTPOptions: %v; options must not depend on their order", err)
+	}
+}

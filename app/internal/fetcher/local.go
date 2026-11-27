@@ -12,7 +12,7 @@ import (
 // production the request would hairpin out and back. Every other request keeps the safe transport.
 func WithLocalFeeds(isLocal func(*url.URL) bool, h http.Handler) Option {
 	return func(f *Fetcher) {
-		f.client.Transport = localFeeds{isLocal: isLocal, handler: h, next: f.client.Transport}
+		f.localFeeds = &localFeeds{isLocal: isLocal, handler: h}
 	}
 }
 
