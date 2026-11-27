@@ -1,9 +1,7 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { afterAll, afterEach, expect, test } from 'bun:test';
 
-const nativeEvents = { Event, EventTarget };
 GlobalRegistrator.register({ url: 'http://app.example.com/' });
-Object.assign(globalThis, nativeEvents);
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { Digest } = await import('./digest');
@@ -177,7 +175,6 @@ test('the arrows and j/k walk the posts from the primary ones down, and Enter op
         feedEntry('lead', 'Primary post', true),
     ]);
     document.body.append(container);
-    // Navigating would go through this file's native Event, which Happy DOM's window refuses, so the opened link is recorded instead.
     const opened: string[] = [];
     container.addEventListener(
         'click',

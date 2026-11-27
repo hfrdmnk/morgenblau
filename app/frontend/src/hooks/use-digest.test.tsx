@@ -1,10 +1,7 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { afterAll, afterEach, expect, test } from 'bun:test';
 
-const nativeEvents = { Event, EventTarget };
 GlobalRegistrator.register();
-// The shared event bus outlives this test file's DOM registration.
-Object.assign(globalThis, nativeEvents);
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { useDigest } = await import('./use-digest');

@@ -1,9 +1,7 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { afterAll, afterEach, expect, test } from 'bun:test';
 
-const nativeEvents = { Event, EventTarget };
 GlobalRegistrator.register();
-Object.assign(globalThis, nativeEvents);
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { useSourceImport } = await import('./use-source-import');
