@@ -216,6 +216,19 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 				continue
 			}
 			published := chooseTime(item, time.Time{})
+			var dateFrom, dateUntil *string
+			if day, ok := dateOnly(published); ok {
+				from, until := day.Add(-furthestAheadOfUTC), day.Add(24*time.Hour+furthestBehindUTC)
+				noonUTC := day.Add(12 * time.Hour)
+				now := p.now()
+				foundByALaterFetch := existing.LastFetchedAt != nil && !now.Before(from) && now.Before(until)
+				published = noonUTC
+				if foundByALaterFetch || now.Before(noonUTC) {
+					published = now
+				}
+				f, u := from.Format(time.RFC3339), until.Format(time.RFC3339)
+				dateFrom, dateUntil = &f, &u
+			}
 			publishedAt := ""
 			if !published.IsZero() {
 				publishedAt = published.UTC().Format(time.RFC3339)
@@ -243,6 +256,8 @@ func (p *FeedPipeline) FetchAndStore(ctx context.Context, feedURL string) error 
 				ContentHtml: nilIfEmpty(sanitized),
 				ContentType: ct,
 				PublishedAt: publishedAt,
+				DateFrom:    dateFrom,
+				DateUntil:   dateUntil,
 				FetchedAt:   nowStr,
 				Metadata:    metaJSON,
 				KeepUndated: keepUndated,
@@ -283,8 +298,22 @@ func chooseTime(item *gofeed.Item, fallback time.Time) time.Time {
 	return fallback
 }
 
+const (
+	furthestAheadOfUTC = 14 * time.Hour
+	furthestBehindUTC  = 12 * time.Hour
+)
+
+func dateOnly(t time.Time) (time.Time, bool) {
+	if t.IsZero() || t.Hour() != 0 || t.Minute() != 0 || t.Second() != 0 || t.Nanosecond() != 0 {
+		return time.Time{}, false
+	}
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC), true
+}
+
 var extraDateFormats = []string{
 	blueskyPubDate,
+	"Mon, 2 Jan 2006 15:04:05 -0700",
 }
 
 const blueskyPubDate = "2 Jan 2006 15:04 -0700"

@@ -273,12 +273,14 @@ VALUES (
     ?1, ?2, ?3, ?4,
     ?5, ?6, ?7,
     COALESCE(
-        MIN(NULLIF(CAST(?8 AS TEXT), ''),
+        (SELECT published_at FROM feed_entries WHERE feed_url = ?1 AND guid = ?2
+            AND published_at >= CAST(?8 AS TEXT) AND published_at < CAST(?9 AS TEXT)),
+        MIN(NULLIF(CAST(?10 AS TEXT), ''),
             NULLIF((SELECT published_at FROM feed_entries WHERE feed_url = ?1 AND guid = ?2), '')),
-        NULLIF(CAST(?8 AS TEXT), ''),
+        NULLIF(CAST(?10 AS TEXT), ''),
         (SELECT published_at FROM feed_entries WHERE feed_url = ?1 AND guid = ?2),
-        CASE WHEN CAST(?9 AS INTEGER) = 1 THEN '' ELSE ?10 END),
-    ?10, ?11
+        CASE WHEN CAST(?11 AS INTEGER) = 1 THEN '' ELSE ?12 END),
+    ?12, ?13
 )
 ON CONFLICT (feed_url, guid) DO UPDATE SET
     url          = excluded.url,
@@ -298,6 +300,8 @@ type UpsertFeedEntryParams struct {
 	Title       *string `json:"title"`
 	ContentHtml *string `json:"content_html"`
 	ContentType string  `json:"content_type"`
+	DateFrom    *string `json:"date_from"`
+	DateUntil   *string `json:"date_until"`
 	PublishedAt string  `json:"published_at"`
 	KeepUndated int64   `json:"keep_undated"`
 	FetchedAt   string  `json:"fetched_at"`
@@ -315,6 +319,8 @@ func (q *Queries) UpsertFeedEntry(ctx context.Context, arg UpsertFeedEntryParams
 		arg.Title,
 		arg.ContentHtml,
 		arg.ContentType,
+		arg.DateFrom,
+		arg.DateUntil,
 		arg.PublishedAt,
 		arg.KeepUndated,
 		arg.FetchedAt,

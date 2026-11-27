@@ -75,6 +75,8 @@ Opening Morgenblau lands on today's digest. New content can arrive during the da
 
 Digest dates use the browser's local calendar boundaries for every source type, so a selected day means the reader's local day regardless of the server timezone.
 
+A post dated without a time of day (midnight in a feed) takes the time Morgenblau first saw it when a later fetch finds it while that is still its date in some timezone, so a new post sorts by arrival; history and older posts take noon UTC, or the fetch time while that noon is still ahead. `dateOnly` in `app/internal/sync/feedpipeline.go` owns the rule, and `UpsertFeedEntry` keeps the placed time on later fetches.
+
 Primary sources appear at the top with distinct presentation. This is a user preference, not a social ranking signal.
 
 A source with several entries on one day shows its latest entry in its place, with the others folded directly beneath it until the reader opens them, so a busy source cannot crowd the day.

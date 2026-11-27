@@ -16,6 +16,7 @@ const HUGE_BYTES = 5 * 1024 * 1024 + 1024
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAMBAMAAACZySCyAAAAJFBMVEUrbLA9d6lQgaFijJp1lpKHoYuaq4Ostny/wHTRy23k1WX24F6DyBZgAAAAMUlEQVQI12NggAFBKGBQggIGYyhgcIEChlAoYEiDAoZyKGDogAKGmVDAsAoKGHZDAQC6UCMRxM84EQAAAABJRU5ErkJggg==', 'base64')
 let toggleUp = true
 let undatedLater = false
+let dateOnlyLater = false
 // While on, /feeds/held.xml answers only at release, so a fetch job stays in flight; release before safehttp's 30s client timeout.
 let holding = false
 const heldResponses = []
@@ -27,6 +28,8 @@ function render(name) {
     .replaceAll('{{ORIGIN}}', origin)
     .replaceAll('{{NOW_RFC822}}', now.toUTCString().replace('GMT', '+0000'))
     .replaceAll('{{NOW_RFC3339}}', now.toISOString())
+    .replaceAll('{{DATEONLY_LATER}}', dateOnlyLater ? '<item><title>Fixture date-only entry found later</title><link>' + origin + '/posts/date-only-later</link><guid isPermaLink="false">example-date-only-later</guid><pubDate>{{TODAY_DATE_ONLY}}</pubDate></item>\n' : '')
+    .replaceAll('{{TODAY_DATE_ONLY}}', now.toUTCString().slice(0, 16))
     .replaceAll('{{LATER}}', undatedLater ? '<item><title>Fixture undated entry found later</title><link>' + origin + '/posts/undated-later</link><guid isPermaLink="false">example-undated-later</guid></item>\n' : '')
 }
 
@@ -95,6 +98,7 @@ const feeds = {
   '/feeds/stale.xml': () => ['application/rss+xml; charset=utf-8', render('stale.xml')],
   '/feeds/broken.xml': () => ['application/rss+xml; charset=utf-8', render('broken.xml')],
   '/feeds/undated.xml': () => ['application/rss+xml; charset=utf-8', render('undated.xml')],
+  '/feeds/dateonly.xml': () => ['application/rss+xml; charset=utf-8', render('dateonly.xml')],
   '/feeds/images.xml': () => ['application/rss+xml; charset=utf-8', render('images.xml')],
   '/feeds/video.xml': () => ['application/rss+xml; charset=utf-8', render('video.xml')],
   '/images/lead.png': () => ['image/png', PNG],
@@ -115,6 +119,10 @@ const fixtures = http.createServer((req, res) => {
   if (req.method === 'POST' && pathname === '/control/undated/later') {
     undatedLater = true
     return send(res, 200, 'application/json', JSON.stringify({ undated: 'later' }))
+  }
+  if (req.method === 'POST' && pathname === '/control/dateonly/later') {
+    dateOnlyLater = true
+    return send(res, 200, 'application/json', JSON.stringify({ dateonly: 'later' }))
   }
   if (req.method === 'POST' && /^\/control\/hold\/(on|off)$/.test(pathname)) {
     holding = pathname.endsWith('/on')

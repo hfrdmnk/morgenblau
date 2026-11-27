@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<title>Example Date-Only Feed</title>
+<link>{{ORIGIN}}/</link>
+<description>A feed that dates posts without a time of day.</description>
+{{DATEONLY_LATER}}<item>
+<title>Fixture date-only entry from the first fetch</title>
+<link>{{ORIGIN}}/posts/date-only</link>
+<guid isPermaLink="false">example-date-only</guid>
+<pubDate>{{TODAY_DATE_ONLY}}</pubDate>
+<description>&lt;p&gt;A fixture entry whose pubDate carries today's UTC date and no time.&lt;/p&gt;</description>
+</item>
+</channel>
+</rss>

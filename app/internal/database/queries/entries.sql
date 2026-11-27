@@ -6,6 +6,8 @@ VALUES (
     sqlc.arg(feed_url), sqlc.arg(guid), sqlc.arg(entry_slug), sqlc.arg(url),
     sqlc.arg(title), sqlc.arg(content_html), sqlc.arg(content_type),
     COALESCE(
+        (SELECT published_at FROM feed_entries WHERE feed_url = sqlc.arg(feed_url) AND guid = sqlc.arg(guid)
+            AND published_at >= CAST(sqlc.narg(date_from) AS TEXT) AND published_at < CAST(sqlc.narg(date_until) AS TEXT)),
         MIN(NULLIF(CAST(sqlc.arg(published_at) AS TEXT), ''),
             NULLIF((SELECT published_at FROM feed_entries WHERE feed_url = sqlc.arg(feed_url) AND guid = sqlc.arg(guid)), '')),
         NULLIF(CAST(sqlc.arg(published_at) AS TEXT), ''),

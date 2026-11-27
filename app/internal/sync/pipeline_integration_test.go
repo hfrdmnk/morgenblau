@@ -63,21 +63,21 @@ func TestFeedPipeline_PublicationDateRepairAndStability(t *testing.T) {
 	check("")
 
 	mu.Lock()
-	date = "2025-11-08  T00:00:00Z"
+	date = "2025-11-08  T08:00:00Z"
 	mu.Unlock()
-	check("2025-11-08T00:00:00Z")
+	check("2025-11-08T08:00:00Z")
 	mu.Lock()
 	date = "not a date"
 	mu.Unlock()
-	check("2025-11-08T00:00:00Z")
+	check("2025-11-08T08:00:00Z")
 	mu.Lock()
 	date = "2025-11-09T23:30:00-05:00"
 	mu.Unlock()
-	check("2025-11-08T00:00:00Z")
+	check("2025-11-08T08:00:00Z")
 	mu.Lock()
-	published = "2025-11-07  T00:00:00Z"
+	published = "2025-11-07  T08:00:00Z"
 	mu.Unlock()
-	check("2025-11-07T00:00:00Z")
+	check("2025-11-07T08:00:00Z")
 }
 
 func TestFeedPipeline_FetchAndStore_BackoffPersistsAcrossCallsThenRecovers(t *testing.T) {
@@ -468,6 +468,71 @@ func TestFeedPipeline_UndatedItemsFromTheFirstFetchStayUndated(t *testing.T) {
 	if got := published("https://site.example.com/about/"); got != "" {
 		t.Errorf("history item published_at = %q after a later poll, want empty", got)
 	}
+}
+
+func TestFeedPipeline_DateOnlyItemsTakeTheirFirstSeenTime(t *testing.T) {
+	var mu sync.Mutex
+	items := `<item><title>History</title><link>https://site.example.com/history</link><guid>history</guid><pubDate>Tue, 17 Nov 2026</pubDate></item>` +
+		`<item><title>History ahead</title><link>https://site.example.com/ahead</link><guid>ahead</guid><pubDate>Wed, 18 Nov 2026</pubDate></item>` +
+		`<item><title>Old</title><link>https://site.example.com/old</link><guid>old</guid><pubDate>Sun, 01 Nov 2026</pubDate></item>`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>Example Publication</title><link>https://site.example.com/</link>` + items + `</channel></rss>`))
+	}))
+	defer srv.Close()
+	feedURL := srv.URL + "/feed.xml"
+	dbs := openMigratedSyncDB(t)
+	seedCatalogFeed(t, dbs, feedURL)
+	var now time.Time
+	p := NewFeedPipeline(fetcher.New(fetcher.WithSafeHTTPOptions(safehttp.WithAllowLoopback())), db.New(dbs.Writer)).
+		WithFaviconDiscoverer(&fakeFaviconDiscoverer{}).WithTxRunner(dbs.Writer)
+	p.now = func() time.Time { return now }
+	poll := func(at time.Time, add string) {
+		t.Helper()
+		mu.Lock()
+		items += add
+		mu.Unlock()
+		now = at
+		if err := p.FetchAndStore(context.Background(), feedURL); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := map[string]string{
+		"history": "2026-11-17T12:00:00Z",
+		"ahead":   "2026-11-17T14:00:00Z",
+		"old":     "2026-11-01T12:00:00Z",
+	}
+	check := func() {
+		t.Helper()
+		for guid, w := range want {
+			entry, err := db.New(dbs.Reader).GetFeedEntryBySlug(context.Background(), EntrySlug(feedURL, guid))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if entry.PublishedAt != w {
+				t.Errorf("%s published_at = %s, want %s", guid, entry.PublishedAt, w)
+			}
+		}
+	}
+
+	poll(time.Date(2026, 11, 17, 14, 0, 0, 0, time.UTC), "")
+	check()
+
+	poll(time.Date(2026, 11, 17, 15, 0, 0, 0, time.UTC),
+		`<item><title>Today</title><link>https://site.example.com/today</link><guid>today</guid><pubDate>Tue, 17 Nov 2026</pubDate></item>`+
+			`<item><title>Local midnight</title><link>https://site.example.com/local</link><guid>local</guid><pubDate>Tue, 17 Nov 2026 00:00:00 +0100</pubDate></item>`)
+	want["today"] = "2026-11-17T15:00:00Z"
+	want["local"] = "2026-11-17T15:00:00Z"
+	check()
+
+	poll(time.Date(2026, 11, 17, 23, 30, 0, 0, time.UTC),
+		`<item><title>Tomorrow in UTC</title><link>https://site.example.com/tomorrow</link><guid>tomorrow</guid><pubDate>Wed, 18 Nov 2026</pubDate></item>`)
+	want["tomorrow"] = "2026-11-17T23:30:00Z"
+	check()
+
+	poll(time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC), "")
+	check()
 }
 
 func TestFeedPipeline_OwnWebFeedUndatedItemsStayUndated(t *testing.T) {

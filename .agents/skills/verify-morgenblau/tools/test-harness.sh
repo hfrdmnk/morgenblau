@@ -359,6 +359,10 @@ test_feed_fixtures_serve_each_case() {
     if curl -fsS "$origin/feeds/undated.xml" | grep -q 'undated-later'; then return 1; fi
     curl -fsS -X POST "$origin/control/undated/later" >/dev/null
     curl -fsS "$origin/feeds/undated.xml" | grep -q "<link>$origin/posts/undated-later</link>"
+    curl -fsS "$origin/feeds/dateonly.xml" | grep -Eq '<pubDate>[A-Z][a-z]{2}, [0-9]{2} [A-Z][a-z]{2} [0-9]{4}</pubDate>'
+    if curl -fsS "$origin/feeds/dateonly.xml" | grep -q 'date-only-later'; then return 1; fi
+    curl -fsS -X POST "$origin/control/dateonly/later" >/dev/null
+    [[ "$(curl -fsS "$origin/feeds/dateonly.xml" | grep -Ec '<pubDate>[A-Z][a-z]{2}, [0-9]{2} [A-Z][a-z]{2} [0-9]{4}</pubDate>')" == 2 ]]
     [[ "$(curl -sS -o /dev/null -w '%{http_code}' "$origin/feeds/../../tools/package.json")" == 404 ]]
 }
 
