@@ -1,8 +1,4 @@
 {
-  "cmd/webfeed-eval/cache.go": 2,
-  "cmd/webfeed-eval/main.go": 13,
-  "cmd/webfeed-eval/main_test.go": 1,
-  "cmd/webfeed-eval/model_test.go": 3,
   "internal/api/about.go": 1,
   "internal/api/admin.go": 6,
   "internal/api/admin_test.go": 1,

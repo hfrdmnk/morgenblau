@@ -70,8 +70,7 @@ func newSite(t *testing.T) *httptest.Server {
 
 func TestEvalReportsFeedStreamsAndBlockedSites(t *testing.T) {
 	srv := newSite(t)
-	// Feed discovery probes common paths at the site root, so sites without any feed live on their own host.
-	bare := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	feedlessHost := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/no-feed":
 			fmt.Fprint(w, listingHTML(""))
@@ -81,12 +80,12 @@ func TestEvalReportsFeedStreamsAndBlockedSites(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	t.Cleanup(bare.Close)
+	t.Cleanup(feedlessHost.Close)
 	sites := []site{
 		{ID: "feed", ListingURL: srv.URL + "/with-feed"},
-		{ID: "dom", ListingURL: bare.URL + "/no-feed"},
-		{ID: "blocked", ListingURL: bare.URL + "/forbidden"},
-		{ID: "gone", ListingURL: bare.URL + "/missing"},
+		{ID: "dom", ListingURL: feedlessHost.URL + "/no-feed"},
+		{ID: "blocked", ListingURL: feedlessHost.URL + "/forbidden"},
+		{ID: "gone", ListingURL: feedlessHost.URL + "/missing"},
 	}
 	var out bytes.Buffer
 	err := run(context.Background(), sites, options{judge: "off", concurrency: 2, timeout: 10 * time.Second}, env{client: srv.Client()}, &out)

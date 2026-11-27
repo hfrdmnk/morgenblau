@@ -1,4 +1,3 @@
-// Command webfeed-eval runs feed discovery and webfeed setup over a list of listing pages and prints what a reader would get, for an external scorer.
 package main
 
 import (
@@ -30,14 +29,13 @@ import (
 )
 
 type options struct {
-	input       string
-	judge       string
-	concurrency int
-	timeout     time.Duration
-	explain     bool
-	skipFeed    bool
-	cacheDir    string
-	// snapshotField serves each site's listing page from its "snapshot" file; every other request stays live.
+	input         string
+	judge         string
+	concurrency   int
+	timeout       time.Duration
+	explain       bool
+	skipFeed      bool
+	cacheDir      string
 	snapshotField bool
 }
 
@@ -84,9 +82,8 @@ type item struct {
 }
 
 type result struct {
-	ID         string `json:"id"`
-	ListingURL string `json:"listing_url"`
-	// RecipeListingURL is the page polls read, a section page when setup moved off the pasted one.
+	ID               string  `json:"id"`
+	ListingURL       string  `json:"listing_url"`
 	RecipeListingURL string  `json:"recipe_listing_url"`
 	Mode             string  `json:"mode"`
 	FeedURL          string  `json:"feed_url"`
@@ -126,7 +123,6 @@ func main() {
 		os.Exit(1)
 	}
 	safe := safehttp.NewClient(opts.timeout, 5)
-	// Discovery is composed as in internal/server: the same finder with the Standardfeed probes.
 	e := env{client: safe, standard: standardfeed.NewClient(atidentity.Guarded(safe), safe)}
 	if opts.cacheDir != "" {
 		if err := os.MkdirAll(opts.cacheDir, 0o700); err != nil {
@@ -149,14 +145,12 @@ func main() {
 	}
 }
 
-// env holds what run fetches and asks through; a nil model or standard resolver turns that step off.
 type env struct {
 	client   webfeed.Doer
 	standard feedfinder.StandardResolver
 	model    webfeed.Model
 }
 
-// newModel builds the Haiku client; the key comes from the environment and is never printed.
 func newModel(apiKey string) (webfeed.Model, error) {
 	if apiKey == "" {
 		return nil, errors.New("-judge haiku needs ANTHROPIC_API_KEY in the environment")
@@ -168,7 +162,6 @@ func newModel(apiKey string) (webfeed.Model, error) {
 	return claudeModel{c}, nil
 }
 
-// claudeModel runs webfeed's prompts on Claude, as internal/server wires it.
 type claudeModel struct{ c *claude.Client }
 
 func (m claudeModel) Complete(ctx context.Context, p webfeed.Prompt) (string, webfeed.Usage, error) {
@@ -176,7 +169,6 @@ func (m claudeModel) Complete(ctx context.Context, p webfeed.Prompt) (string, we
 	return text, webfeed.Usage{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, USD: u.USD}, err
 }
 
-// run evaluates sites in parallel and writes one JSON document with results in input order.
 func run(ctx context.Context, sites []site, opts options, e env, w io.Writer) error {
 	results := make([]result, len(sites))
 	sem := make(chan struct{}, opts.concurrency)
@@ -224,7 +216,6 @@ func evalSite(ctx context.Context, s site, opts options, e env) result {
 			r.Health, r.Error = "failed", "discovery: "+err.Error()
 			return r
 		}
-		// The reader is offered generation only when discovery finds nothing at all.
 		if len(cands) > 0 {
 			return feedRoute(ctx, client, r, cands)
 		}
@@ -253,7 +244,6 @@ func evalSite(ctx context.Context, s site, opts options, e env) result {
 	return r
 }
 
-// feedRoute reports the subscription the reader would get: the first RSS candidate with items, else the first candidate as offered.
 func feedRoute(ctx context.Context, client webfeed.Doer, r result, cands []feedfinder.Candidate) result {
 	var firstErr error
 	for _, c := range cands {
@@ -284,7 +274,6 @@ func feedRoute(ctx context.Context, client webfeed.Doer, r result, cands []feedf
 	return r
 }
 
-// snapshotDoer serves the exact listing URL from a saved page and passes every other request through.
 type snapshotDoer struct {
 	listingURL string
 	body       []byte
@@ -303,7 +292,6 @@ func (d snapshotDoer) Do(req *http.Request) (*http.Response, error) {
 	}, nil
 }
 
-// countingDoer tallies one site's requests and the response bytes its readers consumed, for -explain.
 type countingDoer struct {
 	next     webfeed.Doer
 	requests atomic.Int64
@@ -352,7 +340,6 @@ func formatDate(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// feedItems fetches and parses a discovered feed, keeping every item.
 func feedItems(ctx context.Context, client webfeed.Doer, feedURL string) ([]item, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, nil)
 	if err != nil {
