@@ -11,19 +11,16 @@ import (
 	"morgenblau/internal/atxrpc"
 )
 
-// PDSFetcher is the production RecordFetcher. Client must be the safehttp client: the PDS endpoint comes from an attacker-suppliable DID.
 type PDSFetcher struct {
 	Client *http.Client
 }
 
-// getRecordResp is the trimmed shape of com.atproto.repo.getRecord this package needs.
 type getRecordResp struct {
 	URI   string         `json:"uri"`
 	CID   string         `json:"cid"`
 	Value map[string]any `json:"value"`
 }
 
-// FetchProfile pulls app.bsky.actor.profile/self from the subject's PDS. A "record not found" reply (common for users who never edited their Bluesky profile) returns a zero ProfileRecord, treated as present-but-empty.
 func (f PDSFetcher) FetchProfile(ctx context.Context, did syntax.DID, pdsEndpoint string) (ProfileRecord, error) {
 	if pdsEndpoint == "" {
 		return ProfileRecord{}, errors.New("empty PDS endpoint")
@@ -36,7 +33,6 @@ func (f PDSFetcher) FetchProfile(ctx context.Context, did syntax.DID, pdsEndpoin
 		"rkey":       "self",
 	}
 	if err := client.Get(ctx, syntax.NSID("com.atproto.repo.getRecord"), params, &out); err != nil {
-		// Any error here (missing record, malformed PDS, transient) means "no profile data available"; caller downgrades to nulls.
 		return ProfileRecord{}, err
 	}
 

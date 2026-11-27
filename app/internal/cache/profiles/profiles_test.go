@@ -91,7 +91,6 @@ func TestCache_GetMissThenHit(t *testing.T) {
 		t.Fatalf("Description = %v, want \"Reads calmly.\"", p.Description)
 	}
 
-	// Second Get should hit cache: no extra fetcher / resolver calls.
 	if _, err := c.Get(context.Background(), did); err != nil {
 		t.Fatalf("Get(2): %v", err)
 	}
@@ -112,7 +111,6 @@ func TestCache_RefreshBypasses(t *testing.T) {
 	if _, err := c.Get(context.Background(), did); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	// Simulate user editing their Bluesky display name.
 	fet.displayName = ptr("Alice Smith")
 	p, err := c.Refresh(context.Background(), did)
 	if err != nil {
@@ -121,7 +119,6 @@ func TestCache_RefreshBypasses(t *testing.T) {
 	if p.DisplayName == nil || *p.DisplayName != "Alice Smith" {
 		t.Errorf("displayName = %v, want Alice Smith", p.DisplayName)
 	}
-	// Subsequent Get should serve the refreshed value.
 	p2, _ := c.Get(context.Background(), did)
 	if p2.DisplayName == nil || *p2.DisplayName != "Alice Smith" {
 		t.Errorf("post-refresh Get returned stale: %+v", p2)
@@ -146,7 +143,6 @@ func TestCache_MissingProfileRecordCollapsesToNulls(t *testing.T) {
 	}
 }
 
-// gatedFetcher holds the first fetch until the test releases it, then answers from whatever context it was given.
 type gatedFetcher struct {
 	displayName *string
 	gate        sync.Once
@@ -174,7 +170,6 @@ func (f *gatedFetcher) FetchProfile(ctx context.Context, _ syntax.DID, _ string)
 	return ProfileRecord{DisplayName: f.displayName}, nil
 }
 
-// A caller that gives up mid-fetch must not leave a nameless profile cached for everyone after it.
 func TestCache_CallerCancelMidFetchDoesNotCacheNullProfile(t *testing.T) {
 	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
 	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
@@ -204,11 +199,11 @@ func TestCache_CallerCancelMidFetchDoesNotCacheNullProfile(t *testing.T) {
 	}
 }
 
-// A waiter coalesced onto a leader whose caller gives up must still get the real profile.
 func TestCache_CoalescedWaiterSurvivesLeaderCancel(t *testing.T) {
 	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
 	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
-	// Built outside the bubble: the expirable LRU runs a ticker goroutine that never exits.
+	// expirable.NewLRU starts a goroutine that never exits, which a synctest bubble would wait on forever.
+	// https://github.com/hashicorp/golang-lru/blob/v2.0.7/expirable/expirable_lru.go#L77-L82
 	c := New(res, nil)
 
 	synctest.Test(t, func(t *testing.T) {
@@ -249,7 +244,6 @@ func TestCache_CoalescedWaiterSurvivesLeaderCancel(t *testing.T) {
 	})
 }
 
-// A degraded profile heals after degradedTTL, while a complete one keeps the full TTL.
 func TestCache_DegradedProfileExpiresAfterShortTTL(t *testing.T) {
 	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
 	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
@@ -341,7 +335,6 @@ func (r *blockingResolver) LookupDID(ctx context.Context, _ syntax.DID) (*identi
 	return nil, ctx.Err()
 }
 
-// A caller with its own deadline gets its answer by that deadline, not after the shared fetch timeout.
 func TestCache_LookupGivesUpWithTheCaller(t *testing.T) {
 	c := New(&blockingResolver{}, nil)
 	synctest.Test(t, func(t *testing.T) {
@@ -372,7 +365,6 @@ func TestCache_LookupSharesTheCache(t *testing.T) {
 	}
 }
 
-// Giving up mid-fetch must not cache the nameless profile the record failure would otherwise degrade to.
 func TestCache_LookupCancelMidFetchCachesNothing(t *testing.T) {
 	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
 	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
@@ -396,7 +388,6 @@ func TestCache_LookupCancelMidFetchCachesNothing(t *testing.T) {
 	}
 }
 
-// Past its deadline a caller still gets cached profiles but starts no lookup, since identity resolution may ignore cancellation.
 func TestCache_LookupPastTheDeadlineServesOnlyTheCache(t *testing.T) {
 	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
 	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
@@ -407,7 +398,7 @@ func TestCache_LookupPastTheDeadlineServesOnlyTheCache(t *testing.T) {
 		t.Fatalf("uncached Lookup err = %v, want the caller's cancellation", err)
 	}
 	if got := atomic.LoadInt32(&res.calls); got != 0 {
-		t.Fatalf("resolver calls = %d, want 0 after the caller gave up", got)
+		t.Fatalf("resolver calls = %d, want 0 after the caller gave up: identity resolution ignores cancellation, so a lookup started now would outlive the caller", got)
 	}
 	if _, err := c.Get(context.Background(), did); err != nil {
 		t.Fatal(err)
@@ -417,7 +408,6 @@ func TestCache_LookupPastTheDeadlineServesOnlyTheCache(t *testing.T) {
 	}
 }
 
-// pastDeadline is a caller whose deadline has passed before its Done channel closed, the window in which a socket deadline copied from it has already fired.
 type pastDeadline struct{ context.Context }
 
 func (pastDeadline) Deadline() (time.Time, bool) { return time.Now().Add(-time.Millisecond), true }
@@ -445,7 +435,6 @@ func TestCache_LookupPastItsDeadlineCachesNoNamelessProfile(t *testing.T) {
 	}
 }
 
-// A record fetch that times out on the caller's deadline before its context reports done must still count as the caller giving up.
 func TestCache_LookupRecordTimeoutAtTheDeadlineCachesNothing(t *testing.T) {
 	did, ident := identityFor(t, "did:plc:alice", "user.example.com", "https://service.example.com")
 	res := &fakeResolver{byDID: map[syntax.DID]*identity.Identity{did: ident}}
@@ -463,13 +452,11 @@ func TestCache_LookupRecordTimeoutAtTheDeadlineCachesNothing(t *testing.T) {
 	})
 }
 
-// callerDeadlineOnly exposes its parent's deadline but never reports done, like a context whose timer has not fired yet.
 type callerDeadlineOnly struct{ context.Context }
 
 func (callerDeadlineOnly) Done() <-chan struct{} { return nil }
 func (callerDeadlineOnly) Err() error            { return nil }
 
-// deadlineFetcher fails the way a dial does when its socket deadline, copied from ctx, fires.
 type deadlineFetcher struct{}
 
 func (deadlineFetcher) FetchProfile(ctx context.Context, _ syntax.DID, _ string) (ProfileRecord, error) {
