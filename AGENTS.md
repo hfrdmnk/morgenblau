@@ -18,7 +18,7 @@ Bun owns every JavaScript install; each project keeps its own `bun.lock`. `bun f
 
 ## Comments
 
-Comment the why, never the what. A comment earns its place only when it records something the code cannot express: a non-obvious constraint, an ordering requirement, a protocol quirk, a deliberate trade-off. Never restate the next line, narrate a change, or justify a diff. If code needs explaining, rewrite the code first. One line by default. Applies to all languages in this repo.
+Comment the why, never the what. A comment earns its place only when it records something the code cannot express: a non-obvious constraint, an ordering requirement, a protocol quirk, a deliberate trade-off. Never restate the next line, narrate a change, or justify a diff. If code needs explaining, rewrite the code first. One line by default. Applies to all languages in this repo, except `app/`, where checks ban comments outright: see [app/AGENTS.md](app/AGENTS.md#comments).
 
 ## Docs
 

@@ -4,4 +4,4 @@ preload = ["./test/preload.ts"]
 [fmt]
 printWidth = 120
 singleQuote = true
-ignorePatterns = ["public/", "src/design/tokens.css"]
+ignorePatterns = ["public/", "src/design/tokens.css", "eslint-suppressions.json"]

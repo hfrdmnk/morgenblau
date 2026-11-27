@@ -9,6 +9,10 @@ The Go backend and React frontend. Run app commands from this directory.
 Write all Go code with Red-Green-TDD. Leverage Go's phenomenal testing suite.
 Prove behavior on the running app yourself with the `verify-morgenblau` skill. I do the final visual check and give you feedback.
 
+## Comments
+
+No comments: make the code say it, encode a rule the next change must keep as a test or lint rule, and put a change's reason in its commit message. Only a note about something outside our control stays, and it links the upstream issue or docs. `TestCommentsStayWithinBaseline` in `internal/comments` and `frontend/eslint/comments.js` enforce it and ban `//nolint` and `eslint-disable`; their failure messages say what to do. The baselines, `comments-baseline.json` and `frontend/eslint-suppressions.json`, only shrink: run `make comments-prune` after deleting baselined comments.
+
 ## Lexicons
 
 Schemas and their rules: [lexicons/AGENTS.md](lexicons/AGENTS.md). `SPEC.md` defines the compatibility boundary.

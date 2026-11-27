@@ -17,7 +17,7 @@ paths:
 - Markup outside `src/components/ui/` and `src/design/` is `Frame`, `Text`, `MotionFrame` and components; their props take tokens from `src/design/tokens.ts`, never class strings. The rules in `eslint/design-system.js` enforce it, with their cases in `eslint/design-system.test.ts`. `/__dev/styleguide` renders every token.
 - When no token or variant fits, add one: a token to `tokens.ts` (then `bun run design:tokens`), a value with both themes to `src/index.css`, or a variant to the component in `src/components/ui/`. Never reach for an exception.
 - Class strings in `src/components/ui/` follow the same token rules: no arbitrary values or properties, opacity modifiers, `dark:` or palette colours. A one-off value becomes a CSS variable in `src/index.css` read with `prop-(--name)`, and a multi-declaration recipe becomes an `@utility` there.
-- Every exception is a commented `files` glob in `eslint.config.js`; inline disables already fail. A growing list means the design system is missing something.
+- Every exception is a `files` glob in `eslint.config.js`, with its reason in the commit message; inline disables fail. A growing list means the design system is missing something.
 - `Frame` is a flex column with no margins: siblings are spaced by the parent's `gap`. Text inside a `Frame` goes in a `Text`, or it becomes its own flex item.
 
 ## Motion
@@ -26,7 +26,7 @@ paths:
 - CSS transitions take their durations from the `--motion-duration-*` tokens and easing from `--ease-*` in `src/index.css`, and list the properties they transition instead of `transition-all`.
 - Animate `transform`, `opacity` and `filter`. Size and position changes go through `motion`'s `layout`, or the keyframes in `src/index.css` and `tw-animate-css`; never transition width, height or offsets by hand. `eslint.config.js` rejects `transition-all` and size or offset transitions in class strings outside `src/components/ui/`.
 - Reduced motion is part of every animation: the tokens collapse under `prefers-reduced-motion`, CSS animations sit behind `motion-safe:` or `motion-reduce:`, and `motion/react` code reads `useReducedMotion()` and goes instant.
-- Multi-stage choreography is a storyboard: a header comment listing each stage with its time, then a `TIMING` object and per-element config objects that hold every duration, easing and spring, never inline in JSX. `src/components/add-source-dialog.tsx` is the reference. The pattern is adapted from the Storyboard Animation guide in Josh Puckett's Interface Craft.
+- Multi-stage choreography is a storyboard: a `TIMING` object and per-element config objects, named for their stages, that hold every duration, easing and spring, never inline in JSX. `src/components/add-source-dialog.tsx` is the reference. The pattern is adapted from the Storyboard Animation guide in Josh Puckett's Interface Craft.
 - `test/preload.ts` explains how `motion` runs under happy-dom.
 
 ## Adding primitives
@@ -41,6 +41,7 @@ paths:
 
 - `eslint.config.js` and the `lint` script in `package.json` own enforcement; fix violations in code.
 - Shared hooks live in `src/hooks/`, since a component file may export only components.
+- No comments, per [Comments in app/AGENTS.md](../AGENTS.md#comments): `eslint/comments.js` enforces it, with its cases in `eslint/comments.test.ts`.
 
 ## Loading
 

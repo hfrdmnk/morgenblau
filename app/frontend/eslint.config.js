@@ -5,6 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 import { defineConfig, globalIgnores } from 'eslint/config';
 
+import comments from './eslint/comments.js';
 import designSystem from './eslint/design-system.js';
 
 const isSuspense =
@@ -71,6 +72,11 @@ export default defineConfig([
     {
         // Inline disables only warn under noInlineConfig; the lint script's --max-warnings 0 makes them fail.
         linterOptions: { noInlineConfig: true },
+    },
+    {
+        files: ['**/*.{js,ts,tsx}'],
+        plugins: { comments },
+        rules: { 'comments/no-comments': 'error', 'comments/no-eslint-disable': 'error' },
     },
     {
         files: ['**/*.{ts,tsx}'],

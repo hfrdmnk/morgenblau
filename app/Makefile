@@ -77,6 +77,10 @@ migrate-create:
 sqlc:
 	@sqlc generate
 
+comments-prune:
+	@go run ./cmd/comments-prune
+	@bun run --cwd ./frontend lint --prune-suppressions
+
 # One-time per clone: activate the committed git hooks (.githooks/).
 hooks:
 	@git config core.hooksPath .githooks
@@ -97,4 +101,4 @@ watch:
 		fi; \
 	fi
 
-.PHONY: all build build-linux frontend-build run dev test test-race clean watch migrate-up migrate-down migrate-status migrate-fresh migrate-create sqlc hooks
+.PHONY: all build build-linux frontend-build run dev test test-race clean watch migrate-up migrate-down migrate-status migrate-fresh migrate-create sqlc comments-prune hooks
