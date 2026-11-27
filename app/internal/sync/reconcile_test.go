@@ -8,13 +8,11 @@ import (
 	"time"
 )
 
-// coreRow stands in for any collection's snapshot row, so these tests exercise the diff and not a schema.
 type coreRow struct {
 	rkey      string
 	updatedAt string
 }
 
-// coreHarness builds a reconcilePass over coreRow and logs every statement the core issues, in order.
 type coreHarness struct {
 	local        []coreRow
 	baseline     []coreRow
@@ -25,8 +23,7 @@ type coreHarness struct {
 	upsertFail   map[string]error
 	deleteFail   map[string]error
 
-	ops []string
-	// store is what the tx handed the pass closures; the core must never reach past them to a store of its own.
+	ops      []string
 	store    SyncStore
 	sawStore bool
 }
@@ -48,7 +45,6 @@ func (h *coreHarness) pass() reconcilePass[coreRow] {
 			return h.deleteFail[rkey]
 		},
 	}
-	// A nil baseline means nothing changed locally during the listing.
 	p.baseline = h.baseline
 	if p.baseline == nil {
 		p.baseline = h.local
@@ -73,7 +69,6 @@ func (h *coreHarness) pass() reconcilePass[coreRow] {
 	return p
 }
 
-// txSpy stands in for Engine.runTx: beginErr fails the whole batch, inner records what the pass closure returned, commitErr fails a clean closure at COMMIT.
 type txSpy struct {
 	beginErr  error
 	commitErr error
@@ -158,7 +153,6 @@ func TestReconcileCollection_UpsertsRunInDesiredOrder(t *testing.T) {
 	assertOps(t, h.ops, "upsert:c", "upsert:a", "upsert:b")
 }
 
-// A row written in-app after the PDS listing was taken is absent from that listing without having been deleted remotely.
 func TestReconcileCollection_SparesRowInsertedDuringListing(t *testing.T) {
 	h := &coreHarness{local: []coreRow{{rkey: "a"}, {rkey: "b"}}, baseline: []coreRow{{rkey: "b"}}}
 	tx := &txSpy{}
@@ -169,7 +163,6 @@ func TestReconcileCollection_SparesRowInsertedDuringListing(t *testing.T) {
 	assertOps(t, h.ops, "delete:b")
 }
 
-// A local delete made during the listing is newer than the listed record, so the stale listing must not resurrect it.
 func TestReconcileCollection_DoesNotResurrectRowDeletedDuringListing(t *testing.T) {
 	h := &coreHarness{local: []coreRow{}, baseline: []coreRow{{rkey: "a"}}, desiredKeys: []string{"a", "c"}}
 	tx := &txSpy{}
@@ -348,7 +341,6 @@ func TestReconcileCollection_DesiredWriteFailureRollsBackStaleDelete(t *testing.
 	}
 }
 
-// Every statement goes through the pass's own closures, so the core can never reach a non-tx store and block on the sole writer connection.
 func TestReconcileCollection_ReadsOnlyTheStoreTheTxHandsIt(t *testing.T) {
 	h := &coreHarness{local: []coreRow{{rkey: "a"}}, desiredKeys: []string{"c"}}
 	tx := &txSpy{}
@@ -357,6 +349,6 @@ func TestReconcileCollection_ReadsOnlyTheStoreTheTxHandsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !h.sawStore || h.store != nil {
-		t.Errorf("snapshot got store %v (called = %v), want the tx's own", h.store, h.sawStore)
+		t.Errorf("snapshot got store %v (called = %v), want the tx's own: a store outside the tx blocks on the sole writer connection", h.store, h.sawStore)
 	}
 }

@@ -9,7 +9,8 @@ import (
 	"morgenblau/internal/atprepo"
 )
 
-// canonicalByKey keeps the smallest rkey per key: TID ordering makes the smallest rkey the earliest-created, existence-authority record.
+// TID record keys sort by creation time, so the smallest rkey is the earliest record and the largest the latest.
+// https://atproto.com/specs/tid
 func canonicalByKey[K comparable, R any](records []R, keyOf func(R) K, rkeyOf func(R) string) map[K]R {
 	byKey := make(map[K]R, len(records))
 	for _, r := range records {
@@ -21,7 +22,6 @@ func canonicalByKey[K comparable, R any](records []R, keyOf func(R) K, rkeyOf fu
 	return byKey
 }
 
-// newestSidecarByKey keeps the largest rkey per key, so the newest edit survives a sync/PATCH-race duplicate.
 func newestSidecarByKey[K comparable, S any](sidecars []S, keyOf func(S) K, rkeyOf func(S) string, onDuplicate func(kept, dropped S)) map[K]S {
 	byKey := make(map[K]S, len(sidecars))
 	for _, s := range sidecars {
@@ -36,7 +36,6 @@ func newestSidecarByKey[K comparable, S any](sidecars []S, keyOf func(S) K, rkey
 	return byKey
 }
 
-// sidecarCleanup deletes orphaned or superseded sidecars from the PDS, the one place reconcile writes back. A nil pds disables it.
 func sidecarCleanup[K comparable, S any, R any](
 	ctx context.Context,
 	pds atprepo.Writer,

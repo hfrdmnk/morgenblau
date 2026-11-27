@@ -17,10 +17,8 @@ const (
 	saveCollection         = lexicon.Save
 )
 
-// Standardfeed subscriptions hold portable existence records; blue.morgen subscriptions carry optional metadata sidecars.
 const standardSubscriptionCollection = standardfeed.CollectionSubscription
 
-// SessionPDSLister pages com.atproto.repo.listRecords against the session's PDS until the cursor is exhausted.
 type SessionPDSLister struct{}
 
 type listRecordsResp struct {
@@ -34,7 +32,6 @@ type recordEntry struct {
 	Value map[string]any `json:"value"`
 }
 
-// listRecordsClient is the slice of *atclient.APIClient pageSubscriptions uses, a seam for httptest-backed fakes in tests.
 type listRecordsClient interface {
 	Get(ctx context.Context, endpoint syntax.NSID, params map[string]any, out any) error
 }
@@ -55,7 +52,7 @@ func (SessionPDSLister) ListStandardSubscriptions(ctx context.Context, sess *ses
 			slog.Warn("pdslister: skipping standard subscription without publication", "uri", r.URI)
 			continue
 		}
-		createdAt, _ := r.Value["createdAt"].(string) // optional in the standard lexicon
+		createdAt, _ := r.Value["createdAt"].(string)
 		out = append(out, PDSStandardSubscription{
 			URI:         r.URI,
 			Rkey:        atprepo.RkeyFromATURI(r.URI),
@@ -91,7 +88,6 @@ func pageSubscriptions(ctx context.Context, client listRecordsClient, repo strin
 	for _, r := range records {
 		sub, ok := toPDSSubscription(r)
 		if !ok {
-			// Unknown source variants are skipped and logged, never treated as deletes of something else.
 			slog.Warn("pdslister: skipping subscription with unknown source variant", "uri", r.URI)
 			continue
 		}
@@ -100,8 +96,6 @@ func pageSubscriptions(ctx context.Context, client listRecordsClient, repo strin
 	return out, nil
 }
 
-// pageRecords terminates only on an empty cursor: an empty page with a cursor
-// set is still a valid continuation, and stopping early would let reconcile delete rows missing from a partial snapshot.
 func pageRecords(ctx context.Context, client listRecordsClient, repo, collection string) ([]recordEntry, error) {
 	var (
 		out    []recordEntry
@@ -133,7 +127,6 @@ const (
 	sourceTypeStandard = lexicon.SourceStandard
 )
 
-// toPDSSubscription dispatches on the required source open union; returns false for v1 flat-shape or unrecognized future variants so callers skip them.
 func toPDSSubscription(r recordEntry) (PDSSubscription, bool) {
 	if err := lexicon.ValidateRecordLenient(subscriptionCollection, r.Value); err != nil {
 		slog.Warn("pdslister: skipping subscription that failed lexicon validation", "uri", r.URI, "err", err)
@@ -175,7 +168,6 @@ func toPDSSubscription(r recordEntry) (PDSSubscription, bool) {
 	return sub, true
 }
 
-// stringSlice extracts []string from a decoded JSON array ([]any), skipping non-string members.
 func stringSlice(v any) []string {
 	raw, ok := v.([]any)
 	if !ok {
@@ -193,7 +185,6 @@ func stringSlice(v any) []string {
 	return out
 }
 
-// toPDSSave maps a blue.morgen.feed.save record; itemUrl and createdAt are lexicon-required, feedUrl is optional.
 func toPDSSave(r recordEntry) (PDSSave, bool) {
 	if err := lexicon.ValidateRecordLenient(saveCollection, r.Value); err != nil {
 		slog.Warn("pdslister: skipping save that failed lexicon validation", "uri", r.URI, "err", err)

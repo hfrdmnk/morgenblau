@@ -23,7 +23,7 @@ func TestUpdatedAfterSnapshot(t *testing.T) {
 		{"after snapshot", "2026-07-20T12:00:01Z", true},
 		{"same second as snapshot", "2026-07-20T12:00:00Z", false},
 		{"before snapshot", "2026-07-20T11:59:59Z", false},
-		{"offset resolving after snapshot", "2026-07-20T14:00:05+02:00", true},
+		{"numeric offset that sorts before the Z snapshot as a string but resolves after it", "2026-07-20T14:00:05+02:00", true},
 		{"invalid", "not-a-timestamp", false},
 	}
 	for _, tc := range cases {
@@ -81,7 +81,6 @@ func TestReconcile_StaleSubscriptionListingPreservesSameSecondMirrorUpdate(t *te
 	}
 }
 
-// Drives runDualTrack so the baseline both subscription passes guard against is the one the engine itself took before listing.
 func TestSyncUser_StaleSubscriptionListingPreservesMirrorWritesInBothPasses(t *testing.T) {
 	store := newFakeStore()
 	store.rows[guardDID] = map[string]db.UserSubscription{
@@ -107,7 +106,7 @@ func TestSyncUser_StaleSubscriptionListingPreservesMirrorWritesInBothPasses(t *t
 	for _, rkey := range []string{"3sub", "3std"} {
 		row, ok := store.rows[guardDID][rkey]
 		if !ok || row.Title == nil || *row.Title != "New local title" {
-			t.Errorf("%s = %+v (present %v), want the concurrent mirror write", rkey, row, ok)
+			t.Errorf("%s = %+v (present %v), want the concurrent mirror write: runDualTrack must read the baseline both subscription passes guard against before it lists the PDS", rkey, row, ok)
 		}
 	}
 	if len(store.deletes) != 0 {
@@ -139,7 +138,6 @@ func TestReconcile_StaleSaveListingPreservesSameSecondMirrorInsert(t *testing.T)
 	}
 }
 
-// Omitting any of these weakens the guard for one collection without failing that collection's other tests.
 var listingGuardFields = []string{"snapshotAt", "baseline", "changedSinceSnapshot", "updatedAtOf"}
 
 func TestEveryReconcilePassCarriesTheListingGuard(t *testing.T) {

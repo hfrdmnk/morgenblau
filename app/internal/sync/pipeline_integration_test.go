@@ -18,7 +18,6 @@ import (
 	"morgenblau/internal/standardfeed"
 )
 
-// seedCatalogFeed inserts the feeds row FetchAndStore expects to exist; production callers always upsert it before a fetch is ever dispatched.
 func seedCatalogFeed(t *testing.T, dbs *database.DB, feedURL string) {
 	t.Helper()
 	nowStr := time.Now().UTC().Format(time.RFC3339)
@@ -187,11 +186,10 @@ func TestFeedPipeline_FetchAndStore_BatchCommitsAtomicallyAcrossPools(t *testing
 		t.Fatalf("FetchAndStore: %v", err)
 	}
 
-	// Every read below goes through the Reader pool, proving the writer-pool commit is visible cross-pool over WAL.
 	readerQ := db.New(dbs.Reader)
 	feed, err := readerQ.GetFeed(ctx, feedURL)
 	if err != nil {
-		t.Fatalf("GetFeed via reader: %v", err)
+		t.Fatalf("GetFeed via reader: %v; the writer pool's commit must be visible to the reader pool", err)
 	}
 	if feed.LastFetchedAt == nil {
 		t.Errorf("fetch state not persisted: %+v", feed)
@@ -253,7 +251,6 @@ func TestFeedPipeline_FetchAndStore_SkippedEntryDoesNotLoseSiblings(t *testing.T
 	}
 }
 
-// failingEntryQueries fails UpsertFeedEntry for one guid, driving the log-and-continue branch on a real per-entry write error (unlike the skipped-entry tests' pre-INSERT continue).
 type failingEntryQueries struct {
 	failGUID string
 	upserted []string
@@ -328,7 +325,7 @@ func TestStandardfeedPipeline_FetchAndStore_MalformedDocDoesNotLoseSiblings(t *t
 		pub: testPublication(),
 		docs: []standardfeed.Document{
 			{URI: goodURI1, CID: "cid-a", Site: testPubURI, Title: "Good A", Path: "/a", PublishedAt: "2026-07-01T08:00:00Z"},
-			{URI: badURI, CID: "cid-bad", Site: testPubURI, Path: "/bad", PublishedAt: "2026-07-01T08:00:00Z"}, // no title
+			{URI: badURI, CID: "cid-bad", Site: testPubURI, Path: "/bad", PublishedAt: "2026-07-01T08:00:00Z"},
 			{URI: goodURI2, CID: "cid-b", Site: testPubURI, Title: "Good B", Path: "/b", PublishedAt: "2026-07-01T08:00:00Z"},
 		},
 	}
@@ -386,7 +383,6 @@ func TestStandardfeedPipeline_FetchAndStore_DeleteSweepAndMalformedProtection(t 
 		t.Fatalf("seed keep entry: %v", err)
 	}
 
-	// keepURI comes back malformed (no title) but must survive: it's marked present before the validity check runs.
 	src := &fakeStandardSource{
 		pub: testPublication(),
 		docs: []standardfeed.Document{
@@ -406,14 +402,13 @@ func TestStandardfeedPipeline_FetchAndStore_DeleteSweepAndMalformedProtection(t 
 	}
 	kept, err := readerQ.GetFeedEntryBySlug(ctx, EntrySlug(testPubURI, keepURI))
 	if err != nil {
-		t.Fatalf("malformed-but-present doc's cached entry was deleted: %v", err)
+		t.Fatalf("malformed-but-present doc's cached entry was deleted: %v; a document that still exists upstream must not trip the delete sweep", err)
 	}
 	if kept.RecordCid == nil || *kept.RecordCid != keepCID {
 		t.Errorf("cached entry should be untouched (still old cid), got %v", kept.RecordCid)
 	}
 }
 
-// Undated items a feed already carries when Morgenblau first fetches it are history; one that appears later belongs to the day it was first seen.
 func TestFeedPipeline_UndatedItemsFromTheFirstFetchStayUndated(t *testing.T) {
 	var mu sync.Mutex
 	status, later := http.StatusInternalServerError, ""
@@ -424,7 +419,6 @@ func TestFeedPipeline_UndatedItemsFromTheFirstFetchStayUndated(t *testing.T) {
 			w.WriteHeader(status)
 			return
 		}
-		// Hugo renders an undated page with Go's zero time.
 		_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>Example Publication</title><link>https://site.example.com/</link>` + later +
 			`<item><title>About</title><link>https://site.example.com/about/</link><guid>https://site.example.com/about/</guid><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate></item>` +
 			`<item><title>Dated</title><link>https://site.example.com/dated</link><guid>https://site.example.com/dated</guid><pubDate>Thu, 01 Oct 2026 08:00:00 +0000</pubDate></item>` +
@@ -458,7 +452,7 @@ func TestFeedPipeline_UndatedItemsFromTheFirstFetchStayUndated(t *testing.T) {
 	status = http.StatusOK
 	poll()
 	if got := published("https://site.example.com/about/"); got != "" {
-		t.Errorf("first fetch undated published_at = %q, want empty", got)
+		t.Errorf("first fetch undated published_at = %q, want empty: undated items a feed carries when Morgenblau first fetches it are its back catalogue, not today's news", got)
 	}
 	if got := published("https://site.example.com/dated"); got != "2026-10-01T08:00:00Z" {
 		t.Errorf("dated published_at = %q", got)
@@ -476,7 +470,6 @@ func TestFeedPipeline_UndatedItemsFromTheFirstFetchStayUndated(t *testing.T) {
 	}
 }
 
-// Generated feeds date every item a later poll finds, so an undated one is setup history and must stay out of the digest.
 func TestFeedPipeline_OwnWebFeedUndatedItemsStayUndated(t *testing.T) {
 	var mu sync.Mutex
 	undated := ""
@@ -522,7 +515,7 @@ func TestFeedPipeline_OwnWebFeedUndatedItemsStayUndated(t *testing.T) {
 			continue
 		}
 		if got := published(webURL, "https://site.example.com/undated"); got != "" {
-			t.Errorf("web feed undated published_at = %q, want empty", got)
+			t.Errorf("web feed undated published_at = %q, want empty: generated feeds date every item a later poll finds, so an undated one is setup history and stays out of the digest", got)
 		}
 		if got := published(plainURL, "https://site.example.com/undated"); got != "2026-10-11T12:00:00Z" {
 			t.Errorf("plain feed undated published_at = %q, want the first-seen time", got)

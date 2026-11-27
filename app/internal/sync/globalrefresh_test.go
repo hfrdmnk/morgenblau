@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// fakeFeedLister stands in for *db.Queries.ListFollowedFeedURLs.
 type fakeFeedLister struct {
 	urls []string
 	err  error
@@ -20,7 +19,6 @@ func (l fakeFeedLister) ListFollowedFeedURLs(_ context.Context) ([]string, error
 	return l.urls, l.err
 }
 
-// recordingFetcher records every URL fetched and fails on the ones in failOn.
 type recordingFetcher struct {
 	mu     sync.Mutex
 	seen   []string
@@ -37,7 +35,6 @@ func (f *recordingFetcher) FetchAndStore(_ context.Context, url string) error {
 	return nil
 }
 
-// peakFetcher tracks the maximum number of concurrent FetchAndStore calls.
 type peakFetcher struct {
 	inflight int32
 	peak     int32
@@ -161,7 +158,7 @@ func TestRefreshAll_RespectsConcurrencyLimit(t *testing.T) {
 
 func TestRefreshAll_ContextCancellationStops(t *testing.T) {
 	urls := []string{"https://a/feed", "https://b/feed"}
-	bf := newBlockingFetcher() // never released, only ctx can unblock it
+	bf := newBlockingFetcher()
 	r := NewGlobalRefresher(fakeFeedLister{urls: urls}, bf)
 
 	ctx, cancel := context.WithCancel(context.Background())

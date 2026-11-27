@@ -16,7 +16,6 @@ import (
 	"morgenblau/internal/standardfeed"
 )
 
-// StandardfeedSource is the slice of *standardfeed.Client the pipeline uses.
 type StandardfeedSource interface {
 	GetPublication(ctx context.Context, uri string) (*standardfeed.Publication, error)
 	ListDocuments(ctx context.Context, pubURI string) ([]standardfeed.Document, error)
@@ -31,8 +30,6 @@ type stdPipelineQueries interface {
 	DeleteFeedEntry(ctx context.Context, arg db.DeleteFeedEntryParams) error
 }
 
-// StandardfeedPipeline implements FeedFetcher for standardfeed rows: a
-// listRecords diff where documents missing upstream are hard-deleted.
 type StandardfeedPipeline struct {
 	source    StandardfeedSource
 	queries   stdPipelineQueries
@@ -48,14 +45,12 @@ func NewStandardfeedPipeline(source StandardfeedSource, q stdPipelineQueries) *S
 		sanitizer: bluemonday.UGCPolicy(),
 		now:       time.Now,
 	}
-	// Default: no transaction (keeps fake-based tests working).
 	p.runTx = func(ctx context.Context, fn func(stdPipelineQueries) error) error {
 		return fn(p.queries)
 	}
 	return p
 }
 
-// WithTxRunner commits each publication's diff batch in one transaction on the writer pool.
 func (p *StandardfeedPipeline) WithTxRunner(w *sql.DB) *StandardfeedPipeline {
 	p.runTx = func(ctx context.Context, fn func(stdPipelineQueries) error) error {
 		return database.WithTx(ctx, w, func(q *db.Queries) error {
@@ -66,8 +61,6 @@ func (p *StandardfeedPipeline) WithTxRunner(w *sql.DB) *StandardfeedPipeline {
 }
 
 func (p *StandardfeedPipeline) FetchAndStore(ctx context.Context, pubURI string) error {
-	// Both network calls precede the transaction: deletes only run against a
-	// complete remote snapshot, and the writer connection is never held across them.
 	pub, err := p.source.GetPublication(ctx, pubURI)
 	if err != nil {
 		return err
@@ -79,8 +72,8 @@ func (p *StandardfeedPipeline) FetchAndStore(ctx context.Context, pubURI string)
 
 	nowStr := p.now().UTC().Format(time.RFC3339)
 
-	// The diff read rides inside the tx for a consistent snapshot; per-entry
-	// write errors are tolerated (log-and-continue) so one bad document doesn't roll back the batch.
+	// SQLite backs out only a failing statement and keeps the transaction active, so a failed entry write leaves its siblings in the batch.
+	// https://www.sqlite.org/lang_conflict.html
 	return p.runTx(ctx, func(q stdPipelineQueries) error {
 		if err := q.UpsertFeed(ctx, db.UpsertFeedParams{
 			FeedUrl:   pubURI,
@@ -112,7 +105,7 @@ func (p *StandardfeedPipeline) FetchAndStore(ctx context.Context, pubURI string)
 
 		local, err := q.ListFeedEntriesForDiff(ctx, pubURI)
 		if err != nil {
-			return err // in-tx read failure: roll back the batch
+			return err
 		}
 		localCID := make(map[string]*string, len(local))
 		for _, row := range local {
@@ -121,15 +114,13 @@ func (p *StandardfeedPipeline) FetchAndStore(ctx context.Context, pubURI string)
 
 		remote := make(map[string]bool, len(docs))
 		for _, doc := range docs {
-			// Marked present before validation: a transiently-malformed record still
-			// exists upstream, so it must not trip the delete sweep and drop a good cached entry.
 			remote[doc.URI] = true
 			if doc.Title == "" || doc.PublishedAt == "" {
 				slog.Warn("standardpipeline: skipping malformed document", "uri", doc.URI)
 				continue
 			}
 			if cid, known := localCID[doc.URI]; known && cid != nil && *cid == doc.CID {
-				continue // unchanged; never touch the row (protects cached extractions)
+				continue
 			}
 			if err := q.UpsertStandardfeedEntry(ctx, p.entryParams(pub, doc, pubURI, nowStr)); err != nil {
 				slog.Warn("standardpipeline: entry upsert failed", "publication", pubURI, "doc", doc.URI, "err", err)
@@ -154,8 +145,6 @@ func (p *StandardfeedPipeline) entryParams(pub *standardfeed.Publication, doc st
 		summary = doc.TextContent
 	}
 
-	// Path-less documents prefill extracted_body with plaintext so the reader's
-	// cache short-circuit serves it without a fetch; path-ful documents get NULL so a CID change forces re-extraction.
 	var extracted *string
 	if doc.Path == "" && doc.TextContent != "" {
 		extracted = nilIfEmpty(plaintextToHTML(doc.TextContent))
@@ -186,7 +175,6 @@ func (p *StandardfeedPipeline) entryParams(pub *standardfeed.Publication, doc st
 	}
 }
 
-// canonicalDocumentURL returns "" for a path-less document (no canonical URL).
 func canonicalDocumentURL(baseURL, path string) string {
 	if path == "" || baseURL == "" {
 		return ""
@@ -198,7 +186,6 @@ func canonicalDocumentURL(baseURL, path string) string {
 	return base + path
 }
 
-// plaintextToHTML escapes and paragraph-wraps plaintext so the reader renders textContent fallbacks legibly.
 func plaintextToHTML(text string) string {
 	blocks := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n\n")
 	var b strings.Builder
@@ -214,7 +201,6 @@ func plaintextToHTML(text string) string {
 	return b.String()
 }
 
-// normalizeTime reformats an atproto datetime as UTC RFC3339 so published_at sorts lexicographically alongside RSS entries; unparsable values fall back to now.
 func normalizeTime(raw string, fallback time.Time) string {
 	if t, err := time.Parse(time.RFC3339, strings.TrimSpace(raw)); err == nil {
 		return t.UTC().Format(time.RFC3339)

@@ -14,11 +14,10 @@ import (
 	"morgenblau/internal/jobs"
 )
 
-// fakeRecordWriter records DeleteRecord calls, the reconcile write exception.
 type fakeRecordWriter struct {
 	mu       sync.Mutex
 	attempts []string
-	deleted  []string // "<collection>/<rkey>"
+	deleted  []string
 	failures map[string]int
 }
 
@@ -86,7 +85,6 @@ func runStandardReconcile(t *testing.T, store *fakeStore, lister *fakeLister, pd
 	return added
 }
 
-// A standard record from another app becomes a local source: kind=standardfeed, a Tier-2 row keyed by publication, onAdded fires for the Phase-2 fetch.
 func TestStandardReconcile_AdoptsForeignSubscription(t *testing.T) {
 	store := newFakeStore()
 	lister := &fakeLister{standardSubs: []PDSStandardSubscription{stdSub("3s1", pubA)}}
@@ -94,7 +92,7 @@ func TestStandardReconcile_AdoptsForeignSubscription(t *testing.T) {
 	added := runStandardReconcile(t, store, lister, nil)
 
 	if len(added) != 1 || added[0] != pubA {
-		t.Fatalf("onAdded = %v, want [%s]", added, pubA)
+		t.Fatalf("onAdded = %v, want [%s] so the newly adopted publication gets its Phase-2 fetch", added, pubA)
 	}
 	up, ok := store.upsertParams["3s1"]
 	if !ok {
@@ -142,17 +140,14 @@ func TestStandardReconcile_SidecarJoinAppliesMetadata(t *testing.T) {
 	}
 }
 
-// Duplicate standard records collapse to the smallest rkey; when the canonical rkey changes, delete-before-upsert keeps UNIQUE(did, feed_url) satisfied in one pass.
 func TestStandardReconcile_DuplicatesCollapseAndRekeySurvives(t *testing.T) {
 	store := newFakeStore()
-	// Local row exists under rkey 3zz (previous canonical).
 	lister := &fakeLister{standardSubs: []PDSStandardSubscription{stdSub("3zz", pubA)}}
 	runStandardReconcile(t, store, lister, nil)
 	if _, ok := store.upsertParams["3zz"]; !ok {
 		t.Fatalf("setup: no row for 3zz")
 	}
 
-	// A duplicate with a smaller rkey appears → canonical rekeys to 3aa.
 	lister = &fakeLister{standardSubs: []PDSStandardSubscription{stdSub("3zz", pubA), stdSub("3aa", pubA)}}
 	runStandardReconcile(t, store, lister, nil)
 
@@ -169,8 +164,6 @@ func TestStandardReconcile_DuplicatesCollapseAndRekeySurvives(t *testing.T) {
 	store.assertDeleteBeforeUpsert(t, "3zz", "3aa")
 }
 
-// The UNIQUE(did, feed_url) index that forces delete-before-upsert for standardfeed applies to rss too:
-// a subscription delete+recreated on the PDS keeps its feed URL, so the stale row must vacate in the same pass.
 func TestRSSReconcile_RekeyedSubscriptionDeletesBeforeUpsert(t *testing.T) {
 	const feedURL = "https://feed.example.com/a"
 	store := newFakeStore()
@@ -226,7 +219,6 @@ func TestStandardReconcile_RemoteDeleteRemovesLocalOnly(t *testing.T) {
 	}
 	runStandardReconcile(t, store, lister, nil)
 
-	// Publication unsubscribed elsewhere; rss subscription unchanged.
 	lister.standardSubs = nil
 	runStandardReconcile(t, store, lister, nil)
 
@@ -240,8 +232,7 @@ func TestStandardReconcile_OrphanedSidecarDeletedFromPDS(t *testing.T) {
 	store := newFakeStore()
 	pds := &fakeRecordWriter{}
 	lister := &fakeLister{
-		subs: []PDSSubscription{sidecar("3sc", pubA, "Old Title")},
-		// No standard record for pubA → the sidecar is orphaned.
+		subs:         []PDSSubscription{sidecar("3sc", pubA, "Old Title")},
 		standardSubs: []PDSStandardSubscription{stdSub("3s2", pubB)},
 	}
 
@@ -250,7 +241,6 @@ func TestStandardReconcile_OrphanedSidecarDeletedFromPDS(t *testing.T) {
 	if len(pds.deleted) != 1 || pds.deleted[0] != "blue.morgen.feed.subscription/3sc" {
 		t.Fatalf("PDS deletes = %v, want the orphaned sidecar", pds.deleted)
 	}
-	// The orphaned sidecar must not have produced a local row.
 	rows, _ := store.ListUserSubscriptionsForSync(context.Background(), "did:plc:alice")
 	if len(rows) != 1 || rows[0].FeedUrl != pubB {
 		t.Fatalf("rows = %+v, want only pubB", rows)
@@ -287,7 +277,6 @@ func TestStandardReconcile_LiveSidecarNotDeleted(t *testing.T) {
 }
 
 func TestStandardReconcile_DuplicateSidecarNewestWinsOlderDeleted(t *testing.T) {
-	// Two sidecars for one live publication (sync/PATCH race): newest edit wins, the older is deleted from the PDS.
 	store := newFakeStore()
 	pds := &fakeRecordWriter{}
 	lister := &fakeLister{
@@ -304,14 +293,13 @@ func TestStandardReconcile_DuplicateSidecarNewestWinsOlderDeleted(t *testing.T) 
 		t.Fatalf("rows = %+v, want one", rows)
 	}
 	if rows[0].Title == nil || *rows[0].Title != "New Title" {
-		t.Errorf("title = %v, want newest sidecar's", rows[0].Title)
+		t.Errorf("title = %v, want the newest sidecar's, so the latest edit survives a sync/PATCH race duplicate", rows[0].Title)
 	}
 	if rows[0].SidecarRkey == nil || *rows[0].SidecarRkey != "3zzz" {
 		t.Errorf("sidecarRkey = %v, want newest 3zzz", rows[0].SidecarRkey)
 	}
 }
 
-// A failed standard listing aborts before any mutation: transient PDS errors must not wipe local sources.
 func TestStandardReconcile_ListErrorAbortsBeforeDeletes(t *testing.T) {
 	store := newFakeStore()
 	lister := &fakeLister{
@@ -329,7 +317,7 @@ func TestStandardReconcile_ListErrorAbortsBeforeDeletes(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	if len(store.deletes) != 0 {
-		t.Fatalf("deletes = %v, want none on list error", store.deletes)
+		t.Fatalf("deletes = %v, want none on list error: both listings come before any write, so a transient PDS error cannot wipe local sources", store.deletes)
 	}
 
 	lister.standardErr = nil
@@ -339,11 +327,10 @@ func TestStandardReconcile_ListErrorAbortsBeforeDeletes(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	if len(store.deletes) != 0 {
-		t.Fatalf("deletes = %v, want none on list error", store.deletes)
+		t.Fatalf("deletes = %v, want none on list error: both listings come before any write, so a transient PDS error cannot wipe local sources", store.deletes)
 	}
 }
 
-// The rss pass must not touch standardfeed rows and vice versa.
 func TestStandardReconcile_KindsAreIsolated(t *testing.T) {
 	store := newFakeStore()
 	lister := &fakeLister{
@@ -352,12 +339,11 @@ func TestStandardReconcile_KindsAreIsolated(t *testing.T) {
 	}
 	runStandardReconcile(t, store, lister, nil)
 
-	// Remove the rss record remotely; the standardfeed row must survive.
 	lister.subs = nil
 	runStandardReconcile(t, store, lister, nil)
 
 	rows, _ := store.ListUserSubscriptionsForSync(context.Background(), "did:plc:alice")
 	if len(rows) != 1 || rows[0].Kind != "standardfeed" {
-		t.Fatalf("rows = %+v, want only the standardfeed row", rows)
+		t.Fatalf("rows = %+v, want only the standardfeed row: the rss pass must never delete rows the standardfeed pass owns", rows)
 	}
 }

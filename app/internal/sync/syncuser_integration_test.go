@@ -11,8 +11,7 @@ import (
 	"morgenblau/internal/jobs"
 )
 
-// A deferred FK lets every user_saves statement succeed and fails only at COMMIT.
-const savesCommitTripwireSQL = `
+const failSavesOnlyAtCommitSQL = `
 CREATE TABLE commit_tripwire_parent (id TEXT PRIMARY KEY);
 CREATE TABLE commit_tripwire (ref TEXT REFERENCES commit_tripwire_parent(id) DEFERRABLE INITIALLY DEFERRED);
 CREATE TRIGGER user_saves_commit_tripwire AFTER INSERT ON user_saves BEGIN
@@ -33,7 +32,7 @@ func TestSyncUser_FailsWhenTheSavesTransactionDoesNotCommit(t *testing.T) {
 			dbs := openMigratedSyncDB(t)
 			ctx := context.Background()
 			if tc.tripwire {
-				if _, err := dbs.Writer.ExecContext(ctx, savesCommitTripwireSQL); err != nil {
+				if _, err := dbs.Writer.ExecContext(ctx, failSavesOnlyAtCommitSQL); err != nil {
 					t.Fatalf("tripwire: %v", err)
 				}
 			}

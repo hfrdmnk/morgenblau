@@ -17,10 +17,10 @@ import (
 
 type fakeStore struct {
 	mu               sync.Mutex
-	rows             map[string]map[string]db.UserSubscription // did -> rkey -> row
+	rows             map[string]map[string]db.UserSubscription
 	deletes          []string
 	upserts          int
-	upsertParams     map[string]db.UpsertUserSubscriptionParams // rkey -> last params
+	upsertParams     map[string]db.UpsertUserSubscriptionParams
 	feedUps          int
 	feedParams       []db.UpsertFeedParams
 	feedErr          func(feedURL string) error
@@ -28,12 +28,11 @@ type fakeStore struct {
 	subDeleteErr     error
 	saveUpsertErr    error
 	saveDeleteErr    error
-	saves            map[string]map[string]db.UserSave // did -> rkey -> row
+	saves            map[string]map[string]db.UserSave
 	saveDeletes      []string
 	saveUpserts      int
-	saveUpsertParams map[string]db.UpsertUserSaveParams // rkey -> last params
-	// ops is a single ordered log across deletes and upserts so tests can assert delete-before-rekeyed-upsert ordering, which the maps above lose.
-	ops []string
+	saveUpsertParams map[string]db.UpsertUserSaveParams
+	ops              []string
 }
 
 func newFakeStore() *fakeStore {
@@ -57,7 +56,7 @@ func (s *fakeStore) assertDeleteBeforeUpsert(t *testing.T, delRkey, upRkey strin
 		}
 	}
 	if delIndex == -1 || upsertIndex == -1 || delIndex >= upsertIndex {
-		t.Fatalf("operations = %v, want delete:%s before upsert:%s", s.ops, delRkey, upRkey)
+		t.Fatalf("operations = %v, want delete:%s before upsert:%s: a rekeyed record keeps its feed URL, so its stale row must leave before UNIQUE(did, feed_url) sees the new rkey", s.ops, delRkey, upRkey)
 	}
 }
 
@@ -499,7 +498,6 @@ func waitForTerminalJob(t *testing.T, tracker *jobs.Tracker, id string, did synt
 }
 
 func TestSyncUser_FK_NotCalledOnTier2Failure(t *testing.T) {
-	// A fetch on Tier-2 UpsertFeed failure would silently violate the feed_entries.feed_url FK.
 	store := newFakeStore()
 	store.feedErr = func(url string) error {
 		if url == "https://broken/feed" {
@@ -521,7 +519,7 @@ func TestSyncUser_FK_NotCalledOnTier2Failure(t *testing.T) {
 
 	for _, u := range fetcher.seen() {
 		if u == "https://broken/feed" {
-			t.Errorf("broken URL was fetched: would have hit FK violation; fetched = %v", fetcher.seen())
+			t.Errorf("broken URL was fetched without its catalog row, which the feed_entries.feed_url FK needs; fetched = %v", fetcher.seen())
 		}
 	}
 }
@@ -720,7 +718,6 @@ func TestSyncUser_ShutdownWaitsForRun(t *testing.T) {
 	if elapsed < lister.delay {
 		t.Errorf("Shutdown returned in %v; expected to block at least %v", elapsed, lister.delay)
 	}
-	// Shutdown returning means the run goroutine already had its chance to update the tracker.
 	j, err := tracker.Get(id, mustDID("did:plc:alice"))
 	if err != nil {
 		t.Fatalf("tracker.Get: %v", err)
@@ -732,7 +729,6 @@ func TestSyncUser_ShutdownWaitsForRun(t *testing.T) {
 
 func TestOrchestrator_ShutdownDeadlineExceeded(t *testing.T) {
 	store := newFakeStore()
-	// Lister that blocks longer than the Shutdown deadline.
 	lister := &fakeLister{delay: 500 * time.Millisecond, subs: []PDSSubscription{
 		{URI: "at://x/a/k1", Kind: "rss", Rkey: "k1", FeedURL: "https://example.com/feed"},
 	}}
@@ -752,7 +748,6 @@ func TestOrchestrator_ShutdownDeadlineExceeded(t *testing.T) {
 	}
 }
 
-// spyLocker records lock acquisitions and whether the lock is currently held.
 type spyLocker struct {
 	calls   atomic.Int32
 	heldNow atomic.Bool
@@ -766,7 +761,6 @@ func (l *spyLocker) LockSession(did syntax.DID, sid string) func() {
 	return func() { l.heldNow.Store(false) }
 }
 
-// recordingResumer records whether the session lock is held at resume time, to prove resume and the eager refresh share one continuous lock hold.
 type recordingResumer struct {
 	locker       *spyLocker
 	heldAtResume bool
@@ -783,7 +777,6 @@ func (r *recordingResumer) ResumeSession(_ context.Context, did syntax.DID, sid 
 	return &session.Session{Data: &session.Data{AccountDID: did, SessionID: sid}}, nil
 }
 
-// A resume outside the lock lets the request path rotate the refresh token before the engine refreshes, so the eager refresh would no-op on a stale token.
 func TestEngine_ResumeAndRefresh_SharesOneLockHold(t *testing.T) {
 	locker := &spyLocker{}
 	res := &recordingResumer{locker: locker}
@@ -805,7 +798,7 @@ func TestEngine_ResumeAndRefresh_SharesOneLockHold(t *testing.T) {
 		t.Fatal("nil session")
 	}
 	if !res.heldAtResume {
-		t.Error("resume ran outside the session lock — the refresh race is open")
+		t.Error("resume ran outside the session lock: the request path can rotate the refresh token first, and the eager refresh then no-ops on a stale token")
 	}
 	if refreshCalls != 1 || !heldAtRefresh {
 		t.Errorf("refresh calls=%d heldAtRefresh=%v; want one refresh under the held lock", refreshCalls, heldAtRefresh)

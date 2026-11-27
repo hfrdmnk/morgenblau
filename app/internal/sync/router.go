@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-// SourceRouter implements FeedFetcher over Tier-2; the key is self-describing (at:// vs http(s)), so no DB read is needed to route.
 type SourceRouter struct {
 	rss      FeedFetcher
 	standard FeedFetcher

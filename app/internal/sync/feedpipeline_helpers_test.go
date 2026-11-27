@@ -34,8 +34,7 @@ func TestChooseTime(t *testing.T) {
 	published := time.Date(2026, 5, 15, 10, 0, 0, 0, time.UTC)
 	updated := time.Date(2026, 5, 16, 10, 0, 0, 0, time.UTC)
 	fallback := time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC)
-	// Bluesky's RSS pubDate lacks a weekday prefix and seconds; gofeed can't parse it, see chooseTime's manual fallback.
-	bskyOffset := time.Date(2026, 5, 24, 18, 2, 0, 0, time.UTC) // 20:02 +0200
+	bskyOffset := time.Date(2026, 5, 24, 18, 2, 0, 0, time.UTC)
 	bskyUTC := time.Date(2026, 5, 25, 14, 43, 0, 0, time.UTC)
 	cases := []struct {
 		name string
@@ -45,7 +44,7 @@ func TestChooseTime(t *testing.T) {
 		{name: "published parsed", item: &gofeed.Item{PublishedParsed: &published, UpdatedParsed: &updated}, want: published},
 		{name: "updated fallback", item: &gofeed.Item{UpdatedParsed: &updated}, want: updated},
 		{name: "neither", item: &gofeed.Item{}, want: fallback},
-		{name: "raw bluesky offset", item: &gofeed.Item{Published: "24 May 2026 20:02 +0200"}, want: bskyOffset},
+		{name: "bluesky pubDate without weekday or seconds, which gofeed cannot parse", item: &gofeed.Item{Published: "24 May 2026 20:02 +0200"}, want: bskyOffset},
 		{name: "raw bluesky utc", item: &gofeed.Item{Published: "25 May 2026 14:43 +0000"}, want: bskyUTC},
 		{name: "raw updated fallback", item: &gofeed.Item{Updated: "24 May 2026 20:02 +0200"}, want: bskyOffset},
 		{name: "padded atom date", item: &gofeed.Item{Updated: "2025-11-08  T00:00:00Z"}, want: time.Date(2025, 11, 8, 0, 0, 0, 0, time.UTC)},
@@ -166,6 +165,6 @@ func TestNilIfEmpty(t *testing.T) {
 
 func TestEntrySlug(t *testing.T) {
 	if got := EntrySlug("https://example.com/feed", "guid-1"); got != "WZw5GD1LIL" {
-		t.Errorf("EntrySlug = %q, want frozen vector", got)
+		t.Errorf("EntrySlug = %q, want the frozen vector the Laravel EntrySlugger produced, so backfills and re-runs keep every entry's slug", got)
 	}
 }

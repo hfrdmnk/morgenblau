@@ -50,7 +50,6 @@ func TestStartFetchOneFeed_HappyPath(t *testing.T) {
 	did := mustDID("did:plc:alice")
 	id := orch.StartFetchOneFeed(did, "https://example.com/feed")
 
-	// Drain via Shutdown, guarantees the goroutine completed.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if err := orch.Shutdown(shutdownCtx); err != nil {
@@ -99,7 +98,6 @@ func TestStartFetchOneFeed_ShutdownDrains(t *testing.T) {
 	did := mustDID("did:plc:alice")
 	orch.StartFetchOneFeed(did, "https://example.com/feed")
 
-	// Wait until the fetcher entered FetchAndStore so it's actually mid-flight when Shutdown fires.
 	deadline := time.Now().Add(time.Second)
 	for atomic.LoadInt32(&bf.calls) == 0 && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
@@ -128,7 +126,6 @@ func TestStartFetchOneFeed_ShutdownDeadlineExceeded(t *testing.T) {
 	did := mustDID("did:plc:alice")
 	orch.StartFetchOneFeed(did, "https://example.com/feed")
 
-	// Wait until in-flight.
 	deadline := time.Now().Add(time.Second)
 	for atomic.LoadInt32(&bf.calls) == 0 && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
@@ -141,7 +138,6 @@ func TestStartFetchOneFeed_ShutdownDeadlineExceeded(t *testing.T) {
 	}
 }
 
-// stubbornFetcher ignores ctx cancellation, used to verify Shutdown's deadline path.
 type stubbornFetcher struct{ bf *blockingFetcher }
 
 func (s stubbornFetcher) FetchAndStore(_ context.Context, _ string) error {

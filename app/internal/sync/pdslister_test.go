@@ -11,7 +11,6 @@ import (
 	"github.com/bluesky-social/indigo/atproto/atclient"
 )
 
-// rssRecordValue builds a minimal rev-2 union-shaped record value.
 func rssRecordValue(feedURL string) map[string]any {
 	return map[string]any{
 		"source": map[string]any{
@@ -22,7 +21,6 @@ func rssRecordValue(feedURL string) map[string]any {
 	}
 }
 
-// TestListSubscriptions_PagesUntilCursorEmpty proves an early stop on cursor would let reconcile delete rows missed by a partial snapshot.
 func TestListSubscriptions_PagesUntilCursorEmpty(t *testing.T) {
 	page := 0
 	pages := []struct {
@@ -32,7 +30,6 @@ func TestListSubscriptions_PagesUntilCursorEmpty(t *testing.T) {
 		{records: []map[string]any{
 			{"uri": "at://x/c/r1", "cid": "b", "value": rssRecordValue("https://a/feed")},
 		}, cursor: "c1"},
-		// Empty page but cursor still set: must NOT terminate paging.
 		{records: nil, cursor: "c2"},
 		{records: []map[string]any{
 			{"uri": "at://x/c/r3", "cid": "b", "value": rssRecordValue("https://b/feed")},
@@ -61,7 +58,7 @@ func TestListSubscriptions_PagesUntilCursorEmpty(t *testing.T) {
 		t.Fatalf("pageSubscriptions: %v", err)
 	}
 	if page != len(pages) {
-		t.Errorf("pages fetched = %d, want %d", page, len(pages))
+		t.Errorf("pages fetched = %d, want %d: an empty page with a cursor still continues, and stopping early lets reconcile delete rows missing from a partial snapshot", page, len(pages))
 	}
 	if len(out) != 2 {
 		t.Fatalf("records = %d, want 2", len(out))
@@ -111,8 +108,7 @@ func TestToPDSSubscription_RSSVariant(t *testing.T) {
 			"title":     "Example",
 			"primary":   true,
 			"createdAt": "2026-06-01T00:00:00Z",
-			// JSON arrays decode to []any, so tags land as []any{string...}.
-			"tags": []any{"tech", "design"},
+			"tags":      []any{"tech", "design"},
 		},
 	}
 	got, ok := toPDSSubscription(r)
@@ -240,13 +236,11 @@ func TestToPDSSave_MissingOptionalFeedURL(t *testing.T) {
 	if got.ItemURL != "https://example.com/post" {
 		t.Errorf("ItemURL = %q", got.ItemURL)
 	}
-	// feedUrl is optional on the save record.
 	if got.FeedURL != "" {
 		t.Errorf("FeedURL = %q, want empty", got.FeedURL)
 	}
 }
 
-// TestToPDSSave_SkipsRecordMissingRequiredField proves lexicon validation rejects a save record missing the required createdAt field.
 func TestToPDSSave_SkipsRecordMissingRequiredField(t *testing.T) {
 	_, ok := toPDSSave(recordEntry{
 		URI:   "at://did:plc:alice/blue.morgen.feed.save/3sk",
@@ -257,7 +251,6 @@ func TestToPDSSave_SkipsRecordMissingRequiredField(t *testing.T) {
 	}
 }
 
-// TestToPDSSubscription_InvalidTagType_Skipped proves a non-string tag element fails lexicon validation and skips the whole record, not just that element.
 func TestToPDSSubscription_InvalidTagType_Skipped(t *testing.T) {
 	_, ok := toPDSSubscription(recordEntry{
 		URI: "at://did:plc:example/blue.morgen.feed.subscription/3la",
@@ -271,6 +264,6 @@ func TestToPDSSubscription_InvalidTagType_Skipped(t *testing.T) {
 		},
 	})
 	if ok {
-		t.Fatal("expected record with a non-string tag element to be skipped")
+		t.Fatal("expected a non-string tag element to fail lexicon validation and skip the whole record, not just that element")
 	}
 }

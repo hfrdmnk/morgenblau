@@ -158,7 +158,7 @@ func TestStandardPipeline_UnchangedCIDWritesNothing(t *testing.T) {
 		t.Fatalf("FetchAndStore: %v", err)
 	}
 	if len(q.entryUpserts) != 0 || len(q.deletes) != 0 {
-		t.Fatalf("unchanged CID must not write: upserts=%+v deletes=%+v", q.entryUpserts, q.deletes)
+		t.Fatalf("unchanged CID must not write, so a cached extraction survives: upserts=%+v deletes=%+v", q.entryUpserts, q.deletes)
 	}
 }
 
@@ -183,7 +183,7 @@ func TestStandardPipeline_ChangedCIDUpdates(t *testing.T) {
 		t.Fatalf("record cid: %+v", e.RecordCid)
 	}
 	if e.ExtractedBody != nil {
-		t.Fatalf("CID change on path-ful doc must reset extracted_body to NULL, got %+v", e.ExtractedBody)
+		t.Fatalf("CID change on path-ful doc must reset extracted_body to NULL so the reader re-extracts it, got %+v", e.ExtractedBody)
 	}
 }
 
@@ -204,7 +204,7 @@ func TestStandardPipeline_PathlessDocument(t *testing.T) {
 		t.Fatalf("path-less doc must have empty url, got %q", e.Url)
 	}
 	if e.ExtractedBody == nil {
-		t.Fatal("path-less doc must prefill extracted_body")
+		t.Fatal("path-less doc must prefill extracted_body: it has no page to fetch, so the reader's cache serves this plaintext")
 	}
 	if want := "<p>first para</p><p>second &lt;para&gt;</p>"; *e.ExtractedBody != want {
 		t.Fatalf("extracted_body = %q, want %q", *e.ExtractedBody, want)
@@ -262,8 +262,8 @@ func TestStandardPipeline_SkipsMalformedDocuments(t *testing.T) {
 	src := &fakeStandardSource{
 		pub: testPublication(),
 		docs: []standardfeed.Document{
-			{URI: testDocURI, CID: "c1", Site: testPubURI, Path: "/x", PublishedAt: "2026-07-01T08:00:00Z"}, // no title
-			{URI: testDocURI + "2", CID: "c2", Site: testPubURI, Title: "ok"},                               // no publishedAt
+			{URI: testDocURI, CID: "c1", Site: testPubURI, Path: "/x", PublishedAt: "2026-07-01T08:00:00Z"},
+			{URI: testDocURI + "2", CID: "c2", Site: testPubURI, Title: "ok"},
 		},
 	}
 	q := &fakeStdQueries{}
@@ -276,12 +276,11 @@ func TestStandardPipeline_SkipsMalformedDocuments(t *testing.T) {
 }
 
 func TestStandardPipeline_MalformedDocKeepsCachedEntry(t *testing.T) {
-	// A doc that comes back malformed but still exists upstream must not be swept as a delete.
 	cid := "c1"
 	src := &fakeStandardSource{
 		pub: testPublication(),
 		docs: []standardfeed.Document{
-			{URI: testDocURI, CID: "c1", Site: testPubURI, Path: "/x", PublishedAt: "2026-07-01T08:00:00Z"}, // no title
+			{URI: testDocURI, CID: "c1", Site: testPubURI, Path: "/x", PublishedAt: "2026-07-01T08:00:00Z"},
 		},
 	}
 	q := &fakeStdQueries{
@@ -291,7 +290,7 @@ func TestStandardPipeline_MalformedDocKeepsCachedEntry(t *testing.T) {
 		t.Fatalf("FetchAndStore: %v", err)
 	}
 	if len(q.deletes) != 0 {
-		t.Fatalf("malformed-but-present doc must not be deleted: %+v", q.deletes)
+		t.Fatalf("malformed-but-present doc must not be deleted: it still exists upstream, so it is marked present before validation: %+v", q.deletes)
 	}
 	if len(q.entryUpserts) != 0 {
 		t.Fatalf("malformed doc must not be upserted: %+v", q.entryUpserts)
