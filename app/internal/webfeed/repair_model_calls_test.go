@@ -40,7 +40,6 @@ func TestRepairModelRungWithoutModelCallsIsNotAModelRepair(t *testing.T) {
 	}
 }
 
-// renamedBesideStories is the renamed list beside an unrelated one of the same shape, so setup cannot choose without the judge.
 func renamedBesideStories() string {
 	var b strings.Builder
 	b.WriteString(`<main><div class="col-a">`)
@@ -105,7 +104,7 @@ func TestRepairModelRungCutByItsDeadlineReportsWhatItPaid(t *testing.T) {
 		t.Fatalf("err = %v, want the cancellation", err)
 	}
 	if got == nil || !got.UsedModel || got.ModelUSD == 0 || got.Accepted {
-		t.Fatalf("repair = %+v, want the judge calls it paid for reported and nothing accepted", got)
+		t.Fatalf("repair = %+v, want the judge calls it paid for reported and nothing accepted: calls the cancellation cut short were still paid for", got)
 	}
 	if n := len(got.Tried); n == 0 || got.Tried[n-1] != RepairJudge {
 		t.Errorf("tried %v, want the setup rung last", got.Tried)

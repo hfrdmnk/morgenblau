@@ -25,9 +25,8 @@ func TestDigestPageSummarizesWhatAReaderSees(t *testing.T) {
 	if strings.Contains(d.Text, "do not show") || !strings.Contains(d.Text, postTitles[0]) || len([]rune(d.Text)) > digestTextChars+1 {
 		t.Fatalf("text = %q", d.Text)
 	}
-	// 13 header links, 4 posts, 1 partner, 6 footer links of which 3 point at social hosts.
 	if d.Links != 24 || d.SameSiteLinks != 20 {
-		t.Fatalf("links = %d same-site %d", d.Links, d.SameSiteLinks)
+		t.Fatalf("links = %d same-site %d, want 24 and 20: 13 header links, 4 posts, 1 partner and 6 footer links, 3 of them to social hosts", d.Links, d.SameSiteLinks)
 	}
 }
 

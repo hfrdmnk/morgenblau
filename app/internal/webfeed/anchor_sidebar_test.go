@@ -7,7 +7,6 @@ import (
 	"testing"
 )
 
-// blogWithMostRead is a /blog listing of postTitles[0:8] beside an aside "Most read" list of older /blog posts.
 func blogWithMostRead(asideHolds string) string {
 	var b strings.Builder
 	b.WriteString(blogList(8))

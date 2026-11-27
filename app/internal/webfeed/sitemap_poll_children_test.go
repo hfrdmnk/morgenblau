@@ -11,7 +11,6 @@ import (
 	"testing"
 )
 
-// etagSite serves fixed bodies with strong ETags and answers a matching If-None-Match with 304, as most CDNs do.
 type etagSite struct {
 	srv   *httptest.Server
 	mu    sync.Mutex
@@ -91,7 +90,7 @@ func TestSitemapPollSeesPostsInALaterChildSitemap(t *testing.T) {
 		t.Fatalf("poll after a new post = verdict %q not modified %v, %v", got.Verdict, got.NotModified, err)
 	}
 	if !slices.Contains(itemURLs(got.Items), fresh) {
-		t.Fatalf("poll after a new post = %v, want %s from the newest child sitemap", itemURLs(got.Items), fresh)
+		t.Fatalf("poll after a new post = %v, want %s from the newest child sitemap: polls walk again from the root, since an index's validators cannot vouch for its children and posts land in children setup may not have read first", itemURLs(got.Items), fresh)
 	}
 }
 

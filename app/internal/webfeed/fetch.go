@@ -15,21 +15,19 @@ import (
 	"morgenblau/internal/safehttp"
 )
 
-// Doer is the HTTP client the pipeline fetches through; the server passes a safehttp client.
 type Doer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
 const (
-	maxBody = 5 << 20
-	// A post's title and dates sit in its head and first screen; the rest of a long page is not worth the memory.
+	maxBody               = 5 << 20
 	maxArticleBody        = 512 << 10
 	maxRobotsBody         = 512 << 10
 	defaultMaxSetupBytes  = 24 << 20
 	maxArticleConcurrency = 4
+	challengeMarkerBytes  = 3000
 )
 
-// response is one fetched URL, cached for the length of a setup so no page is fetched twice.
 type response struct {
 	url    string
 	status int
@@ -39,26 +37,23 @@ type response struct {
 }
 
 type session struct {
-	client   Doer
-	mu       sync.Mutex
-	lang     string
-	cache    map[string]*response
-	articles map[string]*articleInfo
-	robots   map[string]robots
-	// budget is what is left of MaxSetupBytes; fetches reserve from it before reading.
-	budget int64
+	client    Doer
+	mu        sync.Mutex
+	lang      string
+	cache     map[string]*response
+	articles  map[string]*articleInfo
+	robots    map[string]robots
+	bytesLeft int64
 }
 
-// ErrUnreachable is a listing that did not answer: a network error, a timeout or a server error, rather than a refusal.
 var ErrUnreachable = errors.New("webfeed: site unreachable")
 
-// errBudget stops a fetch once the session has read all it may.
 var errBudget = errors.New("webfeed: setup byte budget spent")
 
 func newSession(opts Options) *session {
-	s := &session{client: opts.Client, budget: opts.MaxSetupBytes, cache: map[string]*response{}, articles: map[string]*articleInfo{}, robots: map[string]robots{}}
-	if s.budget <= 0 {
-		s.budget = defaultMaxSetupBytes
+	s := &session{client: opts.Client, bytesLeft: opts.MaxSetupBytes, cache: map[string]*response{}, articles: map[string]*articleInfo{}, robots: map[string]robots{}}
+	if s.bytesLeft <= 0 {
+		s.bytesLeft = defaultMaxSetupBytes
 	}
 	return s
 }
@@ -69,10 +64,8 @@ func (s *session) setLang(lang string) {
 	s.mu.Unlock()
 }
 
-// cacheKey includes the language, since Accept-Language can change what a page returns.
 func cacheKey(lang, rawURL string) string { return lang + " " + rawURL }
 
-// get fetches through the session cache, for pages a setup may ask for twice.
 func (s *session) get(ctx context.Context, rawURL string) *response {
 	s.mu.Lock()
 	lang := s.lang
@@ -88,7 +81,6 @@ func (s *session) get(ctx context.Context, rawURL string) *response {
 	return r
 }
 
-// fetchOnce fetches without caching, for bodies that are read once and dropped.
 func (s *session) fetchOnce(ctx context.Context, rawURL string, limit int64) *response {
 	s.mu.Lock()
 	lang := s.lang
@@ -96,7 +88,6 @@ func (s *session) fetchOnce(ctx context.Context, rawURL string, limit int64) *re
 	return s.fetch(ctx, rawURL, lang, limit, nil)
 }
 
-// fetch is one GET reading at most limit bytes; header adds request headers such as conditional-GET validators.
 func (s *session) fetch(ctx context.Context, rawURL, lang string, limit int64, header http.Header) *response {
 	r := &response{url: rawURL}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
@@ -130,18 +121,17 @@ func (s *session) fetch(ctx context.Context, rawURL, lang string, limit int64, h
 	return r
 }
 
-// readBody reads at most limit bytes, reserved from the session budget up front so parallel fetches cannot overspend it.
 func (s *session) readBody(body io.Reader, limit int64) ([]byte, error) {
 	s.mu.Lock()
-	n := min(limit, s.budget)
-	s.budget -= n
+	n := min(limit, s.bytesLeft)
+	s.bytesLeft -= n
 	s.mu.Unlock()
 	if n <= 0 {
 		return nil, errBudget
 	}
 	b, err := io.ReadAll(io.LimitReader(body, n))
 	s.mu.Lock()
-	s.budget += n - int64(len(b))
+	s.bytesLeft += n - int64(len(b))
 	s.mu.Unlock()
 	return b, err
 }
@@ -149,24 +139,22 @@ func (s *session) readBody(body io.Reader, limit int64) ([]byte, error) {
 func (s *session) remaining() int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.budget
+	return s.bytesLeft
 }
 
-// challengeTitles are bot-wall page titles; matched on the title only, since the words appear in ordinary pages' scripts.
 var challengeTitles = []string{
 	"just a moment", "attention required", "access denied", "verify you are human", "are you a robot", "security check",
 	"pardon our interruption", "please wait", "ddos protection", "bot verification", "checking your browser", "request blocked",
 	"403 forbidden", "human verification", "captcha",
 }
 
-// challengeMarkers are vendor challenge fingerprints in the first 3k bytes.
 var challengeMarkers = []string{
 	"/cdn-cgi/challenge-platform", "cf-browser-verification", "_cf_chl_opt", "cf_chl_", "geo.captcha-delivery.com",
 	"px-captcha", "_incapsula_resource", "please enable js and disable any ad blocker", "awswaf", "challenge-form",
 }
 
 func isChallenge(body []byte) bool {
-	head := body[:min(len(body), 3000)]
+	head := body[:min(len(body), challengeMarkerBytes)]
 	lower := strings.ToLower(string(head))
 	for _, m := range challengeMarkers {
 		if strings.Contains(lower, m) {
@@ -190,8 +178,6 @@ func isChallenge(body []byte) bool {
 	return false
 }
 
-// refusal classifies a fetch that did not yield a page: blocked when the site refused us (401, 403, 429, 999 or a bot
-// challenge), and otherwise a failure that unreachable tells apart. reason is "" when the page came through.
 func (r *response) refusal() (reason Reason, blocked bool) {
 	switch {
 	case r.err != nil:
@@ -208,7 +194,6 @@ func (r *response) refusal() (reason Reason, blocked bool) {
 	return "", false
 }
 
-// unreachable is a fetch the site never answered: a network error, a timeout or a server error.
 func (r *response) unreachable() bool { return r.err != nil || r.status >= 500 }
 
 func (r *response) isHTML() bool {
@@ -223,7 +208,6 @@ func (r *response) isHTML() bool {
 	return bytes.Contains(head, []byte("<html")) || bytes.Contains(head, []byte("<!doctype html"))
 }
 
-// robots holds the rules of the group that applies to us plus the Sitemap lines.
 type robots struct {
 	rules    []robotsRule
 	sitemaps []string
@@ -291,7 +275,8 @@ func parseRobots(txt string) robots {
 	return out
 }
 
-// allowed applies RFC 9309: the longest matching rule wins and Allow wins ties.
+// RFC 9309: the most specific match, the longest rule, wins, and Allow wins a tie.
+// https://www.rfc-editor.org/rfc/rfc9309#section-2.2.2
 func (r robots) allowed(path string) bool {
 	best, allow := -1, true
 	for _, rule := range r.rules {
@@ -333,7 +318,6 @@ func robotsMatch(pattern, path string) bool {
 	return true
 }
 
-// robotsFor fetches robots.txt; an unreachable or failing file allows the fetch, since a reader asked for this one page.
 func (s *session) robotsFor(ctx context.Context, origin string) robots {
 	s.mu.Lock()
 	rb, ok := s.robots[origin]

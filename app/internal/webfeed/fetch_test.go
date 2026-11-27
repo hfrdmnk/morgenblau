@@ -55,7 +55,7 @@ func TestChallengePages(t *testing.T) {
 	}
 	for body, want := range cases {
 		if got := isChallenge([]byte(body)); got != want {
-			t.Errorf("isChallenge(%.60q) = %v, want %v", body, got, want)
+			t.Errorf("isChallenge(%.60q) = %v, want %v: challenge words count only in the title, since ordinary pages' scripts say them too", body, got, want)
 		}
 	}
 }

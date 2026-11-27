@@ -13,27 +13,24 @@ import (
 	"morgenblau/internal/safehttp"
 )
 
-// pageDoc is one parsed listing page with its usable links.
 type pageDoc struct {
-	url *url.URL
-	// base resolves relative links: the page URL, or its <base href>.
-	base    *url.URL
-	doc     *goquery.Document
-	title   string
-	lang    string
-	order   map[*html.Node]int
-	anchors []*anchor
-	byNode  map[*html.Node]*anchor
-	mixed   map[*html.Node]bool // elements holding links to more than one URL
+	url              *url.URL
+	base             *url.URL
+	doc              *goquery.Document
+	title            string
+	lang             string
+	order            map[*html.Node]int
+	anchors          []*anchor
+	byNode           map[*html.Node]*anchor
+	linksSeveralURLs map[*html.Node]bool
 }
 
-// anchor is one <a href> that could be a post link.
 type anchor struct {
 	node    *html.Node
 	url     string
 	key     string
 	tmpl    string
-	chain   []*html.Node // root first, ending at node
+	chain   []*html.Node
 	tagPath string
 }
 
@@ -105,7 +102,6 @@ func (p *pageDoc) newAnchor(n *html.Node, base *url.URL) *anchor {
 	return a
 }
 
-// resolveLink makes an href absolute and drops fragments, tracking parameters and links that are never posts.
 func resolveLink(base *url.URL, href string) (string, bool) {
 	href = strings.TrimSpace(href)
 	if href == "" || strings.HasPrefix(href, "#") {
@@ -121,7 +117,7 @@ func resolveLink(base *url.URL, href string) (string, bool) {
 	if (u.Path == "" || u.Path == "/") && u.RawQuery == "" {
 		return "", false
 	}
-	if ext := strings.ToLower(path.Ext(u.Path)); nonPostExtensions[ext] {
+	if ext := strings.ToLower(path.Ext(u.Path)); feedAndImageExtensions[ext] {
 		return "", false
 	}
 	return u.String(), true
@@ -177,14 +173,11 @@ func nodeText(n *html.Node) string {
 	return collapse(b.String())
 }
 
-// inlineTags never start a new visual text segment.
 var inlineTags = map[string]bool{
 	"a": true, "b": true, "i": true, "em": true, "strong": true, "code": true, "mark": true, "abbr": true,
 	"sup": true, "sub": true, "u": true, "s": true, "q": true, "cite": true, "kbd": true, "wbr": true, "bdi": true, "bdo": true,
 }
 
-// expandNoscript parses each <noscript> body as markup, since we fetch without JavaScript and see what it holds.
-// Each one is parsed on its own: a tracking iframe left open inside one must not swallow the rest of the page.
 func expandNoscript(root *html.Node) {
 	for _, n := range descendants(root, func(n *html.Node) bool { return n.Data == "noscript" }) {
 		text := n.FirstChild
@@ -206,7 +199,6 @@ func expandNoscript(root *html.Node) {
 	}
 }
 
-// nonPostExtensions are feeds and images; documents such as PDFs stay, since papers and reports are posts.
-var nonPostExtensions = map[string]bool{
+var feedAndImageExtensions = map[string]bool{
 	".xml": true, ".rss": true, ".atom": true, ".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".svg": true, ".avif": true, ".ico": true,
 }

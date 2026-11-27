@@ -9,7 +9,6 @@ import (
 	"morgenblau/internal/postkey"
 )
 
-// PollVerdict is the detector's call on one poll: ok publishes, suspect repairs, broken waits.
 type PollVerdict string
 
 const (
@@ -18,10 +17,8 @@ const (
 	PollBroken  PollVerdict = "broken"
 )
 
-// Reason is a coded cause behind a poll verdict or a setup's health; the server words it for readers.
 type Reason string
 
-// Detector reasons.
 const (
 	ReasonUnreachable   Reason = "unreachable"
 	ReasonRobots        Reason = "robots"
@@ -39,19 +36,13 @@ const (
 	ReasonDupTitles     Reason = "dup_titles"
 )
 
-// Setup reasons, beside the detector's title_shape, dup_titles, template_share and robots.
 const (
-	// ReasonCount is a setup that found fewer than three posts.
-	ReasonCount Reason = "count"
-	// ReasonUnsure is a pick the heuristic doubted and no judge settled.
-	ReasonUnsure Reason = "unsure"
-	// ReasonJudgeNone is a judge majority saying no list on the page is a post stream.
+	ReasonCount     Reason = "count"
+	ReasonUnsure    Reason = "unsure"
 	ReasonJudgeNone Reason = "judge_none"
-	// ReasonBlocked is a listing that refused us with no sitemap to fall back on.
-	ReasonBlocked Reason = "blocked"
+	ReasonBlocked   Reason = "blocked"
 )
 
-// GoodPoll is one ok poll in the detector's history.
 type GoodPoll struct {
 	URLs        []string
 	Titles      []string
@@ -59,7 +50,6 @@ type GoodPoll struct {
 	TitleShape  float64
 }
 
-// DominantTemplate is the URL shape most items share, counted under the first recipe pattern each one fits.
 func DominantTemplate(items []Item, templates []string) string {
 	counts := map[string]int{}
 	best := ""
@@ -79,7 +69,6 @@ func DominantTemplate(items []Item, templates []string) string {
 	return best
 }
 
-// responseTier0 checks what the fetch alone shows; blocked means the site refused us rather than broke.
 func responseTier0(r *response, wantHTML bool) (reason Reason, blocked bool) {
 	if reason, blocked := r.refusal(); reason != "" {
 		return reason, blocked
@@ -90,10 +79,8 @@ func responseTier0(r *response, wantHTML bool) (reason Reason, blocked bool) {
 	return "", false
 }
 
-// reErrorTitle wants the code bare, set off by punctuation or named an error, since a publication may lead its name with one.
 var reErrorTitle = regexp.MustCompile(`(?i)^\W*(?:error\W*(?:404|410|500|502|503)\b|(?:404|410|500|502|503)[\s\p{Z}]*(?:$|[^\pL\pN\s\p{Z}]|(?:error|gone)\b))`)
 
-// errorPhrases name a soft error page; they are matched on the title and first heading only, where a listing never says them.
 var errorPhrases = []string{
 	"page not found", "not found", "404 error", "error 404", "internal server error", "server error", "service unavailable",
 	"bad gateway", "something went wrong", "an error occurred", "page unavailable", "temporarily unavailable", "under maintenance",
@@ -101,7 +88,6 @@ var errorPhrases = []string{
 	"pagina niet gevonden", "ページが見つかりません",
 }
 
-// consentWallPhrases describe a gate in front of the page, not a banner beside it; a match alone is enough.
 var consentWallPhrases = []string{
 	"before you continue", "bevor sie fortfahren", "bevor du fortfährst", "avant de continuer", "antes de continuar", "prima di continuare",
 	"accept cookies to continue", "accept all cookies to continue", "accept cookies to view", "consent to continue",
@@ -109,10 +95,8 @@ var consentWallPhrases = []string{
 	"cookie wall", "cookiewall", "zustimmung erforderlich", "werbefrei mit pur", "pur-abo",
 }
 
-// consentMentions only count on a page with no posts, where a banner is all there is.
-var consentMentions = []string{"cookie", "consent", "privacy settings", "privacy choices", "datenschutz", "einwilligung", "gdpr"}
+var consentBannerWords = []string{"cookie", "consent", "privacy settings", "privacy choices", "datenschutz", "einwilligung", "gdpr"}
 
-// spaMarkers are empty mount points that client-rendered sites fill with JavaScript.
 var spaMarkers = [][]byte{
 	[]byte(`id="root"`), []byte(`id="__next"`), []byte(`id="app"`), []byte(`id="__nuxt"`), []byte(`id="svelte"`),
 	[]byte(`<app-root`), []byte(`data-reactroot`), []byte(`ng-version`),
@@ -144,7 +128,6 @@ func textHead(s string) string {
 	return strings.ToLower(s[:min(len(s), tier0TextBytes)])
 }
 
-// pageTier0 checks what the parsed page shows before any extraction.
 func pageTier0(p *pageDoc) Reason {
 	title := strings.ToLower(p.title)
 	h1 := strings.ToLower(collapse(p.doc.Find("h1").First().Text()))
@@ -159,7 +142,6 @@ func pageTier0(p *pageDoc) Reason {
 	return ""
 }
 
-// emptyTier0 explains an extraction with no items when the page itself is the problem.
 func emptyTier0(p *pageDoc, body []byte) Reason {
 	text := visibleText(p)
 	if len(text) < spaShellText {
@@ -170,13 +152,12 @@ func emptyTier0(p *pageDoc, body []byte) Reason {
 			}
 		}
 	}
-	if containsAny(strings.ToLower(p.title), consentMentions) || containsAny(textHead(text), consentMentions) {
+	if containsAny(strings.ToLower(p.title), consentBannerWords) || containsAny(textHead(text), consentBannerWords) {
 		return ReasonConsentWall
 	}
 	return ""
 }
 
-// drift applies the suspect rules against the good-poll history, newest first; the first match wins.
 func drift(items []Item, dominant string, history []GoodPoll) Reason {
 	n := len(items)
 	if n == 0 {

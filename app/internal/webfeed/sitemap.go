@@ -13,7 +13,6 @@ import (
 
 const maxSitemapFetches = 8
 
-// sitemapSetup serves a listing that refuses our fetch from its sitemap, the only route that respects the block.
 func (s *session) sitemapSetup(ctx context.Context, res *Result, listing *url.URL, rb robots) (*Result, error) {
 	rec := &res.Recipe
 	rec.Setup.Stages = append(rec.Setup.Stages, "blocked", "sitemap")
@@ -48,7 +47,6 @@ func (s *session) sitemapSetup(ctx context.Context, res *Result, listing *url.UR
 		return res, nil
 	}
 	rec.Mode = ModeSitemap
-	// Polls walk again from the root, since posts published later land in a child setup may not have read first.
 	rec.FeedURL = walk.root
 	rec.Streams = []Stream{{URLTemplate: tmpl, TitleHints: TitleHints{Source: TitleSlug}}}
 	rec.Order, rec.DateSource = OrderPage, DateSourceNone
@@ -59,18 +57,14 @@ func (s *session) sitemapSetup(ctx context.Context, res *Result, listing *url.UR
 	return res, nil
 }
 
-// sitemapTree is what a walk found: the kept entries, the root whose files first yielded one, and that first file's body.
 type sitemapTree struct {
-	found  []sitemapURL
-	root   string
-	source []byte
-	// rootErr is why the first root did not parse; rootIndex says it was an index, whose validators cannot vouch for its children.
+	found     []sitemapURL
+	root      string
+	source    []byte
 	rootErr   error
 	rootIndex bool
 }
 
-// walkSitemaps reads sitemaps breadth-first from roots, children that name the listing's section or a post type first,
-// within maxSitemapFetches.
 func walkSitemaps(roots []string, listing string, get func(string) *response, keep func(sitemapURL) bool) sitemapTree {
 	type queued struct{ loc, root string }
 	listingSeg := pathFirstSegment(listing)
@@ -117,7 +111,6 @@ func walkSitemaps(roots []string, listing string, get func(string) *response, ke
 	return tree
 }
 
-// sitemapItems is the one way setup and polls turn sitemap entries into items, so both serve the same capped list.
 func sitemapItems(found []sitemapURL, match func(loc string) bool) []Item {
 	type dated struct {
 		item    Item
@@ -137,7 +130,6 @@ func sitemapItems(found []sitemapURL, match func(loc string) bool) []Item {
 			withLastmod++
 		}
 	}
-	// lastmod records edits, not publishing, so it orders the list but never dates an item.
 	if withLastmod*10 >= len(list)*7 {
 		slices.SortStableFunc(list, func(a, b dated) int { return b.lastmod.Compare(a.lastmod) })
 	}

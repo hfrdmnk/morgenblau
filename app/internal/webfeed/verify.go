@@ -15,7 +15,8 @@ import (
 	"morgenblau/internal/postkey"
 )
 
-// articleInfo is what one fetched post page says about itself.
+const maxTimesOnOnePost = 2
+
 type articleInfo struct {
 	url       string
 	ok        bool
@@ -24,11 +25,10 @@ type articleInfo struct {
 	siteName  string
 	published time.Time
 	isArticle bool
-	// page is the parsed post, held only while extracting; lists and prose keep what isHub needs.
-	page  *pageDoc
-	lists [][]string
-	prose int
-	clean string // ogTitle or h1 without the site-name affix
+	page      *pageDoc
+	lists     [][]string
+	prose     int
+	ownTitle  string
 }
 
 func (s *session) article(ctx context.Context, rawURL string) *articleInfo {
@@ -77,8 +77,7 @@ func (s *session) article(ctx context.Context, rawURL string) *articleInfo {
 		}
 		return true
 	})
-	// A page with many <time> elements is a list, not one dated post.
-	if times := doc.Find("time[datetime]"); info.published.IsZero() && times.Length() <= 2 {
+	if times := doc.Find("time[datetime]"); info.published.IsZero() && times.Length() <= maxTimesOnOnePost {
 		scope := doc.Find("article time[datetime], main time[datetime]").First()
 		if scope.Length() == 0 {
 			scope = times.First()
@@ -95,7 +94,6 @@ func (s *session) article(ctx context.Context, rawURL string) *articleInfo {
 	return info
 }
 
-// summarizeLists keeps the URL shapes of the page's main lists and its prose length, all isHub needs once the page is dropped.
 func (a *articleInfo) summarizeLists() {
 	self := postkey.URL(a.url)
 	for _, c := range a.page.clusters() {
@@ -119,7 +117,6 @@ func (a *articleInfo) summarizeLists() {
 
 var reArticleType = regexp.MustCompile(`"@type"\s*:\s*\[?\s*"[A-Za-z]*(Article|Posting)"`)
 
-// findJSONLD returns the first string value under key anywhere in a JSON-LD tree, including @graph.
 func findJSONLD(v any, key string) string {
 	switch x := v.(type) {
 	case map[string]any:
@@ -146,7 +143,6 @@ func findJSONLD(v any, key string) string {
 	return ""
 }
 
-// isHub reports an item that is itself a listing of the stream's posts: one big list of them and little prose of its own.
 func (a *articleInfo) isHub(template string) bool {
 	if !a.ok || a.isArticle || !a.published.IsZero() {
 		return false
@@ -161,11 +157,9 @@ func (a *articleInfo) isHub(template string) bool {
 		}
 		biggest = max(biggest, n)
 	}
-	// prose counts paragraph text outside links, the body an article has and a listing lacks.
 	return biggest >= 6 && (biggest >= 12 || a.prose < 1500)
 }
 
-// fetchArticles fetches post pages at most maxArticleConcurrency at a time; a page asked for again is not refetched.
 func (s *session) fetchArticles(ctx context.Context, urls []string) map[string]*articleInfo {
 	out := make(map[string]*articleInfo, len(urls))
 	var mu sync.Mutex
@@ -204,7 +198,6 @@ func (s *session) fetchArticles(ctx context.Context, urls []string) map[string]*
 
 var titleSeparators = []string{" | ", " – ", " — ", " - ", " · ", " :: ", " • ", " « ", " » "}
 
-// cleanArticleTitles strips the site-name affix that repeats across a site's page titles.
 func cleanArticleTitles(infos map[string]*articleInfo) {
 	affixes := map[string]int{}
 	split := func(t string) (head, tail string, ok bool) {
@@ -240,7 +233,6 @@ func cleanArticleTitles(infos map[string]*articleInfo) {
 		if head, _, ok := splitFirst(info.ogTitle); ok {
 			affixes[strings.ToLower(head)]++
 		}
-		// Pages whose whole title is the site name vouch for that name as an affix elsewhere.
 		if _, _, ok := split(info.ogTitle); !ok && info.ogTitle != "" {
 			affixes[strings.ToLower(info.ogTitle)]++
 		}
@@ -256,23 +248,21 @@ func cleanArticleTitles(infos map[string]*articleInfo) {
 		} else if head, tail, ok := splitFirst(t); ok && (affixes[strings.ToLower(head)] >= 2 || strings.EqualFold(head, site)) {
 			t = tail
 		}
-		info.clean = strings.TrimSpace(t)
+		info.ownTitle = strings.TrimSpace(t)
 	}
-	// A title several different pages share is the site's name, not any one post's.
 	seen := map[string]int{}
 	for _, info := range infos {
-		if info.clean != "" {
-			seen[strings.ToLower(info.clean)]++
+		if info.ownTitle != "" {
+			seen[strings.ToLower(info.ownTitle)]++
 		}
 	}
 	for _, info := range infos {
-		if seen[strings.ToLower(info.clean)] >= 2 {
-			info.clean = ""
+		if seen[strings.ToLower(info.ownTitle)] >= 2 {
+			info.ownTitle = ""
 		}
 	}
 }
 
-// titleSimilarity is the share of the shorter title's words found in the longer one.
 func titleSimilarity(a, b string) float64 {
 	ta, tb := titleTokens(a), titleTokens(b)
 	if len(ta) == 0 || len(tb) == 0 {
@@ -318,7 +308,6 @@ func titleTokens(s string) []string {
 	return out
 }
 
-// segmentMatching finds the entry element whose text is the article's own title.
 func segmentMatching(e *entry, title string) *html.Node {
 	want := strings.ToLower(collapse(title))
 	var found *html.Node
@@ -335,7 +324,6 @@ func segmentMatching(e *entry, title string) *html.Node {
 		}
 	}
 	walk(e.node)
-	// Prefer the innermost element with exactly that text.
 	for found != nil {
 		var inner *html.Node
 		for c := found.FirstChild; c != nil; c = c.NextSibling {

@@ -304,7 +304,7 @@ func TestResponsiveDuplicateListsCollapseToOneCandidate(t *testing.T) {
 	p := mustPage(t, page("Blog", body), "https://example.com/blog")
 	cands := p.candidates()
 	if len(cands) != 1 {
-		t.Fatalf("got %d candidates, want the mobile copy dropped", len(cands))
+		t.Fatalf("got %d candidates, want the mobile copy dropped: it would only crowd the judge's slots", len(cands))
 	}
 }
 
@@ -331,7 +331,7 @@ func TestListsInsideNoscriptAreSeen(t *testing.T) {
 	p := mustPage(t, page("Blog", `<div id="app"></div><noscript>`+blogList(5)+`</noscript>`), "https://example.com/blog")
 	cands := p.candidates()
 	if len(cands) == 0 || len(cands[0].entries) != 5 {
-		t.Fatalf("noscript list not found: %d candidates", len(cands))
+		t.Fatalf("noscript list not found: %d candidates; we fetch without JavaScript, so a <noscript> body is what the page shows us, though x/net/html hands it over as text", len(cands))
 	}
 }
 
@@ -359,7 +359,7 @@ func TestTrackingNoscriptIframeDoesNotSwallowThePage(t *testing.T) {
 	p := mustPage(t, page("Blog", gtm+blogList(5)), "https://example.com/blog")
 	cands := p.candidates()
 	if len(cands) == 0 || len(cands[0].entries) != 5 {
-		t.Fatalf("list after a tracking noscript not found: %d candidates", len(cands))
+		t.Fatalf("list after a tracking noscript not found: %d candidates; parse each <noscript> body on its own, so an iframe left open inside one cannot swallow the rest of the page", len(cands))
 	}
 }
 
@@ -397,12 +397,16 @@ func TestSeeAllLinksAreNotEntries(t *testing.T) {
 }
 
 func TestFeedAndImageLinksAreNotEntries(t *testing.T) {
-	body := strings.Replace(blogList(4), `</ul>`, `<li><h2><a href="/blog/feed.xml">Subscribe to every new story by RSS</a></h2></li><li><h2><a href="/blog/cover-image-large.png">A big cover image of the blog</a></h2></li></ul>`, 1)
+	body := strings.Replace(blogList(4), `</ul>`, `<li><h2><a href="/blog/feed.xml">Subscribe to every new story by RSS</a></h2></li><li><h2><a href="/blog/cover-image-large.png">A big cover image of the blog</a></h2></li><li><h2><a href="/blog/annual-report-on-reading.pdf">Our annual report on reading habits</a></h2></li></ul>`, 1)
 	p := mustPage(t, page("Blog", body), "https://example.com/blog")
-	for _, u := range entryURLs(p.candidates()[0]) {
+	urls := entryURLs(p.candidates()[0])
+	for _, u := range urls {
 		if strings.HasSuffix(u, ".xml") || strings.HasSuffix(u, ".png") {
 			t.Fatalf("%s became an entry", u)
 		}
+	}
+	if !slices.Contains(urls, "https://example.com/blog/annual-report-on-reading.pdf") {
+		t.Fatalf("entries %v, want the PDF kept: papers and reports are posts", urls)
 	}
 }
 

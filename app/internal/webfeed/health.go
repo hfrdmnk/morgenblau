@@ -2,16 +2,14 @@ package webfeed
 
 import "strings"
 
-// Signals are the detector's measurements of one extraction.
 type Signals struct {
 	Count         int
-	TitleShape    float64 // share of titles with 2–30 words, not all caps, not a bare number or date
-	DupTitles     float64 // 1 − distinct titles / titles
-	TemplateShare float64 // share of URLs matching one of the expected templates
+	TitleShape    float64
+	DupTitles     float64
+	TemplateShare float64
 	DateFrac      float64
 }
 
-// ComputeSignals measures items against the URL templates they are expected to match.
 func ComputeSignals(items []Item, templates []string) Signals {
 	s := Signals{Count: len(items)}
 	if len(items) == 0 {
@@ -37,12 +35,10 @@ func ComputeSignals(items []Item, templates []string) Signals {
 	return s
 }
 
-// fingerprintOf is the recipe's record of what a good extraction looks like.
 func fingerprintOf(s Signals, templates []string) Fingerprint {
 	return Fingerprint{Count: s.Count, URLTemplates: templates, DateFrac: round2(s.DateFrac), TitleShape: round2(s.TitleShape)}
 }
 
-// doubts is the setup self-check; any reason means the reader should point at one post.
 func (s Signals) doubts() []Reason {
 	var reasons []Reason
 	if s.Count < 3 {

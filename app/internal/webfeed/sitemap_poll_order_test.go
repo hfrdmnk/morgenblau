@@ -24,7 +24,6 @@ func datedSitemapXML(locs []datedLoc) string {
 	return b.String()
 }
 
-// oldestFirstPosts are n /news posts listed oldest first, each edited a day after the one before.
 func oldestFirstPosts(s *testSite, n int) []datedLoc {
 	start := time.Date(2024, 1, 1, 9, 0, 0, 0, time.UTC)
 	locs := make([]datedLoc, n)
@@ -64,5 +63,8 @@ func TestSitemapPollKeepsSetupsNewestFirstCap(t *testing.T) {
 	}
 	if len(got.Items) == 0 || got.Items[0].URL != fresh.loc || len(got.Items) != MaxItems {
 		t.Fatalf("poll after a new post = %d items starting %v, want %s first", len(got.Items), itemURLs(got.Items)[:min(3, len(got.Items))], fresh.loc)
+	}
+	if d := got.Items[0].Date; !d.IsZero() {
+		t.Fatalf("first item dated %v, want no date: lastmod records edits, not publishing, so it orders the list but never dates an item", d)
 	}
 }

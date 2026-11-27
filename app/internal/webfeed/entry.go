@@ -13,12 +13,11 @@ import (
 	"morgenblau/internal/postkey"
 )
 
-// segment is one visually separate run of text inside an entry.
 type segment struct {
 	text    string
 	owner   *html.Node
-	inLink  bool // inside a link to the entry's own URL
-	inOther bool // inside a link elsewhere, such as a category
+	inLink  bool
+	inOther bool
 }
 
 func (p *pageDoc) anchorFor(n *html.Node) *anchor {
@@ -81,7 +80,6 @@ func (p *pageDoc) segments(e *entry) []segment {
 		}
 	}
 	walk(e.node)
-	// An entry that is itself the link has every segment inside it.
 	if e.node.Data == "a" {
 		for i := range out {
 			out[i].inLink = !out[i].inOther || out[i].inLink
@@ -118,7 +116,6 @@ func isGeneric(s string) bool {
 	return t == "" || genericPhrases[t]
 }
 
-// isDateLike reports text that is only a date: a title that merely mentions one ("Monthly roundup: May 2024") is a headline.
 func isDateLike(s string) bool {
 	if utf8.RuneCountInString(s) > 40 {
 		return false
@@ -147,10 +144,8 @@ func isDateLike(s string) bool {
 	return true
 }
 
-// dateShapes are parseDateText's patterns, full dates before month-year so "May 3, 2024" goes whole.
 var dateShapes = []*regexp.Regexp{reISODate, reCJKDate, reYMDDate, reMonthDay, reDayMonth, reDMYDots, reSlashDate, reMonthYear}
 
-// dateWords may surround a date without making it a headline: weekdays, publish labels, clock words, CJK day marks.
 var dateWords = func() map[string]bool {
 	m := map[string]bool{}
 	for _, w := range strings.Fields(`monday tuesday wednesday thursday friday saturday sunday mon tue tues wed thu thur thurs fri sat sun
@@ -168,15 +163,16 @@ var reRelativeDate = regexp.MustCompile(`(?i)^\s*(\d+\s*(min|mins|minutes?|h|hou
 
 var reReadingTime = regexp.MustCompile(`(?i)^\s*\d+\s*(min|mins|minute|minutes|minuten|分)\b`)
 
+const cjkCharsPerWord = 4
+
 func wordCount(s string) int {
 	n := 0
 	for _, w := range strings.Fields(s) {
 		if strings.IndexFunc(w, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) < 0 {
 			continue
 		}
-		// Scripts without spaces count one word per four characters, so long Japanese press titles still fit 30 words.
 		if cjk := countCJK(w); cjk > 0 {
-			n += max(1, cjk/4)
+			n += max(1, cjk/cjkCharsPerWord)
 			continue
 		}
 		n++
@@ -194,7 +190,6 @@ func countCJK(s string) int {
 	return n
 }
 
-// fillEntries picks each entry's title and date, using repetition across entries to recognise category labels.
 func (p *pageDoc) fillEntries(c *cluster) {
 	segs := make([][]segment, len(c.entries))
 	freq := map[string]int{}
@@ -225,7 +220,6 @@ func (p *pageDoc) fillEntries(c *cluster) {
 	}
 }
 
-// onlyGenericLinkText reports an entry whose links to its URL say only "See all" or "Read more": a section link, not a post.
 func (p *pageDoc) onlyGenericLinkText(e *entry) bool {
 	key := postkey.URL(e.URL)
 	worded := false
@@ -312,7 +306,6 @@ func genericAlt(s string) bool {
 	return false
 }
 
-// slugTitle humanizes the last path segment, the title of last resort.
 func slugTitle(raw string) string {
 	last, _ := lastSegment(raw)
 	if dec, err := url.PathUnescape(last); err == nil {
@@ -375,8 +368,7 @@ func isTitleClass(n *html.Node) bool {
 		return true
 	}
 	for _, c := range append(classes(n), attr(n, "id")) {
-		// Tailwind variants and arbitrary values ([&_[data-title]]:x) style children; they do not name this element.
-		if strings.ContainsAny(c, "[:/") {
+		if isTailwindVariantOrArbitraryValue(c) {
 			continue
 		}
 		for _, tok := range strings.FieldsFunc(strings.ToLower(c), func(r rune) bool { return r == '-' || r == '_' }) {
@@ -389,7 +381,8 @@ func isTitleClass(n *html.Node) bool {
 	return false
 }
 
-// descendants lists matching elements under n in document order, n included.
+func isTailwindVariantOrArbitraryValue(class string) bool { return strings.ContainsAny(class, "[:/") }
+
 func descendants(n *html.Node, match func(*html.Node) bool) []*html.Node {
 	var out []*html.Node
 	var walk func(*html.Node)

@@ -8,7 +8,6 @@ import (
 	"time"
 )
 
-// jsonLDArticle is a post page whose publish date sits only in its embedded JSON-LD.
 func jsonLDArticle(title, published string) string {
 	ld := ""
 	if published != "" {
@@ -18,7 +17,6 @@ func jsonLDArticle(title, published string) string {
 		`<main><article><h1>` + title + `</h1><p>Body text of the post.</p></article></main>` + siteFooter + `</body></html>`
 }
 
-// undatedBlog serves /blog as cards without any date, each post dated only in its own page's JSON-LD; dates[i] "" leaves post i undated.
 func undatedBlog(s *testSite, titles, dates []string) {
 	var b strings.Builder
 	b.WriteString(`<main><h1>Blog</h1><ul class="posts">`)

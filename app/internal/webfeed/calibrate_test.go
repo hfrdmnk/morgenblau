@@ -69,8 +69,8 @@ func TestArticleTitleSharedByManyPagesIsTheSiteName(t *testing.T) {
 		"c": {ogTitle: "A real headline | Example Lab", ok: true},
 	}
 	cleanArticleTitles(infos)
-	if infos["a"].clean != "" || infos["b"].clean != "" || infos["c"].clean != "A real headline" {
-		t.Fatalf("clean = %q %q %q", infos["a"].clean, infos["b"].clean, infos["c"].clean)
+	if infos["a"].ownTitle != "" || infos["b"].ownTitle != "" || infos["c"].ownTitle != "A real headline" {
+		t.Fatalf("own titles = %q %q %q", infos["a"].ownTitle, infos["b"].ownTitle, infos["c"].ownTitle)
 	}
 }
 
@@ -113,7 +113,6 @@ func TestDateOrderNeedsSeventyPercentDated(t *testing.T) {
 	}
 }
 
-// numberedBlog serves /blog with n distinct posts and their pages; dated posts carry a listing date.
 func numberedBlog(s *testSite, n int, dated bool) {
 	var b strings.Builder
 	b.WriteString(`<main><h1>Blog</h1><ul class="posts">`)

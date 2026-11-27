@@ -9,7 +9,6 @@ import (
 	"golang.org/x/net/html"
 )
 
-// cluster is one candidate list: links that repeat under one container.
 type cluster struct {
 	container *html.Node
 	hint      string
@@ -23,7 +22,6 @@ type cluster struct {
 	decoy                                                                   bool
 }
 
-// entry is one post-like item inside a cluster.
 type entry struct {
 	URL         string
 	Title       string
@@ -39,17 +37,15 @@ type entry struct {
 
 func (e *entry) item() Item { return Item{URL: e.URL, Title: e.Title, Date: e.Date} }
 
-// clusters groups the page's anchors into candidate lists, unscored and in document order.
 func (p *pageDoc) clusters() []*cluster {
 	byTag := map[string][]*anchor{}
 	var tagOrder []string
 	for _, a := range p.anchors {
-		// The link's own classes separate roles that share a tag path, such as a card's image link and its category link.
-		k := a.tagPath + "|" + nodeSig(a.node, true)
-		if _, ok := byTag[k]; !ok {
-			tagOrder = append(tagOrder, k)
+		role := a.tagPath + "|" + nodeSig(a.node, true)
+		if _, ok := byTag[role]; !ok {
+			tagOrder = append(tagOrder, role)
 		}
-		byTag[k] = append(byTag[k], a)
+		byTag[role] = append(byTag[role], a)
 	}
 	var groups [][]*anchor
 	for _, tp := range tagOrder {
@@ -81,8 +77,6 @@ func (p *pageDoc) clusters() []*cluster {
 	return kept
 }
 
-// splitGroup separates anchors that share a tag path into distinct lists. It splits only at a level whose nodes hold
-// several posts each (sub-containers) and differ in classes; entries of one list may differ in classes freely.
 func splitGroup(g []*anchor) [][]*anchor {
 	if len(g) < 2 {
 		return [][]*anchor{g}
@@ -132,7 +126,6 @@ func lcaDepth(g []*anchor) int {
 	return d - 1
 }
 
-// groupContainer is the list element: the common ancestor of a multi-link group, or the parent of a lone link's own entry.
 func (p *pageDoc) groupContainer(g []*anchor) *html.Node {
 	distinct := map[string]bool{}
 	for _, a := range g {
@@ -148,17 +141,16 @@ func (p *pageDoc) groupContainer(g []*anchor) *html.Node {
 	return e
 }
 
-// soleOwner is the highest ancestor of a that links nowhere but a's URL.
 func (p *pageDoc) soleOwner(a *anchor) *html.Node {
-	if p.mixed == nil {
-		p.mixed = map[*html.Node]bool{}
+	if p.linksSeveralURLs == nil {
+		p.linksSeveralURLs = map[*html.Node]bool{}
 		keyOf := map[*html.Node]string{}
 		for _, o := range p.anchors {
 			for _, n := range o.chain {
 				if k, ok := keyOf[n]; !ok {
 					keyOf[n] = o.key
 				} else if k != o.key {
-					p.mixed[n] = true
+					p.linksSeveralURLs[n] = true
 				}
 			}
 		}
@@ -166,7 +158,7 @@ func (p *pageDoc) soleOwner(a *anchor) *html.Node {
 	best := a.node
 	for i := len(a.chain) - 2; i >= 0; i-- {
 		n := a.chain[i]
-		if n.Data == "body" || n.Data == "html" || n.Data == "main" || p.mixed[n] {
+		if n.Data == "body" || n.Data == "html" || n.Data == "main" || p.linksSeveralURLs[n] {
 			break
 		}
 		best = n
@@ -174,8 +166,6 @@ func (p *pageDoc) soleOwner(a *anchor) *html.Node {
 	return best
 }
 
-// findMergeTarget joins link groups that point at the same posts from one container, like a card's image and title links.
-// Disjoint groups stay apart even with one URL shape: a card's category links often share the posts' shape.
 func findMergeTarget(out []*cluster, c *cluster) *cluster {
 	for _, m := range out {
 		if m.container == c.container && urlOverlap(m.anchors, c.anchors) >= 0.5 {
@@ -202,7 +192,6 @@ func urlOverlap(a, b []*anchor) float64 {
 	return float64(shared) / float64(min(len(as), len(bs)))
 }
 
-// buildEntries assigns each distinct URL its entry element: the highest ancestor below the container holding no other URL of the cluster.
 func (p *pageDoc) buildEntries(c *cluster) {
 	keysUnder := map[*html.Node]map[string]bool{}
 	for _, a := range c.anchors {
@@ -243,7 +232,6 @@ func (p *pageDoc) buildEntries(c *cluster) {
 	}
 }
 
-// entryTemplate is the list's URL shape: its most common template when that covers 80%, else a generalized pattern when a category in the path splits it.
 func entryTemplate(entries []*entry) string {
 	counts := map[string]int{}
 	buckets := map[string][]string{}
@@ -271,7 +259,6 @@ func entryTemplate(entries []*entry) string {
 	return best
 }
 
-// singletonWorthKeeping keeps lone links that look like a featured post, the hero block of a split stream.
 func (p *pageDoc) singletonWorthKeeping(e *entry) bool {
 	if e.inNav {
 		return false
@@ -282,7 +269,6 @@ func (p *pageDoc) singletonWorthKeeping(e *entry) bool {
 	return e.TitleSource == TitleHeading || len(strings.Fields(e.Title)) >= 4
 }
 
-// containerHint renders the container and two ancestors as "tag.class<tag.class<tag".
 func containerHint(n *html.Node) string {
 	var parts []string
 	for x := n; x != nil && x.Type == html.ElementNode && len(parts) < 3; x = x.Parent {
@@ -297,7 +283,6 @@ func containerHint(n *html.Node) string {
 	return strings.Join(parts, "<")
 }
 
-// hintSkeleton drops class names so a rehashed stylesheet still matches by structure.
 func hintSkeleton(hint string) string {
 	parts := strings.Split(hint, "<")
 	for i, p := range parts {
@@ -306,7 +291,6 @@ func hintSkeleton(hint string) string {
 	return strings.Join(parts, "<")
 }
 
-// nodeSig is tag plus classes; stable normalizes per-item and build-hash classes away.
 func nodeSig(n *html.Node, stable bool) string {
 	sig := n.Data
 	for _, c := range classes(n) {
@@ -320,7 +304,6 @@ func nodeSig(n *html.Node, stable bool) string {
 	return sig
 }
 
-// stableClass cuts a digit-bearing suffix (post-123, Card__x8Ab2, css-1x2y3z): CMS item ids and build hashes, not structure.
 func stableClass(c string) string {
 	if !strings.ContainsFunc(c, unicode.IsDigit) {
 		return c
@@ -332,7 +315,6 @@ func stableClass(c string) string {
 	return stableClass(strings.TrimRight(c[:i], "-_"))
 }
 
-// navContext reports whether a link sits in site navigation (nav, page header/footer) or a sidebar.
 func navContext(n *html.Node) (inNav, inAside bool) {
 	sectioned := false
 	for x := n.Parent; x != nil && x.Type == html.ElementNode; x = x.Parent {
@@ -368,7 +350,6 @@ func navContext(n *html.Node) (inNav, inAside bool) {
 	return false, inAside
 }
 
-// nameTokens splits class and id values into lowercase words.
 func nameTokens(n *html.Node) []string {
 	return strings.FieldsFunc(strings.ToLower(attr(n, "class")+" "+attr(n, "id")), func(r rune) bool {
 		return r == ' ' || r == '-' || r == '_' || r == ':' || r == '/' || r == '\t' || r == '\n'

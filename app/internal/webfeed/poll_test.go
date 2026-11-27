@@ -11,7 +11,6 @@ import (
 	"time"
 )
 
-// historyFrom is the good-poll record a setup leaves behind, the way the server stores it.
 func historyFrom(res *Result) []GoodPoll {
 	g := GoodPoll{URLTemplate: DominantTemplate(res.Items, streamTemplates(res.Recipe.Streams)), TitleShape: ComputeSignals(res.Items, nil).TitleShape}
 	for _, it := range res.Items {
@@ -45,6 +44,8 @@ func TestPollDetectorVerdicts(t *testing.T) {
 		{name: "cookie wall over the list", body: page("Blog", `<div class="consent"><h2>Before you continue</h2><p>We and our partners use cookies.</p><button>Accept all</button></div>`+listing), verdict: PollBroken, reason: ReasonConsentWall},
 		{name: "spa shell", body: page("Blog", `<div id="root"></div><script src="/assets/app.js"></script>`), verdict: PollBroken, reason: ReasonSPAShell},
 		{name: "empty behind a cookie notice", body: page("Blog", `<p>We use cookies to improve your experience. Manage consent.</p>`), verdict: PollBroken, reason: ReasonConsentWall},
+		{name: "cookie banner beside the posts is no wall", body: page("Blog", `<div class="consent"><p>We use cookies to improve your experience. Manage consent.</p></div>`+listing), verdict: PollOK, items: 8},
+		{name: "error words outside the title and first heading are no error page", body: page("Blog", `<p>Page not found? Something went wrong? Try the search.</p>`+listing), verdict: PollOK, items: 8},
 		{name: "url scheme changed", body: page("Blog", siteNav+movedList(8, "posts")+siteFooter), verdict: PollSuspect, reason: ReasonEmpty},
 		{name: "list cut to three", body: page("Blog", siteNav+blogList(3)+siteFooter), verdict: PollSuspect, reason: ReasonCountRatio, items: 3},
 	}
@@ -73,7 +74,6 @@ func TestPollDetectorVerdicts(t *testing.T) {
 	}
 }
 
-// conditionalSite serves only /blog and answers If-None-Match with 304 until told to ignore validators.
 type conditionalSite struct {
 	mu         sync.Mutex
 	body, etag string
@@ -164,6 +164,23 @@ func TestPollUsesValidatorsAndSkipsAnUnchangedLinkSet(t *testing.T) {
 	}
 }
 
+func TestPollNeverCallsTheModel(t *testing.T) {
+	s := newTestSite(t)
+	s.set("/blog", page("Blog", siteNav+blogList(8)+siteFooter))
+	res := setupRecipe(t, s, "/blog")
+	s.set("/blog", page("Blog", siteNav+movedList(8, "posts")+siteFooter))
+	m := &fakeModel{}
+	opts := s.opts()
+	opts.Model = m
+	got, err := Poll(context.Background(), PollInput{Recipe: res.Recipe, History: historyFrom(res)}, opts)
+	if err != nil || got.Verdict != PollSuspect {
+		t.Fatalf("fixture: poll = %+v, %v", got, err)
+	}
+	if len(m.prompts) != 0 {
+		t.Fatalf("poll asked the model %d times; a poll is the routine read through the recipe and never spends on a model", len(m.prompts))
+	}
+}
+
 func TestPollMarksNonHTMLBroken(t *testing.T) {
 	listing := page("Blog", siteNav+blogList(8)+siteFooter)
 	site := &conditionalSite{body: listing, etag: `"v1"`, ignore: true}
@@ -246,7 +263,6 @@ func TestPollReadsRobotsFromADailyCache(t *testing.T) {
 	}
 }
 
-// sitemapSite is a /news listing that refuses us, served from its sitemap instead.
 func sitemapSite(t *testing.T) (*testSite, *Result) {
 	t.Helper()
 	s := newTestSite(t)

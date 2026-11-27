@@ -7,7 +7,6 @@ import (
 	"testing"
 )
 
-// failingDoer fails every request for one path at the transport and passes the rest to the test site.
 type failingDoer struct {
 	path string
 	next Doer

@@ -80,12 +80,11 @@ func TestDriftTemplateShareNeedsAChangedTemplate(t *testing.T) {
 	for i := range moved {
 		moved[i].URL = base[i].URL
 	}
-	// Same URLs, so continuity holds; only the template rule can see a stream whose links now point elsewhere.
 	elsewhere := append([]Item(nil), base[:4]...)
 	elsewhere = append(elsewhere, postItems(10, "tags")[:6]...)
 	history[0].URLs = append(history[0].URLs, itemURLs(elsewhere[4:])...)
 	if got := drift(elsewhere, DominantTemplate(elsewhere, nil), history); got != ReasonTemplateShare {
-		t.Fatalf("drift = %q, want %q", got, ReasonTemplateShare)
+		t.Fatalf("drift = %q, want %q: the history knows these URLs, so continuity holds and only the template rule can see a stream whose links now point elsewhere", got, ReasonTemplateShare)
 	}
 	if got := drift(moved, DominantTemplate(moved, nil), history); got != "" {
 		t.Fatalf("same template = %q, want ok", got)
@@ -109,7 +108,6 @@ func TestDominantTemplatePrefersTheRecipePattern(t *testing.T) {
 	}
 }
 
-// retitled copies items with each title replaced by title(i).
 func retitled(items []Item, title func(i int) string) []Item {
 	out := slices.Clone(items)
 	for i := range out {
@@ -118,7 +116,6 @@ func retitled(items []Item, title func(i int) string) []Item {
 	return out
 }
 
-// freshPosts are the blog posts numbered from..to-1 under URLs no earlier poll saw.
 func freshPosts(from, to int) []Item {
 	out := postItems(to, "blog")[from:]
 	for i := range out {
