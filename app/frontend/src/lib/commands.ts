@@ -1,10 +1,10 @@
 // A command's work resolves to the toast it shows, or to nothing.
 type Outcome = Promise<string | void> | string | void;
 
-export type CommandOption = { value: string; label: string; detail?: string; shortcut?: string };
+export type CommandOption = { value: string; label: string; detail?: string; shortcut?: string; step?: CommandStep };
 
 // A step takes over the menu's input, so an action asks for its value in place.
-export type CommandStep =
+export type CommandStep = (
     | {
           kind: 'text';
           title: string;
@@ -29,7 +29,8 @@ export type CommandStep =
           suggestionsPath: string;
           save: (tags: string[]) => Promise<unknown> | void;
       }
-    | { kind: 'confirm'; title: string; description: string; action: string; submit: () => Outcome };
+    | { kind: 'confirm'; title: string; description: string; action: string; submit: () => Outcome }
+) & { parent?: CommandStep };
 
 export type Command = {
     id: string;

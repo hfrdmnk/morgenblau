@@ -27,7 +27,7 @@ import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useSaveRemoval } from '@/hooks/use-save-removal';
 import { useShortcuts } from '@/hooks/use-shortcuts';
 import { useSources } from '@/hooks/use-sources';
-import { openInTab } from '@/lib/commands';
+import { ACTIONS, openInTab } from '@/lib/commands';
 import {
     groupSaves,
     librarySort,
@@ -263,7 +263,7 @@ function useSortCommand(sort: LibrarySort, query: string) {
     useCommands([
         {
             id: 'library:sort',
-            group: 'Everything',
+            group: ACTIONS,
             label: 'Sort by…',
             detail: SORTS.find((choice) => choice.sort === sort)?.label,
             keywords: ['order', 'newest', 'title', 'site'],

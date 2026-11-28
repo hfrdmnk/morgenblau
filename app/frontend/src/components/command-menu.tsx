@@ -20,6 +20,12 @@ import { SourceIcon } from '@/components/ui/source-icon';
 import { Frame } from '@/design/frame';
 import { Text } from '@/design/text';
 import { usePublicFollowing } from '@/hooks/use-public-following';
+import {
+    feedDeleteStep,
+    feedRenameStep,
+    newsletterDeleteStep,
+    newsletterRenameStep,
+} from '@/hooks/use-source-commands';
 import { parseReaderFont, readerFontLabels, readerFonts, useReaderFont } from '@/hooks/use-reader-font';
 import { useSources, type FeedSource, type NewsletterSource } from '@/hooks/use-sources';
 import { subscriptionChanges } from '@/lib/add-source';
@@ -40,7 +46,7 @@ import { downloadOpml } from '@/lib/opml';
 import { fold, saveHost, saveKey, saveSourceLabel, saveTitle, type LibrarySave } from '@/lib/library';
 import { APP_MODES, digestHref, libraryHref, newsletterSourceHref, PATHS, saveHref, sourceHref } from '@/lib/paths';
 import { isCommandMenuKey, SHORTCUTS } from '@/lib/shortcuts';
-import { displayURL } from '@/lib/source-display';
+import { displayURL, feedTitle, newsletterTitle } from '@/lib/source-display';
 import { addTags, GONE, hasOverlongTag, isGone, MAX_TAG_LENGTH, MAX_TAGS } from '@/lib/source-edit';
 
 const FAILED = 'That didn’t work. Try again.';
@@ -85,7 +91,7 @@ export function CommandMenu() {
                     // Escape inside a step steps back out of it; only Escape at the top closes the menu.
                     if (!next && step && details.reason === 'escape-key') {
                         details.cancel();
-                        setStep(null);
+                        setStep(step.parent ?? null);
                         return;
                     }
                     setOpen(next);
@@ -160,7 +166,11 @@ function MenuBody({
     if (step) return <StepView key={step.title} {...props} onStep={onStep} run={run} step={step} />;
     return (
         <RootView
-            commands={[...global, ...registered]}
+            commands={[
+                ...registered.filter((command) => command.group === ACTIONS),
+                ...global,
+                ...registered.filter((command) => command.group !== ACTIONS),
+            ]}
             flipped={flipped}
             onAddSource={onAddSource}
             onFlip={(id, on) =>
@@ -442,7 +452,11 @@ function RootView({
                 </CommandItem>
             ) : null}
             {groups.map(({ group, commands: listed }) => (
-                <CommandGroup heading={group} key={group}>
+                <CommandGroup
+                    aria-label={group === ACTIONS ? group : undefined}
+                    heading={group === ACTIONS ? undefined : group}
+                    key={group}
+                >
                     {listed.map((command) => (
                         <CommandItem
                             disabled={run.pending && busy !== command.id}
@@ -480,8 +494,8 @@ function rankedGroups(commands: Command[], query: string) {
             : 1;
         if (score > 0) groups.set(command.group, [...(groups.get(command.group) ?? []), { command, score }]);
     }
-    // Without a query the page's own commands come first, then navigation, then actions; with one, the best match leads.
-    const rank = (group: string) => (group === GO_TO ? 1 : group === ACTIONS ? 2 : 0);
+    // Without a query actions come first, then navigation, then everything searchable; with one, the best match leads.
+    const rank = (group: string) => (group === ACTIONS ? 0 : group === GO_TO ? 1 : 2);
     const best = (group: string) => Math.max(...groups.get(group)!.map(({ score }) => score));
     return [...groups.keys()]
         .sort((a, b) => (searching ? best(b) - best(a) : 0) || rank(a) - rank(b))
@@ -508,9 +522,10 @@ function RowEnd({ command, on }: { command: Command; on?: boolean }) {
 }
 
 function StepView({ step, run, onStep }: MenuProps & { step: CommandStep; run: Run }) {
-    const back = () => onStep(null);
+    const back = () => onStep(step.parent ?? null);
     if (step.kind === 'text') return <TextStep back={back} run={run} step={step} />;
-    if (step.kind === 'choice') return <ChoiceStep back={back} run={run} step={step} />;
+    if (step.kind === 'choice')
+        return <ChoiceStep back={back} onNext={(next) => onStep({ ...next, parent: step })} run={run} step={step} />;
     if (step.kind === 'tags') return <TagsStep back={back} run={run} step={step} />;
     return <ConfirmStep back={back} run={run} step={step} />;
 }
@@ -542,7 +557,7 @@ function TextStep({ step, run, back }: StepProps<'text'>) {
     );
 }
 
-function ChoiceStep({ step, run, back }: StepProps<'choice'>) {
+function ChoiceStep({ step, run, back, onNext }: StepProps<'choice'> & { onNext: (next: CommandStep) => void }) {
     const [query, setQuery] = useState('');
     const [busy, setBusy] = useState<string | null>(null);
     return (
@@ -561,12 +576,14 @@ function ChoiceStep({ step, run, back }: StepProps<'choice'>) {
                     key={option.value}
                     keywords={[option.label, option.detail ?? '']}
                     onSelect={() => {
+                        if (option.step) return onNext(option.step);
                         setBusy(option.value);
                         void run.run(() => step.submit(option.value));
                     }}
                 >
                     <Label detail={option.detail}>{option.label}</Label>
                     {option.shortcut ? <Keys keys={option.shortcut} /> : null}
+                    {option.step ? <ChevronDownIcon aria-hidden="true" rotate={270} size="sm" tone="subtle" /> : null}
                     {busy === option.value && run.pending ? (
                         <Busy />
                     ) : option.value === step.current ? (
@@ -718,7 +735,7 @@ function logOut() {
 }
 
 function useGlobalCommands(onAddSource: (url: string) => void): Command[] {
-    const [, navigate] = useLocation();
+    const [location, navigate] = useLocation();
     const [font, setFont] = useReaderFont();
     const following = usePublicFollowing();
     const feeds = useSources<FeedSource[]>('/api/subscriptions');
@@ -726,9 +743,30 @@ function useGlobalCommands(onAddSource: (url: string) => void): Command[] {
     const saves = useSources<LibrarySave[]>('/api/saves');
     const today = startOfToday();
     const go = (href: string) => () => navigate(href);
+    const allNewsletters =
+        newsletters.status === 'loaded'
+            ? [
+                  ...newsletters.data.active.map((source) => [source, false] as const),
+                  ...newsletters.data.stopped.map((source) => [source, true] as const),
+              ]
+            : [];
 
     const navigation: Command[] = [
-        ...APP_MODES.map(({ label, href }) => ({ id: `go:${href}`, group: GO_TO, label, run: go(href) })),
+        ...APP_MODES.map(({ label, href }) => ({
+            id: `go:${href}`,
+            group: GO_TO,
+            label,
+            detail: href === PATHS.library ? 'Recent' : undefined,
+            run: go(href),
+        })),
+        {
+            id: 'go:library-everything',
+            group: GO_TO,
+            label: 'Library',
+            detail: 'Everything',
+            keywords: ['saves', 'all'],
+            run: go(libraryHref('everything')),
+        },
         {
             id: 'go:day',
             group: GO_TO,
@@ -782,13 +820,7 @@ function useGlobalCommands(onAddSource: (url: string) => void): Command[] {
                 run: go(sourceHref(feed.rkey)),
             };
         }),
-        ...(newsletters.status === 'loaded'
-            ? [
-                  ...newsletters.data.active.map((source) => [source, false] as const),
-                  ...newsletters.data.stopped.map((source) => [source, true] as const),
-              ]
-            : []
-        ).map(([source, stopped]) => ({
+        ...allNewsletters.map(([source, stopped]) => ({
             id: `newsletter:${source.id}`,
             group: 'Sources',
             label: source.title || source.senderAddress,
@@ -815,6 +847,38 @@ function useGlobalCommands(onAddSource: (url: string) => void): Command[] {
         };
     });
 
+    const leave = (href: string) => () => {
+        if (location === href) navigate(PATHS.sources);
+    };
+    const picked = [
+        ...(feeds.status === 'loaded' ? feeds.data : []).map((feed) => ({
+            value: `feed:${feed.rkey}`,
+            label: feedTitle(feed),
+            detail: feed.title ? displayURL(feed.siteUrl || feed.feedUrl) : undefined,
+            rename: feedRenameStep(feed),
+            remove: feedDeleteStep(feed, leave(sourceHref(feed.rkey))),
+        })),
+        ...allNewsletters.map(([source, stopped]) => ({
+            value: `newsletter:${source.id}`,
+            label: newsletterTitle(source),
+            detail: source.senderAddress,
+            rename: newsletterRenameStep(source, stopped, () => subscriptionChanges.dispatchEvent(new Event('change'))),
+            remove: newsletterDeleteStep(source, stopped, leave(newsletterSourceHref(source.id))),
+        })),
+    ];
+    const pickSource = (title: string, step: (source: (typeof picked)[number]) => CommandStep): CommandStep => ({
+        kind: 'choice',
+        title,
+        placeholder: 'Find a source',
+        options: picked.map((source) => ({
+            value: source.value,
+            label: source.label,
+            detail: source.detail,
+            step: step(source),
+        })),
+        submit: () => {},
+    });
+
     const actions: Command[] = [
         {
             id: 'add-source',
@@ -823,6 +887,24 @@ function useGlobalCommands(onAddSource: (url: string) => void): Command[] {
             keywords: ['subscribe', 'follow', 'feed', 'new'],
             run: () => onAddSource(''),
         },
+        ...(picked.length
+            ? [
+                  {
+                      id: 'rename-source',
+                      group: ACTIONS,
+                      label: 'Rename a source…',
+                      keywords: ['title', 'name'],
+                      step: pickSource('Rename a source', (source) => source.rename),
+                  },
+                  {
+                      id: 'delete-source',
+                      group: ACTIONS,
+                      label: 'Delete a source…',
+                      keywords: ['remove', 'unsubscribe', 'unfollow'],
+                      step: pickSource('Delete a source', (source) => source.remove),
+                  },
+              ]
+            : []),
         {
             id: 'refresh',
             group: ACTIONS,

@@ -12,7 +12,7 @@ const { Router } = await import('wouter');
 const { CommandMenu } = await import('./command-menu');
 const { useAppLocation } = await import('@/hooks/use-app-location');
 const { useCommands } = await import('@/hooks/use-commands');
-const { CommandProblem } = await import('@/lib/commands');
+const { ACTIONS, CommandProblem } = await import('@/lib/commands');
 
 // Wouter's module may be cached from a different Happy DOM window.
 for (const method of ['pushState', 'replaceState'] as const) {
@@ -40,11 +40,19 @@ function json(body: unknown) {
 }
 
 // The menu's own lists load on open; this reader follows nothing.
-function quietServer(saves: unknown[] = []) {
+const writes: { path: string; method?: string; body?: unknown }[] = [];
+
+function record(path: string, init?: RequestInit) {
+    if (!init?.method || init.method === 'GET') return;
+    writes.push({ path, method: init.method, body: init.body ? JSON.parse(String(init.body)) : undefined });
+}
+
+function quietServer(lists: Record<string, unknown[]> = {}) {
     globalThis.fetch = Object.assign(
-        async (url: Parameters<typeof fetch>[0]) => {
+        async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
             const path = String(url);
-            if (path === '/api/saves') return json(saves);
+            record(path, init);
+            if (lists[path]) return json(lists[path]);
             if (path === '/api/profiles/me')
                 return json({ did: 'did:plc:example', handle: 'reader.example', displayName: null, avatar: null });
             if (path === '/api/newsletters/address') return json({ address: 'reader@inbound.example.com' });
@@ -67,7 +75,7 @@ function SourcePage() {
         { id: 'headline', group: 'Headlines', label: 'Last Monday in review', searchOnly: true, run: () => {} },
         {
             id: 'rename',
-            group: 'Example Publication',
+            group: ACTIONS,
             label: 'Rename',
             step: {
                 kind: 'text',
@@ -83,7 +91,7 @@ function SourcePage() {
         },
         {
             id: 'primary',
-            group: 'Example Publication',
+            group: ACTIONS,
             label: 'Primary',
             // Never settles, so every later Enter lands while the first write is still in flight.
             toggle: {
@@ -96,7 +104,7 @@ function SourcePage() {
         },
         {
             id: 'tags',
-            group: 'Example Publication',
+            group: ACTIONS,
             label: 'Edit tags',
             step: {
                 kind: 'tags',
@@ -117,9 +125,9 @@ function SourcePage() {
     return <input aria-label="A field on the page" />;
 }
 
-async function render(saves: unknown[] = []) {
+async function render(lists: Record<string, unknown[]> = {}) {
     window.history.replaceState(null, '', '/sources/example');
-    quietServer(saves);
+    quietServer(lists);
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
@@ -178,16 +186,18 @@ test('Ctrl+K opens the menu from a text field, and a typed day goes to that dige
 });
 
 test('a save is found by its title without its accents, and opens in the reader with a way back to the Library', async () => {
-    await render([
-        {
-            rkey: '3save',
-            itemUrl: 'https://notes.example.com/zurich',
-            entrySlug: 'zurich-slug',
-            createdAt: '2026-11-01T00:00:00Z',
-            title: 'Grüße aus Zürich',
-            source: { title: 'Example Travel Journal' },
-        },
-    ]);
+    await render({
+        '/api/saves': [
+            {
+                rkey: '3save',
+                itemUrl: 'https://notes.example.com/zurich',
+                entrySlug: 'zurich-slug',
+                createdAt: '2026-11-01T00:00:00Z',
+                title: 'Grüße aus Zürich',
+                source: { title: 'Example Travel Journal' },
+            },
+        ],
+    });
     await press('k', { ctrlKey: true });
 
     await type('zurich');
@@ -197,6 +207,47 @@ test('a save is found by its title without its accents, and opens in the reader 
     await press('Enter');
     expect(location.pathname).toBe('/entry/zurich-slug');
     expect(new URLSearchParams(location.search).get('from')).toBe('/library?view=everything');
+});
+
+test('Rename a source… picks the source first, and Escape steps back to the picker before the menu', async () => {
+    await render({
+        '/api/subscriptions': [
+            {
+                rkey: '3feed',
+                title: 'Example Weekly',
+                feedUrl: 'https://weekly.example.com/feed.xml',
+                primary: false,
+                fetchStatus: 'ready',
+            },
+            {
+                rkey: '3other',
+                title: 'Example Daily',
+                feedUrl: 'https://daily.example.com/feed.xml',
+                primary: false,
+                fetchStatus: 'ready',
+            },
+        ],
+    });
+    writes.length = 0;
+    await press('k', { ctrlKey: true });
+    await type('rename a source');
+    await press('Enter');
+    expect(menuInput()?.getAttribute('aria-label')).toBe('Rename a source');
+
+    await type('daily');
+    await press('Enter');
+    expect(menuInput()?.getAttribute('aria-label')).toBe('Rename');
+    expect(menuInput()?.value).toBe('Example Daily');
+
+    await press('Escape');
+    expect(menuInput()?.getAttribute('aria-label')).toBe('Rename a source');
+    await type('daily');
+    await press('Enter');
+    await type('Example Morning');
+    await press('Enter');
+    expect(writes).toEqual([
+        { path: '/api/subscriptions/3other', method: 'PATCH', body: { title: 'Example Morning' } },
+    ]);
 });
 
 test('closing the menu opened from nowhere leaves focus off the page, not on its first control', async () => {
