@@ -63,11 +63,11 @@ export function sourceOrigin(from: string | null): string | null {
 
 export function libraryHref(
     view: LibraryView = 'recent',
-    { sort = 'newest', query = '' }: { sort?: LibrarySort; query?: string } = {},
+    { sort = 'title', query = '' }: { sort?: LibrarySort; query?: string } = {},
 ): string {
     if (view === 'recent') return PATHS.library;
     const params = new URLSearchParams({ view });
-    if (sort !== 'newest') params.set('sort', sort);
+    if (sort !== 'title') params.set('sort', sort);
     if (query.trim()) params.set('q', query);
     return `${PATHS.library}?${params}`;
 }

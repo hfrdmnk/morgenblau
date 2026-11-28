@@ -6,11 +6,11 @@ export function libraryView(search: string): LibraryView {
     return new URLSearchParams(search).get('view') === 'everything' ? 'everything' : 'recent';
 }
 
-export type LibrarySort = 'newest' | 'title' | 'site';
+export type LibrarySort = 'title' | 'site' | 'time';
 
 export function librarySort(search: string): LibrarySort {
     const sort = new URLSearchParams(search).get('sort');
-    return sort === 'title' || sort === 'site' ? sort : 'newest';
+    return sort === 'site' || sort === 'time' ? sort : 'title';
 }
 
 export type LibrarySource = {
@@ -96,7 +96,7 @@ export function groupSaves(
               : saves;
     const key = (save: LibrarySave) => {
         if (sort === 'site') return saveSourceLabel(save);
-        if (sort === 'newest') return monthLabel(save.createdAt, now);
+        if (sort === 'time') return monthLabel(save.createdAt, now);
         const first = saveTitle(save).normalize('NFD').charAt(0).toLocaleUpperCase();
         return /\p{L}/u.test(first) ? first : '#';
     };

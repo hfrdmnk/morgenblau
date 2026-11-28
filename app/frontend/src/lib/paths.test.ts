@@ -44,6 +44,7 @@ describe('reader back link', () => {
             href: '/library?view=everything',
             label: 'Back to Library',
         });
+        expect(libraryHref('everything', { sort: 'time' })).toBe('/library?view=everything&sort=time');
         const searched = libraryHref('everything', { sort: 'site', query: 'café & #design' });
         expect(
             readerBack(new URL(entryHref('slug', searched), 'https://app.example.com').searchParams.get('from')),

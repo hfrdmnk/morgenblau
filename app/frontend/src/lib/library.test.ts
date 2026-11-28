@@ -13,13 +13,14 @@ const titles = (groups: ReturnType<typeof groupSaves>) =>
     groups.map((group) => [group.title, group.saves.map((s) => s.title || 'Untitled')]);
 
 describe('Library view and sort', () => {
-    test('the view and sort come from the URL and fall back to the newest saves', () => {
+    test('the view and sort come from the URL and fall back to title', () => {
         expect(libraryView('?view=everything')).toBe('everything');
         expect(libraryView('?tab=archived')).toBe('recent');
         expect(libraryView('')).toBe('recent');
         expect(librarySort('?view=everything&sort=site')).toBe('site');
-        expect(librarySort('?sort=title')).toBe('title');
-        expect(librarySort('?sort=oldest')).toBe('newest');
+        expect(librarySort('?sort=time')).toBe('time');
+        expect(librarySort('?sort=newest')).toBe('title');
+        expect(librarySort('')).toBe('title');
     });
 });
 
@@ -32,8 +33,8 @@ describe('grouping everything', () => {
         save('', new Date(2025, 11, 30).toISOString(), 'a.example.com'),
     ];
 
-    test('newest keeps the saved order and names the year only for earlier years', () => {
-        expect(titles(groupSaves(saves, 'newest', now))).toEqual([
+    test('time keeps the saved order and names the year only for earlier years', () => {
+        expect(titles(groupSaves(saves, 'time', now))).toEqual([
             ['November', ['zebra crossings']],
             ['October', ['Árbol']],
             ['January', ['apples']],

@@ -177,7 +177,7 @@ function Everything({
                                 <ItemList>
                                     {group.saves.map((save) => (
                                         <SaveItem
-                                            detail={sort === 'newest' ? undefined : savedLabel(save.createdAt)}
+                                            detail={sort === 'time' ? undefined : savedLabel(save.createdAt)}
                                             from={libraryHref('everything', { sort, query })}
                                             key={saveKey(save)}
                                             removal={removal}
@@ -265,7 +265,7 @@ function useSortCommand(sort: LibrarySort, query: string) {
             group: ACTIONS,
             label: 'Sort by…',
             detail: SORTS.find((choice) => choice.sort === sort)?.label,
-            keywords: ['order', 'newest', 'title', 'site'],
+            keywords: ['order', 'title', 'site', 'time'],
             step: {
                 kind: 'choice',
                 title: 'Sort by',
@@ -287,9 +287,9 @@ function countLabel(found: number, total: number, query: string) {
 }
 
 const SORTS: Array<{ sort: LibrarySort; label: string }> = [
-    { sort: 'newest', label: 'Newest' },
     { sort: 'title', label: 'Title' },
     { sort: 'site', label: 'Site' },
+    { sort: 'time', label: 'Time' },
 ];
 
 function SortChoices({ sort, query }: { sort: LibrarySort; query: string }) {

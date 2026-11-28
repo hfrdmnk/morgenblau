@@ -164,7 +164,7 @@ Owner matching is enforced by both the private service and relational constraint
 
 The Library contains the user's own saved entries, with optional commentary and flat, user-defined tags. There is no Shared or Network section.
 
-Saves have no read or archived state. The Library shows two views of the same saves: Recent, the newest few (`RECENT_SIZE` in `app/frontend/src/lib/library.ts`), so the reading queue never grows into a backlog; and Everything, every save sorted by newest, title or site, and searchable by title, site and tag (`matchesQuery` in the same file). Neither view shows counts of what is unread.
+Saves have no read or archived state. The Library shows two views of the same saves: Recent, the newest few (`RECENT_SIZE` in `app/frontend/src/lib/library.ts`), so the reading queue never grows into a backlog; and Everything, every save sorted by title, site or time, and searchable by title, site and tag (`matchesQuery` in the same file). Neither view shows counts of what is unread.
 
 Existing URL-based saves remain `blue.morgen.feed.save` records. They are product-private: those PDS records are technically public, but Morgenblau does not display another person's saves or derive popularity signals from them. Newsletter saves follow the private newsletter storage rule above, including when the message has a public web-version URL.
 
