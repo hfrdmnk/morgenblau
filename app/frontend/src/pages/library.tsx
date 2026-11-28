@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { toast } from 'sonner';
 import { useLocation } from 'wouter';
-import { useSearch } from 'wouter/use-browser-location';
+import { useHistoryState, useSearch } from 'wouter/use-browser-location';
 
-import { CopyIcon, ExternalLinkIcon, TrashIcon } from '@/components/icons';
+import { CopyIcon, ExternalLinkIcon, SearchIcon, TrashIcon } from '@/components/icons';
 import { ItemList, ListError, ListItem } from '@/components/item-list';
 import { EmptyState } from '@/components/status-state';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Frame } from '@/design/frame';
 import { Text } from '@/design/text';
+import type { AppNavigationState } from '@/hooks/use-app-location';
+import { useCommands } from '@/hooks/use-commands';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useSaveRemoval } from '@/hooks/use-save-removal';
 import { useShortcuts } from '@/hooks/use-shortcuts';
@@ -94,10 +96,7 @@ const SAMPLE_SAVES: LibrarySave[] = [
 
 function Recent({ saves, removal }: { saves: LibrarySave[]; removal: Removal }) {
     const [, navigate] = useLocation();
-    const searchEverything = () => {
-        searchOnArrival = true;
-        navigate(libraryHref('everything'));
-    };
+    const searchEverything = () => navigate(libraryHref('everything'), { state: { openSearch: true } });
     useShortcuts({ '/': searchEverything, 'Shift+/': searchEverything });
     if (!saves.length)
         return (
@@ -124,8 +123,6 @@ function Recent({ saves, removal }: { saves: LibrarySave[]; removal: Removal }) 
     );
 }
 
-let searchOnArrival = false;
-
 function Everything({
     saves,
     sort,
@@ -137,16 +134,8 @@ function Everything({
     initialQuery: string;
     removal: Removal;
 }) {
-    const [query, setQuery] = useState(initialQuery);
-    const [, navigate] = useLocation();
-    const input = useRef<HTMLInputElement>(null);
-    useEffect(() => {
-        if (!searchOnArrival) return;
-        searchOnArrival = false;
-        input.current?.focus();
-    }, []);
-    const focusSearch = () => input.current?.focus();
-    useShortcuts({ '/': focusSearch, 'Shift+/': focusSearch });
+    const { query, open, focus, input, toggle, change, close, flip } = useLibrarySearch(sort, initialQuery);
+    useSortCommand(sort, query);
     if (!saves.length)
         return (
             <EmptyState
@@ -157,28 +146,29 @@ function Everything({
         );
     const found = saves.filter((save) => matchesQuery(save, query));
     const groups = groupSaves(found, sort);
-    const search = (next: string) => {
-        setQuery(next);
-        navigate(libraryHref('everything', { sort, query: next }), { replace: true });
-    };
     return (
         <Frame gap="4xl">
             <Frame gap="l">
-                <Input
-                    aria-keyshortcuts="/"
-                    aria-label="Search your Library"
-                    onChange={(event) => search(event.target.value)}
-                    placeholder="Search titles, sites and #tags"
-                    ref={input}
-                    spellCheck={false}
-                    value={query}
-                />
                 <Frame align="center" direction="row" gap="l" justify="between" minHeight="control">
                     <Text aria-live="polite" as="span" numeric="tabular" size="sm" tone="subtle">
                         {countLabel(found.length, saves.length, query)}
                     </Text>
-                    <SortChoices query={query} sort={sort} />
+                    <Frame align="center" direction="row" gap="l">
+                        <SortChoices query={query} sort={sort} />
+                        <RowAction
+                            buttonRef={toggle}
+                            keys="/"
+                            label="Search your Library"
+                            onClick={flip}
+                            pressed={open}
+                        >
+                            <SearchIcon />
+                        </RowAction>
+                    </Frame>
                 </Frame>
+                {open ? (
+                    <SearchField autoFocus={focus} inputRef={input} onChange={change} onClose={close} query={query} />
+                ) : null}
             </Frame>
             {found.length ? (
                 <SaveList removal={removal} saves={groups.flatMap((group) => group.saves)}>
@@ -212,6 +202,87 @@ function Everything({
             )}
         </Frame>
     );
+}
+
+function useLibrarySearch(sort: LibrarySort, initialQuery: string) {
+    const arrived = useHistoryState<AppNavigationState | null>()?.openSearch === true;
+    const [query, setQuery] = useState(initialQuery);
+    const [open, setOpen] = useState(arrived || initialQuery !== '');
+    const [focus, setFocus] = useState(arrived);
+    const [, navigate] = useLocation();
+    const input = useRef<HTMLInputElement>(null);
+    const toggle = useRef<HTMLButtonElement>(null);
+    const change = (next: string) => {
+        setQuery(next);
+        navigate(libraryHref('everything', { sort, query: next }), { replace: true });
+    };
+    const show = () => {
+        setFocus(true);
+        setOpen(true);
+        input.current?.focus();
+    };
+    const close = () => {
+        change('');
+        setOpen(false);
+        toggle.current?.focus();
+    };
+    useShortcuts({ '/': show, 'Shift+/': show });
+    return { query, open, focus, input, toggle, change, close, flip: open ? close : show };
+}
+
+function SearchField({
+    query,
+    autoFocus,
+    inputRef,
+    onChange,
+    onClose,
+}: {
+    query: string;
+    autoFocus: boolean;
+    inputRef: RefObject<HTMLInputElement | null>;
+    onChange: (query: string) => void;
+    onClose: () => void;
+}) {
+    return (
+        <Input
+            aria-label="Search your Library"
+            autoFocus={autoFocus}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+                if (event.key !== 'Escape') return;
+                event.preventDefault();
+                onClose();
+            }}
+            placeholder="Search titles, sites and #tags"
+            ref={inputRef}
+            spellCheck={false}
+            value={query}
+        />
+    );
+}
+
+function useSortCommand(sort: LibrarySort, query: string) {
+    const [, navigate] = useLocation();
+    useCommands([
+        {
+            id: 'library:sort',
+            group: 'Everything',
+            label: 'Sort by…',
+            detail: SORTS.find((choice) => choice.sort === sort)?.label,
+            keywords: ['order', 'newest', 'title', 'site'],
+            step: {
+                kind: 'choice',
+                title: 'Sort by',
+                placeholder: 'Choose an order',
+                current: sort,
+                options: SORTS.map((choice) => ({ value: choice.sort, label: choice.label })),
+                submit: (next) =>
+                    navigate(libraryHref('everything', { sort: librarySort(`sort=${next}`), query }), {
+                        replace: true,
+                    }),
+            },
+        },
+    ]);
 }
 
 function countLabel(found: number, total: number, query: string) {
@@ -365,18 +436,29 @@ function RowAction({
     label,
     keys,
     onClick,
+    pressed,
+    buttonRef,
     children,
 }: {
     label: string;
     keys: string;
     onClick: () => void;
+    pressed?: boolean;
+    buttonRef?: RefObject<HTMLButtonElement | null>;
     children: ReactNode;
 }) {
     return (
         <Tooltip>
             <TooltipTrigger
                 render={
-                    <Button aria-label={label} onClick={onClick} size="icon-sm" variant="quiet">
+                    <Button
+                        aria-label={label}
+                        aria-pressed={pressed}
+                        onClick={onClick}
+                        ref={buttonRef}
+                        size="icon-sm"
+                        variant="quiet"
+                    >
                         {children}
                     </Button>
                 }

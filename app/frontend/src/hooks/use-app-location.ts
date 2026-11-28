@@ -6,6 +6,7 @@ import { isAccountMenuPath } from '@/lib/paths';
 export type AppNavigationState = {
     settingsReturn?: { href: string; scrollY: number };
     scrollY?: number;
+    openSearch?: boolean;
 };
 
 export function useAppLocation(options?: { ssrPath?: string }) {

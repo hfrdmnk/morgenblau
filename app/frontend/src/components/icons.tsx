@@ -22,6 +22,7 @@ import { IconLayersThree as CentralSourcesActiveIcon } from '@central-icons-reac
 import { IconLayersThree as CentralSourcesIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLayersThree';
 import { IconLoader as CentralLoadingIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconLoader';
 import { IconPencil as CentralPenIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconPencil';
+import { IconMagnifyingGlass as CentralSearchIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconMagnifyingGlass';
 import { IconPlusMedium as CentralPlusIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconPlusMedium';
 import { IconSettingsGear1 as CentralSettingsIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconSettingsGear1';
 import { IconShield as CentralShieldIcon } from '@central-icons-react/round-outlined-radius-2-stroke-1.5/IconShield';
@@ -101,6 +102,7 @@ export const SourcesIcon = icon(CentralSourcesIcon);
 export const LoadingIcon = icon(CentralLoadingIcon);
 export const PenIcon = icon(CentralPenIcon);
 export const PlusIcon = icon(CentralPlusIcon);
+export const SearchIcon = icon(CentralSearchIcon);
 export const SettingsIcon = icon(CentralSettingsIcon);
 export const ShieldIcon = icon(CentralShieldIcon);
 export const ExternalLinkIcon = icon(CentralExternalLinkIcon);
