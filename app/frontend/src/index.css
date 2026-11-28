@@ -348,8 +348,13 @@
 
 .skeleton :is(img, svg, input, textarea, select, button) {
     background-color: var(--muted);
+    background-image: none;
     border-color: transparent;
     box-shadow: none;
+}
+
+.skeleton button::after {
+    content: none;
 }
 
 .skeleton img {
