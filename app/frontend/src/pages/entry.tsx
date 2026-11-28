@@ -47,8 +47,8 @@ export function Entry() {
     const steps = useEntrySteps(slug, from);
     useShortcuts({ Escape: () => navigate(back) });
     const navigation: Command[] = [
-        { id: 'entry:previous', group: ACTIONS, label: 'Previous entry', run: steps.previous },
-        { id: 'entry:next', group: ACTIONS, label: 'Next entry', run: steps.next },
+        { id: 'entry:previous', group: ACTIONS, label: 'Previous post', run: steps.previous },
+        { id: 'entry:next', group: ACTIONS, label: 'Next post', run: steps.next },
         { id: 'entry:back', group: ACTIONS, label: backLabel, run: () => navigate(back) },
     ];
 
@@ -139,7 +139,7 @@ function EntryLoader({ slug, navigation }: { slug: string; navigation: Command[]
         <Skeleton
             data={state.status === 'loaded' ? state : null}
             error={error}
-            label="Loading entry"
+            label="Loading post"
             sample={SAMPLE_ENTRY}
         >
             {(loaded) => (
@@ -173,16 +173,16 @@ const SAMPLE_ENTRY: Extract<EntryState, { status: 'loaded' }> = {
 };
 
 const ENTRY_ERRORS: Record<number, [string, string]> = {
-    404: ['Entry unavailable', 'It may have been removed, or its source is no longer in your newspaper.'],
-    401: ['Sign in to read this entry', 'Your session may have ended.'],
+    404: ['Post unavailable', 'It may have been removed, or its source is no longer in your digest.'],
+    401: ['Sign in to read this post', 'Your session may have ended.'],
 };
 
 function entryErrorText(status: number, online: boolean): [string, string] {
     return (
         ENTRY_ERRORS[status] ??
         (online
-            ? ['This entry could not be loaded', 'Please try again in a moment.']
-            : ['This entry isn’t on this device yet', 'It opens here once you’re connected again.'])
+            ? ['Couldn’t load this post', 'Try again in a moment.']
+            : ['This post isn’t on this device yet', 'It opens here when you’re back online.'])
     );
 }
 
@@ -368,7 +368,7 @@ function ArticleExtraction({
     const [extracted, setExtracted] = useState(initiallyExtracted);
     const [pending, setPending] = useState(false);
     const [notice, setNotice] = useState(
-        extractionFailed ? 'The full article could not be loaded. You can try again or open the original.' : '',
+        extractionFailed ? 'Morgenblau couldn’t load the full article. Try again or open the original.' : '',
     );
 
     async function extract() {
@@ -382,10 +382,10 @@ function ArticleExtraction({
                 onChange(updated);
                 setExtracted(true);
             } else {
-                setNotice('No additional content was found. You can read the original or try again.');
+                setNotice('Morgenblau couldn’t find more of this article. Read the original or try again.');
             }
         } catch {
-            setNotice('The full article could not be loaded. You can try again or open the original.');
+            setNotice('Morgenblau couldn’t load the full article. Try again or open the original.');
         } finally {
             setPending(false);
         }
@@ -420,8 +420,8 @@ function ReaderBody({ entry }: { entry: ReaderEntry }) {
     return (
         <Text tone="muted">
             {httpURL(entry.url)
-                ? 'There is no readable content here. Open the original to continue.'
-                : 'No content is available for this entry.'}
+                ? 'This post has no text to show here. Open the original to read it.'
+                : 'This post has no text.'}
         </Text>
     );
 }
@@ -485,7 +485,7 @@ function ReaderVideo({ video, title }: { video?: { url: string; type: string }; 
             <Frame paddingBottom="4xl">
                 <VideoPlayer aria-label={title} controls preload="none">
                     <source src={video.url} type={video.type} />
-                    <Text>Your browser cannot play this video. Open it at the source.</Text>
+                    <Text>Your browser can’t play this video. Watch it at the source.</Text>
                 </VideoPlayer>
             </Frame>
         );

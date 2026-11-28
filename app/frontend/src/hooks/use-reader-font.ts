@@ -29,7 +29,7 @@ function subscribe(listener: () => void) {
 export function useReaderFont() {
     const font = useSyncExternalStore(subscribe, () => storedFont() ?? 'sans');
     const [error, setError] = useState(() =>
-        storedFont() === null ? 'Your browser could not load the saved reader font.' : '',
+        storedFont() === null ? 'Your browser couldn’t load the saved reader font.' : '',
     );
 
     function changeFont(next: ReaderFont) {
@@ -38,7 +38,7 @@ export function useReaderFont() {
             setError('');
             listeners.forEach((listener) => listener());
         } catch {
-            setError('Your browser could not save the reader font. Your selection has not changed.');
+            setError('Your browser couldn’t save the reader font, so it stays as it was.');
         }
     }
 

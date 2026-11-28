@@ -35,9 +35,7 @@ export function ImportSources() {
                         Import sources
                     </Text>
                     <Frame maxWidth="xl">
-                        <Text tone="muted">
-                            Bring your feeds with you. Folders become tags, and sources you already follow are kept.
-                        </Text>
+                        <Text tone="muted">Folders become tags, and sources you already follow stay as they are.</Text>
                     </Frame>
                 </Frame>
 
@@ -48,7 +46,7 @@ export function ImportSources() {
                                 From an OPML file
                             </Text>
                             <Text size="sm" tone="muted">
-                                Upload an export from Reeder, NetNewsWire, or another RSS reader. A feed in several
+                                Upload an export from Reeder, NetNewsWire or another RSS reader. A feed in several
                                 folders gets each folder’s tag.
                             </Text>
                         </Frame>
@@ -86,8 +84,8 @@ export function ImportSources() {
                                 From another app
                             </Text>
                             <Text size="sm" tone="muted">
-                                Read the subscriptions on your current ATProto account. Your sources in the other app
-                                stay unchanged.
+                                Morgenblau reads the subscriptions in your ATProto account. Your sources in the other
+                                app stay as they are.
                             </Text>
                         </Frame>
                         <Frame gap="xl">
@@ -96,7 +94,7 @@ export function ImportSources() {
                                     {
                                         provider: 'skyreader',
                                         name: 'Skyreader',
-                                        description: 'RSS feeds, categories, and tags',
+                                        description: 'RSS feeds, categories and tags',
                                     },
                                     {
                                         provider: 'glean',
@@ -137,8 +135,8 @@ export function ImportSources() {
                 </Frame>
                 <Frame maxWidth="lg">
                     <Text size="xs" tone="subtle">
-                        Imported feed subscriptions are public records on your PDS, like sources you add in Morgenblau.
-                        Newsletters and native Standardfeed subscriptions are not imported here.
+                        Imported feeds are public records in your PDS, like any source you add. This doesn’t import
+                        newsletters or native Standardfeed subscriptions.
                     </Text>
                 </Frame>
             </Frame>
@@ -293,10 +291,9 @@ function ImportReceipt({ outcome, onRetry }: { outcome: ImportOutcome; onRetry: 
                     <Frame paddingBottom="2xs">
                         <Dialog.Description render={<Text size="sm" tone="muted" />}>
                             {paused
-                                ? 'Successfully imported subscriptions are saved.'
+                                ? 'Morgenblau saved the subscriptions it imported.'
                                 : 'Your subscriptions are saved.'}{' '}
-                            Their posts are checked separately. You can close this window; collection continues
-                            automatically.
+                            Morgenblau fetches their posts in the background, so you can close this dialog.
                         </Dialog.Description>
                     </Frame>
                 )}
@@ -331,8 +328,8 @@ function ImportConfirmation({ plan, onConfirm }: { plan: ImportPlan; onConfirm: 
                         Import {count} {count === 1 ? 'source' : 'sources'}?
                     </Dialog.Title>
                     <Dialog.Description render={<Text size="sm" tone="muted" />}>
-                        New sources will be added. Existing sources keep their titles and primary status; incoming tags
-                        are merged with yours.
+                        Morgenblau adds the new sources. Sources you already follow keep their names and primary status,
+                        and the imported tags merge with yours.
                     </Dialog.Description>
                 </Frame>
                 {plan.warnings.length > 0 && (
@@ -375,8 +372,8 @@ function ImportResult({ outcome, onRetry }: { outcome: ImportOutcome; onRetry: (
             {outcome.remaining.length > 0 && (
                 <>
                     <Text size="sm" tone="muted">
-                        Sources still to check: {outcome.remaining.length}. Successful imports are kept; retrying will
-                        not duplicate them.
+                        Sources still to check: {outcome.remaining.length}. Retrying keeps what’s already imported and
+                        doesn’t add it twice.
                     </Text>
                     <Frame direction="row">
                         <Button variant="secondary" onClick={onRetry}>
@@ -409,7 +406,8 @@ function ImportCollection({ sources }: { sources: ImportSource[] }) {
         <Accordion tone="muted">
             <AccordionItem value="collection">
                 <AccordionTrigger>
-                    Posts not fetching for {unavailable.length} {unavailable.length === 1 ? 'source' : 'sources'}
+                    Morgenblau can’t fetch posts from {unavailable.length}{' '}
+                    {unavailable.length === 1 ? 'source' : 'sources'}
                 </AccordionTrigger>
                 <AccordionContent>
                     <BulletList>

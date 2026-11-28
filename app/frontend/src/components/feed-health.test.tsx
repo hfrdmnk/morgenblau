@@ -17,7 +17,7 @@ const source: FeedSource = {
 test('a failed refresh shows a red dot even when the feed has an older successful check', () => {
     const html = renderToStaticMarkup(<FeedHealth source={source} />);
     expect(html).toContain('role="img"');
-    expect(html).toContain('aria-label="Posts not fetching. Retrying automatically."');
+    expect(html).toContain('aria-label="Morgenblau can’t fetch posts right now and keeps retrying."');
     expect(html).toContain('bg-destructive');
     expect(html).not.toContain('bg-success');
     expect(html).not.toContain('<p');
@@ -48,7 +48,7 @@ test('a YouTube outage reads as waiting on YouTube, never as a broken feed', () 
     expect(row).not.toContain('Not fetching');
     const detail = renderToStaticMarkup(<SourceHealth source={waiting} />);
     expect(detail).toContain('YouTube’s feeds are down right now');
-    expect(detail).not.toContain('Posts aren’t fetching');
+    expect(detail).not.toContain('Morgenblau can’t fetch posts');
 });
 
 test('a generated feed note speaks up only when the feed needs attention', () => {

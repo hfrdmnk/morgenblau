@@ -69,9 +69,8 @@ export function NewsletterAddress({ settings = false, onNavigate }: { settings?:
                     onNavigate={onNavigate}
                 />
                 <Text size="xs" tone="subtle" wrap="pretty">
-                    {settings && 'This address is generated for you. '}
-                    Newsletters are always private and not saved to your <PdsLink />. They appear after their first
-                    email arrives.
+                    Newsletters are private, and Morgenblau never saves them to your <PdsLink />. A newsletter shows up
+                    in Sources when its first issue arrives.
                 </Text>
             </Frame>
         </Frame>

@@ -67,7 +67,7 @@ test('denied storage access falls back to sans without breaking render', async (
     try {
         await act(async () => root.render(<FontChoice />));
         expect(container.querySelector('button')?.textContent).toBe('sans');
-        expect(container.querySelector('[role=alert]')?.textContent).toContain('could not load');
+        expect(container.querySelector('[role=alert]')?.textContent).toContain('couldn’t load');
     } finally {
         act(() => root.unmount());
         container.remove();
@@ -96,7 +96,7 @@ test('failed writes preserve the saved selection and report failure, then a retr
         expect(write).toHaveBeenCalledWith('morgenblau-reader-font', 'sans');
         expect(container.querySelector('button')?.textContent).toBe('serif');
         expect(localStorage.getItem('morgenblau-reader-font')).toBe('serif');
-        expect(container.querySelector('[role=alert]')?.textContent).toContain('could not save');
+        expect(container.querySelector('[role=alert]')?.textContent).toContain('couldn’t save');
         Object.defineProperty(globalThis, 'localStorage', descriptor);
         await act(async () => container.querySelector('button')!.click());
         expect(container.querySelector('button')?.textContent).toBe('sans');

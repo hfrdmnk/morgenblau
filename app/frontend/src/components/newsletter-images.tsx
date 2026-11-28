@@ -24,7 +24,7 @@ export function NewsletterImages({
         try {
             onChange(await allowRemoteImages(entry, newsletter));
         } catch {
-            setNotice('Images could not be loaded. Please try again.');
+            setNotice('Couldn’t load the images. Try again.');
         } finally {
             setPending(false);
         }

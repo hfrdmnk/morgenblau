@@ -6,7 +6,7 @@ import { useAppProfile } from '@/hooks/use-app-profile';
 export function PublicDataHint({ centered = false }: { centered?: boolean }) {
     const hint = (
         <Text align={centered ? 'center' : undefined} size="xs" tone="subtle" wrap={centered ? 'balance' : 'pretty'}>
-            Your data will be saved to your <PdsLink /> and be public (private data coming soon).
+            Morgenblau saves your sources as public records in your <PdsLink />.
         </Text>
     );
     return centered ? <Frame paddingTop="2xs">{hint}</Frame> : hint;

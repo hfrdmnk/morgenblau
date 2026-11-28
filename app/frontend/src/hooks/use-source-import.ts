@@ -23,7 +23,7 @@ async function prepareImportBody(provider: ImportProvider, file?: File) {
 function preparationError(error: unknown) {
     return describeMutationError(
         error,
-        error instanceof Error ? error.message : 'Could not read these sources. Please try again.',
+        error instanceof Error ? error.message : 'Couldn’t read these sources. Try again.',
     );
 }
 
@@ -95,11 +95,11 @@ export function useSourceImport() {
         setState({ kind: 'done', outcome: combined });
         if (combined.remaining.length > 0) {
             toast.error('Import paused', {
-                description: 'Some sources could not be imported. Retry them in the dialog.',
+                description: 'Morgenblau couldn’t import some sources. Retry them in the import dialog.',
             });
         } else {
             toast.success('Subscriptions saved', {
-                description: 'Their posts are checked separately. You can follow collection in the dialog.',
+                description: 'Morgenblau fetches their posts in the background.',
             });
         }
     }

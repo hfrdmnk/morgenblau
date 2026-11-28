@@ -69,7 +69,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {isAdminPath(location) ? (
                     <Banner tone="admin">Admin only</Banner>
                 ) : online ? null : (
-                    <Banner tone="quiet">Can’t connect. Showing what was last loaded.</Banner>
+                    <Banner tone="quiet">You’re offline. Morgenblau shows what it loaded last.</Banner>
                 )}
                 <AppHeader />
                 <ErrorBoundary key={location}>{children}</ErrorBoundary>

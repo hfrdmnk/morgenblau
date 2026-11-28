@@ -222,7 +222,7 @@ function EmptyDigestState({ noSources }: { noSources: boolean }) {
         <EmptyState
             symbol="calm"
             title={`${greeting(new Date())}. Nothing to read yet.`}
-            description="Tell Morgenblau what you like to read, and new posts will gather here as they’re published."
+            description="Follow a site or a newsletter, and its new posts show up here on the day it publishes them."
             action={<AddSourceDialog trigger={<Button>Add your first source</Button>} />}
         />
     );

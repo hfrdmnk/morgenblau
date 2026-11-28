@@ -113,7 +113,7 @@ test('the rendered receipt lists only unavailable confirmed imports, in import o
     expect(dialog.textContent).toContain('Import paused');
     expect(dialog.textContent).toContain('4 added, 0 updated, 0 already up to date.');
     expect(batches).toEqual([[healthy, firstUnavailable, secondUnavailable, waiting, failed]]);
-    await click('Posts not fetching for 2 sources');
+    await click('Morgenblau can’t fetch posts from 2 sources');
     const panel = dialog.querySelector('[data-slot="accordion-content"]')!;
     expect([...panel.querySelectorAll('li')].map((item) => item.textContent)).toEqual([
         'First Unavailable Example Publication',
@@ -128,7 +128,7 @@ test('a single unavailable import has singular wording, and View sources closes 
         [feed(unrelated, 'unavailable'), feed(firstUnavailable, 'unavailable')],
     );
     expect(document.querySelector('[role="dialog"]')!.textContent).toContain('Subscriptions saved');
-    await click('Posts not fetching for 1 source');
+    await click('Morgenblau can’t fetch posts from 1 source');
     expect(
         [...document.querySelectorAll('[data-slot="accordion-content"] li')].map((item) => item.textContent),
     ).toEqual(['First Unavailable Example Publication']);

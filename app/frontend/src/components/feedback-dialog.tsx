@@ -130,14 +130,14 @@ export function FeedbackDialog() {
                                 void send();
                             }
                         }}
-                        placeholder="What’s working, what isn’t, what you’d like to see…"
+                        placeholder="What’s working and what isn’t…"
                         value={message}
                     />
                     <ComposerActions canSend={canSend} onFiles={add} sending={sending} />
                     {dragging ? <ComposerDropOverlay>Drop images to attach</ComposerDropOverlay> : null}
                 </Composer>
                 <ComposerStatus
-                    fallback="Your handle, this page and your browser are automatically included to help track down problems."
+                    fallback="Your feedback includes your handle, this page and details about your browser."
                     status={error ?? notice}
                 />
             </ComposerDialog>

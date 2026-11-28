@@ -22,7 +22,7 @@ export function ExportSources() {
         try {
             toast.success(await downloadOpml());
         } catch (error) {
-            toast.error(describeMutationError(error, 'Could not export your sources. Please try again.'));
+            toast.error(describeMutationError(error, 'Couldn’t export your sources. Try again.'));
         } finally {
             setBusy(false);
         }
@@ -46,8 +46,8 @@ export function ExportSources() {
                                 OPML file
                             </Text>
                             <Text size="sm" tone="muted">
-                                Your RSS and Atom feeds, including YouTube feeds. Tags become folders; a source with
-                                several tags appears in each folder.
+                                The file has your RSS and Atom feeds, YouTube channels included. Each tag becomes a
+                                folder, and a source with several tags shows up in each of them.
                             </Text>
                         </Frame>
                         <Frame direction="row">
@@ -58,8 +58,8 @@ export function ExportSources() {
                     </Frame>
                     <Frame maxWidth="lg">
                         <Text size="xs" tone="subtle">
-                            Newsletters and native Standardfeed subscriptions are not included. Your Standardfeed
-                            subscriptions remain on your PDS. Exporting does not change your sources.
+                            The file leaves out newsletters and native Standardfeed subscriptions. Your Standardfeed
+                            subscriptions stay in your PDS.
                         </Text>
                     </Frame>
                 </Frame>
@@ -79,7 +79,7 @@ function PublicFollowing() {
                 </Text>
                 <Text size="sm" tone="muted">
                     Publish the feeds you follow at a public address, for a blogroll on your site. Anyone with the
-                    address sees each feed’s title, link and tags. Newsletters are never included.
+                    address sees each feed’s title, link and tags. The list never includes newsletters.
                 </Text>
             </Frame>
             {enabled && <PublishedList />}

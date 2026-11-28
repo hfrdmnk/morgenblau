@@ -77,8 +77,10 @@ function announced() {
 test('the generate offer is not read out wholesale by a surrounding live region', async () => {
     respond(() => Response.json({ candidates: [], existingSubscriptions: [] }));
     await findFeeds('news.example.com');
-    await waitFor('No feed found');
-    const offer = [...document.querySelectorAll('p')].find((node) => node.textContent?.startsWith('No feed found'));
+    await waitFor('Morgenblau found no feed');
+    const offer = [...document.querySelectorAll('p')].find((node) =>
+        node.textContent?.startsWith('Morgenblau found no feed'),
+    );
     expect(offer).toBeDefined();
     expect(offer!.closest('[aria-live]')).toBeNull();
 });
@@ -86,8 +88,8 @@ test('the generate offer is not read out wholesale by a surrounding live region'
 test('a page without a feed is announced along with the offer to generate one', async () => {
     respond(() => Response.json({ candidates: [], existingSubscriptions: [] }));
     await findFeeds('news.example.com');
-    await waitFor('No feed found');
-    expect(announced()).toEqual(['No feed found. You can generate one.']);
+    await waitFor('Morgenblau found no feed');
+    expect(announced()).toEqual(['Morgenblau found no feed on this page.']);
 });
 
 test('found feeds are announced in one short line', async () => {
@@ -103,7 +105,7 @@ test('found feeds are announced in one short line', async () => {
     await findFeeds('news.example.com');
     await waitFor('Available feeds');
     expect(document.querySelector('ul[aria-labelledby]')!.closest('[aria-live]')).toBeNull();
-    expect(announced()).toEqual(['2 feeds found.']);
+    expect(announced()).toEqual(['Morgenblau found 2 feeds.']);
 });
 
 function screen() {

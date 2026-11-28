@@ -24,7 +24,7 @@ type Newsletters = ReturnType<typeof useSources<{ active: NewsletterSource[]; st
 
 const IMPORT_ACTION = (
     <Button render={<Link href={PATHS.import} variant="plain" />} nativeButton={false} variant="ghost">
-        Import feeds
+        Import sources
     </Button>
 );
 
@@ -51,7 +51,7 @@ export function Sources() {
                 <EmptyState
                     symbol="streams"
                     title="No sources yet."
-                    description="Feeds you add and newsletters sent to your private address will gather here."
+                    description="Feeds you add and newsletters sent to your private address show up here."
                     action={IMPORT_ACTION}
                 />
             ) : (
@@ -144,7 +144,7 @@ function FeedList({ removedFocus, settled, state }: { removedFocus: RemovedFocus
                         <EmptyState
                             symbol="streams"
                             title="No feeds yet."
-                            description="Add a blog, a YouTube channel or a podcast, and its posts will gather in your digest."
+                            description="Add a blog or a YouTube channel, and its posts show up in your digest."
                             action={IMPORT_ACTION}
                         />
                     )

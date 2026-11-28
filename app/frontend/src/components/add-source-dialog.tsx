@@ -664,7 +664,7 @@ function SearchScreen({
         <Frame gap="3xl">
             <Frame gap="l">
                 <Drawer.Description render={<Text size="sm" tone="muted" />}>
-                    Paste a site, blog, or YouTube channel.
+                    Paste the address of a website or a YouTube channel.
                 </Drawer.Description>
                 <UrlForm
                     discovery={discovery}
@@ -754,8 +754,8 @@ function UrlForm({
 
 function foundFeeds(site: SiteResult) {
     const count = site.candidates.length;
-    if (count === 0) return 'No feed found. You can generate one.';
-    return count === 1 ? '1 feed found.' : `${count} feeds found.`;
+    if (count === 0) return 'Morgenblau found no feed on this page.';
+    return count === 1 ? 'Morgenblau found 1 feed.' : `Morgenblau found ${count} feeds.`;
 }
 
 function Pending({ label }: { label: string }) {
@@ -919,7 +919,6 @@ function ShortsSwitch({ choice, disabled }: { choice: ReturnType<typeof useShort
     return (
         <OptionSwitch
             checked={choice.exclude}
-            description="Only regular videos from this channel."
             disabled={disabled}
             label="Exclude Shorts"
             onChange={choice.setExclude}
@@ -992,7 +991,9 @@ function FeedScreen({
             sheet.record(sourceKey(candidate), rkey);
             sheet.announce(
                 rkey,
-                youtubeDown ? 'Waiting on YouTube. Its videos arrive once YouTube is back.' : undefined,
+                youtubeDown
+                    ? 'Morgenblau is waiting on YouTube. This channel’s videos arrive when YouTube is back.'
+                    : undefined,
             );
             sheet.pop();
         }, 'The save couldn’t be confirmed.');
@@ -1077,7 +1078,7 @@ function GeneratedScreen({
                 ...options,
                 title: renamed ? name.trim() || undefined : undefined,
             });
-            sheet.announce(rkey, 'New posts appear in your newspaper as the site publishes them.');
+            sheet.announce(rkey, 'New posts appear in your digest as the site publishes them.');
             sheet.close();
         }, 'The save couldn’t be confirmed.');
     }
@@ -1257,7 +1258,11 @@ function NewsletterScreen({
             <Text size="xs" title={source.senderAddress} tone="subtle" truncate>
                 {source.senderAddress}
             </Text>
-            {stopped ? <Notice>Stopped. New mail from this sender is discarded until you resume it.</Notice> : null}
+            {stopped ? (
+                <Notice>
+                    This newsletter is stopped. Morgenblau discards new mail from this sender until you resume it.
+                </Notice>
+            ) : null}
             <SourceForm
                 action="Save changes"
                 busyLabel="Saving newsletter"
@@ -1416,7 +1421,7 @@ function SourceForm({
             {children}
             <OptionSwitch
                 checked={primary}
-                description="Shown first in your newspaper."
+                description="Shown first in your digest."
                 disabled={saving}
                 label="Primary"
                 onChange={setPrimary}
@@ -1526,8 +1531,8 @@ function PostPreview({
                             <PreviewNote>Recent posts couldn’t be loaded.</PreviewNote>
                         ) : posts === 'youtubeDown' ? (
                             <PreviewNote outage>
-                                YouTube’s feeds are down right now, so videos can’t be previewed. Following the channel
-                                still works: its videos arrive once YouTube is back.
+                                YouTube’s feeds are down right now, so Morgenblau can’t show a preview. You can still
+                                follow the channel, and its videos arrive when YouTube is back.
                             </PreviewNote>
                         ) : undefined
                     }
@@ -1552,7 +1557,8 @@ function PostPreview({
                             </Frame>
                         ) : (
                             <PreviewNote>
-                                Nothing published yet. New posts reach your newspaper as they appear.
+                                This source hasn’t published anything yet. New posts appear in your digest as it
+                                publishes them.
                             </PreviewNote>
                         )
                     }
@@ -1573,8 +1579,8 @@ function PreviewNote({ outage = false, children }: { outage?: boolean; children:
 }
 
 const ARTICLE_NOTICE = {
-    empty: 'No additional content was found. You can read the original or try again.',
-    failed: 'The full article could not be loaded. You can try again or open the original.',
+    empty: 'Morgenblau couldn’t find more of this article. Read the original or try again.',
+    failed: 'Morgenblau couldn’t load the full article. Try again or open the original.',
 };
 
 function PostScreen({ post }: { post: PreviewPost }) {
@@ -1680,7 +1686,7 @@ function ArticleBody({
         );
     if (pending)
         return (
-            <Skeleton label="Loading article">
+            <Skeleton label="Loading post">
                 <ReaderBody data-font={font}>
                     <Text>
                         A paragraph of sample text that stands in for the article while it loads, running across a few
@@ -1692,9 +1698,7 @@ function ArticleBody({
     if (hasNotice) return null;
     return (
         <Text tone="muted">
-            {original
-                ? 'There is no readable content here. Open the original to continue.'
-                : 'No content is available for this post.'}
+            {original ? 'This post has no text to show here. Open the original to read it.' : 'This post has no text.'}
         </Text>
     );
 }
@@ -1707,7 +1711,7 @@ function OptionSwitch({
     onChange,
 }: {
     label: string;
-    description: string;
+    description?: string;
     checked: boolean;
     disabled: boolean;
     onChange: (checked: boolean) => void;
@@ -1719,9 +1723,11 @@ function OptionSwitch({
                 <Text as="span" display="block" size="sm" weight="medium">
                     {label}
                 </Text>
-                <Text as="span" display="block" size="xs" tone="muted">
-                    {description}
-                </Text>
+                {description ? (
+                    <Text as="span" display="block" size="xs" tone="muted">
+                        {description}
+                    </Text>
+                ) : null}
             </SwitchLabel>
             <Switch checked={checked} disabled={disabled} id={id} onCheckedChange={onChange} />
         </Frame>

@@ -91,7 +91,7 @@ async function generate() {
         container.remove();
         unmount = () => {};
     };
-    await waitFor('No feed found');
+    await waitFor('Morgenblau found no feed');
     await click(button('Generate a feed'));
 }
 
@@ -156,7 +156,7 @@ test('generating opens its own screen, previews the posts, and adds the feed und
     );
     await generate();
     expect(document.querySelector('[aria-label="Back"]')).not.toBeNull();
-    expect(screen().textContent).not.toContain('No feed found');
+    expect(screen().textContent).not.toContain('Morgenblau found no feed');
     expect(announced()).toEqual(['Reading the page and a few of its posts. This can take a little while.']);
     expect(button('Add to sources')).toBeUndefined();
     expect(nameField()).toBeNull();

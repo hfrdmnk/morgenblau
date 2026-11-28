@@ -81,7 +81,7 @@ test('Right and Left step through the digest day the entry came from', async () 
     expect(here()).toBe('/entry/c?from=2026-10-14');
     await press('ArrowRight');
     expect(here()).toBe('/entry/c?from=2026-10-14');
-    expect(notices).toEqual(['No next article in this digest']);
+    expect(notices).toEqual(['No next post in this digest']);
     await press('k');
     await press('k');
     expect(here()).toBe('/entry/a?from=2026-10-14');
@@ -100,7 +100,7 @@ test('an entry opened from a newsletter steps through that newsletter, and stops
     await press('ArrowLeft');
     expect(here()).toBe('/entry/first?from=%2Fsources%2Fnewsletters%2Fnl_example');
     await press('ArrowLeft');
-    expect(notices).toEqual(['No previous article from this source']);
+    expect(notices).toEqual(['No previous post from this source']);
     expect(requested).toEqual(['/api/newsletters/nl_example/entries', '/api/newsletters/nl_example/entries']);
 });
 

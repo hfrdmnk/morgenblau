@@ -103,7 +103,7 @@ export function GenerateOffer({ onGenerate }: { onGenerate: () => void }) {
     return (
         <Panel>
             <Text size="sm" tone="muted">
-                No feed found on this page. Morgenblau can generate one from the posts it lists.
+                Morgenblau found no feed on this page. It can generate one from the posts the page lists.
             </Text>
             <Button onClick={onGenerate} size="sm" variant="secondary">
                 Generate a feed
@@ -241,7 +241,7 @@ function PostRow({ item }: { item: GeneratedSource['items'][number] }) {
 const ANCHOR_PROMPT = {
     unsure: 'Morgenblau isn’t sure these are the site’s posts. Paste the address of one post from this page to find more like it.',
     stale: 'Morgenblau couldn’t read this page on its last visit. If these aren’t the site’s posts, paste the address of one post from this page to find more like it.',
-    empty: 'No posts found on this page yet. Paste the address of one post from it, and Morgenblau will look for posts like it.',
+    empty: 'Morgenblau found no posts on this page. Paste the address of one post from it to find more like it.',
 };
 
 function anchorPrompt(source: GeneratedSource, found: boolean) {

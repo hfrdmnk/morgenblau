@@ -22,7 +22,7 @@ function neighbour(slugs: string[], slug: string, offset: number): string | unde
 
 function edgeNotice(from: string | null, offset: number): string {
     const place = sourceOrigin(from) ? ' from this source' : parseDigestDate(from) ? ' in this digest' : '';
-    return `No ${offset > 0 ? 'next' : 'previous'} article${place}`;
+    return `No ${offset > 0 ? 'next' : 'previous'} post${place}`;
 }
 
 export function useEntrySteps(slug: string, from: string | null) {
@@ -49,7 +49,7 @@ export function useEntrySteps(slug: string, from: string | null) {
             list.current = { path, slugs };
             return slugs;
         } catch {
-            if (!signal.aborted) toast.error('Couldn’t load the article list', { id: 'entry-step' });
+            if (!signal.aborted) toast.error('Couldn’t load the post list', { id: 'entry-step' });
             return null;
         }
     }

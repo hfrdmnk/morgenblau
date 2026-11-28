@@ -51,7 +51,7 @@ export function FeedHealth({
     return (
         <Frame
             as="span"
-            aria-label="Posts not fetching. Retrying automatically."
+            aria-label="Morgenblau can’t fetch posts right now and keeps retrying."
             direction="row"
             display="inline-flex"
             role="img"
@@ -123,7 +123,7 @@ export function SourceHealth({ source }: { source: FeedSource }) {
                     <Text size="sm" tone="muted">
                         {source.youtubeOutage
                             ? 'YouTube’s feeds are down right now. This is on YouTube’s side, and Morgenblau keeps checking.'
-                            : 'Posts aren’t fetching right now. Morgenblau retries automatically.'}
+                            : 'Morgenblau can’t fetch posts from this source right now. It retries automatically.'}
                     </Text>
                 </Frame>
             ) : null}

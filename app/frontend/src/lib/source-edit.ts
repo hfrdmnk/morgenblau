@@ -31,7 +31,7 @@ export const REMOVAL = {
     newsletter: {
         title: (name: string) => `Stop “${name}”?`,
         description:
-            'Unsaved issues are deleted and new mail from this sender is discarded. Saved issues stay in your Library, and you can resume it later.',
+            'Morgenblau deletes its unsaved issues and discards new mail from this sender. Saved issues stay in your Library, and you can resume the newsletter later.',
         action: 'Stop newsletter',
         done: 'Newsletter stopped',
         failed: 'Couldn’t stop this newsletter.',

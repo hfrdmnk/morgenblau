@@ -6,7 +6,7 @@ import { sourceHref } from '@/lib/paths';
 export function announceSourceAdded(
     rkey: string,
     navigate: (to: string) => void,
-    description = 'Their latest entries are being collected.',
+    description = 'Morgenblau is fetching its latest posts.',
 ) {
     toast.custom((id) => (
         <LinkToast
