@@ -21,6 +21,7 @@ import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useShortcuts } from '@/hooks/use-shortcuts';
 import { useSources, type FeedSource } from '@/hooks/use-sources';
 import { subscriptionChanges } from '@/lib/add-source';
+import { ACTIONS } from '@/lib/commands';
 import { addCalendarDays, selectedDigestDate, startOfToday, toDateKey } from '@/lib/digest-dates';
 import { digestHref, entryHref, readerSourceHref } from '@/lib/paths';
 import { entryExcerpt } from '@/lib/reader';
@@ -66,16 +67,16 @@ function useDayShortcuts(selected: Date, today: Date, entries: DigestEntry[]) {
         'Shift+T': () => (isToday ? showShortcutNotice('Already showing today') : show(today)),
     });
     useCommands([
-        { id: 'day:previous', group, label: 'Previous day', keywords: ['earlier', 'back'], run: earlier },
+        { id: 'day:previous', group: ACTIONS, label: 'Previous day', keywords: ['earlier', 'back'], run: earlier },
         ...(isToday
             ? []
             : [
-                  { id: 'day:next', group, label: 'Next day', keywords: ['later', 'forward'], run: later },
-                  { id: 'day:today', group, label: 'Today', run: () => show(today) },
+                  { id: 'day:next', group: ACTIONS, label: 'Next day', keywords: ['later', 'forward'], run: later },
+                  { id: 'day:today', group: ACTIONS, label: 'Today', run: () => show(today) },
               ]),
         ...entries.map((entry) => ({
             id: `headline:${entry.entrySlug}`,
-            group: 'Headlines',
+            group,
             label: entry.title || 'Untitled',
             detail: entry.source.title ?? undefined,
             icon: entry.source.faviconUrl,

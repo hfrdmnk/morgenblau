@@ -23,7 +23,7 @@ import { useOnline } from '@/hooks/use-online';
 import { useReaderFont } from '@/hooks/use-reader-font';
 import { useModeShortcuts, useShortcuts } from '@/hooks/use-shortcuts';
 import { api, ApiError } from '@/lib/api';
-import { CommandProblem, copied, openInTab, type Command } from '@/lib/commands';
+import { ACTIONS, CommandProblem, copied, openInTab, type Command } from '@/lib/commands';
 import { PATHS, readerBack, readerSourceHref } from '@/lib/paths';
 import type { EntrySave } from '@/lib/entry-save';
 import {
@@ -47,9 +47,9 @@ export function Entry() {
     const steps = useEntrySteps(slug, from);
     useShortcuts({ Escape: () => navigate(back) });
     const navigation: Command[] = [
-        { id: 'entry:previous', group: READER, label: 'Previous entry', run: steps.previous },
-        { id: 'entry:next', group: READER, label: 'Next entry', run: steps.next },
-        { id: 'entry:back', group: READER, label: backLabel, run: () => navigate(back) },
+        { id: 'entry:previous', group: ACTIONS, label: 'Previous entry', run: steps.previous },
+        { id: 'entry:next', group: ACTIONS, label: 'Next entry', run: steps.next },
+        { id: 'entry:back', group: ACTIONS, label: backLabel, run: () => navigate(back) },
     ];
 
     return (
@@ -244,8 +244,6 @@ function Reader({
     );
 }
 
-const READER = 'Reader';
-
 function ReaderCommands({
     entry,
     save,
@@ -265,7 +263,7 @@ function ReaderCommands({
             ? [
                   {
                       id: 'entry:source',
-                      group: READER,
+                      group: ACTIONS,
                       label: `Go to ${sourceTitle(entry)}`,
                       run: () => navigate(sourceLink),
                   },
@@ -281,10 +279,10 @@ function originalCommands(entry: ReaderEntry): Command[] {
     const original = httpURL(entry.url);
     if (!original) return [];
     return [
-        { id: 'entry:original', group: READER, label: sourceActionLabel(entry), run: () => openInTab(original) },
+        { id: 'entry:original', group: ACTIONS, label: sourceActionLabel(entry), run: () => openInTab(original) },
         {
             id: 'entry:copy-link',
-            group: READER,
+            group: ACTIONS,
             label: 'Copy link to original',
             run: () => copied(original, 'Link copied'),
         },
@@ -297,7 +295,7 @@ function imageCommands(entry: ReaderEntry, onChange: (entry: ReaderEntry) => voi
     return [
         {
             id: 'entry:images',
-            group: READER,
+            group: ACTIONS,
             label: 'Load remote images',
             detail: 'This message only',
             run: async () => onChange(await allowRemoteImages(entry, newsletter)),
@@ -310,7 +308,7 @@ function SaveCommands({ save }: { save: EntrySave }) {
     useCommands([
         {
             id: 'entry:save',
-            group: READER,
+            group: ACTIONS,
             label: 'Saved to Library',
             keywords: ['save', 'bookmark', 'library', 'remove'],
             toggle: {
@@ -325,7 +323,7 @@ function SaveCommands({ save }: { save: EntrySave }) {
         },
         {
             id: 'entry:tags',
-            group: READER,
+            group: ACTIONS,
             label: 'Edit tags',
             detail: tags.join(', '),
             step: {

@@ -1,9 +1,16 @@
 import { useLocation } from 'wouter';
 
 import { useCommands } from '@/hooks/use-commands';
-import type { FeedSourceDetail, NewsletterSourceDetail, SourceEntry, useSources } from '@/hooks/use-sources';
-import { editSource, unsubscribe, youtubeFeeds } from '@/lib/add-source';
-import { copied, openInTab, type Command } from '@/lib/commands';
+import type {
+    FeedSource,
+    FeedSourceDetail,
+    NewsletterSource,
+    NewsletterSourceDetail,
+    SourceEntry,
+    useSources,
+} from '@/hooks/use-sources';
+import { editSource, subscriptionChanges, unsubscribe, youtubeFeeds } from '@/lib/add-source';
+import { ACTIONS, copied, openInTab, type Command, type CommandStep } from '@/lib/commands';
 import { entryHref, newsletterSourceHref, PATHS, sourceHref } from '@/lib/paths';
 import { httpURL } from '@/lib/reader';
 import { displayURL, feedTitle, newsletterTitle } from '@/lib/source-display';
@@ -50,30 +57,83 @@ export function useNewsletterCommands(source: NewsletterSourceDetail | null, onC
     );
 }
 
-function feedEdits(source: FeedSourceDetail): Command[] {
+export function feedRenameStep(source: FeedSource): CommandStep {
     const title = feedTitle(source);
+    return {
+        kind: 'text',
+        title: 'Rename',
+        initial: title,
+        placeholder: 'Use the feed’s own name',
+        action: (value) => (value.trim() ? `Rename to “${value.trim()}”` : 'Use the feed’s own name'),
+        problem: nameProblem,
+        submit: (value) =>
+            value.trim() === title
+                ? undefined
+                : editSource(source.rkey, { title: value.trim() }).then(() => 'Source renamed'),
+    };
+}
+
+export function feedDeleteStep(source: FeedSource, leave: () => void): CommandStep {
+    return {
+        kind: 'confirm',
+        title: REMOVAL.feed.action,
+        description: REMOVAL.feed.description,
+        action: `Delete “${feedTitle(source)}”`,
+        submit: async () => {
+            await unsubscribe(source.rkey);
+            leave();
+            return REMOVAL.feed.done;
+        },
+    };
+}
+
+export function newsletterRenameStep(source: NewsletterSource, stopped: boolean, onChanged: () => void): CommandStep {
+    const title = newsletterTitle(source);
+    return {
+        kind: 'text',
+        title: 'Rename',
+        initial: title,
+        placeholder: 'A name for this newsletter',
+        action: (value) => `Rename to “${value.trim()}”`,
+        problem: (value) => (value.trim() ? nameProblem(value) : 'A newsletter needs a name.'),
+        submit: (value) =>
+            value.trim() === title
+                ? undefined
+                : editNewsletter(newsletterEditable(source, stopped), { title: value.trim() })
+                      .then(onChanged)
+                      .then(() => 'Newsletter renamed'),
+    };
+}
+
+export function newsletterDeleteStep(source: NewsletterSource, stopped: boolean, leave: () => void): CommandStep {
+    return {
+        kind: 'confirm',
+        title: DELETION.manual.action,
+        description: DELETION.manual.description,
+        action: `Delete “${newsletterTitle(source)}”`,
+        submit: () =>
+            deleteNewsletter(newsletterEditable(source, stopped)).then(() => {
+                subscriptionChanges.dispatchEvent(new Event('change'));
+                leave();
+                return DELETION.manual.done;
+            }),
+    };
+}
+
+function feedEdits(source: FeedSourceDetail): Command[] {
     const tags = source.tags ?? [];
     const edit = (change: Parameters<typeof editSource>[1]) => editSource(source.rkey, change);
     return [
         {
             id: 'source:rename',
-            group: title,
-            label: 'Rename',
-            keywords: ['title', 'name'],
-            step: {
-                kind: 'text',
-                title: 'Rename',
-                initial: title,
-                placeholder: 'Use the feed’s own name',
-                action: (value) => (value.trim() ? `Rename to “${value.trim()}”` : 'Use the feed’s own name'),
-                problem: nameProblem,
-                submit: (value) =>
-                    value.trim() === title ? undefined : edit({ title: value.trim() }).then(() => 'Source renamed'),
-            },
+            group: ACTIONS,
+            label: `Rename ${feedTitle(source)}…`,
+            keywords: ['rename', 'title', 'name'],
+            step: feedRenameStep(source),
         },
         {
             id: 'source:tags',
-            group: title,
+            group: ACTIONS,
             label: 'Edit tags',
             detail: tags.join(', '),
             step: {
@@ -86,26 +146,22 @@ function feedEdits(source: FeedSourceDetail): Command[] {
         },
         {
             id: 'source:primary',
-            group: title,
+            group: ACTIONS,
             label: 'Primary',
             keywords: ['first', 'top', 'pin'],
             toggle: { on: source.primary, set: (primary) => edit({ primary }) },
         },
-        ...shortsToggle(source, title, edit),
+        ...shortsToggle(source, edit),
     ];
 }
 
-function shortsToggle(
-    source: FeedSourceDetail,
-    title: string,
-    edit: (change: { feedUrl: string }) => Promise<void>,
-): Command[] {
+function shortsToggle(source: FeedSourceDetail, edit: (change: { feedUrl: string }) => Promise<void>): Command[] {
     const feeds = source.kind === 'standardfeed' ? undefined : youtubeFeeds(source.feedUrl);
     if (!feeds) return [];
     return [
         {
             id: 'source:shorts',
-            group: title,
+            group: ACTIONS,
             label: 'Include Shorts',
             keywords: ['youtube', 'video'],
             toggle: {
@@ -117,13 +173,12 @@ function shortsToggle(
 }
 
 function feedLinks(source: FeedSourceDetail, latest: string | undefined, navigate: Navigate): Command[] {
-    const title = feedTitle(source);
     const site = httpURL(source.siteUrl);
     const commands: Command[] = [];
     if (site)
         commands.push({
             id: 'source:site',
-            group: title,
+            group: ACTIONS,
             label: 'Open site',
             detail: displayURL(site),
             run: () => openInTab(site),
@@ -131,14 +186,14 @@ function feedLinks(source: FeedSourceDetail, latest: string | undefined, navigat
     if (source.kind !== 'standardfeed')
         commands.push({
             id: 'source:copy-feed',
-            group: title,
+            group: ACTIONS,
             label: 'Copy feed URL',
             run: () => copied(source.feedUrl, 'Feed URL copied'),
         });
     if (latest)
         commands.push({
             id: 'source:latest',
-            group: title,
+            group: ACTIONS,
             label: 'Open latest post',
             run: () => navigate(entryHref(latest, sourceHref(source.rkey))),
         });
@@ -146,23 +201,12 @@ function feedLinks(source: FeedSourceDetail, latest: string | undefined, navigat
 }
 
 function feedRemoval(source: FeedSourceDetail, navigate: Navigate): Command {
-    const title = feedTitle(source);
     return {
         id: 'source:delete',
-        group: title,
-        label: 'Delete source…',
-        keywords: ['remove', 'unsubscribe', 'unfollow'],
-        step: {
-            kind: 'confirm',
-            title: REMOVAL.feed.action,
-            description: REMOVAL.feed.description,
-            action: `Delete “${title}”`,
-            submit: async () => {
-                await unsubscribe(source.rkey);
-                navigate(PATHS.sources);
-                return REMOVAL.feed.done;
-            },
-        },
+        group: ACTIONS,
+        label: `Delete ${feedTitle(source)}…`,
+        keywords: ['delete', 'remove', 'unsubscribe', 'unfollow'],
+        step: feedDeleteStep(source, () => navigate(PATHS.sources)),
     };
 }
 
@@ -173,23 +217,14 @@ function newsletterEdits(source: NewsletterSourceDetail, onChanged: () => void):
     return [
         {
             id: 'newsletter:rename',
-            group: title,
-            label: 'Rename',
-            keywords: ['title', 'name'],
-            step: {
-                kind: 'text',
-                title: 'Rename',
-                initial: title,
-                placeholder: 'A name for this newsletter',
-                action: (value) => `Rename to “${value.trim()}”`,
-                problem: (value) => (value.trim() ? nameProblem(value) : 'A newsletter needs a name.'),
-                submit: (value) =>
-                    value.trim() === title ? undefined : edit({ title: value.trim() }).then(() => 'Newsletter renamed'),
-            },
+            group: ACTIONS,
+            label: `Rename ${title}…`,
+            keywords: ['rename', 'title', 'name'],
+            step: newsletterRenameStep(source, editable.stopped, onChanged),
         },
         {
             id: 'newsletter:tags',
-            group: title,
+            group: ACTIONS,
             label: 'Edit tags',
             detail: source.tags.join(', '),
             step: {
@@ -202,7 +237,7 @@ function newsletterEdits(source: NewsletterSourceDetail, onChanged: () => void):
         },
         {
             id: 'newsletter:primary',
-            group: title,
+            group: ACTIONS,
             label: 'Primary',
             keywords: ['first', 'top', 'pin'],
             toggle: { on: source.primary, set: (primary) => edit({ primary }) },
@@ -225,7 +260,7 @@ function newsletterRemovals(source: NewsletterSourceDetail, onChanged: () => voi
         submit: () => Promise<string>,
     ): Command => ({
         id,
-        group: title,
+        group: ACTIONS,
         label,
         keywords: ['remove'],
         step: { kind: 'confirm', title: copy.action, description: copy.description, action, submit },
@@ -233,7 +268,7 @@ function newsletterRemovals(source: NewsletterSourceDetail, onChanged: () => voi
     const pause = editable.stopped
         ? {
               id: 'newsletter:resume',
-              group: title,
+              group: ACTIONS,
               label: 'Resume newsletter',
               keywords: ['enable', 'start'],
               run: () =>
@@ -260,14 +295,18 @@ function newsletterRemovals(source: NewsletterSourceDetail, onChanged: () => voi
     return [
         pause,
         ...unsubscribing,
-        confirm('newsletter:delete', 'Delete newsletter…', DELETION.manual, `Delete “${title}”`, () =>
-            deleteNewsletter(editable).then(deleted(DELETION.manual.done)),
-        ),
+        {
+            id: 'newsletter:delete',
+            group: ACTIONS,
+            label: `Delete ${title}…`,
+            keywords: ['delete', 'remove'],
+            step: newsletterDeleteStep(source, editable.stopped, () => navigate(PATHS.sources)),
+        },
     ];
 }
 
 function newsletterLinks(source: NewsletterSourceDetail, navigate: Navigate): Command[] {
-    const group = newsletterTitle(source);
+    const group = ACTIONS;
     const latest = source.latestEntrySlug;
     return [
         {
