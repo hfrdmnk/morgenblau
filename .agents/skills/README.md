@@ -1,6 +1,6 @@
 # Repo skills
 
-Each directory here is one skill: a `SKILL.md` with `name` and `description` frontmatter, plus the scripts and references it links. Amp reads them from `.agents/skills/`; Claude Code reads the same files through the `.claude/skills` symlink. Nothing here depends on a personal or hosted skill, so a fresh clone has everything.
+Each directory here is one skill: a `SKILL.md` with `name` and `description` frontmatter, plus the scripts and references it links. Amp and Claude Code both read them from `.agents/skills/`. Nothing here depends on a personal or hosted skill, so a fresh clone has everything.
 
 | Skill | Invoked | Owns |
 |---|---|---|
@@ -8,6 +8,7 @@ Each directory here is one skill: a `SKILL.md` with `name` and `description` fro
 | [maintain-verification-skill](maintain-verification-skill/SKILL.md) | on request or by an authorized schedule | keeping verify-morgenblau's recipes and harness in step with the app |
 | [garden](garden/SKILL.md) | explicitly only: `garden`, `/garden`, or a scheduled run | the static sweep that ships mechanical fixes and files judgment issues |
 | [no-comments](no-comments/SKILL.md) | on request, for one scope of `app/` | burning down the comments the two comment baselines still allow |
+| [write](write/SKILL.md) | when asked to write or polish user-facing text; `/write tune` to update the voice | Dominik's voice profile and samples, and drafting copy for `app/` and `site/` |
 
 ## Writing a skill
 
