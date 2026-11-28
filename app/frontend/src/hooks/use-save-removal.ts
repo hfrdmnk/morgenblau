@@ -15,6 +15,7 @@ export function useSaveRemoval(refresh: () => void) {
         done.catch((error: unknown) => {
             removed.current.delete(key);
             rerender();
+            toast.dismiss('library-removed');
             toast.error(describeMutationError(error, 'Couldn’t remove this save. Try again.'));
         });
         toast('Removed from Library', {

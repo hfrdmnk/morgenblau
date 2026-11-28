@@ -18,6 +18,9 @@ export function announceSave(save: EntrySave) {
 
 export function announceRemove(save: EntrySave, tags: string[]) {
     const removed = save.remove();
+    void removed.then((done) => {
+        if (!done) toast.dismiss(REMOVED_TOAST);
+    });
     toast.dismiss(SAVE_TOAST);
     toast('Removed from Library', {
         id: REMOVED_TOAST,
