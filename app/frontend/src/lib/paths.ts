@@ -94,7 +94,7 @@ export function readerBack(from: string | null): { href: string; label: string }
     const source = sourceOrigin(from);
     if (source) return { href: source, label: 'Back to source' };
     const library = libraryOrigin(from);
-    if (library) return { href: library, label: 'Back to library' };
+    if (library) return { href: library, label: 'Back to Library' };
     const date = parseDigestDate(from);
     return { href: digestHref(date ? toDateKey(date) : undefined), label: 'Back to digest' };
 }

@@ -101,7 +101,7 @@ function Recent({ saves, removal }: { saves: LibrarySave[]; removal: Removal }) 
     if (!saves.length)
         return (
             <EmptyState
-                description="Save a post from your digest and your newest saves wait here."
+                description="When you save a post while you read, it shows up here."
                 symbol="shelf"
                 title="Nothing saved yet."
             />
@@ -138,11 +138,7 @@ function Everything({
     useSortCommand(sort, query);
     if (!saves.length)
         return (
-            <EmptyState
-                description="Everything you save from your digest stays here, newest first."
-                symbol="shelf"
-                title="Nothing saved yet."
-            />
+            <EmptyState description="Everything you save shows up here." symbol="shelf" title="Nothing saved yet." />
         );
     const found = saves.filter((save) => matchesQuery(save, query));
     const groups = groupSaves(found, sort);
@@ -195,7 +191,7 @@ function Everything({
                 </SaveList>
             ) : (
                 <EmptyState
-                    description="Search looks in titles, site names and tags; #tag finds only that tag."
+                    description="Search looks in titles, site names and tags."
                     symbol="shelf"
                     title={`Nothing matches “${query.trim()}”.`}
                 />

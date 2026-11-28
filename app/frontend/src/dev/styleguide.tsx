@@ -407,7 +407,7 @@ function MarkLineSpecimen() {
                         </Button>
                     </>
                 }
-                label="End of article"
+                label="End of post"
             >
                 Saved to your Library 3 days ago
             </MarkLine>

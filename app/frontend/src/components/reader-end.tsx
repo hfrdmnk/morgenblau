@@ -12,7 +12,7 @@ import type { EntrySave } from '@/lib/entry-save';
 import { savedPhrase } from '@/lib/library';
 import { announceRemove } from '@/lib/save-announce';
 
-const END = 'End of article';
+const END = 'End of post';
 export function ReaderEnd({ save }: { save: EntrySave | null }) {
     return (
         <Frame gap="l" paddingTop="6xl">

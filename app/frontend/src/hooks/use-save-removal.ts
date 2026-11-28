@@ -31,7 +31,7 @@ export function useSaveRemoval(refresh: () => void) {
                             refresh();
                         })
                         .catch((error: unknown) =>
-                            toast.error(describeMutationError(error, 'Couldn’t save this again. Try again.')),
+                            toast.error(describeMutationError(error, 'Couldn’t put this back in your Library.')),
                         ),
             },
             classNames: {

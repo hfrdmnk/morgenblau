@@ -39,15 +39,15 @@ describe('reader origin', () => {
 describe('reader back link', () => {
     test('goes back to the source page, the Library view or the digest day the entry was opened from', () => {
         expect(readerBack('/sources/3kexample2a')).toEqual({ href: '/sources/3kexample2a', label: 'Back to source' });
-        expect(readerBack(libraryHref())).toEqual({ href: '/library', label: 'Back to library' });
+        expect(readerBack(libraryHref())).toEqual({ href: '/library', label: 'Back to Library' });
         expect(readerBack(libraryHref('everything'))).toEqual({
             href: '/library?view=everything',
-            label: 'Back to library',
+            label: 'Back to Library',
         });
         const searched = libraryHref('everything', { sort: 'site', query: 'café & #design' });
         expect(
             readerBack(new URL(entryHref('slug', searched), 'https://app.example.com').searchParams.get('from')),
-        ).toEqual({ href: searched, label: 'Back to library' });
+        ).toEqual({ href: searched, label: 'Back to Library' });
         expect(readerBack('2026-10-14')).toEqual({ href: '/?date=2026-10-14', label: 'Back to digest' });
     });
 
