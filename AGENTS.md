@@ -22,7 +22,7 @@ Comment the why, never the what. A comment earns its place only when it records 
 
 ## Docs
 
-Docs point, they don't mirror. In durable project docs (the AGENTS.md files, `SPEC.md`, `.claude/rules/*`, memory), write pointers and invariants, not a copy of what the code already owns. Name the file or function that holds the detail and state the rule; don't enumerate a list the code will grow past (an error-code set, a route table).
+Docs point, they don't mirror. In durable project docs (the AGENTS.md files, `SPEC.md`, memory), write pointers and invariants, not a copy of what the code already owns. Name the file or function that holds the detail and state the rule; don't enumerate a list the code will grow past (an error-code set, a route table).
 
 ## Testing
 

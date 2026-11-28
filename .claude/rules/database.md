@@ -1,1 +1,0 @@
-../../app/internal/database/AGENTS.md

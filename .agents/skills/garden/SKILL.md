@@ -133,7 +133,7 @@ Every law heading carries an "Enforced by:" list. A "Check by hand" line is allo
 
 ### 2.5 Docs and skills vs code
 
-Scope: every AGENTS.md (the `.claude/rules/*.md` symlinks and `CLAUDE.md` point at them), `SPEC.md`, `LAWS.md`, and every `SKILL.md` under `.agents/skills/` with the files it links. For the verify skill's `features/`, check only that references resolve; its content is the verify skill's job. Resolve every reference:
+Scope: every AGENTS.md (`CLAUDE.md` points at the root one), `SPEC.md`, `LAWS.md`, and every `SKILL.md` under `.agents/skills/` with the files it links. For the verify skill's `features/`, check only that references resolve; its content is the verify skill's job. Resolve every reference:
 
 - repo paths exist (`test -e`): markdown links relative to the doc, backticked paths relative to the doc's directory or else the repo root; `#anchors` and prose section references ("SPEC.md, Newsletters") match a heading in the target
 - `make <target>` is a target in `Makefile`
@@ -165,7 +165,6 @@ For each `.agents/skills/*/SKILL.md`:
 - frontmatter `name` matches the directory
 - every capability and trigger the `description` promises has a matching section in the body, and the body does nothing the description hides
 - over 500 lines is a finding
-- `.claude/skills` is still a symlink to `.agents/skills`
 
 All of these are judgment.
 
